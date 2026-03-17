@@ -30,6 +30,9 @@ services:
       - '127.0.0.1:${GATEWAY_PORT}:${GATEWAY_PORT}'
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
+      # Redirect CrewAI's SQLite long-term memory into the writable workspace
+      # volume so it persists across restarts and survives read_only rootfs.
+      CREWAI_STORAGE_DIR: /app/workspace/crewai_storage
     volumes:
       - ./workspace:/app/workspace
       - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
@@ -45,6 +48,8 @@ services:
     tmpfs:
       - /tmp
       - /run
+      - /home/appuser/.local:uid=1000,gid=1000
+      - /home/appuser/.cache:uid=1000,gid=1000
 
   chromadb:
     image: chromadb/chroma:0.5.23
