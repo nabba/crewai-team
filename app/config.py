@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     signal_owner_number: str
     signal_cli_path: str = "/opt/homebrew/bin/signal-cli"
     signal_socket_path: str = "/tmp/signal-cli.sock"
+    # HTTP endpoint for signal-cli (preferred in Docker — Unix sockets don't work
+    # across the Docker Desktop for Mac VM boundary).
+    # Start signal-cli with: signal-cli daemon --http 127.0.0.1:7583 --receive-mode on-start
+    # Then set SIGNAL_HTTP_URL=http://host.docker.internal:7583
+    signal_http_url: str = ""
 
     gateway_secret: SecretStr
     gateway_port: int = 8765
