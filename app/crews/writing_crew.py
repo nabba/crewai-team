@@ -1,5 +1,6 @@
 from crewai import Task, Crew, Process
 from app.agents.writer import create_writer
+from app.sanitize import wrap_user_input
 
 
 class WritingCrew:
@@ -10,7 +11,7 @@ class WritingCrew:
         task = Task(
             description=f"""Complete the following writing task:
 
-{task_description}
+{wrap_user_input(task_description)}
 
 First, check team memory for any relevant research or context. Then write clear,
 well-structured content. Adapt the length and format based on the destination:

@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 workspace/memory/
 workspace/output/
 workspace/skills/*.md
@@ -11,3 +13,7 @@ dist/
 .venv/
 *.log
 .DS_Store
+*.pem
+*.key
+*.p12
+*.pfx

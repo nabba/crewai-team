@@ -8,6 +8,7 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 MAX_SIGNAL_LENGTH = 1500
+_MAX_RESPONSE_BYTES = 65536  # 64 KB — cap socket read buffer against DoS
 
 
 class SignalClient:
@@ -50,18 +51,24 @@ class SignalClient:
                 if not chunk:
                     break
                 data += chunk
+                if len(data) > _MAX_RESPONSE_BYTES:
+                    logger.error("signal-cli response exceeded buffer limit")
+                    return
 
             if data:
-                resp = json.loads(data.split(b"\n")[0])
-                if "error" in resp:
-                    logger.error("signal-cli RPC error")
-                else:
-                    logger.info("Message sent successfully")
+                try:
+                    resp = json.loads(data.split(b"\n")[0])
+                    if "error" in resp:
+                        logger.error("signal-cli RPC error")
+                    else:
+                        logger.info("Message sent successfully")
+                except json.JSONDecodeError:
+                    logger.error("signal-cli returned invalid JSON")
             else:
                 logger.error("No response from signal-cli socket")
 
-        except Exception as e:
-            logger.error(f"signal-cli send error: {type(e).__name__}")
+        except Exception:
+            logger.error("signal-cli communication failed")
         finally:
             if sock:
                 try:

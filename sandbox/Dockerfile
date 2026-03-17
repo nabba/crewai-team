@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# Pinned digest — keep in sync with main Dockerfile
+FROM python:3.11-slim@sha256:6d98ca198cea726f2c86da2699594339a7b7ff08e49728797b4ed6e3b5c3b62a
 
 # Install only required runtimes — keep image minimal
 RUN apt-get update && apt-get install -y \

@@ -1,5 +1,6 @@
 from crewai import Task, Crew, Process
 from app.agents.researcher import create_researcher
+from app.sanitize import wrap_user_input
 
 
 class ResearchCrew:
@@ -10,7 +11,7 @@ class ResearchCrew:
         task = Task(
             description=f"""Research the following topic thoroughly:
 
-{topic}
+{wrap_user_input(topic)}
 
 Search the web for at least 3 high-quality sources. Read articles and extract key
 information. If any YouTube videos are relevant, extract their transcripts.

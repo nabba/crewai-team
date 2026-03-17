@@ -1,5 +1,5 @@
 from crewai import Agent, LLM
-from app.config import get_settings
+from app.config import get_settings, get_anthropic_api_key
 from app.tools.code_executor import execute_code
 from app.tools.file_manager import file_manager
 from app.tools.web_search import web_search
@@ -25,7 +25,7 @@ RULES:
 def create_coder() -> Agent:
     llm = LLM(
         model=f"anthropic/{settings.specialist_model}",
-        api_key=settings.anthropic_api_key,
+        api_key=get_anthropic_api_key(),
         max_tokens=4096,
     )
     memory_tools = create_memory_tools(collection="coder")

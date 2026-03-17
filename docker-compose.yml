@@ -1,19 +1,50 @@
 services:
+  # Docker socket proxy — limits API access to only what's needed for sandbox
+  # See https://github.com/Tecnativa/docker-socket-proxy
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.2
+    restart: unless-stopped
+    privileged: true
+    environment:
+      CONTAINERS: 1        # Allow create/start/stop containers
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      POST: 1              # Allow POST (create/run)
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /run
+
   gateway:
     build: .
     restart: unless-stopped
     env_file: .env
     ports:
       - '127.0.0.1:${GATEWAY_PORT}:${GATEWAY_PORT}'
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375
     volumes:
       - ./workspace:/app/workspace
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
     depends_on:
       - chromadb
+      - docker-proxy
     networks:
       - external
       - internal
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
 
   chromadb:
     image: chromadb/chroma:0.5.23
@@ -22,6 +53,11 @@ services:
       - ./workspace/memory:/chroma/chroma
     networks:
       - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     # NOT exposed to host — internal only
 
 networks:
@@ -29,4 +65,4 @@ networks:
     driver: bridge
   internal:
     driver: bridge
-    internal: true   # No internet access for ChromaDB
+    internal: true   # No internet access for ChromaDB or docker-proxy

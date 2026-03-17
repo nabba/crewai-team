@@ -1,8 +1,6 @@
 from crewai.tools import tool
 import requests
-from app.config import get_settings
-
-settings = get_settings()
+from app.config import get_brave_api_key
 
 BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
@@ -16,7 +14,7 @@ def web_search(query: str) -> str:
     headers = {
         "Accept": "application/json",
         "Accept-Encoding": "gzip",
-        "X-Subscription-Token": settings.brave_api_key,
+        "X-Subscription-Token": get_brave_api_key(),
     }
     params = {"q": query, "count": 5}
 
@@ -35,5 +33,5 @@ def web_search(query: str) -> str:
             results.append(f"**{title}**\n{url}\n{snippet}\n")
 
         return "\n".join(results) if results else "No results found."
-    except Exception as e:
-        return f"Search error: {str(e)}"
+    except Exception:
+        return "Search error: unable to reach search API."

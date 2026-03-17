@@ -1,5 +1,6 @@
 from crewai.tools import tool
 import pathlib
+from app.audit import log_tool_blocked
 
 WORKSPACE = pathlib.Path("/app/workspace/output").resolve()
 
@@ -14,9 +15,14 @@ def file_manager(action: str, path: str, content: str = "") -> str:
     """
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
-    # Resolve and validate path — must stay within workspace
+    # Resolve and validate path — must stay within workspace.
+    # relative_to() is used instead of startswith() to avoid the classic
+    # prefix bypass: /app/workspace/output_evil passes startswith("/app/workspace/output")
     target = (WORKSPACE / path).resolve()
-    if not str(target).startswith(str(WORKSPACE)):
+    try:
+        target.relative_to(WORKSPACE)
+    except ValueError:
+        log_tool_blocked("file_manager", "unknown", f"path traversal attempt: {path[:100]!r}")
         return "Error: Path traversal detected. Access denied."
 
     if action == "read":

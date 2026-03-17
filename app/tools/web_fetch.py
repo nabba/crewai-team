@@ -4,9 +4,16 @@ import ipaddress
 import socket
 import trafilatura
 import requests
+from app.audit import log_tool_blocked
 
 # Blocked hostnames and schemes for SSRF protection
-_BLOCKED_HOSTS = {"localhost", "chromadb", "gateway", "0.0.0.0"}
+_BLOCKED_HOSTS = {
+    "localhost", "chromadb", "gateway", "docker-proxy",
+    "0.0.0.0", "127.0.0.1", "::", "::1",
+    "metadata.google.internal",        # GCP metadata
+    "metadata.google.internal.",
+    "169.254.169.254",                  # AWS/Azure/GCP metadata endpoint
+}
 _ALLOWED_SCHEMES = {"http", "https"}
 
 
@@ -46,15 +53,12 @@ def web_fetch(url: str) -> str:
     """
     safe, reason = _is_safe_url(url)
     if not safe:
+        log_tool_blocked("web_fetch", "unknown", reason)
         return f"URL blocked: {reason}"
 
     try:
-        downloaded = trafilatura.fetch_url(url)
-        if downloaded:
-            text = trafilatura.extract(downloaded)
-            if text:
-                return text[:32000]
-
+        # Always fetch through requests so we can inspect redirect targets
+        # (trafilatura.fetch_url has its own HTTP client that bypasses our SSRF check)
         response = requests.get(
             url,
             timeout=15,
@@ -66,8 +70,10 @@ def web_fetch(url: str) -> str:
         # Check final URL after redirects for SSRF
         final_safe, final_reason = _is_safe_url(response.url)
         if not final_safe:
+            log_tool_blocked("web_fetch", "unknown", f"redirect: {final_reason}")
             return f"Redirect blocked: {final_reason}"
 
+        # Extract with trafilatura from already-fetched HTML (no second request)
         text = trafilatura.extract(response.text)
         if text:
             return text[:32000]
@@ -78,5 +84,5 @@ def web_fetch(url: str) -> str:
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
         return text[:32000]
-    except Exception as e:
-        return f"Fetch error: {type(e).__name__}"
+    except Exception:
+        return "Fetch error: unable to retrieve URL content."
