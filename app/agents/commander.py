@@ -7,6 +7,7 @@ from app.crews.research_crew import ResearchCrew
 from app.crews.coding_crew import CodingCrew
 from app.crews.writing_crew import WritingCrew
 from app.conversation_store import get_history
+from app.firebase_reporter import crew_started, crew_completed, crew_failed
 from pathlib import Path
 
 settings = get_settings()
@@ -154,5 +155,12 @@ class Commander:
             verbose=True,
         )
 
-        result = crew.kickoff()
-        return str(result)
+        task_id = crew_started("commander", user_input[:100], eta_seconds=60)
+        try:
+            result = crew.kickoff()
+            result_str = str(result)
+            crew_completed("commander", task_id, result_str[:200])
+            return result_str
+        except Exception as exc:
+            crew_failed("commander", task_id, str(exc)[:200])
+            raise

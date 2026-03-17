@@ -13,3 +13,4 @@ brave-search==0.1.8
 python-dotenv==1.2.2
 beautifulsoup4==4.14.3
 requests==2.32.5
+firebase-admin==6.5.0

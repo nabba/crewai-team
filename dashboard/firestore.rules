@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Dashboard collections — public read, backend-only write
+    match /status/{doc}     { allow read: if true; allow write: if false; }
+    match /crews/{doc}      { allow read: if true; allow write: if false; }
+    match /tasks/{doc}      { allow read: if true; allow write: if false; }
+    match /activities/{doc} { allow read: if true; allow write: if false; }
+    match /schedule/{doc}   { allow read: if true; allow write: if false; }
+
+    // Deny everything else
+    match /{document=**} { allow read, write: if false; }
+  }
+}

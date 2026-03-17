@@ -16,6 +16,9 @@ from app.audit import (
 )
 from app.conversation_store import add_message
 from app.workspace_sync import setup_workspace_repo, sync_workspace
+from app.firebase_reporter import (
+    report_system_online, report_system_offline, heartbeat, report_schedule
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -100,13 +103,38 @@ async def lifespan(app: FastAPI):
         sync_trigger,
         kwargs={"backup_repo": settings.workspace_backup_repo},
     )
+    # Heartbeat — keep monitoring dashboard "last_seen" fresh
+    scheduler.add_job(heartbeat, "interval", seconds=60, id="heartbeat")
     scheduler.start()
+
+    # Report online status and publish schedule to Firebase
+    report_system_online()
+    _publish_schedule()
+
     logger.info("CrewAI Agent Team started")
     yield
     # Final sync on clean shutdown
     if settings.workspace_backup_repo:
         await asyncio.to_thread(sync_workspace, settings.workspace_backup_repo)
+    report_system_offline()
     scheduler.shutdown()
+
+
+def _publish_schedule() -> None:
+    """Push current scheduler job list to Firestore."""
+    try:
+        jobs = []
+        for job in scheduler.get_jobs():
+            next_run = job.next_run_time
+            jobs.append({
+                "id": job.id,
+                "name": job.name or job.id,
+                "next_run": next_run.isoformat() if next_run else None,
+                "cron": str(job.trigger),
+            })
+        report_schedule(jobs)
+    except Exception:
+        logger.debug("Failed to publish schedule", exc_info=True)
 
 
 app = FastAPI(title="CrewAI Agent Gateway", lifespan=lifespan)

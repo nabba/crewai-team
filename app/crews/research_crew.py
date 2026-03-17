@@ -1,11 +1,13 @@
 from crewai import Task, Crew, Process
 from app.agents.researcher import create_researcher
 from app.sanitize import wrap_user_input
+from app.firebase_reporter import crew_started, crew_completed, crew_failed
 
 
 class ResearchCrew:
     def run(self, topic: str) -> str:
         """Run a research crew on the given topic."""
+        task_id = crew_started("research", f"Research: {topic[:100]}", eta_seconds=120)
         researcher = create_researcher()
 
         task = Task(
@@ -33,5 +35,11 @@ Compile a structured research report with:
             verbose=True,
         )
 
-        result = crew.kickoff()
-        return str(result)
+        try:
+            result = crew.kickoff()
+            result_str = str(result)
+            crew_completed("research", task_id, result_str[:200])
+            return result_str
+        except Exception as exc:
+            crew_failed("research", task_id, str(exc)[:200])
+            raise

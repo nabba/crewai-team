@@ -1,11 +1,13 @@
 from crewai import Task, Crew, Process
 from app.agents.writer import create_writer
 from app.sanitize import wrap_user_input
+from app.firebase_reporter import crew_started, crew_completed, crew_failed
 
 
 class WritingCrew:
     def run(self, task_description: str) -> str:
         """Run a writing crew on the given task."""
+        task_id = crew_started("writing", f"Write: {task_description[:100]}", eta_seconds=90)
         writer = create_writer()
 
         task = Task(
@@ -31,5 +33,11 @@ If the output is a document or report, save it using the file_manager tool.
             verbose=True,
         )
 
-        result = crew.kickoff()
-        return str(result)
+        try:
+            result = crew.kickoff()
+            result_str = str(result)
+            crew_completed("writing", task_id, result_str[:200])
+            return result_str
+        except Exception as exc:
+            crew_failed("writing", task_id, str(exc)[:200])
+            raise

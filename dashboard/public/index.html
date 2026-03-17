@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BotArmy — Agent Monitor</title>
+  <style>
+    :root {
+      --bg:      #0d1117; --surface: #161b22; --border: #30363d;
+      --text:    #e6edf3; --muted:   #8b949e;
+      --green:   #3fb950; --yellow:  #d29922; --red:    #f85149;
+      --blue:    #58a6ff; --purple:  #bc8cff; --orange: #ff8700;
+      --radius:  10px;
+      --font:    'Inter', system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 24px; }
+
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo svg { width: 36px; height: 36px; }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.5px; }
+    .subtitle { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+    #sys-badge { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: .82rem; font-weight: 600; background: var(--surface); border: 1px solid var(--border); transition: all .3s; }
+    #sys-badge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    #sys-badge.online  .dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    #sys-badge.offline .dot { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    .section-title { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+    /* Stats */
+    .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 22px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+    .stat-val { font-size: 2rem; font-weight: 700; color: var(--blue); }
+    .stat-lbl { font-size: .7rem; color: var(--muted); margin-top: 4px; }
+
+    /* Crews */
+    #crews-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap: 14px; margin-bottom: 22px; }
+    .crew-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: border-color .3s; }
+    .crew-card.active { border-color: var(--blue); }
+    .crew-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .crew-name { font-weight: 700; font-size: .92rem; }
+    .crew-status { font-size: .7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(139,148,158,.15); color: var(--muted); }
+    .crew-status.active { background: rgba(88,166,255,.15); color: var(--blue); }
+    .crew-task { font-size: .8rem; color: var(--text); line-height: 1.4; min-height: 34px; }
+    .crew-eta  { font-size: .73rem; color: var(--muted); margin-top: 7px; }
+    .crew-eta span { color: var(--orange); font-weight: 600; }
+    .prog { height: 3px; background: var(--border); border-radius: 2px; margin-top: 9px; overflow: hidden; }
+    .prog .fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width .5s; }
+
+    /* Tasks table */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th { text-align: left; padding: 7px 12px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,.5); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: .68rem; font-weight: 700; }
+    .badge.running   { background: rgba(88,166,255,.15); color: var(--blue); }
+    .badge.completed { background: rgba(63,185,80,.15);  color: var(--green); }
+    .badge.failed    { background: rgba(248,81,73,.15);  color: var(--red); }
+
+    /* Bottom two-col */
+    .two-col { display: grid; grid-template-columns: 1fr 1.4fr; gap: 18px; margin-bottom: 18px; }
+    .schedule-item { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(48,54,61,.4); }
+    .schedule-item:last-child { border-bottom: none; }
+    .schedule-time { color: var(--blue); font-size: .8rem; font-weight: 600; min-width: 76px; }
+    .schedule-name { font-size: .84rem; }
+    .schedule-cron { font-size: .7rem; color: var(--muted); margin-top: 2px; font-family: monospace; }
+
+    #feed { max-height: 300px; overflow-y: auto; }
+    .feed-item { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; line-height: 1.4; animation: fadeIn .3s; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+    .feed-time   { color: var(--muted); font-size: .7rem; min-width: 50px; padding-top: 1px; }
+    .feed-icon   { min-width: 18px; text-align: center; }
+    .feed-detail { flex: 1; }
+    .feed-crew   { color: var(--purple); font-weight: 600; }
+
+    .empty { color: var(--muted); font-size: .85rem; padding: 14px 0; text-align: center; }
+    #last-updated { font-size: .7rem; color: var(--muted); text-align: right; }
+
+    @media (max-width: 700px) {
+      body { padding: 14px; }
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      #crews-grid { grid-template-columns: 1fr 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+      table { font-size: .74rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="36" height="36" rx="8" fill="#161b22"/>
+      <circle cx="18" cy="14" r="5" fill="#58a6ff"/>
+      <path d="M8 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#3fb950" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="10" cy="22" r="2.5" fill="#bc8cff"/>
+      <circle cx="26" cy="22" r="2.5" fill="#bc8cff"/>
+    </svg>
+    <div>
+      <h1>BotArmy</h1>
+      <div class="subtitle">Agent Team Monitor</div>
+    </div>
+  </div>
+  <div id="sys-badge"><div class="dot"></div><span id="sys-label">Connecting…</span></div>
+</header>
+
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-val" id="s-active">—</div><div class="stat-lbl">Active Crews</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-tasks">—</div><div class="stat-lbl">Tasks Today</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-uptime">—</div><div class="stat-lbl">Uptime</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-last">—</div><div class="stat-lbl">Last Heartbeat</div></div>
+</div>
+
+<div class="section-title">🤖 Crew Status</div>
+<div id="crews-grid"></div>
+
+<div class="card">
+  <div class="section-title">📋 Current &amp; Recent Tasks</div>
+  <table>
+    <thead><tr><th>Crew</th><th>Task</th><th>Status</th><th>Started</th><th>ETA / Done</th></tr></thead>
+    <tbody id="tasks-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title">📅 Planned Activities</div>
+    <div id="schedule-list"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="section-title">📡 Live Activity Feed</div>
+    <div id="feed"><div class="empty">Waiting for events…</div></div>
+  </div>
+</div>
+
+<div id="last-updated" style="margin-top:10px"></div>
+
+<script type="module">
+import { initializeApp }                               from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, onSnapshot,
+         query, orderBy, limit }                       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey:            "AIzaSyBugNcyYowrllCJs5JPquySEghJY0t_tzg",
+  authDomain:        "botarmy-ba0c9.firebaseapp.com",
+  projectId:         "botarmy-ba0c9",
+  storageBucket:     "botarmy-ba0c9.firebasestorage.app",
+  messagingSenderId: "680485464185",
+  appId:             "1:680485464185:web:48cf3f9dc4d91068128ca8",
+});
+const db = getFirestore(app);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const rel = iso => {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 0)    return "soon";
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400)return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+};
+const abs = iso => iso ? new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—";
+const etaIn = iso => {
+  if (!iso) return null;
+  const s = Math.floor((new Date(iso) - Date.now()) / 1000);
+  if (s < 0)    return "overdue";
+  if (s < 60)   return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+};
+const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", self_improvement:"🧠" };
+const EVT   = { task_started:"▶️", task_completed:"✅", task_failed:"❌" };
+const touch = () => document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+
+// ── System ────────────────────────────────────────────────────────────────────
+let _startedAt = null;
+onSnapshot(doc(db,"status","system"), s => {
+  if (!s.exists()) return;
+  const d = s.data();
+  const badge = document.getElementById("sys-badge");
+  badge.className = d.state === "online" ? "online" : "offline";
+  document.getElementById("sys-label").textContent = d.state === "online" ? "Online" : "Offline";
+  _startedAt = d.started_at;
+  window._lastISO = d.last_seen;
+  document.getElementById("s-last").textContent = rel(d.last_seen);
+  _updateUptime();
+  touch();
+});
+function _updateUptime() {
+  if (!_startedAt) return;
+  const s = Math.floor((Date.now() - new Date(_startedAt)) / 1000);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+  document.getElementById("s-uptime").textContent = `${h}h ${m}m`;
+}
+
+// ── Crews ─────────────────────────────────────────────────────────────────────
+const CREWS = ["commander","research","coding","writing","self_improvement"];
+const crewData = {};
+function renderCrews() {
+  let active = 0;
+  const g = document.getElementById("crews-grid");
+  g.innerHTML = "";
+  CREWS.forEach(name => {
+    const d = crewData[name] || {};
+    const on = d.state === "active";
+    if (on) active++;
+    let etaStr = on && d.eta ? `ETA <span>${etaIn(d.eta)||"—"}</span>` : (d.state==="idle"?"Idle":"—");
+    let prog = 0;
+    if (on && d.eta && d.started_at) {
+      const total = new Date(d.eta) - new Date(d.started_at);
+      prog = Math.min(100, Math.max(5, Math.round((Date.now()-new Date(d.started_at))/total*100)));
+    }
+    const c = document.createElement("div");
+    c.className = `crew-card${on?" active":""}`;
+    c.innerHTML = `
+      <div class="crew-header">
+        <span class="crew-name">${ICONS[name]||"🤖"} ${name.replace("_"," ")}</span>
+        <span class="crew-status${on?" active":""}">${d.state||"unknown"}</span>
+      </div>
+      <div class="crew-task">${on?(d.current_task||"Working…"):'<span style="color:var(--muted)">No active task</span>'}</div>
+      <div class="crew-eta">${etaStr}</div>
+      ${on?`<div class="prog"><div class="fill" style="width:${prog}%"></div></div>`:""}`;
+    g.appendChild(c);
+  });
+  document.getElementById("s-active").textContent = active;
+}
+CREWS.forEach(name => onSnapshot(doc(db,"crews",name), s => { crewData[name] = s.exists()?s.data():{state:"idle"}; renderCrews(); }));
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+onSnapshot(query(collection(db,"tasks"), orderBy("started_at","desc"), limit(20)), snap => {
+  const tbody = document.getElementById("tasks-tbody");
+  if (snap.empty) { tbody.innerHTML='<tr><td colspan="5" class="empty">No tasks yet</td></tr>'; return; }
+  const today = snap.docs.filter(d => (Date.now()-new Date(d.data().started_at))<86400000).length;
+  document.getElementById("s-tasks").textContent = today;
+  tbody.innerHTML = snap.docs.map(d => {
+    const t = d.data();
+    const eta = t.state==="completed" ? abs(t.completed_at)
+              : t.state==="failed"    ? `<span style="color:var(--red)">Failed</span>`
+              : t.eta                 ? `ETA ${etaIn(t.eta)||"—"}`
+              :                         "—";
+    return `<tr>
+      <td>${ICONS[t.crew]||"🤖"} ${t.crew||"—"}</td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.summary||"—"}</td>
+      <td><span class="badge ${t.state||""}">${t.state||"—"}</span></td>
+      <td style="color:var(--muted)">${abs(t.started_at)}</td>
+      <td style="color:var(--muted)">${eta}</td>
+    </tr>`;
+  }).join("");
+  touch();
+});
+
+// ── Schedule ──────────────────────────────────────────────────────────────────
+onSnapshot(doc(db,"schedule","jobs"), s => {
+  const el = document.getElementById("schedule-list");
+  if (!s.exists()) { el.innerHTML='<div class="empty">No schedule data</div>'; return; }
+  const jobs = (s.data().jobs||[]).sort((a,b)=>new Date(a.next_run)-new Date(b.next_run));
+  el.innerHTML = jobs.map(j => {
+    const next = j.next_run ? new Date(j.next_run) : null;
+    const t = next ? next.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+    return `<div class="schedule-item">
+      <div><div class="schedule-time">${t}</div></div>
+      <div><div class="schedule-name">${j.name}</div><div class="schedule-cron">${j.cron||""}</div></div>
+    </div>`;
+  }).join("");
+});
+
+// ── Activity feed ─────────────────────────────────────────────────────────────
+onSnapshot(query(collection(db,"activities"), orderBy("ts","desc"), limit(50)), snap => {
+  const feed = document.getElementById("feed");
+  if (snap.empty) { feed.innerHTML='<div class="empty">No activity yet</div>'; return; }
+  feed.innerHTML = snap.docs.map(d => d.data())
+    .sort((a,b) => b.ts.localeCompare(a.ts))
+    .map(a => `<div class="feed-item">
+      <div class="feed-time">${abs(a.ts)}</div>
+      <div class="feed-icon">${EVT[a.event]||"ℹ️"}</div>
+      <div class="feed-detail"><span class="feed-crew">${ICONS[a.crew]||"🤖"} ${a.crew}</span> — ${a.detail||a.event}</div>
+    </div>`).join("");
+  touch();
+});
+
+// Refresh relative times every 30s
+setInterval(() => {
+  document.getElementById("s-last").textContent = rel(window._lastISO);
+  _updateUptime();
+  renderCrews();
+}, 30000);
+</script>
+</body>
+</html>
