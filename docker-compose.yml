@@ -18,7 +18,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - internal
-    read_only: true
     tmpfs:
       - /run
 
@@ -59,16 +58,14 @@ services:
       - ./workspace/memory:/chroma/chroma
     networks:
       - internal
-    read_only: true
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
     # NOT exposed to host — internal only
-
-volumes:
-  crewai_ollama_models:  # Shared model storage — persists all downloaded models
-    driver: local        # across fleet container restarts (no re-download)
 
 networks:
   external:

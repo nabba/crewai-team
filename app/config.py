@@ -72,14 +72,16 @@ class Settings(BaseSettings):
     evolution_iterations: int = 5         # experiments per evolution session
     evolution_deep_iterations: int = 15   # experiments for "evolve deep" command
 
-    # ── Local LLM (Ollama) ───────────────────────────────────────────────
-    # Role-based model assignment. Only ONE model loaded at a time (dynamic swap).
+    # ── Local LLM (Native Ollama + Metal GPU) ─────────────────────────────
+    # Uses native Ollama installation for Metal GPU acceleration.
+    # All roles default to qwen3:30b-a3b (MoE, ~20GB, 15-22 tok/s on M4 Max).
     local_llm_enabled: bool = True
     local_llm_base_url: str = "http://host.docker.internal:11434"
+    ollama_base_url: str = "http://localhost:11434"  # native Ollama on host
 
     # Role → model mapping (Ollama model names, auto-pulled on first use)
-    local_model_coding: str = "qwen3:30b-a3b"       # code generation
-    local_model_architecture: str = "deepseek-r1:32b"  # architecture, review, debug
+    local_model_coding: str = "qwen3:30b-a3b"         # MoE — fast, excellent coding
+    local_model_architecture: str = "qwen3:30b-a3b"   # MoE — strong reasoning
     local_model_research: str = "qwen3:30b-a3b"      # web research + synthesis
     local_model_writing: str = "qwen3:30b-a3b"       # docs, summaries, reports
     local_model_default: str = "qwen3:30b-a3b"       # fallback for unspecified

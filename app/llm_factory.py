@@ -1,15 +1,15 @@
 """
-llm_factory.py — Role-based LLM provider with containerized fleet management.
+llm_factory.py — Role-based LLM provider with native Ollama + Metal GPU.
 
 Architecture:
   Commander:     always Claude (routing needs max intelligence)
-  Specialists:   local Ollama models via containerized fleet
-                 (each model runs in its own Docker container)
+  Specialists:   local Ollama models via native macOS installation
+                 (Metal GPU acceleration, unified memory)
   Vetting:       Claude Opus 4.6 (final quality gate for all local output)
 
 The llm_selector picks the best model for each task.
-The ollama_fleet spawns/stops Docker containers dynamically.
-Falls back to Claude if fleet is unavailable.
+Native Ollama uses Metal GPU for 5-10x faster inference than Docker.
+Falls back to Claude if Ollama is unavailable.
 """
 
 import logging
@@ -54,13 +54,13 @@ def create_specialist_llm(
 
     try:
         from app.llm_selector import select_model
-        from app.ollama_fleet import spawn_model
+        from app.ollama_native import spawn_model
         from app.llm_benchmarks import record
 
         # Select the best model for this task
         model = select_model(role, task_hint)
 
-        # Spawn a container (or reuse existing) — returns API URL
+        # Ensure model is loaded in native Ollama (Metal GPU) — returns API URL
         start = time.monotonic()
         url = spawn_model(model)
         spawn_ms = int((time.monotonic() - start) * 1000)

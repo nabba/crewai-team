@@ -107,14 +107,17 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(SelfImprovementCrew().run, trigger, id="self_improve")
 
-    # LLM Fleet — create shared model volume and schedule idle cleanup
-    from app.ollama_fleet import ensure_volume, stop_idle_containers
-    try:
-        await asyncio.to_thread(ensure_volume)
-    except Exception:
-        logger.debug("Fleet volume creation deferred", exc_info=True)
-    scheduler.add_job(stop_idle_containers, "interval", minutes=5, id="fleet_cleanup")
-    logger.info("LLM fleet cleanup scheduled (every 5 min)")
+    # Native Ollama — verify availability (Metal GPU acceleration)
+    from app.ollama_native import _is_running as ollama_is_running
+    if await asyncio.to_thread(ollama_is_running):
+        logger.info("Native Ollama detected — Metal GPU acceleration enabled")
+    else:
+        logger.warning(
+            "Native Ollama not detected at %s. "
+            "Local models will fall back to Claude API. "
+            "Start Ollama with: ollama serve",
+            settings.ollama_base_url,
+        )
 
     # Auditor — continuous code quality + error resolution
     from app.auditor import run_code_audit, run_error_resolution

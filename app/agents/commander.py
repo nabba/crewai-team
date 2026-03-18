@@ -278,7 +278,7 @@ class Commander:
             return "Improvement scan completed. Use 'proposals' to see results."
 
         if lower in ("fleet", "models"):
-            from app.ollama_fleet import format_fleet_status
+            from app.ollama_native import format_fleet_status
             from app.llm_catalog import format_catalog
             from app.llm_benchmarks import get_summary
             return (
@@ -288,15 +288,15 @@ class Commander:
             )
 
         if lower == "fleet stop all":
-            from app.ollama_fleet import stop_all
+            from app.ollama_native import stop_all
             stop_all()
-            return "All LLM fleet containers stopped."
+            return "All models unloaded from GPU."
 
         if lower.startswith("fleet pull "):
             model = user_input[11:].strip()[:60]
             if not model:
                 return "Usage: fleet pull <model_name> (e.g. fleet pull gemma3:27b)"
-            from app.ollama_fleet import spawn_model
+            from app.ollama_native import spawn_model
             try:
                 url = spawn_model(model)
                 return f"Model {model} pulled and ready at {url}"

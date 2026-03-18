@@ -8,17 +8,20 @@ Each model entry has:
   - context: max context window in tokens
   - strengths: dict of task_type → score (0.0-1.0)
 
-Only western-origin models are included per user preference.
+Optimized for Apple M4 Max (48GB unified memory, Metal GPU).
+qwen3:30b-a3b is the primary model for all roles — MoE architecture
+gives excellent quality with very fast inference on Metal GPU.
 """
 
 CATALOG: dict[str, dict] = {
     # ── Coding specialists ────────────────────────────────────────────────
     "qwen3:30b-a3b": {
-        "size_gb": 18, "ram_gb": 20, "speed": "fast", "context": 32768,
-        "description": "Fast coding and general tasks",
+        "size_gb": 18, "ram_gb": 20, "speed": "very_fast", "context": 32768,
+        "description": "MoE model — activates ~3B params/token, excellent all-rounder on Metal GPU",
         "strengths": {
-            "coding": 0.90, "research": 0.70, "writing": 0.70,
-            "general": 0.80, "debugging": 0.75,
+            "coding": 0.92, "architecture": 0.85, "research": 0.85,
+            "writing": 0.85, "general": 0.88, "debugging": 0.85,
+            "reasoning": 0.85,
         },
     },
     "codestral:22b": {
