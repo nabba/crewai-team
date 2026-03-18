@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # These can be overridden via .env
-_MAX_RPM = int(os.environ.get("ANTHROPIC_MAX_RPM", "5"))  # requests per minute
+# Default 3 RPM: conservative for free tier (5 RPM + 10K input tokens/min).
+# Each crew call uses ~2-4K input tokens, so 3 RPM ≈ 9K tokens/min — just under limit.
+_MAX_RPM = int(os.environ.get("ANTHROPIC_MAX_RPM", "3"))
 _RETRY_COUNT = int(os.environ.get("LITELLM_NUM_RETRIES", "5"))
 _RETRY_BACKOFF = float(os.environ.get("LITELLM_RETRY_BACKOFF", "15"))  # seconds
 

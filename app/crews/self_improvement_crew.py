@@ -131,8 +131,8 @@ class SelfImprovementCrew:
             memory_tools = create_memory_tools(collection="skills")
 
             # Generate a safe filename from the URL
-            video_id_match = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", url)
-            video_id = video_id_match.group(1) if video_id_match else "video"
+            from app.tools.youtube_transcript import _extract_video_id
+            video_id = _extract_video_id(url) or "video"
             skill_filename = f"youtube_{video_id}"
 
             learner = Agent(
