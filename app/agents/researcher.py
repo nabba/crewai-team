@@ -5,6 +5,7 @@ from app.tools.web_fetch import web_fetch
 from app.tools.youtube_transcript import get_youtube_transcript
 from app.tools.memory_tool import create_memory_tools
 from app.tools.file_manager import file_manager
+from app.tools.attachment_reader import read_attachment
 
 settings = get_settings()
 
@@ -35,6 +36,6 @@ def create_researcher() -> Agent:
         goal="Find accurate, comprehensive information on any topic using web search, article reading, and YouTube transcripts.",
         backstory=RESEARCHER_BACKSTORY,
         llm=llm,
-        tools=[web_search, web_fetch, get_youtube_transcript, file_manager] + memory_tools,
+        tools=[web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment] + memory_tools,
         verbose=True,
     )

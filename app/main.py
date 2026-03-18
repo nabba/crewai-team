@@ -4,6 +4,9 @@ import logging.handlers
 import asyncio
 import os
 
+# Ensure all loggers output to stdout so docker logs captures tracebacks
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -168,6 +171,7 @@ async def receive_signal(request: Request):
     payload = await request.json()
     sender = payload.get("sender", "")
     text = payload.get("message", "").strip()
+    attachments = payload.get("attachments", [])
 
     if not is_authorized_sender(sender):
         log_security_event("unauthorized_sender", _redact_number(sender))
@@ -175,25 +179,33 @@ async def receive_signal(request: Request):
     if not is_within_rate_limit(sender):
         log_security_event("rate_limit_exceeded", _redact_number(sender))
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    if not text:
+    if not text and not attachments:
         return {"status": "ignored"}
 
     # Enforce message length limit
     if len(text) > MAX_MESSAGE_LENGTH:
         text = text[:MAX_MESSAGE_LENGTH]
 
+    # Cap attachments (prevent abuse)
+    attachments = attachments[:5]
+
     log_request_received(_redact_number(sender), len(text))
-    asyncio.create_task(handle_task(sender, text))
+    asyncio.create_task(handle_task(sender, text, attachments))
     return {"status": "accepted"}
 
 
-async def handle_task(sender: str, text: str):
+async def handle_task(sender: str, text: str, attachments: list = None):
     try:
         # Persist the incoming message before processing so history is available
         # even if the response fails
-        add_message(sender, "user", text)
+        att_note = ""
+        if attachments:
+            att_note = f" [+{len(attachments)} attachment(s)]"
+        add_message(sender, "user", text + att_note)
 
-        result = await asyncio.to_thread(commander.handle, text, sender)
+        result = await asyncio.to_thread(
+            commander.handle, text, sender, attachments or []
+        )
         log_response_sent(_redact_number(sender), len(result))
 
         # Persist the assistant reply

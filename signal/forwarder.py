@@ -49,15 +49,25 @@ def listen():
                     envelope = msg.get("params", {}).get("envelope", msg.get("params", {}))
                     data_msg = envelope.get("dataMessage", {})
 
-                    if data_msg and data_msg.get("message"):
+                    if data_msg and (data_msg.get("message") or data_msg.get("attachments")):
                         sender = envelope.get("source") or envelope.get("sourceNumber")
-                        message = data_msg["message"]
-                        # Log only message length, not content or full sender
-                        log(f"Incoming message ({len(message)} chars)")
+                        message = data_msg.get("message", "")
+                        # Extract attachment metadata for the gateway
+                        attachments = []
+                        for att in data_msg.get("attachments", []):
+                            attachments.append({
+                                "contentType": att.get("contentType", ""),
+                                "filename": att.get("filename", ""),
+                                "id": att.get("id", ""),
+                                "size": att.get("size", 0),
+                            })
+                        att_info = f", {len(attachments)} attachment(s)" if attachments else ""
+                        log(f"Incoming message ({len(message)} chars{att_info})")
 
                         payload = {
                             "sender": sender,
                             "message": message,
+                            "attachments": attachments,
                         }
                         headers = {}
                         if GATEWAY_SECRET:

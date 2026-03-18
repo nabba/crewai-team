@@ -3,6 +3,7 @@ from app.config import get_settings, get_anthropic_api_key
 from app.tools.memory_tool import create_memory_tools
 from app.tools.file_manager import file_manager
 from app.tools.web_search import web_search
+from app.tools.attachment_reader import read_attachment
 
 settings = get_settings()
 
@@ -34,6 +35,6 @@ def create_writer() -> Agent:
         goal="Write clear, well-structured content including summaries, reports, documentation, and emails.",
         backstory=WRITER_BACKSTORY,
         llm=llm,
-        tools=[file_manager, web_search] + memory_tools,
+        tools=[file_manager, web_search, read_attachment] + memory_tools,
         verbose=True,
     )

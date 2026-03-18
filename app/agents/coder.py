@@ -4,6 +4,7 @@ from app.tools.code_executor import execute_code
 from app.tools.file_manager import file_manager
 from app.tools.web_search import web_search
 from app.tools.memory_tool import create_memory_tools
+from app.tools.attachment_reader import read_attachment
 
 settings = get_settings()
 
@@ -35,6 +36,6 @@ def create_coder() -> Agent:
         goal="Write, test, and debug code across any language. Execute code safely in a Docker sandbox.",
         backstory=CODER_BACKSTORY,
         llm=llm,
-        tools=[execute_code, file_manager, web_search] + memory_tools,
+        tools=[execute_code, file_manager, web_search, read_attachment] + memory_tools,
         verbose=True,
     )

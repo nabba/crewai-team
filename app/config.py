@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Start signal-cli with: signal-cli daemon --http 127.0.0.1:7583 --receive-mode on-start
     # Then set SIGNAL_HTTP_URL=http://host.docker.internal:7583
     signal_http_url: str = ""
+    # Path where signal-cli stores downloaded attachments.
+    # On macOS: ~/.local/share/signal-cli/attachments
+    # Mounted read-only into Docker at /app/attachments
+    signal_attachment_path: str = ""
 
     gateway_secret: SecretStr
     gateway_port: int = 8765

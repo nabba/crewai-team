@@ -36,6 +36,7 @@ services:
     volumes:
       - ./workspace:/app/workspace
       - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
+      - ${SIGNAL_ATTACHMENT_PATH:-/dev/null}:/app/attachments:ro
     depends_on:
       - chromadb
       - docker-proxy
