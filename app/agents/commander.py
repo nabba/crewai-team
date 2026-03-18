@@ -194,8 +194,46 @@ class Commander:
             SelfImprovementCrew().run()
             return "Self-improvement run completed."
 
+        if lower == "improve":
+            from app.crews.self_improvement_crew import SelfImprovementCrew
+            SelfImprovementCrew().run_improvement_scan()
+            return "Improvement scan completed. Use 'proposals' to see results."
+
+        if lower in ("proposals", "show proposals"):
+            from app.proposals import list_proposals
+            pending = list_proposals("pending")
+            if not pending:
+                return "No pending improvement proposals."
+            lines = ["Pending Improvement Proposals:\n"]
+            for p in pending:
+                lines.append(
+                    f"#{p['id']} [{p['type']}] {p['title']}\n"
+                    f"  Created: {p['created_at'][:10]}"
+                )
+            lines.append("\nReply 'approve <id>' or 'reject <id>'.")
+            return "\n".join(lines)
+
+        if lower.startswith("approve "):
+            try:
+                pid = int(user_input.split()[1])
+            except (IndexError, ValueError):
+                return "Usage: approve <proposal_id>"
+            from app.proposals import approve_proposal
+            return approve_proposal(pid)
+
+        if lower.startswith("reject "):
+            try:
+                pid = int(user_input.split()[1])
+            except (IndexError, ValueError):
+                return "Usage: reject <proposal_id>"
+            from app.proposals import reject_proposal
+            return reject_proposal(pid)
+
         if lower == "status":
-            return "System is running. All services operational."
+            from app.proposals import list_proposals
+            pending = list_proposals("pending")
+            pending_str = f" | {len(pending)} pending proposals" if pending else ""
+            return f"System is running. All services operational.{pending_str}"
 
         # ── Step 1: Route ─────────────────────────────────────────────────
         task_id = crew_started("commander", f"Route: {user_input[:80]}", eta_seconds=30)

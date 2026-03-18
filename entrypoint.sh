@@ -1,7 +1,8 @@
 #!/bin/sh
 set -e
 
-# Ensure workspace directories are writable by appuser
+# Ensure workspace directories exist and are writable by appuser
+mkdir -p /app/workspace/output /app/workspace/skills /app/workspace/proposals /app/workspace/applied_code
 chown -R appuser:appuser /app/workspace 2>/dev/null || true
 
 # Ensure the signal-cli socket is accessible by appuser

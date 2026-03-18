@@ -126,6 +126,11 @@
   </table>
 </div>
 
+<div class="card" style="margin-bottom:18px">
+  <div class="section-title">🧠 Improvement Proposals</div>
+  <div id="proposals-list"><div class="empty">No proposals yet</div></div>
+</div>
+
 <div class="two-col">
   <div class="card" style="margin:0">
     <div class="section-title">📅 Planned Activities</div>
@@ -271,6 +276,23 @@ onSnapshot(doc(db,"schedule","jobs"), s => {
       <div><div class="schedule-name">${j.name}</div><div class="schedule-cron">${j.cron||""}</div></div>
     </div>`;
   }).join("");
+});
+
+// ── Proposals ─────────────────────────────────────────────────────────────────
+onSnapshot(doc(db,"status","proposals"), s => {
+  const el = document.getElementById("proposals-list");
+  if (!s.exists()) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
+  const proposals = s.data().proposals || [];
+  if (!proposals.length) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
+  const STATUS_COLORS = { pending: "var(--yellow)", approved: "var(--green)", rejected: "var(--muted)" };
+  el.innerHTML = `<table style="width:100%"><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody>` +
+    proposals.map(p => `<tr>
+      <td style="font-weight:700">#${p.id||"?"}</td>
+      <td>${p.title||"—"}</td>
+      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${p.type||"?"}</span></td>
+      <td><span style="color:${STATUS_COLORS[p.status]||"var(--muted)"};font-weight:600">${p.status||"?"}</span></td>
+      <td style="color:var(--muted)">${p.created_at ? p.created_at.slice(0,10) : "—"}</td>
+    </tr>`).join("") + `</tbody></table>`;
 });
 
 // ── Activity feed ─────────────────────────────────────────────────────────────

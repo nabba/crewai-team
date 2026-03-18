@@ -264,6 +264,24 @@ def update_sub_agent_progress(crew: str, parent_task_id: str,
     _fire(_write)
 
 
+# ── Proposals ─────────────────────────────────────────────────────────────────
+
+def report_proposals(proposals: list[dict]) -> None:
+    """Push current proposal list to Firestore for the dashboard."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            db.collection("status").document("proposals").set({
+                "proposals": proposals[:20],
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: proposals write failed", exc_info=True)
+    _fire(_write)
+
+
 # ── Scheduled jobs ────────────────────────────────────────────────────────────
 
 def report_schedule(jobs: list[dict]) -> None:

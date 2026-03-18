@@ -19,7 +19,7 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 
 # Create workspace directories
-RUN mkdir -p workspace/output workspace/memory workspace/skills
+RUN mkdir -p workspace/output workspace/memory workspace/skills workspace/proposals workspace/applied_code
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app/workspace
