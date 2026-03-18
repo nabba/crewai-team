@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # so the LLM understands short/contextual replies.
     conversation_history_turns: int = 10
 
+    # Evolution loop — autoresearch-style continuous improvement
+    evolution_iterations: int = 5         # experiments per evolution session
+    evolution_deep_iterations: int = 15   # experiments for "evolve deep" command
+
     class Config:
         env_file = ".env"
 

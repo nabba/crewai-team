@@ -22,7 +22,7 @@ from app.self_heal import diagnose_and_fix
 from app.audit import (
     log_request_received, log_response_sent, log_security_event
 )
-from app.conversation_store import add_message
+from app.conversation_store import add_message, start_task, complete_task
 from app.workspace_sync import setup_workspace_repo, sync_workspace
 from app.firebase_reporter import (
     report_system_online, report_system_offline, heartbeat, report_schedule
@@ -106,13 +106,18 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(SelfImprovementCrew().run, trigger, id="self_improve")
 
-    # Evolution loop — continuous autonomous improvement (every 6 hours by default)
-    from app.evolution import run_evolution_cycle
+    # Evolution loop — autoresearch-style continuous improvement (every 6 hours)
+    from app.evolution import run_evolution_session
     evolution_cron = os.environ.get("EVOLUTION_CRON", "0 */6 * * *")
     try:
         evo_trigger = CronTrigger.from_crontab(evolution_cron)
-        scheduler.add_job(run_evolution_cycle, evo_trigger, id="evolution")
-        logger.info(f"Evolution loop scheduled: {evolution_cron}")
+        scheduler.add_job(
+            run_evolution_session,
+            evo_trigger,
+            id="evolution",
+            kwargs={"max_iterations": settings.evolution_iterations},
+        )
+        logger.info(f"Evolution loop scheduled: {evolution_cron} ({settings.evolution_iterations} iterations/session)")
     except ValueError:
         logger.warning(f"Invalid EVOLUTION_CRON: {evolution_cron}, evolution loop disabled")
 
@@ -211,6 +216,9 @@ async def receive_signal(request: Request):
 
 
 async def handle_task(sender: str, text: str, attachments: list = None):
+    # Start task tracking for metrics
+    task_row_id = start_task(sender)
+
     try:
         # Persist the incoming message before processing so history is available
         # even if the response fails
@@ -227,10 +235,17 @@ async def handle_task(sender: str, text: str, attachments: list = None):
         # Persist the assistant reply
         add_message(sender, "assistant", result)
 
+        # Record successful task completion with timing
+        complete_task(task_row_id, success=True)
+
         await signal_client.send(sender, result)
     except Exception as exc:
         logger.exception("Error handling task")
         log_security_event("task_error", "unhandled exception in handle_task")
+
+        # Record failed task for metrics
+        complete_task(task_row_id, success=False, error_type=type(exc).__name__)
+
         # Trigger self-healing: diagnose the error in the background
         diagnose_and_fix(
             crew="handle_task",

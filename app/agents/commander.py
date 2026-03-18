@@ -264,13 +264,36 @@ class Commander:
             return "Improvement scan completed. Use 'proposals' to see results."
 
         if lower == "evolve":
-            from app.evolution import run_evolution_cycle
-            result = run_evolution_cycle()
-            return f"Evolution cycle completed:\n{result}"
+            from app.evolution import run_evolution_session
+            result = run_evolution_session(max_iterations=settings.evolution_iterations)
+            return f"Evolution session completed:\n{result}"
+
+        if lower == "evolve deep":
+            from app.evolution import run_evolution_session
+            result = run_evolution_session(max_iterations=settings.evolution_deep_iterations)
+            return f"Deep evolution session completed:\n{result}"
 
         if lower in ("experiments", "show experiments"):
             from app.evolution import get_journal_summary
             return f"Experiment History:\n\n{get_journal_summary(15)}"
+
+        if lower in ("results", "show results"):
+            from app.results_ledger import format_ledger
+            return f"Results Ledger:\n\n{format_ledger(20)}"
+
+        if lower in ("metrics", "show metrics"):
+            from app.metrics import compute_metrics, format_metrics
+            return f"System Metrics:\n\n{format_metrics(compute_metrics())}"
+
+        if lower in ("program", "show program"):
+            program_path = Path("/app/workspace/program.md")
+            if program_path.exists():
+                content = program_path.read_text().strip()
+                # Truncate for Signal message limits
+                if len(content) > 1400:
+                    content = content[:1400] + "\n\n[truncated]"
+                return f"Evolution Program:\n\n{content}"
+            return "No program.md found. Create workspace/program.md to guide evolution."
 
         if lower in ("errors", "show errors"):
             from app.self_heal import get_recent_errors, get_error_patterns
@@ -321,9 +344,15 @@ class Commander:
 
         if lower == "status":
             from app.proposals import list_proposals
+            from app.metrics import composite_score
             pending = list_proposals("pending")
             pending_str = f" | {len(pending)} pending proposals" if pending else ""
-            return f"System is running. All services operational.{pending_str}"
+            try:
+                score = composite_score()
+                score_str = f" | Score: {score:.4f}"
+            except Exception:
+                score_str = ""
+            return f"System is running. All services operational.{pending_str}{score_str}"
 
         # ── Step 1: Route ─────────────────────────────────────────────────
         task_id = crew_started("commander", f"Route: {user_input[:80]}", eta_seconds=30)

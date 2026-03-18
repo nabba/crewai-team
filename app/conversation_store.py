@@ -7,13 +7,16 @@ git backups so history survives power outages and redeployments.
 
 Sender phone numbers are stored as a truncated HMAC-SHA256 so the raw
 number is never written to disk.
+
+Task tracking: the tasks table records timing and success/failure for
+each user request, providing data for the metrics system.
 """
 import hashlib
 import hmac
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from app.config import get_gateway_secret
@@ -46,6 +49,23 @@ def _get_conn() -> sqlite3.Connection:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sender_ts "
             "ON messages(sender_id, ts)"
+        )
+        # Task tracking table — records timing and success for metrics
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id   TEXT    NOT NULL,
+                crew        TEXT    NOT NULL DEFAULT '',
+                started_at  TEXT    NOT NULL,
+                completed_at TEXT,
+                success     INTEGER NOT NULL DEFAULT 1,
+                duration_s  REAL,
+                error_type  TEXT    DEFAULT ''
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_started "
+            "ON tasks(started_at)"
         )
         conn.commit()
         _local.conn = conn
@@ -110,3 +130,80 @@ def get_history(sender: str, n: int = 10) -> str:
         snippet = content[:600] + ("…" if len(content) > 600 else "")
         lines.append(f"{label}: {snippet}")
     return "\n".join(lines)
+
+
+# ── Task tracking (for metrics) ─────────────────────────────────────────────
+
+def start_task(sender: str, crew: str = "") -> int:
+    """Record the start of a task. Returns the task row ID."""
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        conn = _get_conn()
+        cur = conn.execute(
+            "INSERT INTO tasks (sender_id, crew, started_at) VALUES (?, ?, ?)",
+            (_sender_id(sender), crew, ts),
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        logger.exception("conversation_store: failed to start task")
+        return -1
+
+
+def complete_task(task_id: int, success: bool = True, error_type: str = "") -> None:
+    """Record the completion of a task with timing."""
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        conn = _get_conn()
+        # Compute duration from started_at
+        row = conn.execute(
+            "SELECT started_at FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+        duration = 0.0
+        if row:
+            try:
+                started = datetime.fromisoformat(row[0])
+                duration = (datetime.now(timezone.utc) - started).total_seconds()
+            except (ValueError, TypeError):
+                pass
+        conn.execute(
+            "UPDATE tasks SET completed_at = ?, success = ?, duration_s = ?, error_type = ? WHERE id = ?",
+            (ts, 1 if success else 0, duration, error_type, task_id),
+        )
+        conn.commit()
+    except Exception:
+        logger.exception("conversation_store: failed to complete task")
+
+
+def count_recent_tasks(hours: int = 24) -> tuple[int, int]:
+    """Count (total, successful) tasks in the last N hours."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    try:
+        conn = _get_conn()
+        total = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE started_at > ? AND completed_at IS NOT NULL",
+            (cutoff,),
+        ).fetchone()[0]
+        successful = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE started_at > ? AND completed_at IS NOT NULL AND success = 1",
+            (cutoff,),
+        ).fetchone()[0]
+        return (total, successful)
+    except Exception:
+        logger.exception("conversation_store: failed to count tasks")
+        return (0, 0)
+
+
+def avg_response_time(hours: int = 24) -> float:
+    """Average task duration in seconds over the last N hours."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    try:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT AVG(duration_s) FROM tasks WHERE started_at > ? AND completed_at IS NOT NULL AND duration_s > 0",
+            (cutoff,),
+        ).fetchone()
+        return row[0] if row and row[0] else 0.0
+    except Exception:
+        logger.exception("conversation_store: failed to compute avg response time")
+        return 0.0
