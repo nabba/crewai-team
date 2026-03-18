@@ -142,6 +142,36 @@
   </div>
 </div>
 
+<details class="card" style="margin-top:18px;cursor:pointer">
+  <summary class="section-title" style="margin-bottom:0;cursor:pointer">&#x2753; Signal Commands Reference</summary>
+  <table style="margin-top:14px">
+    <thead><tr><th>Command</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">hello / hi / any question</td><td>Commander routes to the right crew (research, coding, writing) or answers directly. Short replies are interpreted in context of your conversation history.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>Returns system health and count of pending improvement proposals.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Adds topic to the learning queue. At 3 AM daily (or on manual trigger), the self-improvement crew researches it and saves a skill file to workspace/skills/.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">show learning queue</td><td>Displays all pending topics in the learning queue.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Immediately processes the learning queue (up to 3 topics). Agents research, extract knowledge, and save skill files.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Triggers an improvement scan. An analyst agent reviews current skills, tools, and crews, identifies capability gaps, and creates 1-3 structured improvement proposals.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>Lists all pending improvement proposals with their IDs, types, and titles.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve &lt;id&gt;</td><td>Approves and applies a proposal. Skill proposals copy files to skills/ immediately. Code proposals are staged to applied_code/ and activate on next container rebuild.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">reject &lt;id&gt;</td><td>Rejects and archives a proposal. No files are changed.</td></tr>
+    </tbody>
+  </table>
+  <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;font-size:.78rem;color:var(--muted)">
+    <div style="margin-bottom:6px;font-weight:700;color:var(--text)">How routing works</div>
+    Commander classifies every message and dispatches to specialist crews:<br>
+    &bull; <strong style="color:var(--blue)">Research</strong> &mdash; web search, fact-finding, current events (can spawn parallel sub-agents for complex topics)<br>
+    &bull; <strong style="color:var(--blue)">Coding</strong> &mdash; writes, tests, and debugs code in a Docker sandbox<br>
+    &bull; <strong style="color:var(--blue)">Writing</strong> &mdash; summaries, documentation, emails, reports<br>
+    &bull; <strong style="color:var(--blue)">Direct</strong> &mdash; simple questions answered by Commander itself<br>
+    Complex requests can dispatch multiple crews in parallel (e.g. research + writing).
+    <div style="margin-top:8px;font-weight:700;color:var(--text)">Self-improvement flow</div>
+    <code>learn topic</code> &rarr; queued &rarr; cron or manual trigger &rarr; agent researches 3+ sources &rarr; saves skill .md file &rarr; skill loaded into all future requests<br>
+    <code>improve</code> &rarr; analyst scans capabilities &rarr; creates proposals &rarr; you approve/reject via Signal &rarr; approved changes applied
+  </div>
+</details>
+
 <div id="last-updated" style="margin-top:10px"></div>
 
 <script type="module">
