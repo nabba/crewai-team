@@ -239,12 +239,16 @@ onSnapshot(query(collection(db,"tasks"), orderBy("started_at","desc"), limit(20)
   document.getElementById("s-tasks").textContent = today;
   tbody.innerHTML = snap.docs.map(d => {
     const t = d.data();
+    const isChild = t.parent_task_id;
+    const indent = isChild ? 'padding-left:28px' : '';
+    const prefix = isChild ? '<span style="color:var(--muted)">└ </span>' : '';
+    const progress = t.sub_agent_progress ? ` <span style="color:var(--orange);font-size:.7rem">(${t.sub_agent_progress})</span>` : '';
     const eta = t.state==="completed" ? abs(t.completed_at)
               : t.state==="failed"    ? `<span style="color:var(--red)">Failed</span>`
-              : t.eta                 ? `ETA ${etaIn(t.eta)||"—"}`
-              :                         "—";
-    return `<tr>
-      <td>${ICONS[t.crew]||"🤖"} ${t.crew||"—"}</td>
+              : t.eta                 ? `ETA ${etaIn(t.eta)||"—"}${progress}`
+              :                         progress || "—";
+    return `<tr${isChild?' style="opacity:.8"':''}>
+      <td style="${indent}">${prefix}${ICONS[t.crew]||"🤖"} ${t.crew||"—"}</td>
       <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.summary||"—"}</td>
       <td><span class="badge ${t.state||""}">${t.state||"—"}</span></td>
       <td style="color:var(--muted)">${abs(t.started_at)}</td>

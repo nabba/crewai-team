@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     self_improve_cron: str = "0 3 * * *"
     self_improve_topic_file: str = "workspace/skills/learning_queue.md"
 
+    # Parallelism — controls how many crews/sub-agents can run concurrently.
+    max_parallel_crews: int = 3   # max crews commander can dispatch at once
+    max_sub_agents: int = 4       # max sub-agents a single crew can spawn
+    thread_pool_size: int = 6     # shared thread pool size (caps total API calls)
+
     # Cloud backup — set to a GitHub/git remote URL to enable workspace sync.
     # Use an HTTPS URL with a PAT for simplicity:
     #   https://<PAT>@github.com/you/crewai-memory-backup.git

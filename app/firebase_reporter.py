@@ -130,8 +130,12 @@ def heartbeat() -> None:
 
 # ── Crew / agent status ───────────────────────────────────────────────────────
 
-def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None) -> str:
-    """Mark a crew as active.  Returns a task_id for later updates."""
+def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None,
+                 parent_task_id: Optional[str] = None) -> str:
+    """Mark a crew as active.  Returns a task_id for later updates.
+
+    If parent_task_id is set, this task is a sub-agent spawned by a parent task.
+    """
     task_id = uuid.uuid4().hex
     eta_iso = None
     if eta_seconds:
@@ -143,16 +147,17 @@ def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None
             return
         now = _now_iso()
         try:
-            # Update per-crew status
-            db.collection("crews").document(crew).set({
-                "name": crew,
-                "state": "active",
-                "current_task": task_summary[:200],
-                "task_id": task_id,
-                "started_at": now,
-                "eta": eta_iso,
-                "last_updated": now,
-            })
+            # Only update crew-level status for top-level tasks (not sub-agents)
+            if not parent_task_id:
+                db.collection("crews").document(crew).set({
+                    "name": crew,
+                    "state": "active",
+                    "current_task": task_summary[:200],
+                    "task_id": task_id,
+                    "started_at": now,
+                    "eta": eta_iso,
+                    "last_updated": now,
+                })
             # Write a task record
             db.collection("tasks").document(task_id).set({
                 "id": task_id,
@@ -163,6 +168,8 @@ def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None
                 "eta": eta_iso,
                 "completed_at": None,
                 "result_preview": None,
+                "parent_task_id": parent_task_id,
+                "is_sub_agent": parent_task_id is not None,
             })
             # Append to activity feed
             _add_activity(db, "task_started", crew, task_summary[:200], task_id)
@@ -237,6 +244,23 @@ def update_eta(crew: str, task_id: str, eta_seconds: int) -> None:
             db.collection("tasks").document(task_id).update({"eta": eta_iso})
         except Exception:
             logger.debug("firebase_reporter: update_eta write failed", exc_info=True)
+    _fire(_write)
+
+
+def update_sub_agent_progress(crew: str, parent_task_id: str,
+                               completed: int, total: int) -> None:
+    """Update the parent task with sub-agent completion progress."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            db.collection("tasks").document(parent_task_id).update({
+                "sub_agent_progress": f"{completed}/{total}",
+                "last_updated": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: sub_agent_progress write failed", exc_info=True)
     _fire(_write)
 
 

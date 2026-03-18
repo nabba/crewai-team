@@ -5,9 +5,10 @@ from app.firebase_reporter import crew_started, crew_completed, crew_failed
 
 
 class CodingCrew:
-    def run(self, task_description: str) -> str:
+    def run(self, task_description: str, parent_task_id: str = None) -> str:
         """Run a coding crew on the given task."""
-        task_id = crew_started("coding", f"Code: {task_description[:100]}", eta_seconds=180)
+        task_id = crew_started("coding", f"Code: {task_description[:100]}",
+                               eta_seconds=180, parent_task_id=parent_task_id)
         coder = create_coder()
 
         task = Task(
