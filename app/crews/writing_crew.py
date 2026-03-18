@@ -2,6 +2,7 @@ from crewai import Task, Crew, Process
 from app.agents.writer import create_writer
 from app.sanitize import wrap_user_input
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
+from app.self_heal import diagnose_and_fix
 
 
 class WritingCrew:
@@ -41,4 +42,5 @@ If the output is a document or report, save it using the file_manager tool.
             return result_str
         except Exception as exc:
             crew_failed("writing", task_id, str(exc)[:200])
+            diagnose_and_fix("writing", task_description, exc)
             raise

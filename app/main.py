@@ -14,6 +14,7 @@ from app.config import get_settings, get_gateway_secret
 from app.security import is_authorized_sender, is_within_rate_limit, _redact_number
 from app.signal_client import SignalClient
 from app.agents.commander import Commander
+from app.self_heal import diagnose_and_fix
 from app.audit import (
     log_request_received, log_response_sent, log_security_event
 )
@@ -212,11 +213,23 @@ async def handle_task(sender: str, text: str, attachments: list = None):
         add_message(sender, "assistant", result)
 
         await signal_client.send(sender, result)
-    except Exception:
+    except Exception as exc:
         logger.exception("Error handling task")
         log_security_event("task_error", "unhandled exception in handle_task")
+        # Trigger self-healing: diagnose the error in the background
+        diagnose_and_fix(
+            crew="handle_task",
+            user_input=text,
+            error=exc,
+            context=f"attachments={len(attachments or [])}",
+        )
         # Generic error — do not leak internals to Signal
-        await signal_client.send(sender, "Sorry, something went wrong processing your request. Please try again.")
+        await signal_client.send(
+            sender,
+            "Something went wrong processing your request. "
+            "The self-healing system is analyzing the error and will attempt a fix. "
+            "Please try again shortly."
+        )
 
 
 @app.get("/health")

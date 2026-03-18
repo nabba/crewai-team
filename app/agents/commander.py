@@ -244,6 +244,23 @@ class Commander:
             SelfImprovementCrew().run_improvement_scan()
             return "Improvement scan completed. Use 'proposals' to see results."
 
+        if lower in ("errors", "show errors"):
+            from app.self_heal import get_recent_errors, get_error_patterns
+            errors = get_recent_errors(5)
+            if not errors:
+                return "No errors recorded. System is healthy."
+            patterns = get_error_patterns()
+            lines = ["Recent Errors:\n"]
+            for e in errors:
+                status = "fixed" if e.get("diagnosed") else "pending"
+                lines.append(
+                    f"[{e['ts'][:16]}] {e['crew']}: {e['error_type']} — "
+                    f"{e['error_msg'][:80]} ({status})"
+                )
+            if patterns:
+                lines.append(f"\nPatterns: {', '.join(f'{k}({v}x)' for k,v in list(patterns.items())[:5])}")
+            return "\n".join(lines)
+
         if lower in ("proposals", "show proposals"):
             from app.proposals import list_proposals
             pending = list_proposals("pending")

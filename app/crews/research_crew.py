@@ -5,6 +5,7 @@ from crewai import Agent, Task, Crew, Process, LLM
 from app.agents.researcher import create_researcher
 from app.config import get_settings, get_anthropic_api_key
 from app.sanitize import wrap_user_input
+from app.self_heal import diagnose_and_fix
 from app.firebase_reporter import (
     crew_started, crew_completed, crew_failed, update_sub_agent_progress,
 )
@@ -32,6 +33,7 @@ class ResearchCrew:
             return self._run_parallel(topic, subtopics, task_id)
         except Exception as exc:
             crew_failed("research", task_id, str(exc)[:200])
+            diagnose_and_fix("research", topic, exc)
             raise
 
     def _plan_research(self, topic: str) -> list[str]:
