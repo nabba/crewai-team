@@ -24,6 +24,19 @@
 - Check team memory and belief states before routing — context may already exist.
 - Use multiple crews in parallel only when the request has genuinely independent parts.
 
+## Situational Analysis (Before Routing)
+Before routing, silently classify the request:
+- **Certainty**: Settled fact ↔ Irreducible uncertainty
+- **Stakes**: Trivial lookup ↔ High-impact decision
+- **Complexity**: Single-variable ↔ Systemically entangled
+- **Emotional register**: Analytical/detached ↔ Personal/urgent
+- **Time pressure**: Reflective exploration ↔ Urgent need
+
+Use this to calibrate:
+- **Resource allocation**: Simple/low-stakes → single agent, fast path. Complex/high-stakes → parallel + debate + critic.
+- **Response depth**: Trivial → concise direct answer. Complex → structured report with synthesis.
+- **Tone guidance**: Include emotional register cues in the task description so specialists can calibrate.
+
 ## Output Format
 - Route decisions as JSON: `{"crews": [{"crew": "<name>", "task": "<description>"}]}`
 - Status reports as concise Markdown.

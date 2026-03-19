@@ -75,6 +75,29 @@ def _skill_count() -> int:
         return 0
 
 
+def _output_quality_score() -> float:
+    """Average confidence from recent self-reports (0.0-1.0).
+
+    Maps self-report confidence levels to numeric scores and averages
+    over recent reports. This captures the agents' own assessment of
+    output quality — a proxy metric until external evaluation is added.
+    """
+    conf_map = {"high": 1.0, "medium": 0.6, "low": 0.3}
+    try:
+        from app.memory.chromadb_manager import retrieve_with_metadata
+        items = retrieve_with_metadata("self_reports", "confidence assessment", n=20)
+        if not items:
+            return 0.7  # no data = assume decent
+        scores = []
+        for item in items:
+            meta = item.get("metadata", {})
+            conf = meta.get("confidence", "medium")
+            scores.append(conf_map.get(conf, 0.6))
+        return sum(scores) / len(scores) if scores else 0.7
+    except Exception:
+        return 0.7
+
+
 def _avg_response_time() -> float:
     """Average task response time in seconds over the last 24 hours."""
     try:
@@ -107,15 +130,17 @@ def composite_score() -> float:
     uses to decide keep vs discard.
 
     Components (weighted):
-      - task_success_rate (0.35): core purpose — do tasks succeed?
-      - error_rate_24h    (0.25): system stability — how many errors?
-      - self_heal_rate    (0.20): resilience — can the system fix itself?
+      - task_success_rate (0.30): core purpose — do tasks succeed?
+      - error_rate_24h    (0.20): system stability — how many errors?
+      - self_heal_rate    (0.15): resilience — can the system fix itself?
+      - output_quality    (0.15): quality — how confident are agents in output?
       - skill_breadth     (0.10): capability — how much has it learned?
       - response_time     (0.10): efficiency — how fast are responses?
     """
     success = _task_success_rate()
     errors = _error_rate_24h()
     heal = _self_heal_rate()
+    quality = _output_quality_score()
     skills = _skill_count()
     resp_time = _avg_response_time()
 
@@ -132,9 +157,10 @@ def composite_score() -> float:
         time_score = max(0.0, 1.0 - resp_time / 60.0)
 
     score = (
-        0.35 * success
-        + 0.25 * error_score
-        + 0.20 * heal
+        0.30 * success
+        + 0.20 * error_score
+        + 0.15 * heal
+        + 0.15 * quality
         + 0.10 * skill_score
         + 0.10 * time_score
     )
@@ -151,6 +177,7 @@ def compute_metrics() -> dict:
     success = _task_success_rate()
     errors = _error_rate_24h()
     heal = _self_heal_rate()
+    quality = _output_quality_score()
     skills = _skill_count()
     resp_time = _avg_response_time()
     evo_eff = _evolution_efficiency()
@@ -160,6 +187,7 @@ def compute_metrics() -> dict:
         "task_success_rate": round(success, 4),
         "error_rate_24h": round(errors, 4),
         "self_heal_rate": round(heal, 4),
+        "output_quality": round(quality, 4),
         "skill_count": skills,
         "avg_response_time_s": round(resp_time, 2),
         "evolution_efficiency": round(evo_eff, 4),
@@ -173,6 +201,7 @@ def format_metrics(metrics: dict) -> str:
     return (
         f"Composite Score: {metrics['composite_score']:.4f}\n"
         f"Task Success Rate: {metrics['task_success_rate']:.1%}\n"
+        f"Output Quality: {metrics['output_quality']:.1%}\n"
         f"Error Rate (24h): {metrics['error_rate_24h']:.2f}/hr\n"
         f"Self-Heal Rate: {metrics['self_heal_rate']:.1%}\n"
         f"Skills: {metrics['skill_count']}\n"
