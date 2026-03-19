@@ -38,8 +38,10 @@ services:
       GIT_CONFIG_VALUE_0: /app/workspace
     volumes:
       - ./workspace:/app/workspace
-      - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
+      # Signal socket mount disabled — forwarder.py runs on host and bridges via HTTP
+      # - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
       - ${SIGNAL_ATTACHMENT_PATH:-/dev/null}:/app/attachments:ro
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     depends_on:
       - chromadb
       - docker-proxy

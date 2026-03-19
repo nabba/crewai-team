@@ -9,26 +9,15 @@ from app.self_heal import diagnose_and_fix
 from app.memory.belief_state import update_belief
 from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
+from app.llm_selector import difficulty_to_tier
 
 logger = logging.getLogger(__name__)
 
+# Static task template — extracted for Anthropic prompt prefix caching.
+CODING_TASK_TEMPLATE = """\
+Complete the following coding task:
 
-class CodingCrew:
-    def run(self, task_description: str, parent_task_id: str = None) -> str:
-        """Run a coding crew on the given task."""
-        _start = _time.monotonic()
-        task_id = crew_started("coding", f"Code: {task_description[:100]}",
-                               eta_seconds=180, parent_task_id=parent_task_id)
-        update_belief("coder", "working", current_task=task_description[:100])
-        coder = create_coder()
-
-        policies = load_relevant_policies(task_description, "coder")
-        policies_block = f"\n{policies}\n" if policies else ""
-
-        task = Task(
-            description=f"""{policies_block}Complete the following coding task:
-
-{wrap_user_input(task_description)}
+{user_input}
 
 Write clean, well-documented code. Test it by executing it in the Docker sandbox.
 If the code fails, debug and fix it. Save the final working code to a file using
@@ -39,7 +28,28 @@ Return the working code along with its output.
 After completing the task, use the self_report tool to assess your confidence in the
 code quality, completeness, and any risks. Then use store_reflection to record lessons
 learned about your coding approach.
-""",
+"""
+
+
+class CodingCrew:
+    def run(self, task_description: str, parent_task_id: str = None, difficulty: int = 5) -> str:
+        """Run a coding crew on the given task."""
+        _start = _time.monotonic()
+        task_id = crew_started("coding", f"Code: {task_description[:100]}",
+                               eta_seconds=180, parent_task_id=parent_task_id)
+        update_belief("coder", "working", current_task=task_description[:100])
+        from app.llm_mode import get_mode
+        force_tier = difficulty_to_tier(difficulty, get_mode())
+        coder = create_coder(force_tier=force_tier)
+
+        policies = load_relevant_policies(task_description, "coder")
+        policies_block = f"\n{policies}\n" if policies else ""
+
+        task = Task(
+            description=(
+                policies_block
+                + CODING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description))
+            ),
             expected_output="Working code with execution output, saved to a file.",
             agent=coder,
         )

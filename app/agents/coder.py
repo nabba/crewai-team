@@ -16,8 +16,8 @@ settings = get_settings()
 CODER_BACKSTORY = compose_backstory("coder")
 
 
-def create_coder() -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="coding")
+def create_coder(force_tier: str | None = None) -> Agent:
+    llm = create_specialist_llm(max_tokens=4096, role="coding", force_tier=force_tier)
     memory_tools = create_memory_tools(collection="coder")
     scoped_tools = create_scoped_memory_tools("coder")
     awareness_tools = [

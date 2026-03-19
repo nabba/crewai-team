@@ -17,8 +17,8 @@ settings = get_settings()
 RESEARCHER_BACKSTORY = compose_backstory("researcher")
 
 
-def create_researcher() -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="research")
+def create_researcher(force_tier: str | None = None) -> Agent:
+    llm = create_specialist_llm(max_tokens=4096, role="research", force_tier=force_tier)
     memory_tools = create_memory_tools(collection="researcher")
     scoped_tools = create_scoped_memory_tools("researcher")
     awareness_tools = [

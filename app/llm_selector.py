@@ -24,6 +24,19 @@ from app.llm_benchmarks import get_scores
 
 logger = logging.getLogger(__name__)
 
+
+def difficulty_to_tier(difficulty: int, mode: str) -> str | None:
+    """Map task difficulty (1-10) to a preferred model tier.
+
+    Returns None for medium difficulty (4-7) to let the default
+    catalog/cost_mode logic decide.
+    """
+    if difficulty <= 3:
+        return "local" if mode != "cloud" else "budget"
+    elif difficulty >= 8:
+        return "premium"
+    return None  # medium → use default catalog logic
+
 _KEYWORD_PATTERNS: list[tuple[str, str]] = [
     (r"\b(debug|traceback|error|fix\s+bug|stacktrace)\b", "debugging"),
     (r"\b(architect|design|plan|system\s+design|review)\b", "architecture"),

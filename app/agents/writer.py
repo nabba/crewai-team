@@ -15,8 +15,8 @@ settings = get_settings()
 WRITER_BACKSTORY = compose_backstory("writer")
 
 
-def create_writer() -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="writing")
+def create_writer(force_tier: str | None = None) -> Agent:
+    llm = create_specialist_llm(max_tokens=4096, role="writing", force_tier=force_tier)
     memory_tools = create_memory_tools(collection="writer")
     scoped_tools = create_scoped_memory_tools("writer")
     awareness_tools = [

@@ -147,7 +147,7 @@ except TypeError:
 
 try:
     import app.tools.file_manager as _file_manager_mod
-except TypeError:
+except (TypeError, ImportError):
     _file_manager_mod = None
 
 

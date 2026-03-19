@@ -53,6 +53,22 @@ def _get_conn() -> sqlite3.Connection:
             "CREATE INDEX IF NOT EXISTS idx_tu_model_ts "
             "ON token_usage(model, ts)"
         )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS request_costs (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id        TEXT NOT NULL,
+                total_prompt      INTEGER NOT NULL,
+                total_completion  INTEGER NOT NULL,
+                total_cost_usd    REAL NOT NULL,
+                call_count        INTEGER NOT NULL,
+                models_used       TEXT NOT NULL,
+                ts                TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rc_ts "
+            "ON request_costs(ts)"
+        )
         conn.commit()
         _local.conn = conn
     return _local.conn
@@ -228,3 +244,58 @@ def format_token_stats(period: str = "day") -> str:
     cost_line = f" (${total_cost:.4f})" if total_cost > 0 else ""
     lines.append(f"\nTotal: {total_all:,} tokens{cost_line}")
     return "\n".join(lines)
+
+
+# ── Request-level cost tracking ──────────────────────────────────────────────
+
+def record_request_cost(tracker) -> None:
+    """Persist aggregated request-level cost data."""
+    try:
+        conn = _get_conn()
+        models = ",".join(sorted(tracker.models_used)) if tracker.models_used else "none"
+        conn.execute(
+            "INSERT INTO request_costs "
+            "(request_id, total_prompt, total_completion, total_cost_usd, call_count, models_used, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (tracker.request_id, tracker.total_prompt_tokens, tracker.total_completion_tokens,
+             tracker.total_cost_usd, tracker.call_count, models,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    except Exception:
+        logger.debug("llm_benchmarks: failed to record request cost", exc_info=True)
+
+
+def get_request_cost_stats(period: str = "day") -> dict:
+    """Aggregate request-level cost stats for a time period.
+
+    Returns: {"requests": int, "total_cost_usd": float, "avg_cost_usd": float,
+              "avg_calls": float, "avg_tokens": float}
+    """
+    cutoffs = {
+        "hour": "1 hours", "day": "1 days", "week": "7 days",
+        "month": "30 days", "quarter": "90 days", "year": "365 days",
+    }
+    cutoff = cutoffs.get(period, "1 days")
+    try:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) as requests, "
+            "       COALESCE(SUM(total_cost_usd), 0) as total_cost, "
+            "       COALESCE(AVG(total_cost_usd), 0) as avg_cost, "
+            "       COALESCE(AVG(call_count), 0) as avg_calls, "
+            "       COALESCE(AVG(total_prompt + total_completion), 0) as avg_tokens "
+            "FROM request_costs "
+            f"WHERE ts >= datetime('now', '-{cutoff}')",
+        ).fetchone()
+        if row:
+            return {
+                "requests": row[0],
+                "total_cost_usd": round(row[1], 4),
+                "avg_cost_usd": round(row[2], 6),
+                "avg_calls": round(row[3], 1),
+                "avg_tokens": round(row[4], 0),
+            }
+    except Exception:
+        pass
+    return {"requests": 0, "total_cost_usd": 0, "avg_cost_usd": 0, "avg_calls": 0, "avg_tokens": 0}

@@ -5,6 +5,7 @@ from crewai import Agent, Task, Crew, Process
 from app.agents.researcher import create_researcher
 from app.config import get_settings
 from app.llm_factory import create_specialist_llm
+from app.llm_selector import difficulty_to_tier
 from app.sanitize import wrap_user_input
 from app.self_heal import diagnose_and_fix
 from app.firebase_reporter import (
@@ -19,9 +20,39 @@ from app.benchmarks import record_metric
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Static task template — extracted to module level for Anthropic prompt prefix caching.
+# Dynamic content (policies, user input) is appended AFTER this static block.
+RESEARCH_TASK_TEMPLATE = """\
+Research the following topic thoroughly:
+
+{user_input}
+
+Search the web for at least 3 high-quality sources. Read articles and extract key
+information. Store all findings in team memory.
+
+Compile a structured research report with:
+1. Key findings
+2. Important details and data points
+3. Sources (with URLs)
+
+After completing your research, use the self_report tool to assess your confidence,
+completeness, and any blockers. Then use store_reflection to record what you learned
+about your own performance on this task.
+"""
+
+RESEARCH_PLAN_TEMPLATE = """\
+Break this research topic into 1-4 independent subtopics that can be \
+researched in parallel. Topic: {topic}
+
+Reply with ONLY a JSON array of strings:
+["subtopic 1", "subtopic 2"]
+
+If simple, return a single-item array.\
+"""
+
 
 class ResearchCrew:
-    def run(self, topic: str, parent_task_id: str = None) -> str:
+    def run(self, topic: str, parent_task_id: str = None, difficulty: int = 5) -> str:
         """Run research, spawning sub-agents in parallel for complex topics."""
         task_id = crew_started(
             "research", f"Research: {topic[:100]}",
@@ -31,12 +62,15 @@ class ResearchCrew:
         import time as _time
         _start = _time.monotonic()
 
+        from app.llm_mode import get_mode
+        force_tier = difficulty_to_tier(difficulty, get_mode())
+
         update_belief("researcher", "working", current_task=topic[:100])
         try:
             subtopics = self._plan_research(topic)
 
             if len(subtopics) <= 1:
-                result = self._run_single(topic, task_id)
+                result = self._run_single(topic, task_id, force_tier=force_tier)
             else:
                 logger.info(f"Research crew spawning {len(subtopics)} sub-agents")
                 result = self._run_parallel(topic, subtopics, task_id)
@@ -66,13 +100,7 @@ class ResearchCrew:
                 llm=llm, verbose=False,
             )
             task = Task(
-                description=(
-                    f"Break this research topic into 1-4 independent subtopics that can be "
-                    f"researched in parallel. Topic: {topic[:500]}\n\n"
-                    f"Reply with ONLY a JSON array of strings:\n"
-                    f'["subtopic 1", "subtopic 2"]\n\n'
-                    f"If simple, return a single-item array."
-                ),
+                description=RESEARCH_PLAN_TEMPLATE.format(topic=topic[:500]),
                 expected_output='A JSON array of 1-4 subtopic strings',
                 agent=agent,
             )
@@ -86,28 +114,16 @@ class ResearchCrew:
             logger.warning("Research planning failed, using single agent", exc_info=True)
         return [topic]
 
-    def _run_single(self, topic: str, task_id: str) -> str:
+    def _run_single(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
         """Single-agent research for simple topics."""
-        researcher = create_researcher()
+        researcher = create_researcher(force_tier=force_tier)
         policies = load_relevant_policies(topic, "researcher")
         policies_block = f"\n{policies}\n" if policies else ""
         task = Task(
-            description=f"""{policies_block}Research the following topic thoroughly:
-
-{wrap_user_input(topic)}
-
-Search the web for at least 3 high-quality sources. Read articles and extract key
-information. Store all findings in team memory.
-
-Compile a structured research report with:
-1. Key findings
-2. Important details and data points
-3. Sources (with URLs)
-
-After completing your research, use the self_report tool to assess your confidence,
-completeness, and any blockers. Then use store_reflection to record what you learned
-about your own performance on this task.
-""",
+            description=(
+                policies_block
+                + RESEARCH_TASK_TEMPLATE.format(user_input=wrap_user_input(topic))
+            ),
             expected_output="A structured research report with key findings and sources.",
             agent=researcher,
         )

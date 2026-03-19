@@ -9,26 +9,15 @@ from app.self_heal import diagnose_and_fix
 from app.memory.belief_state import update_belief
 from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
+from app.llm_selector import difficulty_to_tier
 
 logger = logging.getLogger(__name__)
 
+# Static task template — extracted for Anthropic prompt prefix caching.
+WRITING_TASK_TEMPLATE = """\
+Complete the following writing task:
 
-class WritingCrew:
-    def run(self, task_description: str, parent_task_id: str = None) -> str:
-        """Run a writing crew on the given task."""
-        _start = _time.monotonic()
-        task_id = crew_started("writing", f"Write: {task_description[:100]}",
-                               eta_seconds=90, parent_task_id=parent_task_id)
-        update_belief("writer", "working", current_task=task_description[:100])
-        writer = create_writer()
-
-        policies = load_relevant_policies(task_description, "writer")
-        policies_block = f"\n{policies}\n" if policies else ""
-
-        task = Task(
-            description=f"""{policies_block}Complete the following writing task:
-
-{wrap_user_input(task_description)}
+{user_input}
 
 First, check team memory for any relevant research or context. Then write clear,
 well-structured content. Adapt the length and format based on the destination:
@@ -40,7 +29,28 @@ If the output is a document or report, save it using the file_manager tool.
 After completing the task, use the self_report tool to assess your confidence in the
 content quality and completeness. Then use store_reflection to record what went well
 and what could improve about your writing approach.
-""",
+"""
+
+
+class WritingCrew:
+    def run(self, task_description: str, parent_task_id: str = None, difficulty: int = 5) -> str:
+        """Run a writing crew on the given task."""
+        _start = _time.monotonic()
+        task_id = crew_started("writing", f"Write: {task_description[:100]}",
+                               eta_seconds=90, parent_task_id=parent_task_id)
+        update_belief("writer", "working", current_task=task_description[:100])
+        from app.llm_mode import get_mode
+        force_tier = difficulty_to_tier(difficulty, get_mode())
+        writer = create_writer(force_tier=force_tier)
+
+        policies = load_relevant_policies(task_description, "writer")
+        policies_block = f"\n{policies}\n" if policies else ""
+
+        task = Task(
+            description=(
+                policies_block
+                + WRITING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description))
+            ),
             expected_output="Well-written content appropriate for the destination format.",
             agent=writer,
         )

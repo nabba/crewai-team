@@ -10,6 +10,7 @@ Also configures litellm's built-in retry with exponential backoff
 so transient 429s are retried automatically.
 """
 
+import contextvars
 import logging
 import os
 import threading
@@ -134,5 +135,75 @@ def _record_token_usage(response, kwargs: dict) -> None:
                 pass
             from app.llm_benchmarks import record_tokens
             record_tokens(model, prompt_tokens, completion_tokens, cost_usd)
+
+            # Also accumulate into the active request tracker if present
+            tracker = _request_cost.get(None)
+            if tracker is not None:
+                tracker.record(model, prompt_tokens, completion_tokens, cost_usd)
     except Exception:
         pass  # never fail the actual LLM call
+
+
+# ── Request-level cost tracking ──────────────────────────────────────────────
+
+_request_cost: contextvars.ContextVar["RequestCostTracker | None"] = contextvars.ContextVar(
+    "request_cost", default=None,
+)
+
+
+class RequestCostTracker:
+    """Accumulates token usage across all LLM calls in a single user request."""
+
+    def __init__(self, request_id: str = ""):
+        self.request_id = request_id
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_cost_usd = 0.0
+        self.call_count = 0
+        self.models_used: set[str] = set()
+        self._lock = threading.Lock()
+
+    def record(self, model: str, prompt_tokens: int, completion_tokens: int, cost_usd: float) -> None:
+        with self._lock:
+            self.total_prompt_tokens += prompt_tokens
+            self.total_completion_tokens += completion_tokens
+            self.total_cost_usd += cost_usd
+            self.call_count += 1
+            self.models_used.add(model)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_prompt_tokens + self.total_completion_tokens
+
+    def summary(self) -> str:
+        models = ", ".join(sorted(self.models_used)) if self.models_used else "none"
+        return (
+            f"{self.call_count} LLM calls, "
+            f"{self.total_tokens:,} tokens, "
+            f"${self.total_cost_usd:.4f}, "
+            f"models: {models}"
+        )
+
+
+def start_request_tracking(request_id: str = "") -> RequestCostTracker:
+    """Begin accumulating costs for a user request. Returns the tracker."""
+    tracker = RequestCostTracker(request_id)
+    _request_cost.set(tracker)
+    return tracker
+
+
+def stop_request_tracking() -> RequestCostTracker | None:
+    """Stop tracking and return the accumulated tracker."""
+    tracker = _request_cost.get(None)
+    _request_cost.set(None)
+    return tracker
+
+
+def get_active_tracker() -> "RequestCostTracker | None":
+    """Get the active request tracker (for propagating to threads)."""
+    return _request_cost.get(None)
+
+
+def set_active_tracker(tracker: "RequestCostTracker | None") -> None:
+    """Set the request tracker (for thread propagation)."""
+    _request_cost.set(tracker)

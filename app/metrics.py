@@ -107,6 +107,16 @@ def _avg_response_time() -> float:
         return 0.0
 
 
+def _avg_request_cost() -> float:
+    """Average USD cost per request over the last 24 hours."""
+    try:
+        from app.llm_benchmarks import get_request_cost_stats
+        stats = get_request_cost_stats("day")
+        return stats.get("avg_cost_usd", 0.0)
+    except Exception:
+        return 0.0
+
+
 def _evolution_efficiency() -> float:
     """Fraction of recent experiments that were kept (0.0-1.0)."""
     try:
@@ -191,6 +201,7 @@ def compute_metrics() -> dict:
         "skill_count": skills,
         "avg_response_time_s": round(resp_time, 2),
         "evolution_efficiency": round(evo_eff, 4),
+        "avg_request_cost_usd": _avg_request_cost(),
         "composite_score": score,
         "measured_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -206,5 +217,6 @@ def format_metrics(metrics: dict) -> str:
         f"Self-Heal Rate: {metrics['self_heal_rate']:.1%}\n"
         f"Skills: {metrics['skill_count']}\n"
         f"Avg Response Time: {metrics['avg_response_time_s']:.1f}s\n"
-        f"Evolution Efficiency: {metrics['evolution_efficiency']:.1%}"
+        f"Evolution Efficiency: {metrics['evolution_efficiency']:.1%}\n"
+        f"Avg Request Cost: ${metrics.get('avg_request_cost_usd', 0):.4f}"
     )

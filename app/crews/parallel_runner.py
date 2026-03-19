@@ -63,8 +63,16 @@ def run_parallel(
     if not tasks:
         return []
 
+    # Capture the parent thread's request cost tracker for propagation
+    from app.rate_throttle import get_active_tracker, set_active_tracker
+    parent_tracker = get_active_tracker()
+
     def _throttled(fn):
-        """Wrap callable with semaphore so only N crews hit Ollama at once."""
+        """Wrap callable with semaphore so only N crews hit Ollama at once.
+        Also propagates the request cost tracker to child threads."""
+        # Propagate request cost tracker from parent thread
+        if parent_tracker is not None:
+            set_active_tracker(parent_tracker)
         with _ollama_semaphore:
             return fn()
 

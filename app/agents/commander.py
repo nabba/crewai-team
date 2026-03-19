@@ -32,19 +32,24 @@ Given the user request (and any conversation history), decide HOW to handle it.
 Reply with ONLY a JSON object — no prose, no markdown fences:
 
 For simple tasks (one crew):
-{{"crews": [{{"crew": "<crew_name>", "task": "<task description>"}}]}}
+{{"crews": [{{"crew": "<crew_name>", "task": "<task description>", "difficulty": <1-10>}}]}}
 
 For complex tasks needing MULTIPLE specialists in parallel:
-{{"crews": [{{"crew": "research", "task": "..."}}, {{"crew": "writing", "task": "..."}}]}}
+{{"crews": [{{"crew": "research", "task": "...", "difficulty": 6}}, {{"crew": "writing", "task": "...", "difficulty": 4}}]}}
 
 For simple questions you can answer directly:
-{{"crews": [{{"crew": "direct", "task": "<your response to the user>"}}]}}
+{{"crews": [{{"crew": "direct", "task": "<your response to the user>", "difficulty": 1}}]}}
 
 crew_name MUST be one of:
   "research"  — web lookups, fact-finding, comparisons, current events
   "coding"    — writing, running, or debugging code
   "writing"   — summaries, documentation, emails, reports, creative text
   "direct"    — simple questions, greetings, or status queries you answer yourself
+
+"difficulty" rates the task complexity (1-10):
+  1-3: Simple — greetings, factual lookups, short answers, status checks
+  4-6: Moderate — multi-source research, standard coding, detailed writing
+  7-10: Complex — architecture design, multi-step reasoning, debugging, analysis
 
 "task" must be a clear, self-contained instruction for the crew.
 Use multiple crews only when the request genuinely has independent parts.
@@ -213,18 +218,29 @@ class Commander:
 
         # Accept both {"crews": [...]} and legacy {"crew": ..., "task": ...}
         if "crews" in parsed and isinstance(parsed["crews"], list):
-            return parsed["crews"][:settings.max_parallel_crews]
+            decisions = parsed["crews"][:settings.max_parallel_crews]
         elif "crew" in parsed:
-            return [parsed]
+            decisions = [parsed]
         else:
-            return [{"crew": "direct", "task": raw}]
+            decisions = [{"crew": "direct", "task": raw}]
+
+        # Ensure every decision has a difficulty score (default 5 if LLM omits it)
+        for d in decisions:
+            diff = d.get("difficulty")
+            if not isinstance(diff, (int, float)) or diff < 1 or diff > 10:
+                d["difficulty"] = 5
+            else:
+                d["difficulty"] = int(diff)
+
+        return decisions
 
     def _run_crew(self, crew_name: str, crew_task: str,
-                  parent_task_id: str = None) -> str:
+                  parent_task_id: str = None, difficulty: int = 5) -> str:
         """Run a single crew by name.  Used by both single and parallel paths.
 
         Injects selective context (relevant skills + team memory) per task,
         implementing Write/Select/Compress/Isolate context engineering.
+        Difficulty (1-10) is passed to crews for model tier selection.
         """
         # Select only relevant context for this specific task
         context = _load_relevant_skills(crew_task) + _load_relevant_team_memory(crew_task)
@@ -232,13 +248,13 @@ class Commander:
 
         if crew_name == "research":
             from app.crews.research_crew import ResearchCrew
-            return ResearchCrew().run(enriched_task, parent_task_id=parent_task_id)
+            return ResearchCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         elif crew_name == "coding":
             from app.crews.coding_crew import CodingCrew
-            return CodingCrew().run(enriched_task, parent_task_id=parent_task_id)
+            return CodingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         elif crew_name == "writing":
             from app.crews.writing_crew import WritingCrew
-            return WritingCrew().run(enriched_task, parent_task_id=parent_task_id)
+            return WritingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         else:
             return crew_task
 
@@ -531,8 +547,12 @@ class Commander:
             ]
             return "\n".join(lines)
 
+        # ── Request cost tracking ──────────────────────────────────────────
+        from app.rate_throttle import start_request_tracking, stop_request_tracking
+
         # ── Step 1: Route ─────────────────────────────────────────────────
         task_id = crew_started("commander", f"Route: {user_input[:80]}", eta_seconds=30)
+        tracker = start_request_tracking(task_id)
         try:
             decisions = self._route(user_input, sender, attachment_context)
         except Exception as exc:
@@ -550,21 +570,29 @@ class Commander:
             if d.get("crew") == "direct":
                 return d.get("task", "")
             crew_name = d["crew"]
-            final_result = self._run_crew(crew_name, d.get("task", user_input))
-            # Vet local LLM output through Claude Opus 4.6
-            final_result = vet_response(user_input, final_result, crew_name)
+            difficulty = d.get("difficulty", 5)
+            final_result = self._run_crew(crew_name, d.get("task", user_input), difficulty=difficulty)
+            # Risk-based verification (replaces binary vetting)
+            from app.llm_factory import get_last_tier
+            final_result = vet_response(
+                user_input, final_result, crew_name,
+                difficulty=difficulty, model_tier=get_last_tier() or "unknown",
+            )
         else:
             # Multiple crews — parallel dispatch
             from app.crews.parallel_runner import run_parallel
 
             parallel_tasks = []
+            difficulty_map = {}
             for d in decisions:
                 name = d.get("crew", "direct")
                 task_desc = d.get("task", user_input)
+                diff = d.get("difficulty", 5)
                 if name == "direct":
                     continue
+                difficulty_map[name] = diff
                 parallel_tasks.append(
-                    (name, lambda n=name, t=task_desc: self._run_crew(n, t))
+                    (name, lambda n=name, t=task_desc, di=diff: self._run_crew(n, t, difficulty=di))
                 )
 
             if not parallel_tasks:
@@ -573,17 +601,32 @@ class Commander:
             results = run_parallel(parallel_tasks)
 
             # Vet and aggregate results
+            from app.llm_factory import get_last_tier
             parts = []
             for r in results:
                 if r.success:
-                    vetted = vet_response(user_input, r.result, r.label)
+                    diff = difficulty_map.get(r.label, 5)
+                    vetted = vet_response(
+                        user_input, r.result, r.label,
+                        difficulty=diff, model_tier=get_last_tier() or "unknown",
+                    )
                     parts.append(f"[{r.label.upper()}]\n{vetted}")
                 else:
                     parts.append(f"[{r.label.upper()}] Failed: {r.error}")
 
             final_result = "\n\n---\n\n".join(parts)
 
-        # ── Step 3: Proactive scan ─────────────────────────────────────────
+        # ── Step 3: Log request cost ───────────────────────────────────────
+        cost_tracker = stop_request_tracking()
+        if cost_tracker and cost_tracker.call_count > 0:
+            logger.info(f"Request cost: {cost_tracker.summary()}")
+            try:
+                from app.llm_benchmarks import record_request_cost
+                record_request_cost(cost_tracker)
+            except Exception:
+                pass
+
+        # ── Step 4: Proactive scan ─────────────────────────────────────────
         try:
             from app.proactive.trigger_scanner import scan_for_triggers, execute_proactive_action
 
