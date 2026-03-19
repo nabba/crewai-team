@@ -10,6 +10,7 @@
       --text:    #e6edf3; --muted:   #8b949e;
       --green:   #3fb950; --yellow:  #d29922; --red:    #f85149;
       --blue:    #58a6ff; --purple:  #bc8cff; --orange: #ff8700;
+      --cyan:    #39d2e0;
       --radius:  10px;
       --font:    'Inter', system-ui, -apple-system, sans-serif;
     }
@@ -31,10 +32,11 @@
     .section-title { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
 
     /* Stats */
-    .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 22px; }
+    .stats-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; margin-bottom: 22px; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
-    .stat-val { font-size: 2rem; font-weight: 700; color: var(--blue); }
-    .stat-lbl { font-size: .7rem; color: var(--muted); margin-top: 4px; }
+    .stat-val { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
+    .stat-lbl { font-size: .68rem; color: var(--muted); margin-top: 4px; }
+    .stat-sub { font-size: .65rem; color: var(--muted); margin-top: 2px; }
 
     /* Crews */
     #crews-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap: 14px; margin-bottom: 22px; }
@@ -50,7 +52,7 @@
     .prog { height: 3px; background: var(--border); border-radius: 2px; margin-top: 9px; overflow: hidden; }
     .prog .fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width .5s; }
 
-    /* Tasks table */
+    /* Cards */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
     table { width: 100%; border-collapse: collapse; font-size: .82rem; }
     th { text-align: left; padding: 7px 12px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border-bottom: 1px solid var(--border); }
@@ -61,8 +63,10 @@
     .badge.completed { background: rgba(63,185,80,.15);  color: var(--green); }
     .badge.failed    { background: rgba(248,81,73,.15);  color: var(--red); }
 
-    /* Bottom two-col */
-    .two-col { display: grid; grid-template-columns: 1fr 1.4fr; gap: 18px; margin-bottom: 18px; }
+    /* Grid layouts */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+
     .schedule-item { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(48,54,61,.4); }
     .schedule-item:last-child { border-bottom: none; }
     .schedule-time { color: var(--blue); font-size: .8rem; font-weight: 600; min-width: 76px; }
@@ -77,7 +81,7 @@
     .feed-detail { flex: 1; }
     .feed-crew   { color: var(--purple); font-weight: 600; }
 
-    /* Fleet containers */
+    /* Fleet */
     .fleet-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
     .fleet-card.running { border-color: var(--green); }
     .fleet-card .model-name { font-weight: 700; font-size: .85rem; color: var(--text); }
@@ -88,6 +92,11 @@
     .task-flow { font-size: .7rem; display: flex; align-items: center; gap: 3px; }
     .task-flow .arrow { color: var(--orange); font-weight: 700; }
     .model-tag { font-size: .65rem; padding: 1px 6px; border-radius: 6px; background: rgba(188,140,255,.15); color: var(--purple); font-weight: 600; white-space: nowrap; }
+    .tier-tag { font-size: .6rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; }
+    .tier-tag.local   { background: rgba(63,185,80,.15); color: var(--green); }
+    .tier-tag.budget  { background: rgba(88,166,255,.15); color: var(--blue); }
+    .tier-tag.mid     { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .tier-tag.premium { background: rgba(188,140,255,.15); color: var(--purple); }
 
     .empty { color: var(--muted); font-size: .85rem; padding: 14px 0; text-align: center; }
     #last-updated { font-size: .7rem; color: var(--muted); text-align: right; }
@@ -104,6 +113,51 @@
     #token-summary .cost { font-size:1rem;color:var(--green);margin-left:12px; }
     #token-period { background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.75rem; }
 
+    /* Metrics gauge */
+    .metric-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .metric-label { font-size: .78rem; min-width: 130px; color: var(--text); }
+    .metric-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .metric-fill { height: 100%; border-radius: 3px; transition: width .5s; }
+    .metric-value { font-size: .75rem; font-weight: 600; min-width: 50px; text-align: right; }
+
+    /* Circuit breaker indicators */
+    .cb-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+    .cb-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .cb-dot.closed { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .cb-dot.open { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .cb-dot.half_open { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    .cb-name { font-weight: 700; font-size: .85rem; }
+    .cb-state { font-size: .72rem; color: var(--muted); }
+
+    /* Error list */
+    .error-item { padding: 8px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; }
+    .error-item:last-child { border-bottom: none; }
+    .error-crew { color: var(--purple); font-weight: 600; }
+    .error-type { color: var(--red); font-size: .75rem; }
+    .error-msg { color: var(--muted); font-size: .75rem; margin-top: 2px; }
+    .error-diagnosed { color: var(--green); font-size: .7rem; }
+    .error-undiagnosed { color: var(--yellow); font-size: .7rem; }
+
+    /* Evolution */
+    .evo-item { padding: 6px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; display: flex; gap: 12px; align-items: center; }
+    .evo-item:last-child { border-bottom: none; }
+    .evo-status { font-weight: 700; font-size: .75rem; }
+    .evo-status.keep { color: var(--green); }
+    .evo-status.discard { color: var(--red); }
+    .evo-status.crash { color: var(--yellow); }
+
+    /* Monthly projection */
+    .projection { font-size: 2rem; font-weight: 700; color: var(--green); }
+    .projection-detail { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+
+    /* Model catalog */
+    .catalog-model { padding: 8px 0; border-bottom: 1px solid rgba(48,54,61,.3); display: flex; align-items: center; gap: 10px; font-size: .8rem; }
+    .catalog-model:last-child { border-bottom: none; }
+
+    @media (max-width: 900px) {
+      .stats-row { grid-template-columns: repeat(3,1fr); }
+      .three-col { grid-template-columns: 1fr; }
+    }
     @media (max-width: 700px) {
       body { padding: 14px; }
       .stats-row { grid-template-columns: 1fr 1fr; }
@@ -131,135 +185,128 @@
   </div>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <div id="mode-selector">
-      <button class="mode-btn" data-mode="local">Local</button>
+      <button class="mode-btn" data-mode="local">Local Only</button>
       <button class="mode-btn active" data-mode="hybrid">Hybrid</button>
-      <button class="mode-btn" data-mode="cloud">Cloud</button>
+      <button class="mode-btn" data-mode="cloud">Cloud Only</button>
     </div>
     <div id="sys-badge"><div class="dot"></div><span id="sys-label">Connecting…</span></div>
   </div>
 </header>
 
+<!-- ── Top Stats Row ────────────────────────────────────────────────── -->
 <div class="stats-row">
+  <div class="stat-card"><div class="stat-val" id="s-score">—</div><div class="stat-lbl">Health Score</div></div>
   <div class="stat-card"><div class="stat-val" id="s-active">—</div><div class="stat-lbl">Active Crews</div></div>
   <div class="stat-card"><div class="stat-val" id="s-tasks">—</div><div class="stat-lbl">Tasks Today</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-cost-today">—</div><div class="stat-lbl">Cost Today</div><div class="stat-sub" id="s-cost-month"></div></div>
   <div class="stat-card"><div class="stat-val" id="s-mode">—</div><div class="stat-lbl">LLM Mode</div></div>
   <div class="stat-card"><div class="stat-val" id="s-uptime">—</div><div class="stat-lbl">Uptime</div></div>
 </div>
 
-<div class="section-title">🤖 Crew Status</div>
+<!-- ── Connection Health ───────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:18px">
+  <div class="section-title">Connection Health</div>
+  <div id="circuit-breakers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+    <div class="empty">Loading…</div>
+  </div>
+</div>
+
+<!-- ── Crew Status ──────────────────────────────────────────────────── -->
+<div class="section-title">Crew Status</div>
 <div id="crews-grid"></div>
 
-<div class="card" id="fleet-panel">
-  <div class="section-title">🐳 LLM Fleet Containers</div>
-  <div id="fleet-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-    <div class="empty">No fleet data yet</div>
+<!-- ── LLM Usage & Costs ────────────────────────────────────────────── -->
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Token Usage & Cost</span>
+      <select id="token-period">
+        <option value="hour">Last Hour</option>
+        <option value="day" selected>Today</option>
+        <option value="week">This Week</option>
+        <option value="month">This Month</option>
+        <option value="quarter">This Quarter</option>
+        <option value="year">This Year</option>
+      </select>
+    </div>
+    <div id="token-summary"><div class="empty">Loading…</div></div>
+    <table id="token-table" style="display:none">
+      <thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Total</th><th>Cost</th><th>Calls</th></tr></thead>
+      <tbody id="token-tbody"></tbody>
+    </table>
   </div>
-  <div id="fleet-benchmarks" style="margin-top:12px;font-size:.78rem;color:var(--muted)"></div>
+  <div class="card" style="margin:0">
+    <div class="section-title">Monthly Cost Projection</div>
+    <div id="monthly-projection"><div class="empty">Loading…</div></div>
+    <div style="margin-top:16px">
+      <div class="section-title" style="margin-bottom:8px">Per-Request Cost</div>
+      <div id="request-costs"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
 </div>
 
+<!-- ── System Health Metrics ─────────────────────────────────────────── -->
 <div class="card">
-  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
-    <span>📊 Token Usage &amp; Cost</span>
-    <select id="token-period">
-      <option value="hour">Last Hour</option>
-      <option value="day" selected>Today</option>
-      <option value="week">This Week</option>
-      <option value="month">This Month</option>
-      <option value="quarter">This Quarter</option>
-      <option value="year">This Year</option>
-    </select>
-  </div>
-  <div id="token-summary"><div class="empty">Loading token data…</div></div>
-  <table id="token-table" style="display:none">
-    <thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Total</th><th>Cost</th><th>Calls</th></tr></thead>
-    <tbody id="token-tbody"></tbody>
-  </table>
+  <div class="section-title">System Health Metrics</div>
+  <div id="metrics-bars"><div class="empty">Loading…</div></div>
 </div>
 
+<!-- ── Tasks ──────────────────────────────────────────────────────────── -->
 <div class="card">
-  <div class="section-title">📋 Current &amp; Recent Tasks</div>
+  <div class="section-title">Current & Recent Tasks</div>
   <table>
     <thead><tr><th>Crew</th><th>Task</th><th>Model</th><th>Status</th><th>Flow</th><th>ETA / Done</th></tr></thead>
     <tbody id="tasks-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
   </table>
 </div>
 
-<div class="card" style="margin-bottom:18px">
-  <div class="section-title">🧠 Improvement Proposals</div>
+<!-- ── LLM Fleet & Model Catalog ────────────────────────────────────── -->
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title">LLM Fleet Containers</div>
+    <div id="fleet-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+      <div class="empty">No fleet data yet</div>
+    </div>
+    <div id="fleet-benchmarks" style="margin-top:12px;font-size:.78rem;color:var(--muted)"></div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="section-title">Model Catalog & Role Assignments</div>
+    <div id="role-assignments" style="margin-bottom:12px"><div class="empty">Loading…</div></div>
+    <div id="model-catalog"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<!-- ── Errors & Evolution ───────────────────────────────────────────── -->
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title">Recent Errors & Self-Healing</div>
+    <div id="error-patterns" style="margin-bottom:12px"></div>
+    <div id="error-list"><div class="empty">No errors</div></div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="section-title">Evolution Experiments</div>
+    <div id="evo-stats" style="margin-bottom:10px"></div>
+    <div id="evo-list"><div class="empty">No experiments yet</div></div>
+  </div>
+</div>
+
+<!-- ── Proposals ──────────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="section-title">Improvement Proposals</div>
   <div id="proposals-list"><div class="empty">No proposals yet</div></div>
 </div>
 
+<!-- ── Schedule & Activity Feed ──────────────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
-    <div class="section-title">📅 Planned Activities</div>
+    <div class="section-title">Scheduled Jobs</div>
     <div id="schedule-list"><div class="empty">Loading…</div></div>
   </div>
   <div class="card" style="margin:0">
-    <div class="section-title">📡 Live Activity Feed</div>
+    <div class="section-title">Live Activity Feed</div>
     <div id="feed"><div class="empty">Waiting for events…</div></div>
   </div>
 </div>
-
-<details class="card" style="margin-top:18px;cursor:pointer">
-  <summary class="section-title" style="margin-bottom:0;cursor:pointer">&#x2753; Signal Commands Reference</summary>
-  <table style="margin-top:14px">
-    <thead><tr><th>Command</th><th>What happens</th></tr></thead>
-    <tbody>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">hello / hi / any question</td><td>Commander routes to the right crew (research, coding, writing) or answers directly. Short replies are interpreted in context of your conversation history.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">📎 Send file(s)</td><td>Attach PDF, DOCX, XLSX, JPG, or PNG to any message. The system extracts text/data from attachments and includes it as context for the request. Works with all crews. Send files alone to get a summary, or with a message like "summarize this PDF".</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>Returns system health and count of pending improvement proposals.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Adds topic to the learning queue. At 3 AM daily (or on manual trigger), the self-improvement crew researches it and saves a skill file to workspace/skills/.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">watch &lt;youtube_url&gt;</td><td>Extracts the video transcript, distills key knowledge into a skill file, and stores a summary in shared team memory. The learned content improves all future agent responses.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">show learning queue</td><td>Displays all pending topics in the learning queue.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Immediately processes the learning queue (up to 3 topics). Agents research, extract knowledge, and save skill files.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Triggers an improvement scan. An analyst agent reviews current skills, tools, and crews, identifies capability gaps, and creates 1-3 structured improvement proposals.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>Lists all pending improvement proposals with their IDs, types, and titles.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve &lt;id&gt;</td><td>Approves and applies a proposal. Skill proposals copy files to skills/ immediately. Code proposals are staged to applied_code/ and activate on next container rebuild.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">reject &lt;id&gt;</td><td>Rejects and archives a proposal. No files are changed.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve</td><td>Triggers one evolution cycle immediately. The system analyzes its own metrics (errors, skills, experiment history), proposes ONE improvement, and applies it (skills) or creates a proposal (code).</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">experiments</td><td>Shows the experiment journal: what the evolution engine has tried, what was kept, and what was discarded.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">errors</td><td>Shows the 5 most recent errors with diagnosis status and recurring patterns. The self-healing system automatically diagnoses errors and creates fixes in the background.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">llm</td><td>Shows current LLM configuration: whether using local Ollama or cloud Claude, which model, vetting status, and cost breakdown.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit</td><td>Triggers an immediate code audit. The auditor reads all Python source files, identifies bugs/security issues/anti-patterns, and auto-deploys fixes. Runs automatically every 4 hours.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fix errors</td><td>Triggers the error resolution loop. Scans for recurring error patterns, generates targeted fixes, applies them, and tracks whether they resolve the error. Loops up to 3 attempts per pattern. Runs automatically every 30 minutes.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">auditor</td><td>Shows audit activity summary: recent code audits, error resolution status (resolved/in-progress/failed), and recent auto-deployments.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">deploys</td><td>Shows the auto-deployment log: what files were deployed, when, and why.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet</td><td>Shows the LLM fleet status: running containers, available models in catalog, and benchmark scores. Each model runs in its own Docker container, spawned on demand and killed when idle (&gt;10min).</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet stop all</td><td>Stops all LLM fleet containers immediately, freeing all GPU/RAM.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet pull &lt;model&gt;</td><td>Pulls a new model from the Ollama registry into the shared volume. Example: <code>fleet pull gemma3:27b</code>. The model persists and doesn't need re-downloading.</td></tr>
-    </tbody>
-  </table>
-  <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;font-size:.78rem;color:var(--muted)">
-    <div style="margin-bottom:6px;font-weight:700;color:var(--text)">How routing works</div>
-    Commander classifies every message and dispatches to specialist crews:<br>
-    &bull; <strong style="color:var(--blue)">Research</strong> &mdash; web search, fact-finding, current events (can spawn parallel sub-agents for complex topics)<br>
-    &bull; <strong style="color:var(--blue)">Coding</strong> &mdash; writes, tests, and debugs code in a Docker sandbox<br>
-    &bull; <strong style="color:var(--blue)">Writing</strong> &mdash; summaries, documentation, emails, reports<br>
-    &bull; <strong style="color:var(--blue)">Direct</strong> &mdash; simple questions answered by Commander itself<br>
-    Complex requests can dispatch multiple crews in parallel (e.g. research + writing).
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">LLM Fleet (containerized, dynamic model selection)</div>
-    Each LLM model runs in its <strong>own Docker container</strong>, spawned on-demand and killed when idle (&gt;10min). All containers share a persistent volume so models are downloaded once.<br>
-    <strong>Commander</strong> &rarr; Claude API (routing, max intelligence)<br>
-    <strong>Specialist Crews</strong> &rarr; <code>llm_selector</code> picks the best model for each task based on catalog strengths + benchmark history:<br>
-    &nbsp;&nbsp;Coding: codestral:22b or qwen3:30b-a3b &middot; Architecture: deepseek-r1:32b &middot; Research/Writing: auto-selected<br>
-    <strong>Vetting</strong> &rarr; Claude Opus 4.6 reviews ALL local output before delivery (quality gate)<br>
-    Up to 3 concurrent containers. Use <code>fleet</code> to see running containers and benchmarks.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Self-improvement flow</div>
-    <code>learn topic</code> &rarr; queued &rarr; cron or manual trigger &rarr; agent researches 3+ sources &rarr; saves skill .md file &rarr; skill loaded into all future requests<br>
-    <code>watch youtube_url</code> &rarr; extracts transcript &rarr; agent distills key knowledge &rarr; saves skill file + stores in team memory &rarr; improves future responses<br>
-    <code>improve</code> &rarr; analyst scans capabilities &rarr; creates proposals &rarr; you approve/reject via Signal &rarr; approved changes applied
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Self-healing</div>
-    When any crew fails, the system automatically: logs the error with context &rarr; spawns a background "System Doctor" agent &rarr; diagnoses the root cause &rarr; either saves a knowledge fix (immediate) or creates a code fix proposal (needs approval). Use <code>errors</code> to check the error journal.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Evolution loop (autoresearch-inspired)</div>
-    Every 6 hours (configurable via EVOLUTION_CRON), the system runs an autonomous improvement cycle: gathers metrics (errors, skills, experiment history) &rarr; identifies the highest-impact improvement &rarr; executes ONE change (skill fix or code proposal) &rarr; logs the experiment &rarr; keeps improvements, discards regressions. Use <code>evolve</code> to trigger manually, <code>experiments</code> to see history.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Code Auditor (continuous quality)</div>
-    Every 4 hours: reads all Python source files &rarr; deepseek-r1 analyzes for bugs, security issues, anti-patterns &rarr; writes fixes to applied_code/ &rarr; auto-deployer validates syntax &rarr; backs up originals &rarr; deploys fixes live. Use <code>audit</code> to trigger manually, <code>auditor</code> for status.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Error Resolution Loop (persistent fix)</div>
-    Every 30 minutes: scans error journal for recurring patterns (2+ occurrences) &rarr; generates targeted code fix &rarr; applies fix &rarr; monitors if error recurs &rarr; if yes: tries different approach (up to 3 attempts) &rarr; if no: marks as resolved. Use <code>fix errors</code> to trigger manually, <code>auditor</code> for resolution status.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Auto-Deployer</div>
-    When auditor or error loop writes fixes to applied_code/: validates Python syntax &rarr; backs up originals &rarr; copies to live /app/ &rarr; logs deployment. Use <code>deploys</code> to see history. All deploys are backed up for rollback.
-  </div>
-</details>
 
 <div id="last-updated" style="margin-top:10px"></div>
 
@@ -300,9 +347,11 @@ const etaIn = iso => {
   if (s < 3600) return `${Math.floor(s/60)}m`;
   return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
 };
-const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", self_improvement:"🧠" };
+const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", self_improvement:"🧠", retrospective:"🔄" };
 const EVT   = { task_started:"▶️", task_completed:"✅", task_failed:"❌", task_delegated:"↗️" };
 const touch = () => document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+const pct = v => (v * 100).toFixed(0) + "%";
+const metricColor = v => v >= 0.8 ? "var(--green)" : v >= 0.5 ? "var(--yellow)" : "var(--red)";
 
 // ── System ────────────────────────────────────────────────────────────────────
 let _startedAt = null;
@@ -314,7 +363,6 @@ onSnapshot(doc(db,"status","system"), s => {
   document.getElementById("sys-label").textContent = d.state === "online" ? "Online" : "Offline";
   _startedAt = d.started_at;
   window._lastISO = d.last_seen;
-  // s-last element removed — uptime covers freshness
   _updateUptime();
   touch();
 });
@@ -326,7 +374,7 @@ function _updateUptime() {
 }
 
 // ── Crews ─────────────────────────────────────────────────────────────────────
-const CREWS = ["commander","research","coding","writing","self_improvement"];
+const CREWS = ["commander","research","coding","writing","self_improvement","retrospective"];
 const crewData = {};
 function renderCrews() {
   let active = 0;
@@ -347,8 +395,8 @@ function renderCrews() {
     const modelTag = (on && d.model) ? `<span class="model-tag">${d.model}</span>` : '';
     c.innerHTML = `
       <div class="crew-header">
-        <span class="crew-name">${ICONS[name]||"🤖"} ${name.replace("_"," ")}</span>
-        <span class="crew-status${on?" active":""}">${d.state||"unknown"}</span>
+        <span class="crew-name">${ICONS[name]||"🤖"} ${name.replace(/_/g," ")}</span>
+        <span class="crew-status${on?" active":""}">${d.state||"idle"}</span>
       </div>
       <div class="crew-task">${on?(d.current_task||"Working…"):'<span style="color:var(--muted)">No active task</span>'} ${modelTag}</div>
       <div class="crew-eta">${etaStr}</div>
@@ -375,9 +423,7 @@ onSnapshot(query(collection(db,"tasks"), orderBy("started_at","desc"), limit(20)
               : t.state==="failed"    ? `<span style="color:var(--red)">Failed</span>`
               : t.eta                 ? `ETA ${etaIn(t.eta)||"—"}${progress}`
               :                         progress || "—";
-    // Model tag
     const modelTag = t.model ? `<span class="model-tag">${t.model}</span>` : '<span style="color:var(--muted);font-size:.7rem">—</span>';
-    // Task flow / delegation
     let flow = '';
     if (t.delegated_from && t.delegated_to) {
       flow = `<div class="task-flow">${ICONS[t.delegated_from]||"🤖"}<span class="arrow">→</span>${ICONS[t.delegated_to]||"🤖"}</div>`;
@@ -405,8 +451,6 @@ onSnapshot(doc(db,"status","fleet"), s => {
   if (!s.exists()) { grid.innerHTML='<div class="empty">No fleet data yet</div>'; return; }
   const d = s.data();
   const containers = d.containers || [];
-  // s-containers stat card was replaced by s-mode
-
   if (!containers.length) {
     grid.innerHTML='<div class="empty">No containers spawned yet</div>';
   } else {
@@ -419,8 +463,6 @@ onSnapshot(doc(db,"status","fleet"), s => {
       </div>`;
     }).join("");
   }
-
-  // Benchmarks
   const bmarks = d.benchmarks || [];
   if (bmarks.length) {
     bench.innerHTML = '<strong style="color:var(--text)">Benchmarks:</strong> ' +
@@ -528,11 +570,189 @@ function renderTokens() {
     <td style="color:var(--green)">${s.cost_usd > 0 ? "$"+s.cost_usd.toFixed(4) : "free"}</td>
     <td>${s.calls}</td>
   </tr>`).join("");
+
+  // Update cost stat card
+  const dayStats = _tokenData["day"] || [];
+  const dayCost = dayStats.reduce((s, r) => s + (r.cost_usd || 0), 0);
+  document.getElementById("s-cost-today").textContent = dayCost > 0 ? `$${dayCost.toFixed(2)}` : "free";
+
+  // Monthly projection
+  const monthStats = _tokenData["month"] || [];
+  const monthCost = monthStats.reduce((s, r) => s + (r.cost_usd || 0), 0);
+  updateMonthlyProjection(dayCost, monthCost);
 }
+
+// ── Monthly Cost Projection ──────────────────────────────────────────────────
+function updateMonthlyProjection(dayCost, monthCost) {
+  const el = document.getElementById("monthly-projection");
+  // Project from daily average over the month
+  const daysInMonth = 30;
+  const projectedMonthly = dayCost * daysInMonth;
+
+  el.innerHTML = `
+    <div class="projection">$${projectedMonthly.toFixed(2)}<span style="font-size:.9rem;color:var(--muted)">/mo</span></div>
+    <div class="projection-detail">
+      Based on today's spend: $${dayCost.toFixed(4)}/day<br>
+      Month to date: $${monthCost.toFixed(4)}
+    </div>`;
+  document.getElementById("s-cost-month").textContent = `~$${projectedMonthly.toFixed(0)}/mo`;
+}
+
+// ── Request Costs ────────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "request_costs"), s => {
+  const el = document.getElementById("request-costs");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No request data</div>'; return; }
+  const stats = s.data().stats || {};
+  const day = stats.day || {};
+  const week = stats.week || {};
+  if (!day.requests) { el.innerHTML = '<div class="empty">No requests recorded</div>'; return; }
+  el.innerHTML = `
+    <div style="font-size:.82rem">
+      <div style="margin-bottom:4px"><strong>${day.requests}</strong> requests today · avg <strong>$${(day.avg_cost_usd||0).toFixed(4)}</strong>/req</div>
+      <div style="color:var(--muted)">Avg ${(day.avg_calls||0).toFixed(0)} LLM calls/req · ${Math.round(day.avg_tokens||0).toLocaleString()} tokens/req</div>
+      <div style="color:var(--muted);margin-top:4px">Week: ${week.requests||0} requests · $${(week.total_cost_usd||0).toFixed(4)} total</div>
+    </div>`;
+});
+
+// ── Metrics ──────────────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "metrics"), s => {
+  const el = document.getElementById("metrics-bars");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No metrics data</div>'; return; }
+  const m = s.data();
+  document.getElementById("s-score").textContent = (m.composite_score || 0).toFixed(2);
+  document.getElementById("s-score").style.color = metricColor(m.composite_score || 0);
+
+  const metrics = [
+    { label: "Task Success Rate", value: m.task_success_rate, display: pct(m.task_success_rate || 0) },
+    { label: "Output Quality", value: m.output_quality, display: pct(m.output_quality || 0) },
+    { label: "Self-Heal Rate", value: m.self_heal_rate, display: pct(m.self_heal_rate || 0) },
+    { label: "Error Rate (24h)", value: Math.max(0, 1 - (m.error_rate_24h || 0) / 5), display: `${(m.error_rate_24h || 0).toFixed(1)}/hr` },
+    { label: "Avg Response Time", value: Math.max(0, 1 - (m.avg_response_time_s || 0) / 60), display: `${(m.avg_response_time_s || 0).toFixed(1)}s` },
+    { label: "Evolution Efficiency", value: m.evolution_efficiency, display: pct(m.evolution_efficiency || 0) },
+    { label: "Skills Learned", value: Math.min(1, (m.skill_count || 0) / 20), display: `${m.skill_count || 0}` },
+  ];
+
+  el.innerHTML = metrics.map(m => `
+    <div class="metric-bar">
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-track"><div class="metric-fill" style="width:${(m.value||0)*100}%;background:${metricColor(m.value||0)}"></div></div>
+      <div class="metric-value" style="color:${metricColor(m.value||0)}">${m.display}</div>
+    </div>`).join("");
+  touch();
+});
+
+// ── Circuit Breakers ─────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "circuit_breakers"), s => {
+  const el = document.getElementById("circuit-breakers");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No connection data</div>'; return; }
+  const providers = s.data().providers || {};
+  const providerNames = { ollama: "Ollama (Local)", openrouter: "OpenRouter (API)", anthropic: "Anthropic (Premium)" };
+  const stateLabels = { closed: "Connected", open: "DOWN", half_open: "Testing…" };
+  el.innerHTML = Object.entries(providers).map(([name, info]) => `
+    <div class="cb-card">
+      <div class="cb-dot ${info.state}"></div>
+      <div>
+        <div class="cb-name">${providerNames[name] || name}</div>
+        <div class="cb-state">${stateLabels[info.state] || info.state}${info.failures > 0 ? ` · ${info.failures} failures` : ''}</div>
+      </div>
+    </div>`).join("");
+});
+
+// ── Errors ───────────────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "errors"), s => {
+  const el = document.getElementById("error-list");
+  const patternsEl = document.getElementById("error-patterns");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No errors recorded</div>'; patternsEl.innerHTML = ''; return; }
+  const d = s.data();
+  const errors = d.recent || [];
+  const patterns = d.patterns || {};
+
+  // Patterns summary
+  if (Object.keys(patterns).length) {
+    patternsEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Recurring patterns: ' +
+      Object.entries(patterns).map(([k, v]) => `<span style="color:var(--red)">${k}</span>×${v}`).join(", ") + '</div>';
+  } else {
+    patternsEl.innerHTML = '';
+  }
+
+  if (!errors.length) { el.innerHTML = '<div class="empty">No recent errors</div>'; return; }
+  el.innerHTML = errors.slice(0, 10).map(e => `
+    <div class="error-item">
+      <div><span class="error-crew">${ICONS[e.crew]||"🤖"} ${e.crew||"—"}</span> · <span class="error-type">${e.error_type||"unknown"}</span> · <span style="color:var(--muted)">${rel(e.ts)}</span></div>
+      <div class="error-msg">${(e.error_msg||"").slice(0, 150)}</div>
+      <div class="${e.diagnosed ? 'error-diagnosed' : 'error-undiagnosed'}">${e.diagnosed ? '✓ Diagnosed' : '⏳ Pending diagnosis'}</div>
+    </div>`).join("");
+});
+
+// ── Evolution ────────────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "evolution"), s => {
+  const el = document.getElementById("evo-list");
+  const statsEl = document.getElementById("evo-stats");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No experiments yet</div>'; statsEl.innerHTML = ''; return; }
+  const d = s.data();
+  const experiments = d.recent_experiments || [];
+  const best = d.best_score;
+  const trend = d.trend || [];
+
+  // Stats
+  const kept = experiments.filter(e => e.status === "keep").length;
+  const total = experiments.length;
+  statsEl.innerHTML = `
+    <div style="font-size:.82rem">
+      <span style="color:var(--blue);font-weight:700">Best: ${(best||0).toFixed(4)}</span> ·
+      ${kept}/${total} experiments kept
+      ${trend.length > 1 ? ` · Trend: ${trend[0]?.toFixed(3)||"?"} → ${trend[trend.length-1]?.toFixed(3)||"?"}` : ''}
+    </div>`;
+
+  if (!experiments.length) { el.innerHTML = '<div class="empty">No experiments yet</div>'; return; }
+  el.innerHTML = experiments.slice(0, 10).map(e => `
+    <div class="evo-item">
+      <span class="evo-status ${e.status||''}">${(e.status||"?").toUpperCase()}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.hypothesis||"—"}</span>
+      <span style="color:var(--muted);font-size:.75rem">${e.delta !== undefined ? (e.delta >= 0 ? '+' : '') + (e.delta*100).toFixed(2) + '%' : '—'}</span>
+    </div>`).join("");
+});
+
+// ── Model Catalog & Role Assignments ─────────────────────────────────────────
+onSnapshot(doc(db, "status", "catalog"), s => {
+  const rolesEl = document.getElementById("role-assignments");
+  const catalogEl = document.getElementById("model-catalog");
+  if (!s.exists()) { rolesEl.innerHTML = '<div class="empty">No catalog data</div>'; catalogEl.innerHTML = ''; return; }
+  const d = s.data();
+  const models = d.models || [];
+  const assignments = d.role_assignments || {};
+  const costMode = d.cost_mode || "balanced";
+
+  // Role assignments
+  const roleNames = ["commander","research","coding","writing","critic","vetting","self_improve","synthesis","planner"];
+  rolesEl.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Cost mode: <strong style="color:var(--blue)">${costMode}</strong></div>` +
+    `<table style="font-size:.78rem"><tbody>` +
+    roleNames.filter(r => assignments[r]).map(r => {
+      const m = models.find(m => m.name === assignments[r]);
+      const cost = m ? (m.cost_output > 0 ? `$${m.cost_output.toFixed(2)}/Mo` : 'free') : '—';
+      const tier = m ? m.tier : '—';
+      return `<tr><td style="font-weight:600;padding:3px 8px">${r}</td><td><span class="model-tag">${assignments[r]}</span></td><td><span class="tier-tag ${tier}">${tier}</span></td><td style="color:var(--muted)">${cost}</td></tr>`;
+    }).join("") +
+    `</tbody></table>`;
+
+  // Model catalog grouped by tier
+  const tiers = ["local","budget","mid","premium"];
+  catalogEl.innerHTML = tiers.map(tier => {
+    const tierModels = models.filter(m => m.tier === tier);
+    if (!tierModels.length) return '';
+    return `<div style="margin-top:8px;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase">${tier}</div>` +
+      tierModels.map(m => `<div class="catalog-model">
+        <span class="tier-tag ${m.tier}">${m.tier}</span>
+        <span style="font-weight:600">${m.name}</span>
+        <span style="color:var(--muted);font-size:.72rem">${m.cost_output > 0 ? '$'+m.cost_output.toFixed(2)+'/Mo' : 'free'}</span>
+        <span style="color:var(--muted);font-size:.7rem">${(m.context/1000).toFixed(0)}K ctx</span>
+        ${m.multimodal ? '<span style="font-size:.65rem;color:var(--cyan)">👁 multi</span>' : ''}
+      </div>`).join("");
+  }).join("");
+});
 
 // Refresh relative times every 30s
 setInterval(() => {
-  document.getElementById("s-last").textContent = rel(window._lastISO);
   _updateUptime();
   renderCrews();
 }, 30000);

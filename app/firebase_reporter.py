@@ -153,7 +153,7 @@ def report_system_offline() -> None:
 
 
 def heartbeat() -> None:
-    """Update last_seen timestamp + fleet status — call every 60 s."""
+    """Update last_seen timestamp + all status data — call every 60 s."""
     def _write():
         db = _get_db()
         if not db:
@@ -166,7 +166,7 @@ def heartbeat() -> None:
         except Exception:
             logger.debug("firebase_reporter: heartbeat write failed", exc_info=True)
 
-        # Also push fleet status
+        # Push fleet status + benchmarks
         try:
             from app.ollama_fleet import get_fleet_status
             fleet = get_fleet_status()
@@ -186,6 +186,42 @@ def heartbeat() -> None:
         # Push token usage stats
         try:
             report_token_stats()
+        except Exception:
+            pass
+
+        # Push composite metrics
+        try:
+            report_metrics()
+        except Exception:
+            pass
+
+        # Push circuit breaker states
+        try:
+            report_circuit_breakers()
+        except Exception:
+            pass
+
+        # Push error journal summary
+        try:
+            report_errors()
+        except Exception:
+            pass
+
+        # Push evolution/experiment data
+        try:
+            report_evolution()
+        except Exception:
+            pass
+
+        # Push request cost stats
+        try:
+            report_request_costs()
+        except Exception:
+            pass
+
+        # Push model catalog (only once or on changes, but cheap enough per heartbeat)
+        try:
+            report_catalog()
         except Exception:
             pass
     _fire(_write)
@@ -484,6 +520,143 @@ def start_mode_listener() -> None:
         except Exception:
             logger.debug("firebase_reporter: mode listener failed", exc_info=True)
     _fire(_listen)
+
+
+# ── Metrics ──────────────────────────────────────────────────────────────────
+
+def report_metrics() -> None:
+    """Push composite metrics to Firestore for the dashboard."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.metrics import compute_metrics
+        metrics = compute_metrics()
+        db.collection("status").document("metrics").set({
+            **metrics,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: metrics write failed", exc_info=True)
+
+
+# ── Circuit breakers ─────────────────────────────────────────────────────────
+
+def report_circuit_breakers() -> None:
+    """Push circuit breaker states to Firestore."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.circuit_breaker import get_all_states
+        states = get_all_states()
+        db.collection("status").document("circuit_breakers").set({
+            "providers": states,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: circuit breaker write failed", exc_info=True)
+
+
+# ── Error journal ────────────────────────────────────────────────────────────
+
+def report_errors() -> None:
+    """Push recent errors to Firestore for dashboard display."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.self_heal import get_recent_errors, get_error_patterns
+        errors = get_recent_errors(20)
+        patterns = get_error_patterns()
+        db.collection("status").document("errors").set({
+            "recent": errors[:20],
+            "patterns": patterns,
+            "total_recent": len(errors),
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: errors write failed", exc_info=True)
+
+
+# ── Evolution / experiments ──────────────────────────────────────────────────
+
+def report_evolution() -> None:
+    """Push evolution experiment history to Firestore."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.results_ledger import get_recent_results, get_best_score, get_improvement_trend
+        results = get_recent_results(20)
+        best = get_best_score()
+        trend = get_improvement_trend(20)
+        db.collection("status").document("evolution").set({
+            "recent_experiments": results[:20],
+            "best_score": best,
+            "trend": trend[:20],
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: evolution write failed", exc_info=True)
+
+
+# ── Request cost stats ───────────────────────────────────────────────────────
+
+def report_request_costs() -> None:
+    """Push per-request cost aggregates to Firestore."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.llm_benchmarks import get_request_cost_stats
+        costs = {}
+        for period in ("hour", "day", "week", "month"):
+            costs[period] = get_request_cost_stats(period)
+        db.collection("status").document("request_costs").set({
+            "stats": costs,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: request costs write failed", exc_info=True)
+
+
+# ── Model catalog ────────────────────────────────────────────────────────────
+
+def report_catalog() -> None:
+    """Push model catalog and role assignments to Firestore."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.llm_catalog import CATALOG, ROLE_DEFAULTS
+        from app.config import get_settings
+        settings = get_settings()
+        # Compact catalog for dashboard
+        models = []
+        for name, info in CATALOG.items():
+            models.append({
+                "name": name,
+                "tier": info["tier"],
+                "provider": info["provider"],
+                "cost_input": info.get("cost_input_per_m", 0),
+                "cost_output": info.get("cost_output_per_m", 0),
+                "context": info.get("context", 0),
+                "multimodal": info.get("multimodal", False),
+                "tool_reliability": info.get("tool_use_reliability", 0),
+                "description": info.get("description", ""),
+            })
+        # Current role assignments
+        cost_mode = settings.cost_mode
+        assignments = ROLE_DEFAULTS.get(cost_mode, ROLE_DEFAULTS.get("balanced", {}))
+        db.collection("status").document("catalog").set({
+            "models": models,
+            "role_assignments": assignments,
+            "cost_mode": cost_mode,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: catalog write failed", exc_info=True)
 
 
 # ── Token usage stats ────────────────────────────────────────────────────────
