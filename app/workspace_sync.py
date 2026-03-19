@@ -22,6 +22,7 @@ or
 Leave unset to disable — the system works fine without backups.
 """
 import logging
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,17 @@ def setup_workspace_repo(backup_repo: str) -> None:
         _git("config", "user.email", "crewai-bot@localhost")
         _git("config", "user.name", "CrewAI Workspace Bot")
         logger.info("workspace_sync: initialised new git repo in workspace")
+
+    # Configure credential helper using GITHUB_TOKEN env var (avoids PATs in URLs)
+    gh_token = os.environ.get("GITHUB_TOKEN")
+    if gh_token:
+        helper_path = WORKSPACE / ".git" / "git-credential-token.sh"
+        helper_path.write_text(
+            f"#!/bin/sh\necho username=x-access-token\necho password={gh_token}\n"
+        )
+        helper_path.chmod(0o755)
+        _git("config", "credential.helper", str(helper_path))
+        logger.info("workspace_sync: configured git credential helper from GITHUB_TOKEN")
 
     # Set / update remote
     rc, _ = _git("remote", "get-url", "origin")

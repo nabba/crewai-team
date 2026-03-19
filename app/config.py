@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     local_llm_enabled: bool = True
     local_llm_base_url: str = "http://host.docker.internal:11434"
     ollama_base_url: str = "http://localhost:11434"  # native Ollama on host
+    ollama_max_concurrent_crews: int = 2  # max crews hitting Ollama at once (semaphore)
 
     # Role → model mapping (Ollama model names, auto-pulled on first use)
     local_model_coding: str = "qwen3:30b-a3b"         # MoE — fast, excellent coding
