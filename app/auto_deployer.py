@@ -29,6 +29,45 @@ LIVE_CODE_DIR = Path("/app")
 BACKUP_DIR = Path("/app/workspace/deploy_backups")
 DEPLOY_LOG = Path("/app/workspace/deploy_log.json")
 
+# Modules that LLM-generated code must never import — prevents code execution
+# attacks, credential theft, network exfiltration, etc.
+_BLOCKED_IMPORTS = frozenset({
+    "subprocess", "os.system", "shutil.rmtree",
+    "ctypes", "importlib", "pickle", "shelve", "marshal",
+    "socket", "http.server", "xmlrpc", "ftplib", "smtplib",
+    "webbrowser", "code", "codeop", "compileall",
+    "pty", "resource", "sysconfig",
+})
+
+# Also block builtins used in code: eval(), exec(), compile(), __import__()
+_BLOCKED_CALLS = frozenset({"eval", "exec", "compile", "__import__", "getattr"})
+
+
+def _check_dangerous_imports(tree: ast.AST) -> list[str]:
+    """Scan AST for dangerous imports and calls. Returns list of violations."""
+    violations = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _BLOCKED_IMPORTS or alias.name.split(".")[0] in _BLOCKED_IMPORTS:
+                    violations.append(f"import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if mod in _BLOCKED_IMPORTS or mod.split(".")[0] in _BLOCKED_IMPORTS:
+                violations.append(f"from {mod} import ...")
+        elif isinstance(node, ast.Call):
+            # Check for eval(), exec(), compile(), __import__()
+            func = node.func
+            name = None
+            if isinstance(func, ast.Name):
+                name = func.id
+            elif isinstance(func, ast.Attribute):
+                name = func.attr
+            if name in _BLOCKED_CALLS:
+                violations.append(f"{name}() call")
+    return violations
+
+
 _deploy_lock = threading.Lock()
 _deploy_scheduled = False
 
@@ -87,16 +126,29 @@ def _deploy_locked(reason: str) -> str:
     if not files_to_deploy:
         return "No files to deploy."
 
-    # Validate all files have valid Python syntax
+    # Validate all files have valid Python syntax and no dangerous imports
     invalid = []
+    dangerous = []
     for src, rel in files_to_deploy:
+        source = src.read_text()
         try:
-            ast.parse(src.read_text())
+            tree = ast.parse(source)
         except SyntaxError as e:
             invalid.append(f"{rel}: {e}")
+            continue
+        # Check for dangerous imports that LLM-generated code should never use
+        blocked = _check_dangerous_imports(tree)
+        if blocked:
+            dangerous.append(f"{rel}: {', '.join(blocked)}")
 
     if invalid:
         msg = f"Deploy blocked: {len(invalid)} files have syntax errors: {'; '.join(invalid[:3])}"
+        logger.error(f"auto_deployer: {msg}")
+        _log_deploy("blocked", reason, [], msg)
+        return msg
+
+    if dangerous:
+        msg = f"Deploy blocked: dangerous imports in {'; '.join(dangerous[:3])}"
         logger.error(f"auto_deployer: {msg}")
         _log_deploy("blocked", reason, [], msg)
         return msg

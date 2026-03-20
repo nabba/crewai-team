@@ -20,6 +20,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.llm_factory import create_specialist_llm
+from app.sanitize import sanitize_input
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
 
 logger = logging.getLogger(__name__)
@@ -177,10 +178,14 @@ def _diagnose_background(entry: dict) -> None:
             ),
             llm=llm,
             tools=[web_search, file_manager] + memory_tools,
-            verbose=True,
+            verbose=False,
         )
 
         tb_text = "\n".join(entry.get("traceback", []))
+        # Sanitize user input to prevent secondary prompt injection —
+        # a malicious user message that caused the error could inject
+        # instructions into the diagnosis agent's task description.
+        safe_user_input = sanitize_input(entry.get("user_input", "")[:300])
 
         task = Task(
             description=(
@@ -188,7 +193,7 @@ def _diagnose_background(entry: dict) -> None:
                 f"Error type: {entry['error_type']}\n"
                 f"Error message: {entry['error_msg']}\n"
                 f"Traceback (last 3 frames):\n{tb_text}\n"
-                f"User input that triggered it: {entry['user_input'][:300]}\n"
+                f"User input that triggered it: {safe_user_input}\n"
                 f"Context: {entry.get('context', 'none')}\n\n"
                 f"Recurring error patterns: {pattern_summary or 'none yet'}\n\n"
                 f"Your tasks:\n"
@@ -211,7 +216,7 @@ def _diagnose_background(entry: dict) -> None:
             agent=doctor,
         )
 
-        crew_obj = Crew(agents=[doctor], tasks=[task], process=Process.sequential, verbose=True)
+        crew_obj = Crew(agents=[doctor], tasks=[task], process=Process.sequential, verbose=False)
         raw = str(crew_obj.kickoff()).strip()
 
         # Try to parse as JSON (code or transient fix)

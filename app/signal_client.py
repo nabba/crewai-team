@@ -18,6 +18,116 @@ _MAX_RESPONSE_BYTES = 65536
 
 
 class SignalClient:
+    async def react(self, recipient: str, emoji: str,
+                    target_author: str, target_timestamp: int):
+        """Send an emoji reaction to a specific message.
+
+        Args:
+            recipient: Phone number of the conversation
+            emoji: Emoji character (e.g. "👀")
+            target_author: Phone number of the message author being reacted to
+            target_timestamp: Timestamp (ms since epoch) of the message to react to
+        """
+        if recipient.strip() != settings.signal_owner_number.strip():
+            logger.error("Blocked reaction to non-owner recipient")
+            return
+        if not target_timestamp:
+            logger.warning("Cannot react: no target timestamp")
+            return
+        await asyncio.to_thread(
+            self._react_sync, recipient, emoji, target_author, target_timestamp
+        )
+
+    def _react_sync(self, recipient: str, emoji: str,
+                    target_author: str, target_timestamp: int):
+        """Send reaction via HTTP first, fall back to Unix socket."""
+        http_url = getattr(settings, "signal_http_url", "")
+        if http_url:
+            if self._react_http(http_url, recipient, emoji, target_author, target_timestamp):
+                return
+            logger.warning("signal-cli HTTP reaction failed, trying Unix socket fallback")
+        self._react_socket(recipient, emoji, target_author, target_timestamp)
+
+    def _react_http(self, base_url: str, recipient: str, emoji: str,
+                    target_author: str, target_timestamp: int) -> bool:
+        """Send reaction via signal-cli HTTP JSON-RPC."""
+        try:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendReaction",
+                "params": {
+                    "recipient": [recipient],
+                    "emoji": emoji,
+                    "target-author": target_author,
+                    "target-timestamp": target_timestamp,
+                },
+            }
+            resp = _http_session.post(
+                base_url.rstrip("/") + "/api/v1/rpc",
+                json=payload,
+                timeout=10,
+            )
+            data = resp.json()
+            if "error" in data:
+                logger.error(f"signal-cli reaction HTTP error: {data['error'].get('message', '')}")
+                return False
+            logger.info(f"Reaction {emoji} sent via HTTP")
+            return True
+        except Exception:
+            logger.error("signal-cli reaction HTTP failed", exc_info=True)
+            return False
+
+    def _react_socket(self, recipient: str, emoji: str,
+                      target_author: str, target_timestamp: int):
+        """Send reaction via signal-cli Unix socket."""
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(settings.signal_socket_path)
+            sock.settimeout(10)
+
+            request = json.dumps({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendReaction",
+                "params": {
+                    "recipient": [recipient],
+                    "emoji": emoji,
+                    "target-author": target_author,
+                    "target-timestamp": target_timestamp,
+                },
+            }) + "\n"
+
+            sock.sendall(request.encode())
+
+            data = b""
+            while b"\n" not in data:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if len(data) > _MAX_RESPONSE_BYTES:
+                    break
+
+            if data:
+                try:
+                    resp = json.loads(data.split(b"\n")[0])
+                    if "error" in resp:
+                        logger.error("signal-cli reaction socket error")
+                    else:
+                        logger.info(f"Reaction {emoji} sent via socket")
+                except json.JSONDecodeError:
+                    logger.error("signal-cli reaction returned invalid JSON")
+        except Exception:
+            logger.error("signal-cli reaction socket failed")
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
     async def send(self, recipient: str, text: str, attachments: list[str] | None = None):
         """Send a message back to the user's iPhone via signal-cli.
 
@@ -31,18 +141,15 @@ class SignalClient:
             logger.error("Blocked attempt to send to non-owner recipient")
             return
 
-        # If no attachments, chunk long messages as before
+        # If no attachments, chunk long messages and send sequentially
+        # (parallel sends via gather don't guarantee delivery order)
         if not attachments:
             chunks = [
                 text[i : i + MAX_SIGNAL_LENGTH]
                 for i in range(0, len(text), MAX_SIGNAL_LENGTH)
             ]
-            if len(chunks) > 1:
-                await asyncio.gather(
-                    *(asyncio.to_thread(self._send_sync, recipient, c) for c in chunks)
-                )
-            elif chunks:
-                await asyncio.to_thread(self._send_sync, recipient, chunks[0])
+            for chunk in chunks:
+                await asyncio.to_thread(self._send_sync, recipient, chunk)
         else:
             # With attachments, send a single message (text + files)
             await asyncio.to_thread(

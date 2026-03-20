@@ -74,11 +74,22 @@ def _get_conn() -> sqlite3.Connection:
 
 def _sender_id(sender: str) -> str:
     """Return a stable, non-reversible 16-char token for a sender number."""
-    # Use gateway secret as HMAC key so IDs are unpredictable even if DB leaks
+    # Use gateway secret as HMAC key so IDs are unpredictable even if DB leaks.
+    # No fallback key — if the secret is unavailable the system should not
+    # silently degrade to a brutable hash.
     try:
         key = get_gateway_secret().encode()
+        if len(key) < 8:
+            raise ValueError("gateway secret too short for secure HMAC")
     except Exception:
-        key = b"fallback"
+        logger.error("conversation_store: gateway secret unavailable — cannot hash sender ID securely")
+        # Use a per-process random salt so at least IDs are unpredictable
+        # within this process lifetime (won't be stable across restarts)
+        import secrets
+        key = getattr(_sender_id, "_ephemeral_key", None)
+        if key is None:
+            key = secrets.token_bytes(32)
+            _sender_id._ephemeral_key = key  # type: ignore[attr-defined]
     return hmac.new(key, sender.encode(), hashlib.sha256).hexdigest()[:16]
 
 

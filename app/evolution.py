@@ -67,7 +67,7 @@ def _load_program() -> str:
 def _hypothesis_hash(hypothesis: str) -> str:
     """Hash a hypothesis for deduplication."""
     normalized = hypothesis.lower().strip()
-    return hashlib.md5(normalized.encode()).hexdigest()[:8]
+    return hashlib.sha256(normalized.encode()).hexdigest()[:8]
 
 
 def _get_tried_hypotheses(n: int = 50) -> set[str]:

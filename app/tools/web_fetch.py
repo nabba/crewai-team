@@ -24,7 +24,8 @@ _BLOCKED_HOSTS = {
     "kubernetes.default",               # Kubernetes API
     "kubernetes.default.svc",
 }
-_ALLOWED_SCHEMES = {"http", "https"}
+# Only HTTPS for external fetches — HTTP content can be intercepted/modified
+_ALLOWED_SCHEMES = {"https"}
 
 # Max response size (10 MB) — prevent OOM from huge downloads
 _MAX_RESPONSE_BYTES = 10 * 1024 * 1024
@@ -128,11 +129,21 @@ def web_fetch(url: str) -> str:
         # Check content length to prevent OOM
         content_length = response.headers.get("Content-Length")
         if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
+            response.close()
             log_tool_blocked("web_fetch", "unknown", f"Response too large: {content_length} bytes")
             return "URL blocked: response too large."
 
-        # Read with size limit
-        content = response.content[:_MAX_RESPONSE_BYTES]
+        # Read in chunks with hard size limit — prevents OOM even when
+        # Content-Length is absent or lying (stream=True avoids buffering)
+        chunks = []
+        downloaded = 0
+        for chunk in response.iter_content(chunk_size=65536):
+            downloaded += len(chunk)
+            if downloaded > _MAX_RESPONSE_BYTES:
+                break
+            chunks.append(chunk)
+        response.close()
+        content = b"".join(chunks)
         html_text = content.decode("utf-8", errors="replace")
 
         # Check final URL after redirects for SSRF

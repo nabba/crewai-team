@@ -16,6 +16,7 @@ from app.memory.belief_state import update_belief
 from app.agents.critic import create_critic
 from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
+from app.conversation_store import estimate_eta
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -86,7 +87,6 @@ class ResearchCrew:
         Simple questions (difficulty 1-3) use a fast path: single agent,
         concise template, no debate, no critic — returns a direct answer.
         """
-        from app.conversation_store import estimate_eta
         task_id = crew_started(
             "research", f"Research: {topic[:100]}",
             eta_seconds=estimate_eta("research"), parent_task_id=parent_task_id,

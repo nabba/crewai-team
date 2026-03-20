@@ -356,6 +356,7 @@ async def receive_signal(request: Request):
     payload = await request.json()
     sender = payload.get("sender", "")
     text = payload.get("message", "").strip()
+    timestamp = payload.get("timestamp", 0)
     attachments = payload.get("attachments", [])
 
     if not is_authorized_sender(sender):
@@ -375,13 +376,21 @@ async def receive_signal(request: Request):
     attachments = attachments[:5]
 
     log_request_received(_redact_number(sender), len(text))
-    asyncio.create_task(handle_task(sender, text, attachments))
+    asyncio.create_task(handle_task(sender, text, attachments, timestamp))
     return {"status": "accepted"}
 
 
-async def handle_task(sender: str, text: str, attachments: list = None):
+async def handle_task(sender: str, text: str, attachments: list = None,
+                      msg_timestamp: int = 0):
     # Start task tracking for metrics
     task_row_id = start_task(sender)
+
+    # React with 👀 to acknowledge we're working on it
+    if msg_timestamp:
+        try:
+            await signal_client.react(sender, "👀", sender, msg_timestamp)
+        except Exception:
+            logger.debug("Failed to send 👀 reaction", exc_info=True)
 
     try:
         # Persist the incoming message before processing so history is available
