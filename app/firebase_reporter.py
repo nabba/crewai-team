@@ -912,3 +912,72 @@ def report_token_stats() -> None:
         except Exception:
             logger.debug("firebase_reporter: token stats write failed", exc_info=True)
     _fire(_write)
+
+
+# ── KB Queue Poller ──────────────────────────────────────────────────────────
+
+_kb_poll_stop = threading.Event()
+
+
+def start_kb_queue_poller() -> None:
+    """Poll Firestore kb_queue for pending uploads and ingest them."""
+
+    def _poll_kb():
+        import base64
+        import tempfile
+
+        while not _kb_poll_stop.wait(10):
+            db = _get_db()
+            if not db:
+                continue
+            try:
+                docs = (
+                    db.collection("kb_queue")
+                    .where("status", "==", "pending")
+                    .limit(5)
+                    .get()
+                )
+                for snap in docs:
+                    data = snap.to_dict()
+                    try:
+                        content_b64 = data.get("content_b64", "")
+                        fname = data.get("filename", "upload.txt")
+                        category = data.get("category", "general")
+
+                        raw = base64.b64decode(content_b64)
+
+                        suffix = "." + fname.rsplit(".", 1)[-1] if "." in fname else ".txt"
+                        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                            tmp.write(raw)
+                            tmp_path = tmp.name
+
+                        try:
+                            from app.knowledge_base.vectorstore import KnowledgeStore
+                            ks = KnowledgeStore()
+                            result = ks.add_document(tmp_path, category=category)
+
+                            snap.reference.update({
+                                "status": "done",
+                                "chunks_created": result.chunks_created,
+                                "processed_at": _now_iso(),
+                            })
+                            logger.info(f"firebase_reporter: KB ingested '{fname}' -> {result.chunks_created} chunks")
+                        finally:
+                            import os as _os
+                            _os.unlink(tmp_path)
+
+                    except Exception as e:
+                        snap.reference.update({
+                            "status": "error",
+                            "error": str(e)[:200],
+                            "processed_at": _now_iso(),
+                        })
+                        logger.warning(f"firebase_reporter: KB ingest failed for '{data.get('filename')}': {e}")
+
+            except Exception:
+                pass
+        logger.debug("firebase_reporter: KB poll stopped")
+
+    t = threading.Thread(target=_poll_kb, daemon=True, name="firebase-kb-poll")
+    t.start()
+    logger.info("firebase_reporter: KB queue poller started (10s interval)")

@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // KB uploads — allow public write to kb_uploads/, max 50MB
+    match /kb_uploads/{file} {
+      allow read: if true;
+      allow write: if request.resource.size < 50 * 1024 * 1024
+                   && request.resource.contentType != null;
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -410,7 +410,8 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, collection, onSnapshot,
-         query, orderBy, limit, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+         query, orderBy, limit, setDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// Firebase Storage removed — uploads go inline via Firestore kb_queue
 
 const app = initializeApp({
   apiKey:            "AIzaSyBugNcyYowrllCJs5JPquySEghJY0t_tzg",
@@ -939,32 +940,39 @@ kbZone.addEventListener("drop", e => {
 kbFile.addEventListener("change", () => { if (kbFile.files.length) uploadKBFiles(kbFile.files); });
 
 async function uploadKBFiles(files) {
+  const MAX_SIZE = 2 * 1024 * 1024; // 2MB Firestore doc limit
   const category = document.getElementById("kb-category").value;
   kbStatus.innerHTML = `<span style="color:var(--blue)">Uploading ${files.length} file(s)…</span>`;
-  let success = 0, failed = 0;
+  let success = 0, failed = 0, lastErr = "";
   for (const file of files) {
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("category", category);
-      // Try container URL (adjust if needed)
-      const urls = ["/api/kb/upload", "http://localhost:8000/kb/upload"];
-      let ok = false;
-      for (const url of urls) {
-        try {
-          const resp = await fetch(url, { method: "POST", body: form });
-          if (resp.ok) { ok = true; success++; break; }
-        } catch (_) {}
-      }
-      if (!ok) failed++;
-    } catch (_) { failed++; }
+      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 2MB limit`; failed++; continue; }
+      const b64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      await addDoc(collection(db, "kb_queue"), {
+        filename: file.name,
+        content_b64: b64,
+        category: category,
+        size: file.size,
+        status: "pending",
+        created_at: serverTimestamp(),
+      });
+      success++;
+    } catch (e) {
+      lastErr = e.message || "Upload error";
+      failed++;
+    }
   }
   const msg = [];
   if (success) msg.push(`<span style="color:var(--green)">${success} uploaded</span>`);
-  if (failed) msg.push(`<span style="color:var(--red)">${failed} failed</span>`);
+  if (failed) msg.push(`<span style="color:var(--red)">${failed} failed: ${esc(lastErr.slice(0,80))}</span>`);
   kbStatus.innerHTML = msg.join(" · ");
   kbFile.value = "";
-  setTimeout(() => { kbStatus.innerHTML = ""; }, 5000);
+  if (success) setTimeout(() => { kbStatus.innerHTML = ""; }, 8000);
 }
 
 // ── Model Catalog & Roles ────────────────────────────────────────────────────

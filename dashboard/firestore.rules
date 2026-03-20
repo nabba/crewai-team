@@ -10,11 +10,18 @@ service cloud.firestore {
     match /schedule/{doc}   { allow read: if true; allow write: if false; }
 
     // Config — public read/write (dashboard mode switch)
-    // Write is limited to known fields via validation
     match /config/{doc}     {
       allow read: if true;
       allow write: if request.resource.data.keys().hasOnly(['mode', 'updated_at'])
                    && request.resource.data.mode in ['local', 'cloud', 'hybrid', 'insane'];
+    }
+
+    // KB upload queue — dashboard creates pending docs, backend updates status
+    match /kb_queue/{doc} {
+      allow read: if true;
+      allow create: if request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasAll(['filename', 'content_b64', 'category', 'status']);
+      allow update: if true;  // backend updates status to done/error
     }
 
     // Deny everything else

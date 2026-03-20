@@ -30,6 +30,7 @@ from app.workspace_sync import setup_workspace_repo, sync_workspace
 from app.firebase_reporter import (
     report_system_online, report_system_offline, heartbeat, report_schedule,
     cleanup_stale_tasks, report_llm_mode, start_mode_listener,
+    start_kb_queue_poller,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -283,6 +284,7 @@ async def lifespan(app: FastAPI):
     else:
         report_llm_mode(settings.llm_mode)
     start_mode_listener()
+    start_kb_queue_poller()
 
     logger.info("CrewAI Agent Team started")
     yield
@@ -331,12 +333,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://botarmy-ba0c9.web.app",
-        "https://botarmy-ba0c9.firebaseapp.com",
-    ],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
     allow_credentials=False,
     max_age=3600,
 )
@@ -611,3 +610,19 @@ async def kb_status():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── Serve dashboard from container (same-origin for KB uploads) ───────────────
+from fastapi.responses import FileResponse, HTMLResponse
+_DASHBOARD_PATH = "/app/dashboard/index.html"
+
+
+@app.get("/dashboard")
+async def serve_dashboard():
+    """Serve the dashboard HTML from the container — avoids mixed-content blocks."""
+    try:
+        if os.path.exists(_DASHBOARD_PATH):
+            return FileResponse(_DASHBOARD_PATH, media_type="text/html")
+        return HTMLResponse("<h1>Dashboard not found</h1><p>Place index.html at /app/dashboard/</p>", status_code=404)
+    except Exception as exc:
+        return HTMLResponse(f"<h1>Error</h1><pre>{exc}</pre>", status_code=500)
