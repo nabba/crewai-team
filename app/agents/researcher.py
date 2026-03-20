@@ -10,6 +10,7 @@ from app.tools.file_manager import file_manager
 from app.tools.attachment_reader import read_attachment
 from app.tools.self_report_tool import create_self_report_tool
 from app.tools.reflection_tool import ReflectionTool
+from app.tools.world_model_tool import create_world_model_tool
 from app.souls.loader import compose_backstory
 from app.tools.mem0_tools import create_mem0_tools
 from app.knowledge_base.tools import KnowledgeSearchTool
@@ -27,6 +28,7 @@ def create_researcher(force_tier: str | None = None) -> Agent:
     awareness_tools = [
         create_self_report_tool("researcher"),
         ReflectionTool(agent_role="researcher"),
+        create_world_model_tool("researcher"),
     ]
 
     return Agent(

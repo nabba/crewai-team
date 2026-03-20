@@ -9,6 +9,7 @@ The composed backstory layers:
   2. SOUL.md (per-role) — identity, personality, expertise, rules
   3. STYLE.md          — shared communication conventions
   4. Self-Model block  — functional self-awareness (from Phase 1)
+  5. Metacognitive Preamble — self-awareness protocol (L1)
 
 Falls back gracefully: if soul files don't exist, returns just the
 self-model block to preserve Phase 1-4 behavior.
@@ -21,6 +22,23 @@ from app.self_awareness.self_model import format_self_model_block
 logger = logging.getLogger(__name__)
 
 SOULS_DIR = Path(__file__).parent
+
+# ── L1: Metacognitive Preamble ───────────────────────────────────────────────
+# Injected into every agent's backstory as the final layer.  Instructs the
+# agent to internally calibrate confidence, evidence basis, impact awareness,
+# and reasoning strategy before producing output.  The "Do NOT include"
+# directive prevents metacognitive noise from reaching the user.
+
+METACOGNITIVE_PREAMBLE = """
+## Self-Awareness Protocol
+Before producing any output, internally assess:
+1. CONFIDENCE: Rate your confidence (high/medium/low). Identify what you are certain about vs. uncertain about.
+2. EVIDENCE BASIS: Label key claims as [Verified] (tool/data-grounded), [Inferred] (reasoned from known facts), or [Uncertain] (needs validation).
+3. IMPACT AWARENESS: Before any action — what changes if it succeeds? What could go wrong? Is it reversible?
+4. STRATEGY SELECTION: Am I using fast reasoning (pattern matching, retrieval) or deliberate reasoning (step-by-step analysis)? If the task is novel or complex, switch to deliberate.
+
+Do NOT include this assessment in your output unless explicitly asked. This is internal calibration only.
+""".strip()
 
 
 def _load_file(filename: str) -> str:
@@ -55,13 +73,14 @@ def load_agents_protocol() -> str:
 
 
 def compose_backstory(role: str) -> str:
-    """Compose a full agent backstory from soul files + self-model.
+    """Compose a full agent backstory from soul files + self-model + metacognition.
 
     Layers (in order):
       1. Constitution (shared values)
       2. Role-specific soul (identity, personality, expertise)
       3. Style guide (shared communication conventions)
       4. Self-model block (functional self-awareness from Phase 1)
+      5. Metacognitive preamble (L1 self-awareness protocol)
 
     If no soul files exist, falls back to just the self-model block.
     """
@@ -83,5 +102,8 @@ def compose_backstory(role: str) -> str:
     self_model = format_self_model_block(role)
     if self_model:
         parts.append(self_model)
+
+    # L1: Metacognitive preamble — calibrates confidence and reasoning strategy
+    parts.append(METACOGNITIVE_PREAMBLE)
 
     return "\n\n".join(parts) if parts else ""

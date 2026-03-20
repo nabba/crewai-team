@@ -418,7 +418,10 @@ const app = initializeApp({
 });
 const db = getFirestore(app);
 const auth = getAuth(app);
-signInAnonymously(auth).catch(e => console.warn("Anonymous auth failed:", e));
+let _authReady = false;
+signInAnonymously(auth)
+  .then(() => { _authReady = true; })
+  .catch(e => console.warn("Anonymous auth failed:", e));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const rel = iso => {
@@ -654,10 +657,31 @@ onSnapshot(doc(db, "config", "llm"), s => {
   touch();
 });
 document.querySelectorAll(".mode-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     const mode = btn.dataset.mode;
-    setDoc(doc(db, "config", "llm"), { mode, updated_at: new Date().toISOString() })
-      .catch(e => console.error("Mode switch failed:", e));
+    // Optimistic UI update — show the new mode immediately
+    document.querySelectorAll(".mode-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+    document.getElementById("s-mode").textContent = mode.toUpperCase();
+
+    // Wait for auth if not yet ready (signInAnonymously is async)
+    if (!_authReady) {
+      try {
+        await signInAnonymously(auth);
+        _authReady = true;
+      } catch (e) {
+        console.error("Auth failed, cannot switch mode:", e);
+        return;
+      }
+    }
+    try {
+      await setDoc(doc(db, "config", "llm"), { mode, updated_at: new Date().toISOString() });
+      console.log("Mode switched to:", mode);
+    } catch (e) {
+      console.error("Mode switch failed:", e);
+      // Revert UI on failure — the onSnapshot will fix it when the real value comes back
+    }
   });
 });
 

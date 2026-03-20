@@ -44,6 +44,12 @@ SELF_MODELS: dict[str, dict] = {
             "Exceeding output length limits when topic is broad",
             "Missing relevant sources behind paywalls or region locks",
         ],
+        "metacognitive_triggers": [
+            "When finding conflicting sources, flag uncertainty and use deliberate reasoning",
+            "When topic is outside known domains, switch to deliberate reasoning",
+            "When a claim cannot be verified by a second source, label as [Uncertain]",
+            "When search returns no results, lower confidence and note the gap",
+        ],
     },
     "coder": {
         "capabilities": [
@@ -79,6 +85,12 @@ SELF_MODELS: dict[str, dict] = {
             "Missing edge cases in error handling",
             "Not saving final code to a file for the user",
         ],
+        "metacognitive_triggers": [
+            "When code has untested edge cases, rate confidence low",
+            "When debugging an unfamiliar library, switch to deliberate reasoning",
+            "When sandbox execution fails, analyze the error before retrying",
+            "When task requires system access beyond sandbox, flag as [Uncertain]",
+        ],
     },
     "writer": {
         "capabilities": [
@@ -113,6 +125,12 @@ SELF_MODELS: dict[str, dict] = {
             "Generic language that lacks the specific details from research",
             "Forgetting to save long documents to files",
         ],
+        "metacognitive_triggers": [
+            "When summarizing unverified research, label claims as [Inferred]",
+            "When audience or tone is unclear, default to professional and concise",
+            "When team memory is empty for the topic, flag low confidence",
+            "When content exceeds Signal limits, switch to file-based delivery",
+        ],
     },
     "commander": {
         "capabilities": [
@@ -136,6 +154,11 @@ SELF_MODELS: dict[str, dict] = {
             "Misclassifying a coding request as research or vice versa",
             "Over-splitting simple tasks into unnecessary parallel crews",
             "Returning raw JSON instead of routing to the correct crew",
+        ],
+        "metacognitive_triggers": [
+            "When request is ambiguous, prefer deliberate classification over fast routing",
+            "When request spans multiple domains, consider parallel dispatch",
+            "When conversation history suggests context dependency, review recent exchanges",
         ],
     },
     "critic": {
@@ -168,6 +191,11 @@ SELF_MODELS: dict[str, dict] = {
             "Missing genuine issues while flagging minor style concerns",
             "Not checking team memory for contradictory prior findings",
         ],
+        "metacognitive_triggers": [
+            "When domain is unfamiliar, lower confidence in critique and focus on structural issues",
+            "When finding no issues, consider whether review was thorough enough",
+            "When critique seems harsh, check whether suggestions are constructive",
+        ],
     },
     "introspector": {
         "capabilities": [
@@ -198,6 +226,11 @@ SELF_MODELS: dict[str, dict] = {
             "Generating vague policies like 'be more careful'",
             "Creating duplicate policies for the same issue",
             "Missing systemic patterns by focusing on individual failures",
+        ],
+        "metacognitive_triggers": [
+            "When sample size of self-reports is small, flag low confidence in patterns",
+            "When generating a policy, verify it differs from existing policies",
+            "When detecting a trend, confirm with at least 3 data points before reporting",
         ],
     },
     "self_improver": {
@@ -232,6 +265,11 @@ SELF_MODELS: dict[str, dict] = {
             "Creating duplicate knowledge entries for similar topics",
             "Generating vague improvement proposals without measurable outcomes",
         ],
+        "metacognitive_triggers": [
+            "When proposing a change, assess reversibility before recommending",
+            "When sources conflict on best practices, present alternatives rather than picking one",
+            "When improvement seems too broad, narrow scope to a single measurable outcome",
+        ],
     },
 }
 
@@ -244,6 +282,7 @@ def get_self_model(role: str) -> dict:
         "operating_principles": [],
         "tools_available": [],
         "typical_failure_modes": [],
+        "metacognitive_triggers": [],
     })
 
 
@@ -274,5 +313,9 @@ def format_self_model_block(role: str) -> str:
     if model["typical_failure_modes"]:
         items = "\n".join(f"  - {f}" for f in model["typical_failure_modes"])
         sections.append(f"### My Known Failure Modes\n{items}")
+
+    if model.get("metacognitive_triggers"):
+        items = "\n".join(f"  - {t}" for t in model["metacognitive_triggers"])
+        sections.append(f"### My Metacognitive Triggers\n{items}")
 
     return "\n\n".join(sections)

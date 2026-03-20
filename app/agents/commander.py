@@ -42,6 +42,12 @@ _INTERNAL_METADATA_PATTERNS = [
     re.compile(r"\n+---\n+\*?\*?\[Debug\]\*?\*?\n.*", re.DOTALL | re.IGNORECASE),
     re.compile(r"\n+---\n+\*?\*?\[Sub-agent.*?\]\*?\*?\n.*", re.DOTALL | re.IGNORECASE),
     re.compile(r"\n+Note: \d+ sub-tasks? failed\.?\s*$", re.DOTALL | re.IGNORECASE),
+    # Vetting reviewer editorial footnotes (⚠️ / ⚠ / *Note:* italic disclaimers)
+    re.compile(r"\n+\s*⚠️?\s*\n?\s*\*.*?\*\s*$", re.DOTALL),
+    # Catch reviewer meta-commentary about "original model data", "values above", etc.
+    re.compile(r"\n+\s*⚠️?\s*.*?(?:original model|values above|confirm with your|data contained).*$", re.DOTALL | re.IGNORECASE),
+    # Generic reviewer disclaimer pattern: italic block at the end starting with *
+    re.compile(r"\n+\s*\*(?:Note|Disclaimer|Warning|Caveat|Editor|Reviewer)[:\s].*?\*\s*$", re.DOTALL | re.IGNORECASE),
 ]
 
 
@@ -272,6 +278,232 @@ def _load_knowledge_base_context(task: str, n: int = 4) -> str:
         return ""
 
 
+# ── L5: Ecological Awareness ──────────────────────────────────────────────────
+
+def _store_ecological_report(
+    crew_name: str, difficulty: int, duration_s: float
+) -> None:
+    """Store resource consumption footprint for ecological self-awareness (L5).
+
+    Passive telemetry — no LLM calls, just memory storage.
+    """
+    from app.memory.scoped_memory import store_scoped
+    text = (
+        f"ECOLOGICAL: crew={crew_name}, difficulty={difficulty}, "
+        f"duration={duration_s:.1f}s"
+    )
+    store_scoped("scope_ecology", text, {
+        "type": "ecology",
+        "crew": crew_name,
+        "difficulty": str(difficulty),
+    })
+    logger.debug(f"Ecological report: {crew_name} d={difficulty} {duration_s:.1f}s")
+
+
+# ── L2: World Model Prediction Tracking ──────────────────────────────────────
+
+def _store_world_model_prediction(
+    crew_name: str, difficulty: int, result: str, duration_s: float
+) -> None:
+    """Store prediction-vs-reality for complex tasks (L2 world model).
+
+    Only called for difficulty >= 6 tasks. Builds causal knowledge
+    about which crew/difficulty combos succeed or fail.
+    """
+    from app.self_awareness.world_model import store_prediction_result
+    import hashlib
+    task_id = f"{crew_name}_{hashlib.md5(result[:100].encode()).hexdigest()[:8]}"
+
+    # Heuristic quality assessment (no LLM call)
+    result_ok = bool(result) and len(result.strip()) > 30
+    prediction = f"{crew_name} crew at difficulty {difficulty} should produce quality output"
+    actual = "succeeded" if result_ok else "failed or produced low-quality output"
+    lesson = (
+        f"{crew_name} at difficulty {difficulty} completed in {duration_s:.1f}s"
+        if result_ok
+        else f"{crew_name} at difficulty {difficulty} produced insufficient output ({len(result)} chars)"
+    )
+    store_prediction_result(task_id, prediction, actual, lesson)
+
+
+# ── L6: Epistemic Humility — Escalation Triggers ─────────────────────────────
+
+# Phrases that indicate the agent itself is expressing uncertainty
+_UNCERTAINTY_PHRASES = [
+    "i'm not sure", "i am not sure", "i cannot verify",
+    "i'm unable to confirm", "conflicting information",
+    "i could not find", "i was unable to find",
+    "this is uncertain", "i don't have enough information",
+    "i cannot determine", "insufficient data",
+    "this may not be accurate", "i'm not confident",
+]
+
+
+def _check_escalation_triggers(
+    result: str, crew_name: str, difficulty: int,
+    reflexion_exhausted: bool = False,
+) -> str | None:
+    """Check if the response should carry a confidence/uncertainty note (L6).
+
+    Returns an escalation note string if any trigger fires, or None.
+    Does NOT block delivery — appends transparent uncertainty labeling.
+    """
+    if not result:
+        return None
+
+    result_lower = result.lower()
+    reasons = []
+
+    # Check for explicit uncertainty phrases in the output
+    for phrase in _UNCERTAINTY_PHRASES:
+        if phrase in result_lower:
+            reasons.append("response contains explicit uncertainty markers")
+            break
+
+    # Suspiciously short output for complex task
+    if difficulty >= 8 and crew_name in ("research", "writing") and len(result.strip()) < 100:
+        reasons.append(f"response is very short ({len(result.strip())} chars) for a complex task")
+
+    # Reflexion loop was exhausted without satisfactory result
+    if reflexion_exhausted:
+        reasons.append("multiple retry attempts did not fully resolve quality concerns")
+
+    if not reasons:
+        return None
+
+    # Build transparency note
+    reason_text = "; ".join(reasons)
+    return f"\n\nNote: {reason_text}. Consider verifying independently."
+
+
+# ── L3: Reflexion Retry Loop ─────────────────────────────────────────────────
+
+# Patterns that indicate a failed or low-quality output
+_QUALITY_FAILURE_PATTERNS = [
+    re.compile(r"^I (?:cannot|can't|am unable to|don't)", re.IGNORECASE),
+    re.compile(r"^(?:sorry|apologies|unfortunately),?\s+I", re.IGNORECASE),
+    re.compile(r"^As an AI", re.IGNORECASE),
+    re.compile(r"^\{.*\}$", re.DOTALL),  # raw JSON
+    re.compile(r"^Traceback \(most recent call", re.IGNORECASE),
+]
+
+
+def _passes_quality_gate(result: str, crew_name: str) -> bool:
+    """Quick heuristic quality check — no LLM call.
+
+    Returns True if the result appears to be usable output.
+    """
+    if not result or len(result.strip()) < 20:
+        return False
+
+    text = result.strip()
+    for pattern in _QUALITY_FAILURE_PATTERNS:
+        if pattern.match(text):
+            return False
+
+    # For coding tasks, expect at least a code block or code-like content
+    if crew_name == "coding":
+        has_code = "```" in text or "def " in text or "function " in text or "class " in text
+        if not has_code and len(text) < 100:
+            return False
+
+    return True
+
+
+def _generate_reflection(
+    task: str, result: str, crew_name: str, trial: int
+) -> str:
+    """Generate a heuristic reflection on a failed output — no LLM call.
+
+    Returns a concise reflection string that gets injected into the next attempt.
+    """
+    if not result or len(result.strip()) < 5:
+        return (
+            f"Trial {trial} produced empty or near-empty output. "
+            "Try a more detailed, step-by-step approach."
+        )
+
+    text = result.strip()
+
+    # Check for refusal patterns
+    if any(p.match(text) for p in _QUALITY_FAILURE_PATTERNS[:3]):
+        return (
+            f"Trial {trial} produced a refusal or apology. "
+            "Rephrase the task more specifically. "
+            "Focus on what CAN be done rather than limitations."
+        )
+
+    # Check for raw JSON / traceback
+    if text.startswith("{") or text.startswith("Traceback"):
+        return (
+            f"Trial {trial} returned raw technical output instead of a useful response. "
+            "Format the output as clear, human-readable text."
+        )
+
+    # For coding with no code
+    if crew_name == "coding" and "```" not in text:
+        return (
+            f"Trial {trial} did not include a code block. "
+            "Include executable code in a ``` code block. "
+            "Test the code before returning."
+        )
+
+    # Generic quality issue
+    return (
+        f"Trial {trial} output did not meet quality standards "
+        f"({len(text)} chars). Try a fundamentally different approach — "
+        "not a minor variation of the same strategy."
+    )
+
+
+def _load_past_reflexion_lessons(task: str, n: int = 3) -> list[str]:
+    """Load relevant past reflexion lessons from memory."""
+    try:
+        from app.memory.scoped_memory import retrieve_operational
+        return retrieve_operational("scope_reflexion_lessons", task, n)
+    except Exception:
+        logger.debug("Failed to load reflexion lessons", exc_info=True)
+        return []
+
+
+def _store_reflexion_success(task: str, trials: int, reflections: list[str]) -> None:
+    """Store a successful reflexion outcome as a reusable lesson."""
+    try:
+        from app.memory.scoped_memory import store_scoped
+        lesson = (
+            f"SUCCESS after {trials} trials: "
+            f"Task: {task[:200]}. "
+            f"Winning reflection: {reflections[-1][:300] if reflections else 'N/A'}"
+        )
+        store_scoped(
+            "scope_reflexion_lessons", lesson,
+            {"type": "success", "trials": str(trials)},
+            importance="high",
+        )
+        logger.info(f"Reflexion: stored success lesson after {trials} trials")
+    except Exception:
+        logger.debug("Failed to store reflexion success", exc_info=True)
+
+
+def _store_reflexion_failure(task: str, trials: int, reflections: list[str]) -> None:
+    """Store a failed reflexion outcome as an antipattern."""
+    try:
+        from app.memory.scoped_memory import store_scoped
+        antipattern = (
+            f"FAILURE after {trials} trials: "
+            f"Task: {task[:200]}. "
+            f"Reflections: {'; '.join(r[:100] for r in reflections)}"
+        )
+        store_scoped(
+            "scope_reflexion_lessons", antipattern,
+            {"type": "failure", "trials": str(trials)},
+            importance="high",
+        )
+        logger.info(f"Reflexion: stored failure antipattern after {trials} trials")
+    except Exception:
+        logger.debug("Failed to store reflexion failure", exc_info=True)
+
+
 class Commander:
     def __init__(self):
         self.llm = create_commander_llm()
@@ -393,7 +625,13 @@ class Commander:
         Injects selective context (relevant skills + team memory) per task,
         implementing Write/Select/Compress/Isolate context engineering.
         Difficulty (1-10) is passed to crews for model tier selection.
+
+        L5 Ecological Awareness: tracks execution time and stores footprint.
+        L2 World Model: stores prediction results for difficulty >= 6 tasks.
         """
+        import time as _time
+        t0 = _time.monotonic()
+
         # Select only relevant context for this specific task
         context = (
             _load_relevant_skills(crew_task)
@@ -402,17 +640,90 @@ class Commander:
         )
         enriched_task = context + crew_task if context else crew_task
 
+        result = ""
+        success = True
         if crew_name == "research":
             from app.crews.research_crew import ResearchCrew
-            return ResearchCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
+            result = ResearchCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         elif crew_name == "coding":
             from app.crews.coding_crew import CodingCrew
-            return CodingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
+            result = CodingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         elif crew_name == "writing":
             from app.crews.writing_crew import WritingCrew
-            return WritingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
+            result = WritingCrew().run(enriched_task, parent_task_id=parent_task_id, difficulty=difficulty)
         else:
             return crew_task
+
+        duration_s = _time.monotonic() - t0
+
+        # L5: Store ecological footprint (non-blocking, best-effort)
+        try:
+            _store_ecological_report(crew_name, difficulty, duration_s)
+        except Exception:
+            logger.debug("Ecological report storage failed", exc_info=True)
+
+        # L2: Store prediction result for complex tasks (world model learning)
+        if difficulty >= 6:
+            try:
+                _store_world_model_prediction(
+                    crew_name, difficulty, result, duration_s
+                )
+            except Exception:
+                logger.debug("World model prediction storage failed", exc_info=True)
+
+        return result
+
+    def _run_with_reflexion(
+        self, crew_name: str, task: str, difficulty: int = 5, max_trials: int = 3,
+    ) -> tuple[str, bool]:
+        """Execute crew with Reflexion retry loop on quality failure (L3).
+
+        Returns (result, reflexion_exhausted) where reflexion_exhausted is True
+        if max_trials were reached without passing quality gate.
+
+        Only retries if quality gate fails. No extra LLM calls for reflection —
+        reflection is heuristic-based. Extra cost only from the retry itself.
+        """
+        reflections: list[str] = []
+        past_lessons = _load_past_reflexion_lessons(task)
+        result = ""
+
+        for trial in range(1, max_trials + 1):
+            # Build enriched task with reflection context
+            reflection_context = ""
+            if reflections:
+                reflection_context = (
+                    "\n\nPREVIOUS ATTEMPTS AND REFLECTIONS:\n"
+                    + "\n".join(f"- {r}" for r in reflections)
+                    + "\n\nYou MUST use a DIFFERENT approach this time.\n"
+                )
+            if past_lessons:
+                reflection_context += (
+                    "\nRELEVANT PAST LESSONS:\n"
+                    + "\n".join(f"- {l}" for l in past_lessons)
+                    + "\n"
+                )
+
+            enriched = task + reflection_context if reflection_context else task
+            result = self._run_crew(crew_name, enriched, difficulty=difficulty)
+
+            # Quick quality check (no LLM call)
+            if _passes_quality_gate(result, crew_name):
+                if trial > 1:
+                    _store_reflexion_success(task, trial, reflections)
+                return result, False
+
+            # Generate heuristic reflection (no LLM call)
+            reflection = _generate_reflection(task, result, crew_name, trial)
+            reflections.append(reflection)
+            logger.warning(
+                f"Reflexion trial {trial}/{max_trials} for {crew_name}: "
+                f"{reflection[:100]}"
+            )
+
+        # Exhausted retries
+        _store_reflexion_failure(task, max_trials, reflections)
+        return result, True
 
     def _process_attachments(self, attachments: list) -> str:
         """Extract text from attachments and return a combined context block."""
@@ -858,6 +1169,7 @@ class Commander:
         logger.info(f"Commander dispatching to [{crew_names}]")
 
         # ── Step 2: Dispatch ──────────────────────────────────────────────
+        reflexion_exhausted = False  # L3: tracks if reflexion retries were used up
         # Single crew — fast path
         if len(decisions) == 1:
             d = decisions[0]
@@ -866,7 +1178,18 @@ class Commander:
             crew_name = d["crew"]
             difficulty = d.get("difficulty", 5)
             tracker.crew_name = crew_name
-            final_result = self._run_crew(crew_name, d.get("task", user_input), difficulty=difficulty)
+
+            # L3: Use reflexion retry for medium+ difficulty tasks
+            reflexion_exhausted = False
+            if difficulty >= 5:
+                final_result, reflexion_exhausted = self._run_with_reflexion(
+                    crew_name, d.get("task", user_input), difficulty=difficulty,
+                )
+            else:
+                final_result = self._run_crew(
+                    crew_name, d.get("task", user_input), difficulty=difficulty,
+                )
+
             # Risk-based verification (replaces binary vetting)
             from app.llm_factory import get_last_tier
             final_result = vet_response(
@@ -943,7 +1266,23 @@ class Commander:
         except Exception:
             logger.debug("Proactive scan failed, continuing without it", exc_info=True)
 
-        # ── Step 5: Clean output for user delivery ──────────────────────────
+        # ── Step 5: L6 Epistemic Humility — transparent uncertainty labeling ─
+        # Check if the response should carry a confidence note.
+        # This does NOT block delivery — only appends a transparency marker.
+        try:
+            primary_difficulty = decisions[0].get("difficulty", 5) if decisions else 5
+            primary_crew = decisions[0].get("crew", "direct") if decisions else "direct"
+            escalation_note = _check_escalation_triggers(
+                final_result, primary_crew, primary_difficulty,
+                reflexion_exhausted=reflexion_exhausted,
+            )
+            if escalation_note:
+                final_result += escalation_note
+                logger.info(f"L6 escalation note appended: {escalation_note[:100]}")
+        except Exception:
+            logger.debug("Escalation check failed", exc_info=True)
+
+        # ── Step 6: Clean output for user delivery ──────────────────────────
         # Strip internal metadata (critic reviews, self-reports, debug info).
         # Truncation is handled by handle_task() which also writes .md attachment.
         return _strip_internal_metadata(final_result)

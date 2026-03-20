@@ -242,6 +242,12 @@ def heartbeat() -> None:
             report_knowledge_base()
         except Exception:
             pass
+
+        # L5: Push ecological awareness stats
+        try:
+            report_ecological_stats()
+        except Exception:
+            pass
     _fire(_write)
 
 
@@ -517,23 +523,35 @@ def report_llm_mode(mode: str) -> None:
     _fire(_write)
 
 
+_mode_listener_unsub = None  # Must be kept alive to prevent GC of the listener
+
+
 def start_mode_listener() -> None:
     """Listen for dashboard mode changes via Firestore on_snapshot."""
+    global _mode_listener_unsub
+
     def _listen():
+        global _mode_listener_unsub
         db = _get_db()
         if not db:
             return
         try:
             def on_snapshot(doc_snapshot, changes, read_time):
-                for doc in doc_snapshot:
-                    data = doc.to_dict()
+                for snap in doc_snapshot:
+                    data = snap.to_dict()
                     new_mode = data.get("mode")
                     if new_mode in ("local", "cloud", "hybrid"):
                         from app.llm_mode import get_mode, set_mode
                         if new_mode != get_mode():
                             set_mode(new_mode)
+                            logger.info(
+                                f"firebase_reporter: mode changed from dashboard → {new_mode}"
+                            )
 
-            db.collection("config").document("llm").on_snapshot(on_snapshot)
+            # Store the unsubscribe ref so the listener isn't garbage-collected
+            _mode_listener_unsub = (
+                db.collection("config").document("llm").on_snapshot(on_snapshot)
+            )
             logger.info("firebase_reporter: mode listener started")
         except Exception:
             logger.debug("firebase_reporter: mode listener failed", exc_info=True)
@@ -710,6 +728,55 @@ def report_knowledge_base() -> None:
         })
     except Exception:
         logger.debug("firebase_reporter: knowledge_base write failed", exc_info=True)
+
+
+# ── L5: Ecological awareness stats ────────────────────────────────────────────
+
+def report_ecological_stats() -> None:
+    """Push ecological awareness stats to Firestore for the dashboard (L5)."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.memory.scoped_memory import retrieve_operational
+        recent = retrieve_operational("scope_ecology", "crew execution", n=20)
+        if not recent:
+            return
+
+        # Parse ecological reports for aggregate stats
+        crew_stats: dict[str, list[float]] = {}
+        for entry in recent:
+            # Extract crew name and duration from "ECOLOGICAL: crew=X, ..."
+            parts = {}
+            for segment in entry.split(","):
+                segment = segment.strip()
+                if "=" in segment:
+                    key, val = segment.split("=", 1)
+                    key = key.replace("ECOLOGICAL: ", "").strip()
+                    parts[key] = val.strip()
+            crew_name = parts.get("crew", "unknown")
+            try:
+                duration = float(parts.get("duration", "0").rstrip("s"))
+            except (ValueError, TypeError):
+                duration = 0
+            crew_stats.setdefault(crew_name, []).append(duration)
+
+        # Build summary
+        summary = {}
+        for crew, durations in crew_stats.items():
+            summary[crew] = {
+                "recent_executions": len(durations),
+                "avg_duration_s": round(sum(durations) / len(durations), 1) if durations else 0,
+                "max_duration_s": round(max(durations), 1) if durations else 0,
+            }
+
+        db.collection("status").document("ecology").set({
+            "crew_stats": summary,
+            "total_recent_executions": sum(len(d) for d in crew_stats.values()),
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: ecology write failed", exc_info=True)
 
 
 # ── Token usage stats ────────────────────────────────────────────────────────

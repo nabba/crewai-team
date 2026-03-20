@@ -56,7 +56,7 @@ USER REQUEST:
 MODEL RESEARCH:
 {response}
 
-Return the vetted response only — no meta-commentary.
+CRITICAL: Return the vetted response ONLY. Do NOT add any reviewer notes, disclaimers, warnings, caveats, or meta-commentary. No footnotes. No "Note:" blocks. The user sees your output directly.
 """,
     "writing": """\
 You are an editor reviewing content from an AI model.
@@ -72,20 +72,21 @@ USER REQUEST:
 MODEL CONTENT:
 {response}
 
-Return the polished version only — no disclaimers.
+CRITICAL: Return the polished version ONLY. Do NOT add any reviewer notes, disclaimers, warnings, caveats, or meta-commentary. No footnotes. No "Note:" blocks. The user sees your output directly.
 """,
 }
 
 DEFAULT_VETTING_PROMPT = """\
 You are a quality reviewer. An AI model produced this response.
 Check for accuracy, completeness, and formatting. Fix any issues.
-Return the clean response only — no disclaimers. Under 1500 chars for Signal.
 
 USER REQUEST:
 {request}
 
 MODEL RESPONSE:
 {response}
+
+CRITICAL: Return the clean response ONLY. Under 1500 chars for Signal. Do NOT add any reviewer notes, disclaimers, warnings, caveats, or meta-commentary. No footnotes. The user sees your output directly.
 """
 
 CHEAP_VETTING_PROMPT = """\
@@ -219,7 +220,10 @@ def _verify_cheap(user_request: str, response: str, crew_name: str) -> tuple[boo
 
 
 def _verify_full(user_request: str, response: str, crew_name: str) -> str:
-    """Full Claude Sonnet verification — the original vetting logic."""
+    """Full Claude Sonnet verification — the original vetting logic.
+
+    Includes L4 conscience check for irreversible/high-impact actions.
+    """
     try:
         from app.llm_factory import create_vetting_llm
         llm = create_vetting_llm()
@@ -249,12 +253,50 @@ def _verify_full(user_request: str, response: str, crew_name: str) -> str:
         vetted = str(crew.kickoff()).strip()
         if vetted and len(vetted) > 20:
             logger.info(f"vetting[full]: {crew_name} vetted ({len(response)}→{len(vetted)} chars)")
+
+            # L4: Conscience check — flag irreversible actions
+            conscience_ok, conscience_reason = _conscience_check(vetted)
+            if not conscience_ok:
+                logger.warning(f"vetting[conscience]: {conscience_reason}")
+                vetted += f"\n\nNote: {conscience_reason}"
+
             return vetted
 
     except Exception as exc:
         logger.warning(f"vetting[full]: failed ({exc}), returning unvetted response")
 
     return response
+
+
+# ── L4: Conscience Check (rule-based, no LLM call) ───────────────────────────
+
+# Keywords that suggest irreversible or high-impact actions
+_IRREVERSIBLE_KEYWORDS = [
+    "delete permanently", "drop table", "rm -rf", "truncate table",
+    "revoke access", "format disk", "overwrite", "destroy",
+    "DROP DATABASE", "TRUNCATE", "shred", "purge all",
+]
+
+def _conscience_check(response: str) -> tuple[bool, str]:
+    """L4 constitutional conscience check — rule-based, no LLM call.
+
+    Scans for irreversible action keywords and unqualified absolute language.
+    Returns (passed, reason). If failed, caller should append a warning.
+    """
+    if not response:
+        return True, ""
+
+    response_lower = response.lower()
+
+    # Check for irreversible action keywords
+    for kw in _IRREVERSIBLE_KEYWORDS:
+        if kw.lower() in response_lower:
+            return False, (
+                f"Irreversible action detected: '{kw}'. "
+                "Per constitution: irreversible actions require extra scrutiny."
+            )
+
+    return True, ""
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
