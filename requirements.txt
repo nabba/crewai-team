@@ -1,6 +1,7 @@
 crewai>=1.11.0
 langchain-anthropic>=1.4.0
 fastapi>=0.135.0
+python-multipart>=0.0.9
 uvicorn[standard]>=0.42.0
 pydantic-settings>=2.10.0
 apscheduler>=3.10.0

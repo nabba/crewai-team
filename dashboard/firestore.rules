@@ -9,8 +9,13 @@ service cloud.firestore {
     match /activities/{doc} { allow read: if true; allow write: if false; }
     match /schedule/{doc}   { allow read: if true; allow write: if false; }
 
-    // Config — public read, authenticated write (dashboard mode switch)
-    match /config/{doc}     { allow read: if true; allow write: if request.auth != null; }
+    // Config — public read/write (dashboard mode switch)
+    // Write is limited to known fields via validation
+    match /config/{doc}     {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['mode', 'updated_at'])
+                   && request.resource.data.mode in ['local', 'cloud', 'hybrid', 'insane'];
+    }
 
     // Deny everything else
     match /{document=**} { allow read, write: if false; }

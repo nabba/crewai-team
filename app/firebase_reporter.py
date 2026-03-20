@@ -21,6 +21,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -248,6 +249,75 @@ def heartbeat() -> None:
             report_ecological_stats()
         except Exception:
             pass
+
+        # Push learned skills inventory
+        try:
+            report_skills()
+        except Exception:
+            pass
+    _fire(_write)
+
+
+# ── Skills inventory ─────────────────────────────────────────────────────────
+
+_SKILLS_DIR = Path("/app/workspace/skills")
+
+
+def report_skills() -> None:
+    """Push learned skills inventory to Firestore at status/skills."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        skills = []
+        if _SKILLS_DIR.exists():
+            for f in sorted(_SKILLS_DIR.glob("*.md")):
+                if f.name == "learning_queue.md":
+                    continue
+                name = f.stem
+                stat = f.stat()
+                # Extract first line as description
+                description = ""
+                try:
+                    first_line = f.read_text(errors="replace").split("\n", 1)[0].strip()
+                    if first_line.startswith("#"):
+                        first_line = first_line.lstrip("#").strip()
+                    description = first_line
+                except Exception:
+                    pass
+                skills.append({
+                    "name": name,
+                    "description": description[:200],
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                    "size_bytes": stat.st_size,
+                })
+        db.collection("status").document("skills").set({
+            "skills": skills,
+            "total": len(skills),
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: skills write failed", exc_info=True)
+
+
+# ── Signal connection health ─────────────────────────────────────────────────
+
+def report_signal_status(connected: bool, last_message_at: Optional[str] = None,
+                         message_count: int = 0) -> None:
+    """Push Signal connection health to Firestore at status/signal."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            db.collection("status").document("signal").set({
+                "connected": connected,
+                "last_message_at": last_message_at,
+                "message_count": message_count,
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: signal status write failed", exc_info=True)
     _fire(_write)
 
 
@@ -540,10 +610,27 @@ def read_llm_mode_from_firestore() -> str | None:
 
 
 _mode_listener_unsub = None  # Must be kept alive to prevent GC of the listener
+_mode_poll_stop = threading.Event()  # Signal to stop the polling thread
+
+
+def _apply_mode_if_changed(new_mode: str) -> bool:
+    """Apply a mode change if it differs from current. Returns True if changed."""
+    if new_mode not in ("local", "cloud", "hybrid", "insane"):
+        return False
+    from app.llm_mode import get_mode, set_mode
+    if new_mode != get_mode():
+        set_mode(new_mode)
+        logger.info(f"firebase_reporter: mode changed from dashboard → {new_mode}")
+        return True
+    return False
 
 
 def start_mode_listener() -> None:
-    """Listen for dashboard mode changes via Firestore on_snapshot."""
+    """Listen for dashboard mode changes via Firestore on_snapshot + polling fallback.
+
+    The on_snapshot gRPC stream can silently drop in Docker containers,
+    so we also poll every 15 seconds as a reliable backup.
+    """
     global _mode_listener_unsub
 
     def _listen():
@@ -556,22 +643,32 @@ def start_mode_listener() -> None:
                 for snap in doc_snapshot:
                     data = snap.to_dict()
                     new_mode = data.get("mode")
-                    if new_mode in ("local", "cloud", "hybrid", "insane"):
-                        from app.llm_mode import get_mode, set_mode
-                        if new_mode != get_mode():
-                            set_mode(new_mode)
-                            logger.info(
-                                f"firebase_reporter: mode changed from dashboard → {new_mode}"
-                            )
+                    if new_mode:
+                        _apply_mode_if_changed(new_mode)
 
-            # Store the unsubscribe ref so the listener isn't garbage-collected
             _mode_listener_unsub = (
                 db.collection("config").document("llm").on_snapshot(on_snapshot)
             )
-            logger.info("firebase_reporter: mode listener started")
+            logger.info("firebase_reporter: mode listener started (on_snapshot)")
         except Exception:
             logger.debug("firebase_reporter: mode listener failed", exc_info=True)
     _fire(_listen)
+
+    # Start polling fallback in a daemon thread
+    def _poll_mode():
+        """Poll Firestore every 15s for mode changes — backup for flaky gRPC streams."""
+        while not _mode_poll_stop.wait(15):
+            try:
+                mode = read_llm_mode_from_firestore()
+                if mode:
+                    _apply_mode_if_changed(mode)
+            except Exception:
+                pass  # never crash the poll loop
+        logger.debug("firebase_reporter: mode poll stopped")
+
+    t = threading.Thread(target=_poll_mode, daemon=True, name="firebase-mode-poll")
+    t.start()
+    logger.info("firebase_reporter: mode poll started (15s interval)")
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import logging
 import logging.handlers
 import asyncio
 import os
+import re
 import threading
 from datetime import datetime, timezone, timedelta
 
@@ -13,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 from app.rate_throttle import install_throttle
 install_throttle()
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, File, Form, Request, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.config import get_settings, get_gateway_secret
@@ -342,6 +343,7 @@ app.add_middleware(
 
 signal_client = SignalClient()
 commander = Commander()
+_signal_msg_count = 0
 
 
 def _verify_gateway_secret(request: Request) -> bool:
@@ -382,6 +384,17 @@ async def receive_signal(request: Request):
     attachments = attachments[:5]
 
     log_request_received(_redact_number(sender), len(text))
+
+    # Track Signal connection health for dashboard
+    global _signal_msg_count
+    _signal_msg_count += 1
+    from app.firebase_reporter import report_signal_status
+    report_signal_status(
+        connected=True,
+        last_message_at=datetime.now(timezone.utc).isoformat(),
+        message_count=_signal_msg_count,
+    )
+
     asyncio.create_task(handle_task(sender, text, attachments, timestamp))
     return {"status": "accepted"}
 
@@ -490,6 +503,109 @@ async def set_llm_mode_endpoint(request: Request):
     set_mode(mode)
     report_llm_mode(mode)
     return {"status": "ok", "mode": mode}
+
+
+# ── Knowledge Base endpoints (dashboard, no auth) ────────────────────────────
+
+# Lazy singleton for KnowledgeStore (heavy init — loads embedding model)
+_kb_store = None
+_kb_store_lock = threading.Lock()
+
+
+def _get_kb_store():
+    global _kb_store
+    if _kb_store is None:
+        with _kb_store_lock:
+            if _kb_store is None:
+                from app.knowledge_base.vectorstore import KnowledgeStore
+                _kb_store = KnowledgeStore()
+    return _kb_store
+
+
+# Allowed extensions for upload (must match ingestion.py EXTRACTORS)
+_ALLOWED_EXTENSIONS = {
+    ".pdf", ".docx", ".pptx", ".xlsx", ".csv",
+    ".txt", ".md", ".html", ".htm", ".json",
+}
+_MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+@app.post("/kb/upload")
+async def kb_upload(
+    file: UploadFile = File(...),
+    category: str = Form("general"),
+):
+    """Ingest an uploaded file into the knowledge base."""
+    import tempfile
+
+    # Validate filename / extension
+    filename = file.filename or "upload"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {sorted(_ALLOWED_EXTENSIONS)}",
+        )
+
+    # Sanitise category
+    category = re.sub(r"[^a-zA-Z0-9_\-]", "", category or "general") or "general"
+
+    # Save to a temp file
+    tmp_path = None
+    try:
+        contents = await file.read()
+        if len(contents) > _MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+        if len(contents) == 0:
+            raise HTTPException(status_code=400, detail="Empty file")
+
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=ext, prefix="kb_upload_"
+        ) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+
+        # Ingest via KnowledgeStore
+        store = await asyncio.to_thread(_get_kb_store)
+        result = await asyncio.to_thread(
+            store.add_document, tmp_path, category=category
+        )
+
+        if not result.success:
+            raise HTTPException(status_code=422, detail=result.error or "Ingestion failed")
+
+        return {
+            "status": "ok",
+            "source": result.source,
+            "format": result.format,
+            "chunks_created": result.chunks_created,
+            "total_characters": result.total_characters,
+            "document_id": result.document_id,
+            "category": category,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("KB upload failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+@app.get("/kb/status")
+async def kb_status():
+    """Return knowledge base statistics for the dashboard."""
+    try:
+        store = await asyncio.to_thread(_get_kb_store)
+        stats = await asyncio.to_thread(store.stats)
+        return {"status": "ok", **stats}
+    except Exception as exc:
+        logger.exception("KB status failed")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/health")

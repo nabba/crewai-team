@@ -6,166 +6,208 @@
   <title>BotArmy — Agent Monitor</title>
   <style>
     :root {
-      --bg:      #0d1117; --surface: #161b22; --border: #30363d;
-      --text:    #e6edf3; --muted:   #8b949e;
-      --green:   #3fb950; --yellow:  #d29922; --red:    #f85149;
-      --blue:    #58a6ff; --purple:  #bc8cff; --orange: #ff8700;
-      --cyan:    #39d2e0;
-      --radius:  10px;
-      --font:    'Inter', system-ui, -apple-system, sans-serif;
+      --bg: #0a0e14; --surface: #12171f; --surface2: #1a2030; --border: #242d3a;
+      --text: #e2e8f0; --muted: #7a8599; --dim: #4a5568;
+      --green: #34d399; --yellow: #fbbf24; --red: #f87171;
+      --blue: #60a5fa; --purple: #a78bfa; --orange: #fb923c;
+      --cyan: #22d3ee; --pink: #f472b6;
+      --radius: 8px; --radius-lg: 12px;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+      --glow-green: 0 0 12px rgba(52,211,153,.3);
+      --glow-blue: 0 0 12px rgba(96,165,250,.3);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 24px; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 16px; font-size: 13px; }
 
-    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
-    .logo { display: flex; align-items: center; gap: 12px; }
-    .logo svg { width: 36px; height: 36px; }
-    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.5px; }
-    .subtitle { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    /* ── Header ────────────────────────────────────────────────── */
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo svg { width: 28px; height: 28px; }
+    h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.3px; }
+    .subtitle { font-size: .7rem; color: var(--muted); }
 
-    #sys-badge { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: .82rem; font-weight: 600; background: var(--surface); border: 1px solid var(--border); transition: all .3s; }
-    #sys-badge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-    #sys-badge.online  .dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    #sys-badge { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 16px; font-size: .75rem; font-weight: 600; background: var(--surface); border: 1px solid var(--border); }
+    #sys-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    #sys-badge.online .dot { background: var(--green); box-shadow: var(--glow-green); animation: pulse 2s infinite; }
     #sys-badge.offline .dot { background: var(--red); }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-    .section-title { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    /* ── Section ───────────────────────────────────────────────── */
+    .section-title { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
 
-    /* Stats */
-    .stats-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; margin-bottom: 22px; }
-    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
-    .stat-val { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
-    .stat-lbl { font-size: .68rem; color: var(--muted); margin-top: 4px; }
-    .stat-sub { font-size: .65rem; color: var(--muted); margin-top: 2px; }
+    /* ── Stats Row ─────────────────────────────────────────────── */
+    .stats-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin-bottom: 12px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; text-align: center; }
+    .stat-val { font-size: 1.3rem; font-weight: 700; color: var(--blue); }
+    .stat-lbl { font-size: .6rem; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-sub { font-size: .6rem; color: var(--dim); margin-top: 1px; }
 
-    /* Crews */
-    #crews-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap: 14px; margin-bottom: 22px; }
-    .crew-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: border-color .3s; }
-    .crew-card.active { border-color: var(--blue); }
-    .crew-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .crew-name { font-weight: 700; font-size: .92rem; }
-    .crew-status { font-size: .7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(139,148,158,.15); color: var(--muted); }
-    .crew-status.active { background: rgba(88,166,255,.15); color: var(--blue); }
-    .crew-task { font-size: .8rem; color: var(--text); line-height: 1.4; min-height: 34px; }
-    .crew-eta  { font-size: .73rem; color: var(--muted); margin-top: 7px; }
+    /* ── Mode Selector ─────────────────────────────────────────── */
+    #mode-selector { display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2px; }
+    .mode-btn { background: none; border: none; color: var(--muted); padding: 4px 12px; border-radius: 14px; cursor: pointer; font-size: .72rem; font-weight: 600; transition: all .2s; white-space: nowrap; }
+    .mode-btn.active { background: var(--blue); color: #fff; }
+    .mode-btn:hover:not(.active) { color: var(--text); }
+    .mode-insane.active { background: linear-gradient(135deg,#f97316,#ef4444); color: #fff; }
+
+    /* ── Connection Health ─────────────────────────────────────── */
+    .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+    .cb-card { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); }
+    .cb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .cb-dot.closed { background: var(--green); box-shadow: var(--glow-green); }
+    .cb-dot.open { background: var(--red); }
+    .cb-dot.half_open { background: var(--yellow); }
+    .cb-name { font-weight: 600; font-size: .78rem; }
+    .cb-state { font-size: .65rem; color: var(--muted); }
+
+    /* ── Crews ─────────────────────────────────────────────────── */
+    #crews-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .crew-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; transition: all .3s; position: relative; }
+    .crew-card.active { border-color: var(--blue); box-shadow: var(--glow-blue); }
+    .crew-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .crew-name { font-weight: 700; font-size: .82rem; }
+    .crew-status { font-size: .62rem; font-weight: 600; padding: 1px 7px; border-radius: 8px; background: rgba(122,133,153,.12); color: var(--muted); }
+    .crew-status.active { background: rgba(96,165,250,.15); color: var(--blue); }
+    .crew-task { font-size: .75rem; color: var(--text); line-height: 1.35; min-height: 28px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .crew-meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .crew-eta { font-size: .65rem; color: var(--muted); }
     .crew-eta span { color: var(--orange); font-weight: 600; }
-    .prog { height: 3px; background: var(--border); border-radius: 2px; margin-top: 9px; overflow: hidden; }
-    .prog .fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width .5s; }
+    .sub-badge { font-size: .6rem; padding: 1px 6px; border-radius: 6px; background: rgba(167,139,250,.15); color: var(--purple); font-weight: 600; }
+    .model-tag { font-size: .6rem; padding: 1px 6px; border-radius: 5px; background: rgba(167,139,250,.12); color: var(--purple); font-weight: 600; white-space: nowrap; }
+    .prog { height: 2px; background: var(--border); border-radius: 1px; margin-top: 6px; overflow: hidden; }
+    .prog .fill { height: 100%; background: var(--blue); border-radius: 1px; transition: width .5s; }
 
-    /* Cards */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
-    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-    th { text-align: left; padding: 7px 12px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border-bottom: 1px solid var(--border); }
-    td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,.5); vertical-align: top; }
+    /* ── Tables ────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+    th { text-align: left; padding: 5px 8px; font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 6px 8px; border-bottom: 1px solid rgba(36,45,58,.5); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: .68rem; font-weight: 700; }
-    .badge.running   { background: rgba(88,166,255,.15); color: var(--blue); }
-    .badge.completed { background: rgba(63,185,80,.15);  color: var(--green); }
-    .badge.failed    { background: rgba(248,81,73,.15);  color: var(--red); }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 6px; font-size: .62rem; font-weight: 700; }
+    .badge.running   { background: rgba(96,165,250,.15); color: var(--blue); }
+    .badge.completed { background: rgba(52,211,153,.15); color: var(--green); }
+    .badge.failed    { background: rgba(248,113,113,.15); color: var(--red); }
 
-    /* Grid layouts */
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
-    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+    /* ── Grid layouts ──────────────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 
-    .schedule-item { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgba(48,54,61,.4); }
-    .schedule-item:last-child { border-bottom: none; }
-    .schedule-time { color: var(--blue); font-size: .8rem; font-weight: 600; min-width: 76px; }
-    .schedule-name { font-size: .84rem; }
-    .schedule-cron { font-size: .7rem; color: var(--muted); margin-top: 2px; font-family: monospace; }
+    /* ── Token panel ───────────────────────────────────────────── */
+    #token-summary { margin-bottom: 8px; }
+    #token-summary .big { font-size: 1.4rem; font-weight: 700; color: var(--blue); }
+    #token-summary .cost { font-size: .9rem; color: var(--green); margin-left: 8px; }
+    #token-period { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-size: .68rem; }
 
-    #feed { max-height: 300px; overflow-y: auto; }
-    .feed-item { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; line-height: 1.4; animation: fadeIn .3s; }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
-    .feed-time   { color: var(--muted); font-size: .7rem; min-width: 50px; padding-top: 1px; }
-    .feed-icon   { min-width: 18px; text-align: center; }
-    .feed-detail { flex: 1; }
-    .feed-crew   { color: var(--purple); font-weight: 600; }
+    /* ── Metrics Time Series (mini sparklines) ─────────────────── */
+    .metric-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .metric-label { font-size: .72rem; min-width: 110px; color: var(--text); }
+    .metric-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .metric-fill { height: 100%; border-radius: 2px; transition: width .5s; }
+    .metric-value { font-size: .68rem; font-weight: 600; min-width: 42px; text-align: right; }
+    .metric-spark { display: flex; align-items: flex-end; gap: 1px; height: 20px; }
+    .metric-spark .bar { width: 3px; border-radius: 1px; transition: height .3s; min-height: 1px; }
 
-    /* Fleet */
-    .fleet-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
-    .fleet-card.running { border-color: var(--green); }
-    .fleet-card .model-name { font-weight: 700; font-size: .85rem; color: var(--text); }
-    .fleet-card .model-meta { font-size: .7rem; color: var(--muted); margin-top: 4px; }
-    .fleet-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--muted); }
-    .fleet-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .fleet-dot.stopped { background: var(--red); }
-    .task-flow { font-size: .7rem; display: flex; align-items: center; gap: 3px; }
+    /* ── Task flow ─────────────────────────────────────────────── */
+    .task-flow { font-size: .65rem; display: flex; align-items: center; gap: 2px; white-space: nowrap; }
     .task-flow .arrow { color: var(--orange); font-weight: 700; }
-    .model-tag { font-size: .65rem; padding: 1px 6px; border-radius: 6px; background: rgba(188,140,255,.15); color: var(--purple); font-weight: 600; white-space: nowrap; }
-    .tier-tag { font-size: .6rem; padding: 1px 5px; border-radius: 4px; font-weight: 700; }
-    .tier-tag.local   { background: rgba(63,185,80,.15); color: var(--green); }
-    .tier-tag.budget  { background: rgba(88,166,255,.15); color: var(--blue); }
-    .tier-tag.mid     { background: rgba(210,153,34,.15); color: var(--yellow); }
-    .tier-tag.premium { background: rgba(188,140,255,.15); color: var(--purple); }
+    .tier-tag { font-size: .55rem; padding: 0px 4px; border-radius: 3px; font-weight: 700; }
+    .tier-tag.local   { background: rgba(52,211,153,.15); color: var(--green); }
+    .tier-tag.budget  { background: rgba(96,165,250,.15); color: var(--blue); }
+    .tier-tag.mid     { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .tier-tag.premium { background: rgba(167,139,250,.15); color: var(--purple); }
 
-    .empty { color: var(--muted); font-size: .85rem; padding: 14px 0; text-align: center; }
-    #last-updated { font-size: .7rem; color: var(--muted); text-align: right; }
+    /* ── Skills List ───────────────────────────────────────────── */
+    .skill-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .75rem; }
+    .skill-item:last-child { border-bottom: none; }
+    .skill-icon { font-size: .8rem; }
+    .skill-name { font-weight: 600; color: var(--text); }
+    .skill-desc { color: var(--muted); font-size: .68rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .skill-date { color: var(--dim); font-size: .62rem; white-space: nowrap; }
 
-    /* Mode selector */
-    #mode-selector { display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:3px; }
-    .mode-btn { background:none;border:none;color:var(--muted);padding:5px 14px;border-radius:16px;cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s; }
-    .mode-btn.active { background:var(--blue);color:#fff; }
-    .mode-btn:hover:not(.active) { color:var(--text); }
-    .mode-insane.active { background:linear-gradient(135deg,#f97316,#ef4444);color:#fff; }
+    /* ── KB Upload ─────────────────────────────────────────────── */
+    .kb-upload { border: 2px dashed var(--border); border-radius: var(--radius); padding: 16px; text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 10px; }
+    .kb-upload:hover, .kb-upload.dragover { border-color: var(--blue); background: rgba(96,165,250,.05); }
+    .kb-upload input[type=file] { display: none; }
+    .kb-upload-label { font-size: .78rem; color: var(--muted); }
+    .kb-upload-label strong { color: var(--blue); }
+    .kb-upload-status { font-size: .72rem; margin-top: 6px; }
+    #kb-category { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font-size: .72rem; margin-left: 8px; }
 
-    /* Token panel */
-    #token-summary { margin-bottom:12px; }
-    #token-summary .big { font-size:1.8rem;font-weight:700;color:var(--blue); }
-    #token-summary .cost { font-size:1rem;color:var(--green);margin-left:12px; }
-    #token-period { background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.75rem; }
+    /* ── Feed ──────────────────────────────────────────────────── */
+    #feed { max-height: 240px; overflow-y: auto; }
+    .feed-item { display: flex; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(36,45,58,.25); font-size: .72rem; line-height: 1.35; animation: fadeIn .3s; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-3px)} to{opacity:1;transform:none} }
+    .feed-time { color: var(--muted); font-size: .65rem; min-width: 44px; }
+    .feed-icon { min-width: 16px; text-align: center; }
+    .feed-detail { flex: 1; }
+    .feed-crew { color: var(--purple); font-weight: 600; }
 
-    /* Metrics gauge */
-    .metric-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .metric-label { font-size: .78rem; min-width: 130px; color: var(--text); }
-    .metric-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-    .metric-fill { height: 100%; border-radius: 3px; transition: width .5s; }
-    .metric-value { font-size: .75rem; font-weight: 600; min-width: 50px; text-align: right; }
+    /* ── Schedule ──────────────────────────────────────────────── */
+    .schedule-item { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid rgba(36,45,58,.3); }
+    .schedule-item:last-child { border-bottom: none; }
+    .schedule-time { color: var(--blue); font-size: .72rem; font-weight: 600; min-width: 70px; }
+    .schedule-name { font-size: .75rem; }
+    .schedule-cron { font-size: .62rem; color: var(--muted); margin-top: 1px; font-family: monospace; }
 
-    /* Circuit breaker indicators */
-    .cb-card { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
-    .cb-dot { width: 12px; height: 12px; border-radius: 50%; }
-    .cb-dot.closed { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .cb-dot.open { background: var(--red); box-shadow: 0 0 6px var(--red); }
-    .cb-dot.half_open { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
-    .cb-name { font-weight: 700; font-size: .85rem; }
-    .cb-state { font-size: .72rem; color: var(--muted); }
-
-    /* Error list */
-    .error-item { padding: 8px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; }
+    /* ── Errors ────────────────────────────────────────────────── */
+    .error-item { padding: 5px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .72rem; }
     .error-item:last-child { border-bottom: none; }
     .error-crew { color: var(--purple); font-weight: 600; }
-    .error-type { color: var(--red); font-size: .75rem; }
-    .error-msg { color: var(--muted); font-size: .75rem; margin-top: 2px; }
-    .error-diagnosed { color: var(--green); font-size: .7rem; }
-    .error-undiagnosed { color: var(--yellow); font-size: .7rem; }
+    .error-type { color: var(--red); font-size: .68rem; }
+    .error-msg { color: var(--muted); font-size: .68rem; margin-top: 1px; }
 
-    /* Evolution */
-    .evo-item { padding: 6px 0; border-bottom: 1px solid rgba(48,54,61,.3); font-size: .8rem; display: flex; gap: 12px; align-items: center; }
+    /* ── Evolution ─────────────────────────────────────────────── */
+    .evo-item { padding: 4px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .72rem; display: flex; gap: 8px; align-items: center; }
     .evo-item:last-child { border-bottom: none; }
-    .evo-status { font-weight: 700; font-size: .75rem; }
+    .evo-status { font-weight: 700; font-size: .65rem; }
     .evo-status.keep { color: var(--green); }
     .evo-status.discard { color: var(--red); }
     .evo-status.crash { color: var(--yellow); }
 
-    /* Monthly projection */
-    .projection { font-size: 2rem; font-weight: 700; color: var(--green); }
-    .projection-detail { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+    /* ── Projection ────────────────────────────────────────────── */
+    .projection { font-size: 1.6rem; font-weight: 700; color: var(--green); }
+    .projection-detail { font-size: .7rem; color: var(--muted); margin-top: 4px; }
 
-    /* Model catalog */
-    .catalog-model { padding: 8px 0; border-bottom: 1px solid rgba(48,54,61,.3); display: flex; align-items: center; gap: 10px; font-size: .8rem; }
-    .catalog-model:last-child { border-bottom: none; }
+    .empty { color: var(--muted); font-size: .75rem; padding: 10px 0; text-align: center; }
+    #last-updated { font-size: .62rem; color: var(--dim); text-align: right; }
 
-    @media (max-width: 900px) {
-      .stats-row { grid-template-columns: repeat(3,1fr); }
+    /* ── Responsive ────────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
       .three-col { grid-template-columns: 1fr; }
     }
-    @media (max-width: 700px) {
-      body { padding: 14px; }
-      .stats-row { grid-template-columns: 1fr 1fr; }
-      #crews-grid { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+      #crews-grid { grid-template-columns: repeat(2, 1fr); }
       .two-col { grid-template-columns: 1fr; }
-      table { font-size: .74rem; }
+      .conn-grid { grid-template-columns: repeat(2, 1fr); }
+      header { gap: 8px; }
+      #mode-selector { order: 3; width: 100%; justify-content: center; }
+      .mode-btn { padding: 4px 10px; font-size: .68rem; }
     }
+    @media (max-width: 480px) {
+      body { padding: 6px; font-size: 12px; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+      #crews-grid { grid-template-columns: 1fr; gap: 6px; }
+      .card { padding: 10px; margin-bottom: 8px; }
+      .stat-card { padding: 8px; }
+      .stat-val { font-size: 1.1rem; }
+      h1 { font-size: 1rem; }
+      table { font-size: .68rem; }
+      th, td { padding: 4px 5px; }
+      .conn-grid { grid-template-columns: 1fr; }
+      .crew-card { padding: 10px; }
+      #token-summary .big { font-size: 1.1rem; }
+      .projection { font-size: 1.3rem; }
+    }
+
+    /* ── Signal Commands (collapsible) ─────────────────────────── */
+    details.card summary { list-style: none; }
+    details.card summary::-webkit-details-marker { display: none; }
+    details.card summary::before { content: "▶ "; font-size: .65rem; transition: transform .2s; display: inline-block; }
+    details.card[open] summary::before { content: "▼ "; }
   </style>
 </head>
 <body>
@@ -173,51 +215,62 @@
 <header>
   <div class="logo">
     <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="36" height="36" rx="8" fill="#161b22"/>
-      <circle cx="18" cy="14" r="5" fill="#58a6ff"/>
-      <path d="M8 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#3fb950" stroke-width="2.5" stroke-linecap="round"/>
-      <circle cx="10" cy="22" r="2.5" fill="#bc8cff"/>
-      <circle cx="26" cy="22" r="2.5" fill="#bc8cff"/>
+      <rect width="36" height="36" rx="8" fill="#12171f"/>
+      <circle cx="18" cy="14" r="5" fill="#60a5fa"/>
+      <path d="M8 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#34d399" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="10" cy="22" r="2.5" fill="#a78bfa"/>
+      <circle cx="26" cy="22" r="2.5" fill="#a78bfa"/>
     </svg>
     <div>
       <h1>BotArmy</h1>
       <div class="subtitle">Agent Team Monitor</div>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <div id="mode-selector">
-      <button class="mode-btn" data-mode="local">Local Only</button>
+      <button class="mode-btn" data-mode="local">Local</button>
       <button class="mode-btn active" data-mode="hybrid">Hybrid</button>
-      <button class="mode-btn" data-mode="cloud">Cloud Only</button>
-      <button class="mode-btn mode-insane" data-mode="insane">🔥 Insane</button>
+      <button class="mode-btn" data-mode="cloud">Cloud</button>
+      <button class="mode-btn mode-insane" data-mode="insane">Insane</button>
     </div>
-    <div id="sys-badge"><div class="dot"></div><span id="sys-label">Connecting…</span></div>
+    <div id="sys-badge"><div class="dot"></div><span id="sys-label">Connecting</span></div>
   </div>
 </header>
 
-<!-- ── Top Stats Row ────────────────────────────────────────────────── -->
+<!-- ── Stats Row ────────────────────────────────────────────── -->
 <div class="stats-row">
-  <div class="stat-card"><div class="stat-val" id="s-score">—</div><div class="stat-lbl">Health Score</div></div>
-  <div class="stat-card"><div class="stat-val" id="s-active">—</div><div class="stat-lbl">Active Crews</div></div>
-  <div class="stat-card"><div class="stat-val" id="s-tasks">—</div><div class="stat-lbl">Tasks Today</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-score">—</div><div class="stat-lbl">Health</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-active">0</div><div class="stat-lbl">Active Crews</div></div>
+  <div class="stat-card"><div class="stat-val" id="s-tasks">0</div><div class="stat-lbl">Tasks Today</div></div>
   <div class="stat-card"><div class="stat-val" id="s-cost-today">—</div><div class="stat-lbl">Cost Today</div><div class="stat-sub" id="s-cost-month"></div></div>
   <div class="stat-card"><div class="stat-val" id="s-mode">—</div><div class="stat-lbl">LLM Mode</div></div>
   <div class="stat-card"><div class="stat-val" id="s-uptime">—</div><div class="stat-lbl">Uptime</div></div>
 </div>
 
-<!-- ── Connection Health ───────────────────────────────────────────── -->
-<div class="card" style="margin-bottom:18px">
+<!-- ── Connection Health ─────────────────────────────────────── -->
+<div class="card">
   <div class="section-title">Connection Health</div>
-  <div id="circuit-breakers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+  <div id="circuit-breakers" class="conn-grid">
     <div class="empty">Loading…</div>
   </div>
 </div>
 
-<!-- ── Crew Status ──────────────────────────────────────────────────── -->
+<!-- ── Crew Status ───────────────────────────────────────────── -->
 <div class="section-title">Crew Status</div>
 <div id="crews-grid"></div>
 
-<!-- ── LLM Usage & Costs ────────────────────────────────────────────── -->
+<!-- ── Current & Recent Tasks ────────────────────────────────── -->
+<div class="card">
+  <div class="section-title">Current & Recent Tasks</div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Crew</th><th>Task</th><th>LLM</th><th>Tokens</th><th>Status</th><th>Flow</th><th>Duration</th><th>ETA</th></tr></thead>
+    <tbody id="tasks-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+  </table>
+  </div>
+</div>
+
+<!-- ── LLM Usage & Costs ─────────────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
     <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -227,8 +280,8 @@
         <option value="day" selected>Today</option>
         <option value="week">This Week</option>
         <option value="month">This Month</option>
-        <option value="quarter">This Quarter</option>
-        <option value="year">This Year</option>
+        <option value="quarter">Quarter</option>
+        <option value="year">Year</option>
       </select>
     </div>
     <div id="token-summary"><div class="empty">Loading…</div></div>
@@ -240,75 +293,71 @@
   <div class="card" style="margin:0">
     <div class="section-title">Monthly Cost Projection</div>
     <div id="monthly-projection"><div class="empty">Loading…</div></div>
-    <div style="margin-top:16px">
-      <div class="section-title" style="margin-bottom:8px">Per-Request Cost</div>
+    <div style="margin-top:12px">
+      <div class="section-title" style="margin-bottom:6px">Per-Request Cost</div>
       <div id="request-costs"><div class="empty">Loading…</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── System Health Metrics ─────────────────────────────────────────── -->
+<!-- ── System Health Metrics (with sparklines) ───────────────── -->
 <div class="card">
   <div class="section-title">System Health Metrics</div>
   <div id="metrics-bars"><div class="empty">Loading…</div></div>
 </div>
 
-<!-- ── Tasks ──────────────────────────────────────────────────────────── -->
-<div class="card">
-  <div class="section-title">Current & Recent Tasks</div>
-  <table>
-    <thead><tr><th>Crew</th><th>Task</th><th>Model</th><th>Status</th><th>Flow</th><th>Duration</th><th>ETA / Done</th></tr></thead>
-    <tbody id="tasks-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
-  </table>
-</div>
-
-<!-- ── LLM Fleet & Model Catalog ────────────────────────────────────── -->
+<!-- ── Skills Learned & Model Catalog ────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
-    <div class="section-title">LLM Fleet Containers</div>
-    <div id="fleet-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
-      <div class="empty">No fleet data yet</div>
-    </div>
-    <div id="fleet-benchmarks" style="margin-top:12px;font-size:.78rem;color:var(--muted)"></div>
+    <div class="section-title">Skills Learned</div>
+    <div id="skills-list"><div class="empty">No skills yet</div></div>
   </div>
   <div class="card" style="margin:0">
-    <div class="section-title">Model Catalog & Role Assignments</div>
-    <div id="role-assignments" style="margin-bottom:12px"><div class="empty">Loading…</div></div>
-    <div id="model-catalog"><div class="empty">Loading…</div></div>
+    <div class="section-title">Model Catalog & Roles</div>
+    <div id="role-assignments"><div class="empty">Loading…</div></div>
+    <div id="model-catalog" style="max-height:200px;overflow-y:auto"></div>
   </div>
 </div>
 
-<!-- ── Errors & Evolution ───────────────────────────────────────────── -->
+<!-- ── Errors & Evolution ────────────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
-    <div class="section-title">Recent Errors & Self-Healing</div>
-    <div id="error-patterns" style="margin-bottom:12px"></div>
+    <div class="section-title">Errors & Self-Healing</div>
+    <div id="error-patterns"></div>
     <div id="error-list"><div class="empty">No errors</div></div>
   </div>
   <div class="card" style="margin:0">
     <div class="section-title">Evolution Experiments</div>
-    <div id="evo-stats" style="margin-bottom:10px"></div>
+    <div id="evo-stats" style="margin-bottom:6px"></div>
     <div id="evo-list"><div class="empty">No experiments yet</div></div>
   </div>
 </div>
 
-<!-- ── Proposals ──────────────────────────────────────────────────────── -->
+<!-- ── Proposals ──────────────────────────────────────────────── -->
 <div class="card">
   <div class="section-title">Improvement Proposals</div>
   <div id="proposals-list"><div class="empty">No proposals yet</div></div>
 </div>
 
-<!-- ── Knowledge Base ─────────────────────────────────────────────────── -->
+<!-- ── Knowledge Base ─────────────────────────────────────────── -->
 <div class="card">
-  <div class="section-title">Knowledge Base</div>
-  <div id="kb-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px">
-    <div class="empty">Loading&hellip;</div>
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Knowledge Base</span>
+    <label>Category: <select id="kb-category"><option value="general">general</option><option value="technical">technical</option><option value="business">business</option><option value="research">research</option></select></label>
   </div>
-  <div id="kb-categories" style="margin-bottom:10px"></div>
+  <div id="kb-upload-zone" class="kb-upload">
+    <input type="file" id="kb-file" accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.json" multiple />
+    <div class="kb-upload-label">Drop files here or <strong>click to upload</strong></div>
+    <div class="kb-upload-status" id="kb-upload-status"></div>
+  </div>
+  <div id="kb-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:10px">
+    <div class="empty">Loading…</div>
+  </div>
+  <div id="kb-categories" style="margin-bottom:6px"></div>
   <div id="kb-documents"></div>
 </div>
 
-<!-- ── Schedule & Activity Feed ──────────────────────────────────────── -->
+<!-- ── Schedule & Activity Feed ───────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
     <div class="section-title">Scheduled Jobs</div>
@@ -320,95 +369,48 @@
   </div>
 </div>
 
-<!-- ── Signal Commands Reference ──────────────────────────────────── -->
-<details class="card" style="cursor:pointer">
-  <summary class="section-title" style="margin-bottom:0;cursor:pointer">&#x2753; Signal Commands Reference</summary>
-  <table style="margin-top:14px">
-    <thead><tr><th>Command</th><th>What happens</th></tr></thead>
+<!-- ── Signal Commands Reference ──────────────────────────────── -->
+<details class="card">
+  <summary class="section-title" style="margin-bottom:0;cursor:pointer">Signal Commands Reference</summary>
+  <div class="table-wrap">
+  <table style="margin-top:10px">
+    <thead><tr><th>Command</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">General</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">hello / hi / any question</td><td>Commander routes to the right crew (research, coding, writing) or answers directly. Short replies use conversation history for context.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">&#x1F4CE; Send file(s)</td><td>Attach PDF, DOCX, XLSX, JPG, or PNG to any message. The system extracts text/data and includes it as context. Works with all crews.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>Returns system health, pending proposals, composite score, and LLM info.</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Learning &amp; Self-Improvement</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Adds topic to the learning queue. At 3 AM daily (or manually), the self-improvement crew researches it and saves a skill file.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">watch &lt;youtube_url&gt;</td><td>Extracts video transcript, distills key knowledge into a skill file, and stores a summary in shared team memory.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">show learning queue</td><td>Displays all pending topics in the learning queue.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Immediately processes the learning queue (up to 3 topics). Agents research, extract knowledge, and save skill files.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Triggers an improvement scan. An analyst reviews current skills and creates 1-3 structured improvement proposals.</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Proposals</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>Lists all pending improvement proposals with IDs, types, and titles.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve &lt;id&gt;</td><td>Approves and applies a proposal. Skill proposals copy files immediately; code proposals are staged for next rebuild.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">reject &lt;id&gt;</td><td>Rejects and archives a proposal. No files are changed.</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Evolution &amp; Experiments</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve</td><td>Triggers one evolution cycle. The system analyzes metrics, proposes ONE improvement, applies it, and keeps or discards based on score delta.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve deep</td><td>Runs an extended evolution session with more iterations.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">experiments</td><td>Shows the experiment journal: what evolution has tried, kept, and discarded (last 15).</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">results</td><td>Displays the results ledger with score history (last 20).</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Errors &amp; Auditing</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">errors</td><td>Shows the 5 most recent errors with diagnosis status and recurring patterns.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit</td><td>Triggers an immediate code audit. The auditor reads all Python source files, identifies bugs/security issues, and auto-deploys fixes.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fix errors</td><td>Triggers the error resolution loop. Scans for recurring patterns, generates targeted fixes, applies them, and monitors recurrence (up to 3 attempts).</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">auditor</td><td>Shows audit activity summary: recent code audits, error resolution status, and recent auto-deployments.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">deploys</td><td>Shows the auto-deployment log: what files were deployed, when, and why (last 10).</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">LLM &amp; Fleet Management</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">llm</td><td>Shows current LLM configuration: mode, last model used, tier, vetting status, and cost breakdown.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">mode &lt;local|hybrid|cloud&gt;</td><td>Switches LLM mode. <code>mode</code> alone shows current mode.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet</td><td>Shows LLM fleet status: running containers, available models, and benchmark scores.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet stop all</td><td>Stops all fleet containers immediately, freeing all GPU/RAM.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet pull &lt;model&gt;</td><td>Pulls a new model from Ollama registry. Example: <code>fleet pull gemma3:27b</code></td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">catalog</td><td>Shows the full LLM model catalog with tiers, costs, and role assignments.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">tokens</td><td>Shows token usage for today. Add period: <code>tokens week</code>, <code>tokens month</code>, etc.</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Analysis &amp; Monitoring</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">metrics</td><td>Displays system metrics: composite score, task success rate, error rate, self-heal rate, and more.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">benchmarks</td><td>Shows model performance benchmarks across task types.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">policies</td><td>Shows all active self-learned policies that guide agent behavior.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">retrospective</td><td>Runs a retrospective analysis of recent execution data to discover patterns and generate new policies.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">program</td><td>Shows the evolution program (research directions from workspace/program.md).</td></tr>
-
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Knowledge Base</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb</td><td>Shows knowledge base status: document count, chunk count, categories, and estimated tokens.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb list</td><td>Lists all documents in the knowledge base with format, category, and chunk counts.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb add &lt;url&gt; [category]</td><td>Ingests a URL into the knowledge base. Optional category (default: general). Example: <code>kb add https://docs.example.com technical</code></td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">&#x1F4CE; + kb add [category]</td><td>Send a file attachment with text "kb add" to ingest it. Supports PDF, DOCX, PPTX, XLSX, CSV, TXT, MD, HTML, JSON.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb search &lt;query&gt;</td><td>Searches the knowledge base and returns top matching passages with relevance scores and sources.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb remove &lt;source&gt;</td><td>Removes a document from the knowledge base by its source path.</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb reset</td><td>Deletes all data from the knowledge base. Use with caution.</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">General</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">hello / any question</td><td>Commander routes to the right crew or answers directly</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">&#x1F4CE; Send file(s)</td><td>Attach PDF, DOCX, XLSX, JPG, PNG — extracted as context</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>System health, pending proposals, composite score</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Learning</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Add to learning queue (processed at 3 AM or on demand)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">watch &lt;youtube_url&gt;</td><td>Extract video transcript into skill file</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Process learning queue immediately</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Scan and create improvement proposals</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Proposals</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>List pending improvement proposals</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve / reject &lt;id&gt;</td><td>Approve or reject a proposal</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Evolution</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve [deep]</td><td>Run evolution cycle (single or extended)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">experiments / results</td><td>Show experiment journal or results ledger</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Errors & Audit</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">errors / fix errors</td><td>Show errors or trigger resolution loop</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit</td><td>Code audit with auto-fix</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">LLM & Fleet</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">llm / fleet / catalog / tokens</td><td>LLM config, fleet status, model catalog, token usage</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">mode &lt;local|hybrid|cloud|insane&gt;</td><td>Switch LLM mode</td></tr>
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Knowledge Base</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb / kb list / kb add &lt;url&gt;</td><td>KB status, list docs, add URL</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb search &lt;query&gt;</td><td>Search knowledge base</td></tr>
     </tbody>
   </table>
-  <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;font-size:.78rem;color:var(--muted)">
-    <div style="margin-bottom:6px;font-weight:700;color:var(--text)">How routing works</div>
-    Commander classifies every message and dispatches to specialist crews:<br>
-    &bull; <strong style="color:var(--blue)">Research</strong> &mdash; web search, fact-finding, current events (can spawn parallel sub-agents for complex topics)<br>
-    &bull; <strong style="color:var(--blue)">Coding</strong> &mdash; writes, tests, and debugs code in a Docker sandbox<br>
-    &bull; <strong style="color:var(--blue)">Writing</strong> &mdash; summaries, documentation, emails, reports<br>
-    &bull; <strong style="color:var(--blue)">Direct</strong> &mdash; simple questions answered by Commander itself<br>
-    Complex requests can dispatch multiple crews in parallel.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">LLM tiers &amp; difficulty routing</div>
-    Commander classifies task difficulty (1-10). Easy tasks (1-3) &rarr; cheap local models. Hard tasks (8-10) &rarr; premium cloud models. Medium (4-7) &rarr; balanced selection.<br>
-    <strong>Vetting</strong> &rarr; 4-tier risk-based verification: none (premium+easy), schema (format check), cheap (budget model yes/no), full (Claude Sonnet review). Code always gets full vetting.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Self-healing</div>
-    When any crew fails: logs error with context &rarr; spawns background "System Doctor" agent &rarr; diagnoses root cause &rarr; saves knowledge fix or creates code proposal.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Evolution loop (autoresearch-inspired)</div>
-    Every 6 hours: gathers metrics &rarr; identifies highest-impact improvement &rarr; executes ONE change &rarr; keeps improvements, discards regressions. ETAs are dynamically calculated from historical task durations.
-    <div style="margin-top:8px;font-weight:700;color:var(--text)">Circuit breakers</div>
-    Each LLM provider (Ollama, OpenRouter, Anthropic) has a circuit breaker. After 3 consecutive failures, the provider is skipped for 60s cooldown, preventing slow timeouts.
   </div>
 </details>
 
-<div id="last-updated" style="margin-top:10px"></div>
+<div id="last-updated" style="margin-top:8px"></div>
 
 <script type="module">
-import { initializeApp }                               from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, collection, onSnapshot,
-         query, orderBy, limit, setDoc }               from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInAnonymously }                  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+         query, orderBy, limit, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey:            "AIzaSyBugNcyYowrllCJs5JPquySEghJY0t_tzg",
@@ -419,44 +421,42 @@ const app = initializeApp({
   appId:             "1:680485464185:web:48cf3f9dc4d91068128ca8",
 });
 const db = getFirestore(app);
-const auth = getAuth(app);
-let _authReady = false;
-signInAnonymously(auth)
-  .then(() => { _authReady = true; })
-  .catch(e => console.warn("Anonymous auth failed:", e));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const rel = iso => {
   if (!iso) return "—";
   const s = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (s < 0)    return "soon";
-  if (s < 60)   return `${s}s ago`;
+  if (s < 0) return "soon";
+  if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s/60)}m ago`;
-  if (s < 86400)return `${Math.floor(s/3600)}h ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
   return `${Math.floor(s/86400)}d ago`;
 };
 const abs = iso => iso ? new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "—";
 const etaIn = iso => {
   if (!iso) return null;
   const s = Math.floor((new Date(iso) - Date.now()) / 1000);
-  if (s < 0)    return "overdue";
-  if (s < 60)   return `${s}s`;
+  if (s < 0) return "overdue";
+  if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s/60)}m`;
   return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
 };
 const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", self_improvement:"🧠", retrospective:"🔄" };
-const EVT   = { task_started:"▶️", task_completed:"✅", task_failed:"❌", task_delegated:"↗️" };
+const EVT = { task_started:"▶️", task_completed:"✅", task_failed:"❌", task_delegated:"↗️" };
 const touch = () => document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
 const pct = v => (v * 100).toFixed(0) + "%";
 const metricColor = v => v >= 0.8 ? "var(--green)" : v >= 0.5 ? "var(--yellow)" : "var(--red)";
-
-// XSS protection — escape HTML entities in dynamic content from Firestore
 const esc = s => {
   if (typeof s !== "string") return String(s ?? "");
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 };
+const fmtNum = n => n >= 1000000 ? (n/1000000).toFixed(1)+"M" : n >= 1000 ? (n/1000).toFixed(1)+"K" : String(n);
 
-// ── System ────────────────────────────────────────────────────────────────────
+// ── Metrics history (for sparklines) ─────────────────────────────────────────
+let _metricsHistory = [];
+const MAX_HISTORY = 20;
+
+// ── System ───────────────────────────────────────────────────────────────────
 let _startedAt = null;
 onSnapshot(doc(db,"status","system"), s => {
   if (!s.exists()) return;
@@ -465,7 +465,6 @@ onSnapshot(doc(db,"status","system"), s => {
   badge.className = d.state === "online" ? "online" : "offline";
   document.getElementById("sys-label").textContent = d.state === "online" ? "Online" : "Offline";
   _startedAt = d.started_at;
-  window._lastISO = d.last_seen;
   _updateUptime();
   touch();
 });
@@ -476,9 +475,21 @@ function _updateUptime() {
   document.getElementById("s-uptime").textContent = `${h}h ${m}m`;
 }
 
-// ── Crews ─────────────────────────────────────────────────────────────────────
+// ── Crews ────────────────────────────────────────────────────────────────────
 const CREWS = ["commander","research","coding","writing","self_improvement","retrospective"];
 const crewData = {};
+let _taskSnap = null;
+
+function getSubAgentCount(crewName) {
+  if (!_taskSnap) return 0;
+  let count = 0;
+  _taskSnap.docs.forEach(d => {
+    const t = d.data();
+    if (t.crew === crewName && t.is_sub_agent && t.state === "running") count++;
+  });
+  return count;
+}
+
 function renderCrews() {
   let active = 0;
   const g = document.getElementById("crews-grid");
@@ -487,6 +498,7 @@ function renderCrews() {
     const d = crewData[name] || {};
     const on = d.state === "active";
     if (on) active++;
+    const subCount = on ? getSubAgentCount(name) : 0;
     let etaStr = on && d.eta ? `ETA <span>${etaIn(d.eta)||"—"}</span>` : (d.state==="idle"?"Idle":"—");
     let prog = 0;
     if (on && d.eta && d.started_at) {
@@ -495,14 +507,18 @@ function renderCrews() {
     }
     const c = document.createElement("div");
     c.className = `crew-card${on?" active":""}`;
-    const modelTag = (on && d.model) ? `<span class="model-tag">${d.model}</span>` : '';
+    const modelHtml = (on && d.model) ? `<span class="model-tag">${esc(d.model)}</span>` : '';
+    const subHtml = subCount > 0 ? `<span class="sub-badge">${subCount} sub-agent${subCount>1?"s":""}</span>` : '';
     c.innerHTML = `
       <div class="crew-header">
         <span class="crew-name">${ICONS[name]||"🤖"} ${name.replace(/_/g," ")}</span>
         <span class="crew-status${on?" active":""}">${d.state||"idle"}</span>
       </div>
-      <div class="crew-task">${on?(d.current_task||"Working…"):'<span style="color:var(--muted)">No active task</span>'} ${modelTag}</div>
-      <div class="crew-eta">${etaStr}</div>
+      <div class="crew-task">${on?(esc(d.current_task)||"Working…"):'<span style="color:var(--muted)">No active task</span>'}</div>
+      <div class="crew-meta">
+        ${modelHtml}${subHtml}
+        <span class="crew-eta">${etaStr}</span>
+      </div>
       ${on?`<div class="prog"><div class="fill" style="width:${prog}%"></div></div>`:""}`;
     g.appendChild(c);
   });
@@ -510,7 +526,7 @@ function renderCrews() {
 }
 CREWS.forEach(name => onSnapshot(doc(db,"crews",name), s => { crewData[name] = s.exists()?s.data():{state:"idle"}; renderCrews(); }));
 
-// ── Tasks ─────────────────────────────────────────────────────────────────────
+// ── Tasks ────────────────────────────────────────────────────────────────────
 const fmtDuration = (seconds) => {
   if (!seconds || seconds <= 0) return "—";
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -518,123 +534,94 @@ const fmtDuration = (seconds) => {
   const h = Math.floor(seconds/3600), m = Math.floor((seconds%3600)/60);
   return `${h}h ${m}m`;
 };
-let _taskSnap = null;
+
 function renderTasks() {
   const snap = _taskSnap;
   const tbody = document.getElementById("tasks-tbody");
-  if (!snap || snap.empty) { tbody.innerHTML='<tr><td colspan="7" class="empty">No tasks yet</td></tr>'; return; }
+  if (!snap || snap.empty) { tbody.innerHTML='<tr><td colspan="8" class="empty">No tasks yet</td></tr>'; return; }
   const today = snap.docs.filter(d => (Date.now()-new Date(d.data().started_at))<86400000).length;
   document.getElementById("s-tasks").textContent = today;
   tbody.innerHTML = snap.docs.map(d => {
     const t = d.data();
     const isChild = t.parent_task_id;
-    const indent = isChild ? 'padding-left:28px' : '';
-    const prefix = isChild ? '<span style="color:var(--muted)">└ </span>' : '';
-    const progress = t.sub_agent_progress ? ` <span style="color:var(--orange);font-size:.7rem">(${t.sub_agent_progress})</span>` : '';
+    const indent = isChild ? 'padding-left:22px' : '';
+    const prefix = isChild ? '<span style="color:var(--dim)">└ </span>' : '';
+    const progress = t.sub_agent_progress ? ` <span style="color:var(--orange);font-size:.62rem">(${esc(t.sub_agent_progress)})</span>` : '';
     const eta = t.state==="completed" ? abs(t.completed_at)
               : t.state==="failed"    ? `<span style="color:var(--red)">Failed</span>`
-              : t.eta                 ? `ETA ${etaIn(t.eta)||"—"}${progress}`
+              : t.eta                 ? `${etaIn(t.eta)||"—"}${progress}`
               :                         progress || "—";
-    // Duration: for completed/failed = completed_at - started_at, for running = now - started_at
     let durationSec = 0;
     if (t.started_at) {
       const start = new Date(t.started_at).getTime();
-      if (t.completed_at) {
-        durationSec = (new Date(t.completed_at).getTime() - start) / 1000;
-      } else if (t.state === "running") {
-        durationSec = (Date.now() - start) / 1000;
-      }
+      if (t.completed_at) durationSec = (new Date(t.completed_at).getTime() - start) / 1000;
+      else if (t.state === "running") durationSec = (Date.now() - start) / 1000;
     }
     const durationStr = durationSec > 0 ? fmtDuration(durationSec) : "—";
     const durationColor = t.state === "running" ? "var(--orange)" : "var(--muted)";
-    const modelTag = t.model ? `<span class="model-tag">${t.model}</span>` : '<span style="color:var(--muted);font-size:.7rem">—</span>';
+    const modelTag = t.model ? `<span class="model-tag">${esc(t.model)}</span>` : '<span style="color:var(--dim)">—</span>';
+    // Token count for running tasks
+    const tokenStr = t.tokens_used ? `<span style="color:var(--cyan);font-size:.65rem">${fmtNum(t.tokens_used)}</span>` : '<span style="color:var(--dim)">—</span>';
     let flow = '';
     if (t.delegated_from && t.delegated_to) {
       flow = `<div class="task-flow">${ICONS[t.delegated_from]||"🤖"}<span class="arrow">→</span>${ICONS[t.delegated_to]||"🤖"}</div>`;
     } else if (t.is_sub_agent && t.parent_task_id) {
-      flow = `<div class="task-flow"><span style="color:var(--muted)">sub-agent</span></div>`;
+      flow = `<div class="task-flow"><span style="color:var(--dim)">sub</span></div>`;
     } else if (t.crew) {
       flow = `<div class="task-flow">${ICONS["commander"]||""}<span class="arrow">→</span>${ICONS[t.crew]||"🤖"}</div>`;
     }
-    return `<tr${isChild?' style="opacity:.8"':''}>
+    return `<tr${isChild?' style="opacity:.75"':''}>
       <td style="${indent}">${prefix}${ICONS[t.crew]||"🤖"} ${esc(t.crew)||"—"}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.summary)||"—"}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.summary)||"—"}</td>
       <td>${modelTag}</td>
+      <td>${tokenStr}</td>
       <td><span class="badge ${t.state||""}">${t.state||"—"}</span></td>
       <td>${flow}</td>
-      <td style="color:${durationColor};font-weight:600;font-size:.78rem;white-space:nowrap">${durationStr}</td>
-      <td style="color:var(--muted)">${eta}</td>
+      <td style="color:${durationColor};font-weight:600;font-size:.72rem;white-space:nowrap">${durationStr}</td>
+      <td style="color:var(--muted);white-space:nowrap">${eta}</td>
     </tr>`;
   }).join("");
 }
 onSnapshot(query(collection(db,"tasks"), orderBy("started_at","desc"), limit(20)), snap => {
   _taskSnap = snap;
   renderTasks();
+  renderCrews(); // refresh sub-agent counts
   touch();
 });
 
-// ── Fleet ────────────────────────────────────────────────────────────────────
-onSnapshot(doc(db,"status","fleet"), s => {
-  const grid = document.getElementById("fleet-grid");
-  const bench = document.getElementById("fleet-benchmarks");
-  if (!s.exists()) { grid.innerHTML='<div class="empty">No fleet data yet</div>'; return; }
-  const d = s.data();
-  const containers = d.containers || [];
-  if (!containers.length) {
-    grid.innerHTML='<div class="empty">No containers spawned yet</div>';
-  } else {
-    grid.innerHTML = containers.map(c => {
-      const isRun = c.status === "running";
-      return `<div class="fleet-card${isRun?" running":""}">
-        <div><span class="fleet-dot ${c.status}"></span><span class="model-name">${c.model}</span></div>
-        <div class="model-meta">Port ${c.port} · ${isRun ? `Idle ${Math.round(c.idle_minutes)}m` : "Stopped"}</div>
-        <div class="model-meta">${c.container}</div>
-      </div>`;
-    }).join("");
-  }
-  const bmarks = d.benchmarks || [];
-  if (bmarks.length) {
-    bench.innerHTML = '<strong style="color:var(--text)">Benchmarks:</strong> ' +
-      bmarks.map(b => `<span style="color:var(--purple)">${b.model}</span>[${b.task}]=${b.score}`).join(" · ");
-  } else {
-    bench.innerHTML = '';
-  }
-  touch();
-});
-
-// ── Schedule ──────────────────────────────────────────────────────────────────
+// ── Schedule ─────────────────────────────────────────────────────────────────
 onSnapshot(doc(db,"schedule","jobs"), s => {
   const el = document.getElementById("schedule-list");
-  if (!s.exists()) { el.innerHTML='<div class="empty">No schedule data</div>'; return; }
+  if (!s.exists()) { el.innerHTML='<div class="empty">No schedule</div>'; return; }
   const jobs = (s.data().jobs||[]).sort((a,b)=>new Date(a.next_run)-new Date(b.next_run));
   el.innerHTML = jobs.map(j => {
     const next = j.next_run ? new Date(j.next_run) : null;
     const t = next ? next.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
     return `<div class="schedule-item">
-      <div><div class="schedule-time">${t}</div></div>
-      <div><div class="schedule-name">${j.name}</div><div class="schedule-cron">${j.cron||""}</div></div>
+      <div class="schedule-time">${t}</div>
+      <div><div class="schedule-name">${esc(j.name)}</div><div class="schedule-cron">${esc(j.cron)||""}</div></div>
     </div>`;
   }).join("");
 });
 
-// ── Proposals ─────────────────────────────────────────────────────────────────
+// ── Proposals ────────────────────────────────────────────────────────────────
 onSnapshot(doc(db,"status","proposals"), s => {
   const el = document.getElementById("proposals-list");
   if (!s.exists()) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
   const proposals = s.data().proposals || [];
   if (!proposals.length) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
-  const STATUS_COLORS = { pending: "var(--yellow)", approved: "var(--green)", rejected: "var(--muted)" };
-  el.innerHTML = `<table style="width:100%"><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody>` +
+  const SC = { pending: "var(--yellow)", approved: "var(--green)", rejected: "var(--muted)" };
+  el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody>` +
     proposals.map(p => `<tr>
       <td style="font-weight:700">#${p.id||"?"}</td>
       <td>${esc(p.title)||"—"}</td>
-      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${esc(p.type)||"?"}</span></td>
-      <td><span style="color:${STATUS_COLORS[p.status]||"var(--muted)"};font-weight:600">${esc(p.status)||"?"}</span></td>
+      <td><span class="badge" style="background:rgba(96,165,250,.15);color:var(--blue)">${esc(p.type)||"?"}</span></td>
+      <td><span style="color:${SC[p.status]||"var(--muted)"};font-weight:600">${esc(p.status)||"?"}</span></td>
       <td style="color:var(--muted)">${p.created_at ? p.created_at.slice(0,10) : "—"}</td>
-    </tr>`).join("") + `</tbody></table>`;
+    </tr>`).join("") + `</tbody></table></div>`;
 });
 
-// ── Activity feed ─────────────────────────────────────────────────────────────
+// ── Activity Feed ────────────────────────────────────────────────────────────
 onSnapshot(query(collection(db,"activities"), orderBy("ts","desc"), limit(50)), snap => {
   const feed = document.getElementById("feed");
   if (snap.empty) { feed.innerHTML='<div class="empty">No activity yet</div>'; return; }
@@ -643,7 +630,7 @@ onSnapshot(query(collection(db,"activities"), orderBy("ts","desc"), limit(50)), 
     .map(a => `<div class="feed-item">
       <div class="feed-time">${abs(a.ts)}</div>
       <div class="feed-icon">${EVT[a.event]||"ℹ️"}</div>
-      <div class="feed-detail"><span class="feed-crew">${ICONS[a.crew]||"🤖"} ${a.crew}</span> — ${a.detail||a.event}</div>
+      <div class="feed-detail"><span class="feed-crew">${ICONS[a.crew]||"🤖"} ${esc(a.crew)}</span> — ${esc(a.detail||a.event)}</div>
     </div>`).join("");
   touch();
 });
@@ -661,28 +648,12 @@ onSnapshot(doc(db, "config", "llm"), s => {
 document.querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
     const mode = btn.dataset.mode;
-    // Optimistic UI update — show the new mode immediately
-    document.querySelectorAll(".mode-btn").forEach(b => {
-      b.classList.toggle("active", b.dataset.mode === mode);
-    });
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
     document.getElementById("s-mode").textContent = mode.toUpperCase();
-
-    // Wait for auth if not yet ready (signInAnonymously is async)
-    if (!_authReady) {
-      try {
-        await signInAnonymously(auth);
-        _authReady = true;
-      } catch (e) {
-        console.error("Auth failed, cannot switch mode:", e);
-        return;
-      }
-    }
     try {
       await setDoc(doc(db, "config", "llm"), { mode, updated_at: new Date().toISOString() });
-      console.log("Mode switched to:", mode);
     } catch (e) {
       console.error("Mode switch failed:", e);
-      // Revert UI on failure — the onSnapshot will fix it when the real value comes back
     }
   });
 });
@@ -713,39 +684,30 @@ function renderTokens() {
   summary.innerHTML = `<span class="big">${total.toLocaleString()}</span> tokens ${costStr}`;
   table.style.display = "";
   tbody.innerHTML = stats.map(s => `<tr>
-    <td><span class="model-tag">${s.model}</span></td>
+    <td><span class="model-tag">${esc(s.model)}</span></td>
     <td>${(s.prompt_tokens||0).toLocaleString()}</td>
     <td>${(s.completion_tokens||0).toLocaleString()}</td>
     <td style="font-weight:700">${(s.total||0).toLocaleString()}</td>
     <td style="color:var(--green)">${s.cost_usd > 0 ? "$"+s.cost_usd.toFixed(4) : "free"}</td>
     <td>${s.calls}</td>
   </tr>`).join("");
-
-  // Update cost stat card
   const dayStats = _tokenData["day"] || [];
   const dayCost = dayStats.reduce((s, r) => s + (r.cost_usd || 0), 0);
   document.getElementById("s-cost-today").textContent = dayCost > 0 ? `$${dayCost.toFixed(2)}` : "free";
-
-  // Monthly projection
   const monthStats = _tokenData["month"] || [];
   const monthCost = monthStats.reduce((s, r) => s + (r.cost_usd || 0), 0);
   updateMonthlyProjection(dayCost, monthCost);
 }
 
-// ── Monthly Cost Projection ──────────────────────────────────────────────────
 function updateMonthlyProjection(dayCost, monthCost) {
   const el = document.getElementById("monthly-projection");
-  // Project from daily average over the month
-  const daysInMonth = 30;
-  const projectedMonthly = dayCost * daysInMonth;
-
+  const projected = dayCost * 30;
   el.innerHTML = `
-    <div class="projection">$${projectedMonthly.toFixed(2)}<span style="font-size:.9rem;color:var(--muted)">/mo</span></div>
+    <div class="projection">$${projected.toFixed(2)}<span style="font-size:.8rem;color:var(--muted)">/mo</span></div>
     <div class="projection-detail">
-      Based on today's spend: $${dayCost.toFixed(4)}/day<br>
-      Month to date: $${monthCost.toFixed(4)}
+      Today: $${dayCost.toFixed(4)} · MTD: $${monthCost.toFixed(4)}
     </div>`;
-  document.getElementById("s-cost-month").textContent = `~$${projectedMonthly.toFixed(0)}/mo`;
+  document.getElementById("s-cost-month").textContent = `~$${projected.toFixed(0)}/mo`;
 }
 
 // ── Request Costs ────────────────────────────────────────────────────────────
@@ -755,16 +717,15 @@ onSnapshot(doc(db, "status", "request_costs"), s => {
   const stats = s.data().stats || {};
   const day = stats.day || {};
   const week = stats.week || {};
-  if (!day.requests) { el.innerHTML = '<div class="empty">No requests recorded</div>'; return; }
-  el.innerHTML = `
-    <div style="font-size:.82rem">
-      <div style="margin-bottom:4px"><strong>${day.requests}</strong> requests today · avg <strong>$${(day.avg_cost_usd||0).toFixed(4)}</strong>/req</div>
-      <div style="color:var(--muted)">Avg ${(day.avg_calls||0).toFixed(0)} LLM calls/req · ${Math.round(day.avg_tokens||0).toLocaleString()} tokens/req</div>
-      <div style="color:var(--muted);margin-top:4px">Week: ${week.requests||0} requests · $${(week.total_cost_usd||0).toFixed(4)} total</div>
-    </div>`;
+  if (!day.requests) { el.innerHTML = '<div class="empty">No requests</div>'; return; }
+  el.innerHTML = `<div style="font-size:.75rem">
+    <div><strong>${day.requests}</strong> reqs today · avg <strong>$${(day.avg_cost_usd||0).toFixed(4)}</strong>/req</div>
+    <div style="color:var(--muted)">Avg ${(day.avg_calls||0).toFixed(0)} LLM calls · ${Math.round(day.avg_tokens||0).toLocaleString()} tok/req</div>
+    <div style="color:var(--dim);margin-top:2px">Week: ${week.requests||0} reqs · $${(week.total_cost_usd||0).toFixed(4)}</div>
+  </div>`;
 });
 
-// ── Metrics ──────────────────────────────────────────────────────────────────
+// ── Metrics with Sparklines ──────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "metrics"), s => {
   const el = document.getElementById("metrics-bars");
   if (!s.exists()) { el.innerHTML = '<div class="empty">No metrics data</div>'; return; }
@@ -772,65 +733,115 @@ onSnapshot(doc(db, "status", "metrics"), s => {
   document.getElementById("s-score").textContent = (m.composite_score || 0).toFixed(2);
   document.getElementById("s-score").style.color = metricColor(m.composite_score || 0);
 
+  // Store history for sparklines
+  _metricsHistory.push({
+    ts: Date.now(),
+    success: m.task_success_rate || 0,
+    quality: m.output_quality || 0,
+    heal: m.self_heal_rate || 0,
+    errors: m.error_rate_24h || 0,
+    response: m.avg_response_time_s || 0,
+    score: m.composite_score || 0,
+  });
+  if (_metricsHistory.length > MAX_HISTORY) _metricsHistory.shift();
+
   const metrics = [
-    { label: "Task Success Rate", value: m.task_success_rate, display: pct(m.task_success_rate || 0) },
-    { label: "Output Quality", value: m.output_quality, display: pct(m.output_quality || 0) },
-    { label: "Self-Heal Rate", value: m.self_heal_rate, display: pct(m.self_heal_rate || 0) },
-    { label: "Error Rate (24h)", value: Math.max(0, 1 - (m.error_rate_24h || 0) / 5), display: `${(m.error_rate_24h || 0).toFixed(1)}/hr` },
-    { label: "Avg Response Time", value: Math.max(0, 1 - (m.avg_response_time_s || 0) / 60), display: `${(m.avg_response_time_s || 0).toFixed(1)}s` },
-    { label: "Evolution Efficiency", value: m.evolution_efficiency, display: pct(m.evolution_efficiency || 0) },
-    { label: "Skills Learned", value: Math.min(1, (m.skill_count || 0) / 20), display: `${m.skill_count || 0}` },
+    { key: "success", label: "Task Success", value: m.task_success_rate, display: pct(m.task_success_rate || 0) },
+    { key: "quality", label: "Output Quality", value: m.output_quality, display: pct(m.output_quality || 0) },
+    { key: "heal", label: "Self-Heal Rate", value: m.self_heal_rate, display: pct(m.self_heal_rate || 0) },
+    { key: "errors", label: "Error Rate (24h)", value: Math.max(0, 1 - (m.error_rate_24h || 0) / 5), display: `${(m.error_rate_24h || 0).toFixed(1)}/hr` },
+    { key: "response", label: "Avg Response", value: Math.max(0, 1 - (m.avg_response_time_s || 0) / 60), display: `${(m.avg_response_time_s || 0).toFixed(1)}s` },
+    { key: "score", label: "Composite Score", value: m.composite_score, display: (m.composite_score||0).toFixed(3) },
+    { label: "Evolution Eff.", value: m.evolution_efficiency, display: pct(m.evolution_efficiency || 0) },
+    { label: "Skills", value: Math.min(1, (m.skill_count || 0) / 20), display: `${m.skill_count || 0}` },
   ];
 
-  el.innerHTML = metrics.map(m => `
-    <div class="metric-bar">
-      <div class="metric-label">${m.label}</div>
-      <div class="metric-track"><div class="metric-fill" style="width:${(m.value||0)*100}%;background:${metricColor(m.value||0)}"></div></div>
-      <div class="metric-value" style="color:${metricColor(m.value||0)}">${m.display}</div>
-    </div>`).join("");
+  el.innerHTML = metrics.map(met => {
+    const spark = met.key ? renderSparkline(met.key) : '';
+    return `<div class="metric-row">
+      <div class="metric-label">${met.label}</div>
+      <div class="metric-track"><div class="metric-fill" style="width:${(met.value||0)*100}%;background:${metricColor(met.value||0)}"></div></div>
+      ${spark}
+      <div class="metric-value" style="color:${metricColor(met.value||0)}">${met.display}</div>
+    </div>`;
+  }).join("");
   touch();
 });
 
-// ── Circuit Breakers ─────────────────────────────────────────────────────────
+function renderSparkline(key) {
+  if (_metricsHistory.length < 2) return '';
+  const vals = _metricsHistory.map(h => h[key] || 0);
+  const max = Math.max(...vals, 0.01);
+  return `<div class="metric-spark">${vals.map(v => {
+    const h = Math.round((v / max) * 18) + 2;
+    const c = metricColor(key === "errors" ? Math.max(0, 1 - v/5) : v);
+    return `<div class="bar" style="height:${h}px;background:${c}"></div>`;
+  }).join("")}</div>`;
+}
+
+// ── Circuit Breakers + Signal ────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "circuit_breakers"), s => {
+  renderConnections(s.exists() ? s.data() : {});
+});
+let _signalData = {};
+onSnapshot(doc(db, "status", "signal"), s => {
+  _signalData = s.exists() ? s.data() : {};
+  // Re-render connections when signal data updates
+  const cbDoc = document.getElementById("circuit-breakers");
+  if (cbDoc._lastCBData) renderConnectionsFull(cbDoc._lastCBData, _signalData);
+});
+
+function renderConnections(cbData) {
   const el = document.getElementById("circuit-breakers");
-  if (!s.exists()) { el.innerHTML = '<div class="empty">No connection data</div>'; return; }
-  const providers = s.data().providers || {};
-  const providerNames = { ollama: "Ollama (Local)", openrouter: "OpenRouter (API)", anthropic: "Anthropic (Premium)" };
-  const stateLabels = { closed: "Connected", open: "DOWN", half_open: "Testing…" };
-  el.innerHTML = Object.entries(providers).map(([name, info]) => `
+  el._lastCBData = cbData;
+  renderConnectionsFull(cbData, _signalData);
+}
+function renderConnectionsFull(cbData, sigData) {
+  const el = document.getElementById("circuit-breakers");
+  const providers = cbData.providers || {};
+  const names = { ollama: "Ollama (Local)", openrouter: "OpenRouter", anthropic: "Anthropic" };
+  const states = { closed: "Connected", open: "DOWN", half_open: "Testing" };
+
+  let html = Object.entries(providers).map(([name, info]) => `
     <div class="cb-card">
       <div class="cb-dot ${info.state}"></div>
       <div>
-        <div class="cb-name">${providerNames[name] || name}</div>
-        <div class="cb-state">${stateLabels[info.state] || info.state}${info.failures > 0 ? ` · ${info.failures} failures` : ''}</div>
+        <div class="cb-name">${names[name] || name}</div>
+        <div class="cb-state">${states[info.state] || info.state}${info.failures > 0 ? ` · ${info.failures} fail` : ''}</div>
       </div>
     </div>`).join("");
-});
+
+  // Signal connection
+  const sigOn = sigData.connected;
+  const sigLast = sigData.last_message_at;
+  html += `<div class="cb-card">
+    <div class="cb-dot ${sigOn ? 'closed' : 'open'}"></div>
+    <div>
+      <div class="cb-name">Signal</div>
+      <div class="cb-state">${sigOn ? 'Connected' : 'Disconnected'}${sigLast ? ' · ' + rel(sigLast) : ''}</div>
+    </div>
+  </div>`;
+
+  el.innerHTML = html;
+}
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "errors"), s => {
   const el = document.getElementById("error-list");
-  const patternsEl = document.getElementById("error-patterns");
-  if (!s.exists()) { el.innerHTML = '<div class="empty">No errors recorded</div>'; patternsEl.innerHTML = ''; return; }
+  const pEl = document.getElementById("error-patterns");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No errors</div>'; pEl.innerHTML = ''; return; }
   const d = s.data();
   const errors = d.recent || [];
   const patterns = d.patterns || {};
-
-  // Patterns summary
   if (Object.keys(patterns).length) {
-    patternsEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Recurring patterns: ' +
+    pEl.innerHTML = '<div style="font-size:.68rem;color:var(--muted)">Recurring: ' +
       Object.entries(patterns).map(([k, v]) => `<span style="color:var(--red)">${esc(k)}</span>×${v}`).join(", ") + '</div>';
-  } else {
-    patternsEl.innerHTML = '';
-  }
-
+  } else pEl.innerHTML = '';
   if (!errors.length) { el.innerHTML = '<div class="empty">No recent errors</div>'; return; }
-  el.innerHTML = errors.slice(0, 10).map(e => `
+  el.innerHTML = errors.slice(0, 8).map(e => `
     <div class="error-item">
-      <div><span class="error-crew">${ICONS[e.crew]||"🤖"} ${esc(e.crew)||"—"}</span> · <span class="error-type">${esc(e.error_type)||"unknown"}</span> · <span style="color:var(--muted)">${rel(e.ts)}</span></div>
-      <div class="error-msg">${esc((e.error_msg||"").slice(0, 150))}</div>
-      <div class="${e.diagnosed ? 'error-diagnosed' : 'error-undiagnosed'}">${e.diagnosed ? '✓ Diagnosed' : '⏳ Pending diagnosis'}</div>
+      <span class="error-crew">${ICONS[e.crew]||"🤖"} ${esc(e.crew)||"—"}</span> · <span class="error-type">${esc(e.error_type)||"?"}</span> · <span style="color:var(--dim)">${rel(e.ts)}</span>
+      <div class="error-msg">${esc((e.error_msg||"").slice(0, 120))}</div>
     </div>`).join("");
 });
 
@@ -838,84 +849,125 @@ onSnapshot(doc(db, "status", "errors"), s => {
 onSnapshot(doc(db, "status", "evolution"), s => {
   const el = document.getElementById("evo-list");
   const statsEl = document.getElementById("evo-stats");
-  if (!s.exists()) { el.innerHTML = '<div class="empty">No experiments yet</div>'; statsEl.innerHTML = ''; return; }
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No experiments</div>'; statsEl.innerHTML = ''; return; }
   const d = s.data();
   const experiments = d.recent_experiments || [];
   const best = d.best_score;
   const trend = d.trend || [];
-
-  // Stats
   const kept = experiments.filter(e => e.status === "keep").length;
-  const total = experiments.length;
-  statsEl.innerHTML = `
-    <div style="font-size:.82rem">
-      <span style="color:var(--blue);font-weight:700">Best: ${(best||0).toFixed(4)}</span> ·
-      ${kept}/${total} experiments kept
-      ${trend.length > 1 ? ` · Trend: ${trend[0]?.toFixed(3)||"?"} → ${trend[trend.length-1]?.toFixed(3)||"?"}` : ''}
-    </div>`;
-
-  if (!experiments.length) { el.innerHTML = '<div class="empty">No experiments yet</div>'; return; }
-  el.innerHTML = experiments.slice(0, 10).map(e => `
+  statsEl.innerHTML = `<div style="font-size:.75rem">
+    <span style="color:var(--blue);font-weight:700">Best: ${(best||0).toFixed(4)}</span> ·
+    ${kept}/${experiments.length} kept
+    ${trend.length > 1 ? ` · ${trend[0]?.toFixed(3)||"?"} → ${trend[trend.length-1]?.toFixed(3)||"?"}` : ''}
+  </div>`;
+  if (!experiments.length) { el.innerHTML = '<div class="empty">No experiments</div>'; return; }
+  el.innerHTML = experiments.slice(0, 8).map(e => `
     <div class="evo-item">
       <span class="evo-status ${e.status||''}">${(e.status||"?").toUpperCase()}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.hypothesis||"—"}</span>
-      <span style="color:var(--muted);font-size:.75rem">${e.delta !== undefined ? (e.delta >= 0 ? '+' : '') + (e.delta*100).toFixed(2) + '%' : '—'}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.hypothesis)||"—"}</span>
+      <span style="color:var(--muted);font-size:.65rem">${e.delta !== undefined ? (e.delta >= 0 ? '+' : '') + (e.delta*100).toFixed(2) + '%' : '—'}</span>
     </div>`).join("");
 });
 
-// ── Knowledge Base ──────────────────────────────────────────────────────────
+// ── Skills Learned ───────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "skills"), s => {
+  const el = document.getElementById("skills-list");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No skills yet. Use <code>learn &lt;topic&gt;</code> via Signal.</div>'; return; }
+  const skills = s.data().skills || [];
+  if (!skills.length) { el.innerHTML = '<div class="empty">No skills yet</div>'; return; }
+  el.innerHTML = skills.sort((a,b) => (b.modified_at||"").localeCompare(a.modified_at||"")).map(sk => `
+    <div class="skill-item">
+      <span class="skill-icon">🧠</span>
+      <span class="skill-name">${esc(sk.name)}</span>
+      <span class="skill-desc">${esc(sk.description||"")}</span>
+      <span class="skill-date">${sk.modified_at ? rel(sk.modified_at) : "—"}</span>
+    </div>`).join("");
+});
+
+// ── Knowledge Base ───────────────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "knowledge_base"), s => {
   const statsEl = document.getElementById("kb-stats");
   const catsEl = document.getElementById("kb-categories");
   const docsEl = document.getElementById("kb-documents");
-  if (!s.exists()) {
-    statsEl.innerHTML = '<div class="empty">No knowledge base data yet</div>';
-    catsEl.innerHTML = '';
-    docsEl.innerHTML = '';
-    return;
-  }
+  if (!s.exists()) { statsEl.innerHTML = '<div class="empty">No KB data</div>'; catsEl.innerHTML=''; docsEl.innerHTML=''; return; }
   const d = s.data();
-
-  // Stats cards
   statsEl.innerHTML = [
     { label: "Documents", value: d.total_documents || 0 },
     { label: "Chunks", value: d.total_chunks || 0 },
     { label: "Characters", value: (d.total_characters || 0).toLocaleString() },
-    { label: "Est. Tokens", value: `~${(d.estimated_tokens || 0).toLocaleString()}` },
-  ].map(s => `<div style="background:var(--bg);border-radius:8px;padding:10px 14px;text-align:center">
-    <div style="font-size:1.3rem;font-weight:700;color:var(--blue)">${s.value}</div>
-    <div style="font-size:.72rem;color:var(--muted)">${s.label}</div>
+    { label: "Est. Tokens", value: `~${fmtNum(d.estimated_tokens || 0)}` },
+  ].map(s => `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;text-align:center">
+    <div style="font-size:1.1rem;font-weight:700;color:var(--blue)">${s.value}</div>
+    <div style="font-size:.62rem;color:var(--muted)">${s.label}</div>
   </div>`).join("");
-
-  // Categories
   const cats = d.categories || {};
   if (Object.keys(cats).length) {
-    catsEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Categories: ' +
+    catsEl.innerHTML = '<div style="font-size:.68rem;color:var(--muted)">Categories: ' +
       Object.entries(cats).map(([c, n]) =>
-        `<span style="display:inline-block;background:rgba(88,166,255,.12);color:var(--blue);border-radius:4px;padding:1px 8px;margin:2px;font-size:.72rem">${esc(c)} (${n})</span>`
+        `<span style="display:inline-block;background:rgba(96,165,250,.1);color:var(--blue);border-radius:4px;padding:0 6px;margin:1px;font-size:.65rem">${esc(c)} (${n})</span>`
       ).join("") + '</div>';
-  } else {
-    catsEl.innerHTML = '';
-  }
-
-  // Document list
+  } else catsEl.innerHTML = '';
   const docs = d.documents || [];
   if (!docs.length) {
-    docsEl.innerHTML = '<div class="empty" style="font-size:.78rem">No documents ingested. Use <code>kb add</code> via Signal to add documents.</div>';
+    docsEl.innerHTML = '<div class="empty" style="font-size:.72rem">No documents. Upload above or use <code>kb add</code> via Signal.</div>';
     return;
   }
-  docsEl.innerHTML = `<table style="width:100%;font-size:.78rem"><thead><tr><th>Document</th><th>Format</th><th>Category</th><th>Chunks</th><th>Added</th></tr></thead><tbody>` +
+  docsEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Document</th><th>Format</th><th>Category</th><th>Chunks</th><th>Added</th></tr></thead><tbody>` +
     docs.map(d => `<tr>
-      <td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.source)}</td>
-      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${esc(d.format)}</span></td>
+      <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.source)}</td>
+      <td><span class="badge" style="background:rgba(96,165,250,.12);color:var(--blue)">${esc(d.format)}</span></td>
       <td style="color:var(--muted)">${esc(d.category)}</td>
       <td style="text-align:right">${d.chunks}</td>
       <td style="color:var(--muted)">${d.ingested_at ? d.ingested_at.slice(0, 10) : "—"}</td>
-    </tr>`).join("") + `</tbody></table>`;
+    </tr>`).join("") + `</tbody></table></div>`;
   touch();
 });
 
-// ── Model Catalog & Role Assignments ─────────────────────────────────────────
+// ── KB File Upload ───────────────────────────────────────────────────────────
+const kbZone = document.getElementById("kb-upload-zone");
+const kbFile = document.getElementById("kb-file");
+const kbStatus = document.getElementById("kb-upload-status");
+
+kbZone.addEventListener("click", () => kbFile.click());
+kbZone.addEventListener("dragover", e => { e.preventDefault(); kbZone.classList.add("dragover"); });
+kbZone.addEventListener("dragleave", () => kbZone.classList.remove("dragover"));
+kbZone.addEventListener("drop", e => {
+  e.preventDefault();
+  kbZone.classList.remove("dragover");
+  if (e.dataTransfer.files.length) uploadKBFiles(e.dataTransfer.files);
+});
+kbFile.addEventListener("change", () => { if (kbFile.files.length) uploadKBFiles(kbFile.files); });
+
+async function uploadKBFiles(files) {
+  const category = document.getElementById("kb-category").value;
+  kbStatus.innerHTML = `<span style="color:var(--blue)">Uploading ${files.length} file(s)…</span>`;
+  let success = 0, failed = 0;
+  for (const file of files) {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("category", category);
+      // Try container URL (adjust if needed)
+      const urls = ["/api/kb/upload", "http://localhost:8000/kb/upload"];
+      let ok = false;
+      for (const url of urls) {
+        try {
+          const resp = await fetch(url, { method: "POST", body: form });
+          if (resp.ok) { ok = true; success++; break; }
+        } catch (_) {}
+      }
+      if (!ok) failed++;
+    } catch (_) { failed++; }
+  }
+  const msg = [];
+  if (success) msg.push(`<span style="color:var(--green)">${success} uploaded</span>`);
+  if (failed) msg.push(`<span style="color:var(--red)">${failed} failed</span>`);
+  kbStatus.innerHTML = msg.join(" · ");
+  kbFile.value = "";
+  setTimeout(() => { kbStatus.innerHTML = ""; }, 5000);
+}
+
+// ── Model Catalog & Roles ────────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "catalog"), s => {
   const rolesEl = document.getElementById("role-assignments");
   const catalogEl = document.getElementById("model-catalog");
@@ -924,36 +976,29 @@ onSnapshot(doc(db, "status", "catalog"), s => {
   const models = d.models || [];
   const assignments = d.role_assignments || {};
   const costMode = d.cost_mode || "balanced";
-
-  // Role assignments
   const roleNames = ["commander","research","coding","writing","critic","vetting","self_improve","synthesis","planner"];
-  rolesEl.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Cost mode: <strong style="color:var(--blue)">${costMode}</strong></div>` +
-    `<table style="font-size:.78rem"><tbody>` +
+  rolesEl.innerHTML = `<div style="font-size:.68rem;color:var(--muted);margin-bottom:4px">Cost mode: <strong style="color:var(--blue)">${esc(costMode)}</strong></div>` +
+    `<div class="table-wrap"><table style="font-size:.72rem"><tbody>` +
     roleNames.filter(r => assignments[r]).map(r => {
       const m = models.find(m => m.name === assignments[r]);
       const cost = m ? (m.cost_output > 0 ? `$${m.cost_output.toFixed(2)}/Mo` : 'free') : '—';
       const tier = m ? m.tier : '—';
-      return `<tr><td style="font-weight:600;padding:3px 8px">${r}</td><td><span class="model-tag">${assignments[r]}</span></td><td><span class="tier-tag ${tier}">${tier}</span></td><td style="color:var(--muted)">${cost}</td></tr>`;
-    }).join("") +
-    `</tbody></table>`;
-
-  // Model catalog grouped by tier
+      return `<tr><td style="font-weight:600;padding:2px 6px">${r}</td><td><span class="model-tag">${esc(assignments[r])}</span></td><td><span class="tier-tag ${tier}">${tier}</span></td><td style="color:var(--muted)">${cost}</td></tr>`;
+    }).join("") + `</tbody></table></div>`;
   const tiers = ["local","budget","mid","premium"];
   catalogEl.innerHTML = tiers.map(tier => {
-    const tierModels = models.filter(m => m.tier === tier);
-    if (!tierModels.length) return '';
-    return `<div style="margin-top:8px;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase">${tier}</div>` +
-      tierModels.map(m => `<div class="catalog-model">
-        <span class="tier-tag ${m.tier}">${m.tier}</span>
-        <span style="font-weight:600">${m.name}</span>
-        <span style="color:var(--muted);font-size:.72rem">${m.cost_output > 0 ? '$'+m.cost_output.toFixed(2)+'/Mo' : 'free'}</span>
-        <span style="color:var(--muted);font-size:.7rem">${(m.context/1000).toFixed(0)}K ctx</span>
-        ${m.multimodal ? '<span style="font-size:.65rem;color:var(--cyan)">👁 multi</span>' : ''}
+    const tms = models.filter(m => m.tier === tier);
+    if (!tms.length) return '';
+    return `<div style="margin-top:6px;font-size:.62rem;font-weight:700;color:var(--dim);text-transform:uppercase">${tier}</div>` +
+      tms.map(m => `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:.72rem;border-bottom:1px solid rgba(36,45,58,.2)">
+        <span class="tier-tag ${m.tier}">${m.tier[0]}</span>
+        <span style="font-weight:600;flex:1">${esc(m.name)}</span>
+        <span style="color:var(--muted);font-size:.65rem">${m.cost_output > 0 ? '$'+m.cost_output.toFixed(2)+'/Mo' : 'free'}</span>
       </div>`).join("");
   }).join("");
 });
 
-// Refresh relative times and running task durations every 5s
+// ── Refresh interval ─────────────────────────────────────────────────────────
 setInterval(() => {
   _updateUptime();
   renderCrews();
