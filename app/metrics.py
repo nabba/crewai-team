@@ -49,6 +49,31 @@ def _error_rate_24h() -> float:
         return 0.0
 
 
+def _error_rate_1h() -> float:
+    """Errors in the last 1 hour. For short-term trending."""
+    try:
+        from app.self_heal import get_recent_errors
+        errors = get_recent_errors(100)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        return sum(1 for e in errors if e.get("ts", "") > cutoff.isoformat())
+    except Exception:
+        return 0.0
+
+
+def _error_trend() -> str:
+    """Compare last-1h error rate to average-24h rate. Returns 'improving', 'stable', or 'degrading'."""
+    rate_1h = _error_rate_1h()
+    rate_24h = _error_rate_24h()  # errors/hour average
+    if rate_24h <= 0:
+        return "stable" if rate_1h <= 0 else "degrading"
+    ratio = rate_1h / rate_24h
+    if ratio < 0.5:
+        return "improving"
+    elif ratio > 2.0:
+        return "degrading"
+    return "stable"
+
+
 def _self_heal_rate() -> float:
     """Fraction of errors that were successfully diagnosed (0.0-1.0)."""
     try:
@@ -196,6 +221,8 @@ def compute_metrics() -> dict:
     return {
         "task_success_rate": round(success, 4),
         "error_rate_24h": round(errors, 4),
+        "error_rate_1h": round(_error_rate_1h(), 4),
+        "error_trend": _error_trend(),
         "self_heal_rate": round(heal, 4),
         "output_quality": round(quality, 4),
         "skill_count": skills,
@@ -209,11 +236,15 @@ def compute_metrics() -> dict:
 
 def format_metrics(metrics: dict) -> str:
     """Human-readable metrics summary for Signal messages."""
+    trend_icon = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
+        metrics.get("error_trend", "stable"), "→"
+    )
     return (
         f"Composite Score: {metrics['composite_score']:.4f}\n"
         f"Task Success Rate: {metrics['task_success_rate']:.1%}\n"
         f"Output Quality: {metrics['output_quality']:.1%}\n"
-        f"Error Rate (24h): {metrics['error_rate_24h']:.2f}/hr\n"
+        f"Error Rate (24h): {metrics['error_rate_24h']:.2f}/hr {trend_icon} "
+        f"(last 1h: {metrics.get('error_rate_1h', 0):.0f})\n"
         f"Self-Heal Rate: {metrics['self_heal_rate']:.1%}\n"
         f"Skills: {metrics['skill_count']}\n"
         f"Avg Response Time: {metrics['avg_response_time_s']:.1f}s\n"

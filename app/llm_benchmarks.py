@@ -57,6 +57,7 @@ def _get_conn() -> sqlite3.Connection:
             CREATE TABLE IF NOT EXISTS request_costs (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_id        TEXT NOT NULL,
+                crew_name         TEXT NOT NULL DEFAULT '',
                 total_prompt      INTEGER NOT NULL,
                 total_completion  INTEGER NOT NULL,
                 total_cost_usd    REAL NOT NULL,
@@ -65,6 +66,11 @@ def _get_conn() -> sqlite3.Connection:
                 ts                TEXT NOT NULL
             )
         """)
+        # Add crew_name column if upgrading from older schema
+        try:
+            conn.execute("ALTER TABLE request_costs ADD COLUMN crew_name TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_rc_ts "
             "ON request_costs(ts)"
@@ -193,11 +199,12 @@ def get_token_stats(period: str = "day") -> list[dict]:
     Returns: [{"model": str, "prompt_tokens": int, "completion_tokens": int,
                "total": int, "cost_usd": float, "calls": int}]
     """
-    cutoffs = {
-        "hour": "1 hours", "day": "1 days", "week": "7 days",
-        "month": "30 days", "quarter": "90 days", "year": "365 days",
+    # Map period to hours — avoids f-string interpolation in SQL (injection risk)
+    _PERIOD_HOURS = {
+        "hour": 1, "day": 24, "week": 168,
+        "month": 720, "quarter": 2160, "year": 8760,
     }
-    cutoff = cutoffs.get(period, "1 days")
+    hours = _PERIOD_HOURS.get(period, 24)
     try:
         conn = _get_conn()
         rows = conn.execute(
@@ -208,9 +215,10 @@ def get_token_stats(period: str = "day") -> list[dict]:
             "       SUM(cost_usd) as cost, "
             "       COUNT(*) as calls "
             "FROM token_usage "
-            f"WHERE ts >= datetime('now', '-{cutoff}') "
+            "WHERE ts >= datetime('now', '-' || ? || ' hours') "
             "GROUP BY model "
             "ORDER BY total DESC",
+            (str(hours),),
         ).fetchall()
     except Exception:
         return []
@@ -253,11 +261,12 @@ def record_request_cost(tracker) -> None:
     try:
         conn = _get_conn()
         models = ",".join(sorted(tracker.models_used)) if tracker.models_used else "none"
+        crew = getattr(tracker, "crew_name", "") or ""
         conn.execute(
             "INSERT INTO request_costs "
-            "(request_id, total_prompt, total_completion, total_cost_usd, call_count, models_used, ts) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (tracker.request_id, tracker.total_prompt_tokens, tracker.total_completion_tokens,
+            "(request_id, crew_name, total_prompt, total_completion, total_cost_usd, call_count, models_used, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (tracker.request_id, crew, tracker.total_prompt_tokens, tracker.total_completion_tokens,
              tracker.total_cost_usd, tracker.call_count, models,
              datetime.now(timezone.utc).isoformat()),
         )
@@ -272,11 +281,11 @@ def get_request_cost_stats(period: str = "day") -> dict:
     Returns: {"requests": int, "total_cost_usd": float, "avg_cost_usd": float,
               "avg_calls": float, "avg_tokens": float}
     """
-    cutoffs = {
-        "hour": "1 hours", "day": "1 days", "week": "7 days",
-        "month": "30 days", "quarter": "90 days", "year": "365 days",
+    _PERIOD_HOURS_RC = {
+        "hour": 1, "day": 24, "week": 168,
+        "month": 720, "quarter": 2160, "year": 8760,
     }
-    cutoff = cutoffs.get(period, "1 days")
+    hours = _PERIOD_HOURS_RC.get(period, 24)
     try:
         conn = _get_conn()
         row = conn.execute(
@@ -286,7 +295,8 @@ def get_request_cost_stats(period: str = "day") -> dict:
             "       COALESCE(AVG(call_count), 0) as avg_calls, "
             "       COALESCE(AVG(total_prompt + total_completion), 0) as avg_tokens "
             "FROM request_costs "
-            f"WHERE ts >= datetime('now', '-{cutoff}')",
+            "WHERE ts >= datetime('now', '-' || ? || ' hours')",
+            (str(hours),),
         ).fetchone()
         if row:
             return {
@@ -299,3 +309,38 @@ def get_request_cost_stats(period: str = "day") -> dict:
     except Exception:
         pass
     return {"requests": 0, "total_cost_usd": 0, "avg_cost_usd": 0, "avg_calls": 0, "avg_tokens": 0}
+
+
+def get_crew_cost_stats(period: str = "day") -> list[dict]:
+    """Aggregate cost stats per crew for a time period.
+
+    Returns: [{"crew": str, "requests": int, "total_cost_usd": float,
+               "avg_cost_usd": float, "avg_tokens": float}]
+    """
+    _PERIOD_HOURS_CC = {
+        "hour": 1, "day": 24, "week": 168,
+        "month": 720, "quarter": 2160, "year": 8760,
+    }
+    hours = _PERIOD_HOURS_CC.get(period, 24)
+    try:
+        conn = _get_conn()
+        rows = conn.execute(
+            "SELECT crew_name, "
+            "       COUNT(*) as requests, "
+            "       COALESCE(SUM(total_cost_usd), 0) as total_cost, "
+            "       COALESCE(AVG(total_cost_usd), 0) as avg_cost, "
+            "       COALESCE(AVG(total_prompt + total_completion), 0) as avg_tokens "
+            "FROM request_costs "
+            "WHERE ts >= datetime('now', '-' || ? || ' hours') "
+            "AND crew_name != '' "
+            "GROUP BY crew_name "
+            "ORDER BY total_cost DESC",
+            (str(hours),),
+        ).fetchall()
+        return [
+            {"crew": r[0], "requests": r[1], "total_cost_usd": round(r[2], 4),
+             "avg_cost_usd": round(r[3], 6), "avg_tokens": round(r[4], 0)}
+            for r in rows
+        ]
+    except Exception:
+        return []

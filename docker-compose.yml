@@ -45,6 +45,8 @@ services:
     depends_on:
       - chromadb
       - docker-proxy
+      - postgres
+      - neo4j
     networks:
       - external
       - internal
@@ -56,6 +58,7 @@ services:
       - /run
       - /home/appuser/.local:uid=1000,gid=1000
       - /home/appuser/.cache:uid=1000,gid=1000
+      - /home/appuser/.mem0:uid=1000,gid=1000
 
   chromadb:
     image: chromadb/chroma:0.5.23
@@ -72,6 +75,48 @@ services:
     security_opt:
       - no-new-privileges:true
     # NOT exposed to host — internal only
+
+  # ── Mem0 persistent memory infrastructure ───────────────────────
+  # pgvector for vector storage, Neo4j for entity relationship graph.
+  # Both internal-only (no internet, no host ports).
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: ${MEM0_POSTGRES_PASSWORD:?MEM0_POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: mem0
+    volumes:
+      - ./workspace/mem0_pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mem0 -d mem0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${MEM0_NEO4J_PASSWORD:?MEM0_NEO4J_PASSWORD must be set in .env}
+      NEO4J_PLUGINS: '[]'
+      NEO4J_server_memory_heap_initial__size: 128m
+      NEO4J_server_memory_heap_max__size: 256m
+      NEO4J_server_memory_pagecache_size: 64m
+    volumes:
+      - ./workspace/mem0_neo4j:/data
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   external:

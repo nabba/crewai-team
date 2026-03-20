@@ -10,16 +10,19 @@ _api = YouTubeTranscriptApi()
 
 
 def _extract_video_id(url_or_id: str) -> str | None:
-    """Extract an 11-char YouTube video ID from various URL formats."""
+    """Extract an 11-char YouTube video ID from various URL formats.
+
+    Returns only IDs matching [a-zA-Z0-9_-]{11} to prevent injection.
+    """
     url_or_id = url_or_id[:300].strip()
     # Patterns: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, youtube.com/v/ID
     # Must handle trailing ?si=..., &feature=..., etc.
-    match = re.search(r"(?:v=|youtu\.be/|embed/|/v/)([\w-]{11})", url_or_id)
+    match = re.search(r"(?:v=|youtu\.be/|embed/|/v/)([a-zA-Z0-9_-]{11})", url_or_id)
     if match:
         return match.group(1)
     # Maybe it's already a bare ID
     clean = url_or_id.split("?")[0].split("&")[0].strip()
-    if re.fullmatch(r"[\w-]{11}", clean):
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", clean):
         return clean
     return None
 
@@ -112,12 +115,13 @@ def get_youtube_transcript(url_or_id: str) -> str:
                 "-o", "/tmp/yt-%(id)s",
                 f"https://www.youtube.com/watch?v={video_id}",
             ],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, shell=False,
         )
         import glob
         vtt_files = glob.glob(f"/tmp/yt-{video_id}*.vtt")
         if vtt_files:
-            raw_vtt = open(vtt_files[0]).read()
+            with open(vtt_files[0]) as fh:
+                raw_vtt = fh.read(1_000_000)  # cap at 1MB
             # Strip VTT headers and timestamps, keep text
             lines = []
             for line in raw_vtt.splitlines():

@@ -11,6 +11,7 @@ from app.tools.attachment_reader import read_attachment
 from app.tools.self_report_tool import create_self_report_tool
 from app.tools.reflection_tool import ReflectionTool
 from app.souls.loader import compose_backstory
+from app.tools.mem0_tools import create_mem0_tools
 
 settings = get_settings()
 
@@ -21,6 +22,7 @@ def create_researcher(force_tier: str | None = None) -> Agent:
     llm = create_specialist_llm(max_tokens=4096, role="research", force_tier=force_tier)
     memory_tools = create_memory_tools(collection="researcher")
     scoped_tools = create_scoped_memory_tools("researcher")
+    mem0_tools = create_mem0_tools("researcher")
     awareness_tools = [
         create_self_report_tool("researcher"),
         ReflectionTool(agent_role="researcher"),
@@ -31,6 +33,6 @@ def create_researcher(force_tier: str | None = None) -> Agent:
         goal="Find accurate, comprehensive information on any topic using web search, article reading, and YouTube transcripts.",
         backstory=RESEARCHER_BACKSTORY,
         llm=llm,
-        tools=[web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment] + memory_tools + scoped_tools + awareness_tools,
+        tools=[web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment] + memory_tools + scoped_tools + mem0_tools + awareness_tools,
         verbose=True,
     )

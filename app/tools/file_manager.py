@@ -8,8 +8,17 @@ WORKSPACE = pathlib.Path("/app/workspace").resolve()
 # Everything else (memory/, conversations.db, .git/, crewai_storage/) is blocked.
 _WRITABLE_DIRS = {"output", "skills", "proposals"}
 
-# Paths that must never be written to, even if under an allowed dir.
+# Paths that must never be read or written, even if under an allowed dir.
 _BLOCKED_NAMES = {"conversations.db", ".git", "crewai_storage", "audit.log"}
+
+# Files and directories that must never be readable (contain secrets or sensitive data)
+_READ_BLOCKED_NAMES = {
+    ".git", ".env", "crewai_storage", "audit.log",
+    "conversations.db", "llm_benchmarks.db",
+    "firebase-service-account.json",
+}
+# Extensions that should never be readable
+_READ_BLOCKED_EXTENSIONS = {".db", ".sqlite", ".sqlite3", ".key", ".pem", ".p12"}
 
 
 def _is_writable(target: pathlib.Path) -> bool:
@@ -53,6 +62,16 @@ def file_manager(action: str, path: str, content: str = "") -> str:
     if action == "read":
         if not target.exists():
             return f"Error: File not found: {path}"
+        # Block reading sensitive files
+        for part in target.relative_to(WORKSPACE).parts:
+            if part in _READ_BLOCKED_NAMES:
+                log_tool_blocked("file_manager", "unknown",
+                                 f"read of sensitive path: {path[:100]!r}")
+                return f"Error: Access denied to '{path}'. This file contains sensitive data."
+        if target.suffix.lower() in _READ_BLOCKED_EXTENSIONS:
+            log_tool_blocked("file_manager", "unknown",
+                             f"read of blocked extension: {path[:100]!r}")
+            return f"Error: Access denied to '{path}'. File type not allowed."
         # Check file size before reading to prevent OOM on huge files
         file_size = target.stat().st_size
         if file_size > 10_000_000:  # 10 MB

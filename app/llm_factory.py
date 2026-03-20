@@ -154,13 +154,14 @@ def create_cheap_vetting_llm() -> LLM:
     """Cheap verification gate — budget model for quick yes/no quality checks.
     Falls back to Sonnet if OpenRouter key is not set."""
     settings = get_settings()
-    if settings.api_tier_enabled and settings.openrouter_api_key:
+    or_key = settings.openrouter_api_key.get_secret_value()
+    if settings.api_tier_enabled and or_key:
         budget_model = get_model("deepseek-v3.2")
         if budget_model:
             return LLM(
                 model=budget_model["model_id"],
                 base_url="https://openrouter.ai/api/v1",
-                api_key=settings.openrouter_api_key,
+                api_key=or_key,
                 max_tokens=256,
             )
     # Fallback to Sonnet
@@ -213,7 +214,7 @@ def _try_api(model_name: str, entry: dict, max_tokens: int, role: str) -> LLM | 
         logger.info(f"llm_factory: skipping OpenRouter (circuit open)")
         return None
     settings = get_settings()
-    api_key = settings.openrouter_api_key
+    api_key = settings.openrouter_api_key.get_secret_value()
     if not api_key:
         logger.warning("llm_factory: OpenRouter API key not set, skipping API tier")
         return None

@@ -204,13 +204,10 @@ def _propose_mutation(context: str, tried_hashes: set[str]) -> MutationSpec | No
         return None
 
     # Parse result
-    raw_clean = re.sub(r'^```(?:json)?\s*', '', raw)
-    raw_clean = re.sub(r'\s*```$', '', raw_clean)
-
-    try:
-        result = json.loads(raw_clean)
-    except json.JSONDecodeError:
-        logger.warning(f"Evolution agent returned unparseable result: {raw[:200]}")
+    from app.utils import safe_json_parse
+    result, err = safe_json_parse(raw)
+    if result is None:
+        logger.warning(f"Evolution agent returned unparseable result: {err} | {raw[:200]}")
         return None
 
     action = result.get("action", "")

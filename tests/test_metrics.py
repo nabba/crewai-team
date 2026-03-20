@@ -63,7 +63,8 @@ class TestCompositeScore:
         from app.metrics import compute_metrics
         m = compute_metrics()
         expected_keys = {
-            "task_success_rate", "error_rate_24h", "self_heal_rate",
+            "task_success_rate", "error_rate_24h", "error_rate_1h",
+            "error_trend", "self_heal_rate",
             "output_quality", "skill_count", "avg_response_time_s",
             "evolution_efficiency", "avg_request_cost_usd",
             "composite_score", "measured_at",

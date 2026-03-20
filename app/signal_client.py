@@ -14,40 +14,58 @@ _MAX_RESPONSE_BYTES = 65536
 
 
 class SignalClient:
-    async def send(self, recipient: str, text: str):
-        """Send a message back to the user's iPhone via signal-cli."""
+    async def send(self, recipient: str, text: str, attachments: list[str] | None = None):
+        """Send a message back to the user's iPhone via signal-cli.
+
+        Args:
+            recipient: Phone number to send to (must be owner)
+            text: Message text
+            attachments: Optional list of absolute file paths on the HOST filesystem
+                         to attach to the message. signal-cli reads these from the host.
+        """
         if recipient.strip() != settings.signal_owner_number.strip():
             logger.error("Blocked attempt to send to non-owner recipient")
             return
 
-        chunks = [
-            text[i : i + MAX_SIGNAL_LENGTH]
-            for i in range(0, len(text), MAX_SIGNAL_LENGTH)
-        ]
-        for chunk in chunks:
-            await asyncio.to_thread(self._send_sync, recipient, chunk)
+        # If no attachments, chunk long messages as before
+        if not attachments:
+            chunks = [
+                text[i : i + MAX_SIGNAL_LENGTH]
+                for i in range(0, len(text), MAX_SIGNAL_LENGTH)
+            ]
+            for chunk in chunks:
+                await asyncio.to_thread(self._send_sync, recipient, chunk)
+        else:
+            # With attachments, send a single message (text + files)
+            await asyncio.to_thread(
+                self._send_sync, recipient, text[:MAX_SIGNAL_LENGTH], attachments
+            )
 
-    def _send_sync(self, recipient: str, text: str):
+    def _send_sync(self, recipient: str, text: str, attachments: list[str] | None = None):
         """Try HTTP first (works from inside Docker), fall back to Unix socket."""
         http_url = getattr(settings, "signal_http_url", "")
         if http_url:
-            if self._send_http(http_url, recipient, text):
+            if self._send_http(http_url, recipient, text, attachments):
                 return
             logger.warning("signal-cli HTTP failed, trying Unix socket fallback")
 
-        self._send_socket(recipient, text)
+        self._send_socket(recipient, text, attachments)
 
-    def _send_http(self, base_url: str, recipient: str, text: str) -> bool:
+    def _send_http(self, base_url: str, recipient: str, text: str,
+                   attachments: list[str] | None = None) -> bool:
         """Send via signal-cli's HTTP JSON-RPC endpoint."""
         try:
+            params = {
+                "recipient": [recipient],
+                "message": text,
+            }
+            if attachments:
+                params["attachments"] = attachments
             payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "send",
-                "params": {
-                    "recipient": [recipient],
-                    "message": text,
-                },
+                "params": params,
             }
             resp = http_requests.post(
                 base_url.rstrip("/") + "/api/v1/rpc",
@@ -58,13 +76,15 @@ class SignalClient:
             if "error" in data:
                 logger.error(f"signal-cli HTTP RPC error: {data['error'].get('message','')}")
                 return False
-            logger.info("Message sent via signal-cli HTTP")
+            att_info = f" (+{len(attachments)} attachment(s))" if attachments else ""
+            logger.info(f"Message sent via signal-cli HTTP{att_info}")
             return True
         except Exception:
             logger.error("signal-cli HTTP request failed", exc_info=True)
             return False
 
-    def _send_socket(self, recipient: str, text: str):
+    def _send_socket(self, recipient: str, text: str,
+                     attachments: list[str] | None = None):
         """Send via signal-cli Unix socket (works only on same host, not from Docker VM)."""
         sock = None
         try:
@@ -72,14 +92,18 @@ class SignalClient:
             sock.connect(settings.signal_socket_path)
             sock.settimeout(10)
 
+            params = {
+                "recipient": [recipient],
+                "message": text,
+            }
+            if attachments:
+                params["attachments"] = attachments
+
             request = json.dumps({
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "send",
-                "params": {
-                    "recipient": [recipient],
-                    "message": text,
-                },
+                "params": params,
             }) + "\n"
 
             sock.sendall(request.encode())
@@ -100,7 +124,8 @@ class SignalClient:
                     if "error" in resp:
                         logger.error("signal-cli RPC error")
                     else:
-                        logger.info("Message sent via signal-cli socket")
+                        att_info = f" (+{len(attachments)} attachment(s))" if attachments else ""
+                        logger.info(f"Message sent via signal-cli socket{att_info}")
                 except json.JSONDecodeError:
                     logger.error("signal-cli returned invalid JSON")
             else:

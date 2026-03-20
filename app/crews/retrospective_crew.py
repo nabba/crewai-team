@@ -64,7 +64,7 @@ class RetrospectiveCrew:
                 agents=[introspector],
                 tasks=[analysis_task],
                 process=Process.sequential,
-                verbose=True,
+                verbose=False,
             )
             raw = str(crew.kickoff()).strip()
 
@@ -175,14 +175,10 @@ class RetrospectiveCrew:
 
         Returns the number of policies successfully stored.
         """
-        # Clean markdown fences
-        raw_clean = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw_clean = re.sub(r'\s*```$', '', raw_clean)
-
-        try:
-            policies = json.loads(raw_clean)
-        except json.JSONDecodeError:
-            logger.warning(f"Retrospective output not valid JSON: {raw[:100]}")
+        from app.utils import safe_json_parse
+        policies, err = safe_json_parse(raw)
+        if policies is None:
+            logger.warning(f"Retrospective output not valid JSON: {err} | {raw[:100]}")
             return 0
 
         if not isinstance(policies, list):

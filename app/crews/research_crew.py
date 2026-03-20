@@ -40,6 +40,27 @@ completeness, and any blockers. Then use store_reflection to record what you lea
 about your own performance on this task.
 """
 
+# Concise template for simple factual questions (difficulty 1-3).
+# Optimised for short, direct answers — no report structure, no debate, no critic.
+SIMPLE_RESEARCH_TEMPLATE = """\
+Answer this question concisely and directly:
+
+{user_input}
+
+INSTRUCTIONS:
+1. Read the question carefully. Identify the EXACT data being asked for.
+2. Search the web using the KEY TERMS from the question (e.g. if asked about
+   "woodland hectares per capita", search for exactly that — not just country names).
+3. Return ONLY the direct answer in 1-3 sentences with the specific numbers/facts asked for.
+4. Do NOT write a report, executive summary, or analysis.
+5. Do NOT include background context, methodology, open questions, or tangential data.
+6. If the question asks for N specific numbers, your answer should contain those N numbers.
+7. If you cannot find exact data, say so briefly and give the closest available data.
+
+WRONG example: Question "How many X per capita in Finland?" → answering with population stats
+RIGHT example: Question "How many X per capita in Finland?" → "Finland has Y X per capita (Source: Z)"
+"""
+
 RESEARCH_PLAN_TEMPLATE = """\
 Break this research topic into 1-4 independent subtopics that can be \
 researched in parallel. Topic: {topic}
@@ -47,13 +68,24 @@ researched in parallel. Topic: {topic}
 Reply with ONLY a JSON array of strings:
 ["subtopic 1", "subtopic 2"]
 
-If simple, return a single-item array.\
+IMPORTANT: Each subtopic must be a COMPLETE, self-contained question that
+preserves the full context of what is being asked. Do NOT split into just
+country/entity names — include the specific data being requested.
+
+WRONG: ["Finland", "Estonia"]
+RIGHT: ["woodland hectares per capita in Finland", "woodland hectares per capita in Estonia"]
+
+If the question is simple or asks for a direct comparison, return a single-item array.\
 """
 
 
 class ResearchCrew:
     def run(self, topic: str, parent_task_id: str = None, difficulty: int = 5) -> str:
-        """Run research, spawning sub-agents in parallel for complex topics."""
+        """Run research, spawning sub-agents in parallel for complex topics.
+
+        Simple questions (difficulty 1-3) use a fast path: single agent,
+        concise template, no debate, no critic — returns a direct answer.
+        """
         from app.conversation_store import estimate_eta
         task_id = crew_started(
             "research", f"Research: {topic[:100]}",
@@ -68,6 +100,14 @@ class ResearchCrew:
 
         update_belief("researcher", "working", current_task=topic[:100])
         try:
+            # ── Fast path for simple factual questions ─────────────────
+            if difficulty <= 3:
+                result = self._run_simple(topic, task_id, force_tier=force_tier)
+                update_belief("researcher", "completed", current_task=topic[:100])
+                record_metric("task_completion_time", _time.monotonic() - _start, {"crew": "research"})
+                return result
+
+            # ── Standard path for moderate/complex research ────────────
             subtopics = self._plan_research(topic)
 
             if len(subtopics) <= 1:
@@ -76,10 +116,12 @@ class ResearchCrew:
                 logger.info(f"Research crew spawning {len(subtopics)} sub-agents")
                 result = self._run_parallel(topic, subtopics, task_id)
                 # Heterogeneous debate — only for complex multi-subtopic research
-                result = self._debate_round(result, topic)
+                if difficulty >= 6:
+                    result = self._debate_round(result, topic)
 
-            # Critic review step
-            result = self._critic_review(result, topic)
+            # Critic review — only for high-difficulty tasks (7+)
+            if difficulty >= 7:
+                result = self._critic_review_internal(result, topic)
 
             update_belief("researcher", "completed", current_task=topic[:100])
             record_metric("task_completion_time", _time.monotonic() - _start, {"crew": "research"})
@@ -106,14 +148,26 @@ class ResearchCrew:
                 agent=agent,
             )
             crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-            raw = re.sub(r'^```(?:json)?\s*', '', str(crew.kickoff()).strip())
-            raw = re.sub(r'\s*```$', '', raw)
-            subtopics = json.loads(raw)
+            from app.utils import safe_json_parse
+            subtopics, _err = safe_json_parse(str(crew.kickoff()).strip())
             if isinstance(subtopics, list) and all(isinstance(s, str) for s in subtopics):
                 return subtopics[:settings.max_sub_agents]
         except Exception:
             logger.warning("Research planning failed, using single agent", exc_info=True)
         return [topic]
+
+    def _run_simple(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
+        """Fast path for simple factual questions — concise answer, no extras."""
+        researcher = create_researcher(force_tier=force_tier)
+        task = Task(
+            description=SIMPLE_RESEARCH_TEMPLATE.format(user_input=wrap_user_input(topic)),
+            expected_output="A concise, direct answer to the question.",
+            agent=researcher,
+        )
+        crew = Crew(agents=[researcher], tasks=[task], process=Process.sequential, verbose=True)
+        result_str = str(crew.kickoff())
+        crew_completed("research", task_id, result_str[:200])
+        return result_str
 
     def _run_single(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
         """Single-agent research for simple topics."""
@@ -302,8 +356,13 @@ class ResearchCrew:
             logger.warning("Debate round failed, continuing with original result", exc_info=True)
         return result
 
-    def _critic_review(self, result: str, topic: str) -> str:
-        """Run a Critic agent to review the research output for quality."""
+    def _critic_review_internal(self, result: str, topic: str) -> str:
+        """Run a Critic agent to review research quality internally.
+
+        The critic review is used to decide whether the result needs improvement.
+        It is NEVER appended to the user-facing output — users should only see
+        the final polished answer, not internal QA metadata.
+        """
         try:
             critic = create_critic()
             review_task = Task(
@@ -316,10 +375,10 @@ class ResearchCrew:
                     f"2. Are there obvious gaps or missing perspectives?\n"
                     f"3. Is the confidence level justified by the evidence?\n"
                     f"4. Are there any contradictions?\n\n"
-                    f"Provide a brief review with any issues found and suggestions. "
-                    f"Use self_report to assess your review confidence."
+                    f"Rate overall quality: GOOD, ACCEPTABLE, or POOR.\n"
+                    f"If POOR, explain what's wrong in 2-3 sentences."
                 ),
-                expected_output="Brief quality review with issues and suggestions.",
+                expected_output="Quality rating (GOOD/ACCEPTABLE/POOR) with brief explanation.",
                 agent=critic,
             )
             crew = Crew(
@@ -327,8 +386,9 @@ class ResearchCrew:
                 process=Process.sequential, verbose=True,
             )
             review = str(crew.kickoff()).strip()
-            if review:
-                result += f"\n\n---\n\n**[Critic Review]**\n{review}"
+            if review and "POOR" in review.upper():
+                logger.warning(f"Critic rated research as POOR: {review[:200]}")
+                # Don't append — the vetting layer will catch quality issues
         except Exception:
             logger.warning("Critic review failed, continuing without it", exc_info=True)
         return result

@@ -105,8 +105,8 @@ class WritingCrew:
                 process=Process.sequential, verbose=True,
             )
             review = str(crew.kickoff()).strip()
-            if review:
-                result += f"\n\n---\n\n**[Critic Review]**\n{review}"
+            if review and "POOR" in review.upper():
+                logger.warning(f"Critic rated writing as POOR: {review[:200]}")
         except Exception:
             logger.warning("Critic review failed, continuing without it", exc_info=True)
         return result

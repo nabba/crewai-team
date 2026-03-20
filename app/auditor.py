@@ -205,14 +205,12 @@ def _run_code_audit_locked() -> str:
         raw = str(crew.kickoff()).strip()
 
         # Parse result
-        raw_clean = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw_clean = re.sub(r'\s*```$', '', raw_clean)
-
-        try:
-            result = json.loads(raw_clean)
+        from app.utils import safe_json_parse
+        result, err = safe_json_parse(raw)
+        if result is not None:
             n_issues = result.get("issues", 0)
             summary = result.get("summary", "Audit complete")
-        except json.JSONDecodeError:
+        else:
             n_issues = 0
             summary = raw[:200]
 
@@ -383,11 +381,9 @@ def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | Non
         crew = Crew(agents=[fixer], tasks=[task], process=Process.sequential, verbose=False)
         raw = str(crew.kickoff()).strip()
 
-        raw_clean = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw_clean = re.sub(r'\s*```$', '', raw_clean)
-
-        try:
-            result = json.loads(raw_clean)
+        from app.utils import safe_json_parse
+        result, err = safe_json_parse(raw)
+        if result is not None:
             fix_desc = result.get("fix", "unknown")
             files = result.get("files", [])
 
@@ -405,9 +401,6 @@ def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | Non
                            files)
                 crew_completed("self_improvement", task_id, f"Fix applied: {fix_desc[:100]}")
                 return fix_desc[:200]
-
-        except json.JSONDecodeError:
-            pass
 
         crew_completed("self_improvement", task_id, "Fix attempted")
         return raw[:200]

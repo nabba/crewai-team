@@ -76,14 +76,19 @@ def setup_workspace_repo(backup_repo: str) -> None:
         _git("config", "user.name", "CrewAI Workspace Bot")
         logger.info("workspace_sync: initialised new git repo in workspace")
 
-    # Configure credential helper using GITHUB_TOKEN env var (avoids PATs in URLs)
+    # Configure credential helper using GITHUB_TOKEN env var (avoids PATs in URLs).
+    # Uses git's credential.helper with a shell script that echoes the token.
+    # File permissions are owner-only (0o700 exec, 0o600 data) to limit exposure.
     gh_token = os.environ.get("GITHUB_TOKEN")
     if gh_token:
         helper_path = WORKSPACE / ".git" / "git-credential-token.sh"
-        helper_path.write_text(
-            f"#!/bin/sh\necho username=x-access-token\necho password={gh_token}\n"
-        )
-        helper_path.chmod(0o755)
+        # Write with restrictive permissions: create with 0o600, then chmod to 0o700
+        fd = os.open(str(helper_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, f"#!/bin/sh\necho username=x-access-token\necho password={gh_token}\n".encode())
+        finally:
+            os.close(fd)
+        helper_path.chmod(0o700)  # Owner-only execute
         _git("config", "credential.helper", str(helper_path))
         logger.info("workspace_sync: configured git credential helper from GITHUB_TOKEN")
 

@@ -156,6 +156,7 @@ class RequestCostTracker:
 
     def __init__(self, request_id: str = ""):
         self.request_id = request_id
+        self.crew_name = ""  # set by commander before dispatch
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost_usd = 0.0

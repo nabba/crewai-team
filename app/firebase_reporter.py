@@ -19,6 +19,7 @@ import logging
 import os
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 _db = None
 _db_lock = threading.Lock()
 _PROJECT_ID = "botarmy-ba0c9"
+
+# Bounded thread pool prevents unbounded thread accumulation when Firestore is slow.
+# 4 workers is enough for fire-and-forget writes; excess tasks queue instead of spawning threads.
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="firebase")
 
 
 def _get_db():
@@ -64,9 +69,16 @@ def _now_iso() -> str:
 
 
 def _fire(fn):
-    """Run fn in a daemon thread so Firestore latency never blocks agents."""
-    t = threading.Thread(target=fn, daemon=True)
-    t.start()
+    """Run fn in the bounded thread pool so Firestore latency never blocks agents.
+
+    Uses a ThreadPoolExecutor(max_workers=4) instead of spawning unbounded
+    daemon threads — prevents thread accumulation when Firestore is slow.
+    """
+    try:
+        _executor.submit(fn)
+    except RuntimeError:
+        # Pool is shut down (e.g., during interpreter teardown)
+        pass
 
 
 # ── System status ─────────────────────────────────────────────────────────────
@@ -604,17 +616,20 @@ def report_evolution() -> None:
 # ── Request cost stats ───────────────────────────────────────────────────────
 
 def report_request_costs() -> None:
-    """Push per-request cost aggregates to Firestore."""
+    """Push per-request cost aggregates and per-crew breakdown to Firestore."""
     db = _get_db()
     if not db:
         return
     try:
-        from app.llm_benchmarks import get_request_cost_stats
+        from app.llm_benchmarks import get_request_cost_stats, get_crew_cost_stats
         costs = {}
+        crew_costs = {}
         for period in ("hour", "day", "week", "month"):
             costs[period] = get_request_cost_stats(period)
+            crew_costs[period] = get_crew_cost_stats(period)
         db.collection("status").document("request_costs").set({
             "stats": costs,
+            "by_crew": crew_costs,
             "updated_at": _now_iso(),
         })
     except Exception:

@@ -22,6 +22,19 @@ _INJECTION_PATTERNS = [
     r"DEVELOPER\s*MODE",
     r"\bACT\s+AS\b",
     r"```\s*system",
+    # Additional prompt injection vectors
+    r"forget\s+(all\s+)?(previous|prior|above|your)\s+(instructions|rules|context)",
+    r"override\s+(all\s+)?(safety|security|rules|restrictions)",
+    r"\brole\s*:\s*(system|admin|developer)",
+    r"<\s*/?\s*(instruction|prompt|context)\s*>",
+    r"do\s+not\s+follow\s+(the\s+)?(above|previous|prior)",
+    r"pretend\s+(you\s+are|to\s+be|that)",
+    r"jailbreak",
+    r"DAN\s+mode",
+    r"\bBYPASS\b",
+    r"reveal\s+(your|the)\s+(system|instructions|prompt|rules)",
+    r"what\s+(are|is)\s+your\s+(system|initial|original)\s+(prompt|instructions|rules)",
+    r"repeat\s+(your|the)\s+(system|initial|original)\s+(prompt|instructions)",
 ]
 
 _COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in _INJECTION_PATTERNS]

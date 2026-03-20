@@ -148,11 +148,11 @@ def _model_available(model_name: str, settings, max_ram_gb: float) -> bool:
             return False
         return entry.get("ram_gb", 20) <= max_ram_gb
     if tier in ("budget", "mid"):
-        return settings.api_tier_enabled and bool(settings.openrouter_api_key)
+        return settings.api_tier_enabled and bool(settings.openrouter_api_key.get_secret_value())
     if entry["provider"] == "anthropic":
         return True
     if entry["provider"] == "openrouter":
-        return bool(settings.openrouter_api_key)
+        return bool(settings.openrouter_api_key.get_secret_value())
     return False
 
 def _find_fallback(role: str, task_type: str, settings, max_ram_gb: float) -> str:

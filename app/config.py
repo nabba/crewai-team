@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # On macOS: ~/.local/share/signal-cli/attachments
     # Mounted read-only into Docker at /app/attachments
     signal_attachment_path: str = ""
+    # Host-side path to the workspace directory (for translating Docker paths
+    # to host paths when sending file attachments via signal-cli).
+    # Docker writes to /app/workspace/output/, signal-cli needs the host path.
+    # Example: /Users/andrus/BotArmy/crewai-team/workspace
+    workspace_host_path: str = ""
 
     gateway_secret: SecretStr
     gateway_port: int = 8765
@@ -46,7 +51,7 @@ class Settings(BaseSettings):
     # API tier — frontier models via OpenRouter (DeepSeek, MiniMax, Kimi, GLM, Gemini)
     # Get your key at https://openrouter.ai/keys
     api_tier_enabled: bool = True
-    openrouter_api_key: str = ""
+    openrouter_api_key: SecretStr = SecretStr("")
 
     # LLM mode — "local", "cloud", or "hybrid" (initial value; changes at runtime)
     llm_mode: str = "hybrid"
@@ -105,6 +110,34 @@ class Settings(BaseSettings):
     # Vetting — Claude reviews local LLM output before sending to user
     vetting_enabled: bool = True
     vetting_model: str = "claude-sonnet-4.6"  # Sonnet 4.6: #1 GDPval-AA, 5x cheaper than Opus
+
+    # ── Mem0 persistent memory ──────────────────────────────────────
+    # Adds cross-session fact extraction (LLM-based) and graph memory (Neo4j).
+    # Coexists with ChromaDB — Mem0 for persistent knowledge, ChromaDB for
+    # real-time operational state (beliefs, policies, self-reports).
+    mem0_enabled: bool = True
+    mem0_postgres_host: str = "postgres"
+    mem0_postgres_port: int = 5432
+    mem0_postgres_user: str = "mem0"
+    mem0_postgres_password: SecretStr = SecretStr("")  # MUST be set via MEM0_POSTGRES_PASSWORD env var
+    mem0_postgres_db: str = "mem0"
+    mem0_neo4j_url: str = "bolt://neo4j:7687"
+    mem0_neo4j_user: str = "neo4j"
+    mem0_neo4j_password: SecretStr = SecretStr("")  # MUST be set via MEM0_NEO4J_PASSWORD env var
+    mem0_llm_model: str = "ollama/qwen3:30b-a3b"  # local model for fact extraction
+    mem0_embedder_model: str = "all-MiniLM-L6-v2"  # same as ChromaDB
+    mem0_user_id: str = "owner"  # single-user system
+
+    @property
+    def mem0_postgres_url(self) -> str:
+        """Build postgres URL from components — password never hardcoded."""
+        pw = self.mem0_postgres_password.get_secret_value()
+        if not pw:
+            return ""
+        return f"postgresql://{self.mem0_postgres_user}:{pw}@{self.mem0_postgres_host}:{self.mem0_postgres_port}/{self.mem0_postgres_db}"
+
+    # Firebase — service account for Firestore dashboard writes
+    firebase_service_account_json: str = ""
 
     model_config = ConfigDict(env_file=".env")
 
@@ -174,4 +207,4 @@ def get_gateway_secret() -> str:
 
 def get_openrouter_api_key() -> str:
     """Return the OpenRouter API key (for API-tier LLMs only)."""
-    return get_settings().openrouter_api_key
+    return get_settings().openrouter_api_key.get_secret_value()

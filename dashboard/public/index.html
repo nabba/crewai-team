@@ -426,6 +426,12 @@ const touch = () => document.getElementById("last-updated").textContent = "Updat
 const pct = v => (v * 100).toFixed(0) + "%";
 const metricColor = v => v >= 0.8 ? "var(--green)" : v >= 0.5 ? "var(--yellow)" : "var(--red)";
 
+// XSS protection — escape HTML entities in dynamic content from Firestore
+const esc = s => {
+  if (typeof s !== "string") return String(s ?? "");
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+};
+
 // ── System ────────────────────────────────────────────────────────────────────
 let _startedAt = null;
 onSnapshot(doc(db,"status","system"), s => {
@@ -527,8 +533,8 @@ function renderTasks() {
       flow = `<div class="task-flow">${ICONS["commander"]||""}<span class="arrow">→</span>${ICONS[t.crew]||"🤖"}</div>`;
     }
     return `<tr${isChild?' style="opacity:.8"':''}>
-      <td style="${indent}">${prefix}${ICONS[t.crew]||"🤖"} ${t.crew||"—"}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.summary||"—"}</td>
+      <td style="${indent}">${prefix}${ICONS[t.crew]||"🤖"} ${esc(t.crew)||"—"}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.summary)||"—"}</td>
       <td>${modelTag}</td>
       <td><span class="badge ${t.state||""}">${t.state||"—"}</span></td>
       <td>${flow}</td>
@@ -597,9 +603,9 @@ onSnapshot(doc(db,"status","proposals"), s => {
   el.innerHTML = `<table style="width:100%"><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody>` +
     proposals.map(p => `<tr>
       <td style="font-weight:700">#${p.id||"?"}</td>
-      <td>${p.title||"—"}</td>
-      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${p.type||"?"}</span></td>
-      <td><span style="color:${STATUS_COLORS[p.status]||"var(--muted)"};font-weight:600">${p.status||"?"}</span></td>
+      <td>${esc(p.title)||"—"}</td>
+      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${esc(p.type)||"?"}</span></td>
+      <td><span style="color:${STATUS_COLORS[p.status]||"var(--muted)"};font-weight:600">${esc(p.status)||"?"}</span></td>
       <td style="color:var(--muted)">${p.created_at ? p.created_at.slice(0,10) : "—"}</td>
     </tr>`).join("") + `</tbody></table>`;
 });
@@ -769,7 +775,7 @@ onSnapshot(doc(db, "status", "errors"), s => {
   // Patterns summary
   if (Object.keys(patterns).length) {
     patternsEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Recurring patterns: ' +
-      Object.entries(patterns).map(([k, v]) => `<span style="color:var(--red)">${k}</span>×${v}`).join(", ") + '</div>';
+      Object.entries(patterns).map(([k, v]) => `<span style="color:var(--red)">${esc(k)}</span>×${v}`).join(", ") + '</div>';
   } else {
     patternsEl.innerHTML = '';
   }
@@ -777,8 +783,8 @@ onSnapshot(doc(db, "status", "errors"), s => {
   if (!errors.length) { el.innerHTML = '<div class="empty">No recent errors</div>'; return; }
   el.innerHTML = errors.slice(0, 10).map(e => `
     <div class="error-item">
-      <div><span class="error-crew">${ICONS[e.crew]||"🤖"} ${e.crew||"—"}</span> · <span class="error-type">${e.error_type||"unknown"}</span> · <span style="color:var(--muted)">${rel(e.ts)}</span></div>
-      <div class="error-msg">${(e.error_msg||"").slice(0, 150)}</div>
+      <div><span class="error-crew">${ICONS[e.crew]||"🤖"} ${esc(e.crew)||"—"}</span> · <span class="error-type">${esc(e.error_type)||"unknown"}</span> · <span style="color:var(--muted)">${rel(e.ts)}</span></div>
+      <div class="error-msg">${esc((e.error_msg||"").slice(0, 150))}</div>
       <div class="${e.diagnosed ? 'error-diagnosed' : 'error-undiagnosed'}">${e.diagnosed ? '✓ Diagnosed' : '⏳ Pending diagnosis'}</div>
     </div>`).join("");
 });

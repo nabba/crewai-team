@@ -13,8 +13,26 @@ _BLOCKED_HOSTS = {
     "metadata.google.internal",        # GCP metadata
     "metadata.google.internal.",
     "169.254.169.254",                  # AWS/Azure/GCP metadata endpoint
+    "host.docker.internal",             # Docker Desktop host gateway
+    "kubernetes.default",               # Kubernetes API
+    "kubernetes.default.svc",
 }
 _ALLOWED_SCHEMES = {"http", "https"}
+
+# Max response size (10 MB) — prevent OOM from huge downloads
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+
+def _is_private_ip(addr: str) -> bool:
+    """Check if an IP address is private, loopback, link-local, or reserved."""
+    try:
+        ip = ipaddress.ip_address(addr)
+        return (
+            ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast
+        )
+    except ValueError:
+        return True  # If we can't parse it, block it
 
 
 def _is_safe_url(url: str) -> tuple[bool, str]:
@@ -28,19 +46,52 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
         return False, f"Blocked scheme: {parsed.scheme}"
 
     hostname = parsed.hostname or ""
+    if not hostname:
+        return False, "Missing hostname"
+
+    # Block dotless hostnames (e.g., "chromadb" or single-word hosts)
+    if "." not in hostname and ":" not in hostname:
+        return False, f"Blocked internal hostname: {hostname}"
+
     if hostname.lower() in _BLOCKED_HOSTS:
         return False, f"Blocked host: {hostname}"
 
+    # Block numeric IPs that look like internal addresses (e.g., http://2130706433)
+    # urlparse may parse "http://2130706433" with hostname="2130706433"
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if _is_private_ip(str(ip)):
+            return False, f"Blocked private IP: {hostname}"
+    except ValueError:
+        pass  # Not a raw IP, continue with DNS resolution
+
     # Resolve hostname and check for private/internal IPs
     try:
+        resolved_addrs = []
         for info in socket.getaddrinfo(hostname, parsed.port or 443):
             addr = info[4][0]
-            ip = ipaddress.ip_address(addr)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            if _is_private_ip(addr):
                 return False, f"Blocked private/internal IP: {addr}"
+            resolved_addrs.append(addr)
+        if not resolved_addrs:
+            return False, f"No addresses resolved for: {hostname}"
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
 
+    return True, ""
+
+
+def _check_response_ip(response) -> tuple[bool, str]:
+    """Check the actual IP the connection was made to (DNS rebinding defense)."""
+    try:
+        sock = response.raw._connection.sock
+        if sock is None:
+            return True, ""  # Can't inspect, allow (pre-check already ran)
+        peername = sock.getpeername()
+        if peername and _is_private_ip(peername[0]):
+            return False, f"DNS rebinding detected: connected to private IP {peername[0]}"
+    except (AttributeError, OSError):
+        pass  # Socket already closed or unavailable
     return True, ""
 
 
@@ -64,8 +115,19 @@ def web_fetch(url: str) -> str:
             timeout=15,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CrewAI-Bot/1.0)"},
             allow_redirects=True,
+            stream=True,  # Stream so we can check size before loading
         )
         response.raise_for_status()
+
+        # Check content length to prevent OOM
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
+            log_tool_blocked("web_fetch", "unknown", f"Response too large: {content_length} bytes")
+            return "URL blocked: response too large."
+
+        # Read with size limit
+        content = response.content[:_MAX_RESPONSE_BYTES]
+        html_text = content.decode("utf-8", errors="replace")
 
         # Check final URL after redirects for SSRF
         final_safe, final_reason = _is_safe_url(response.url)
@@ -73,13 +135,19 @@ def web_fetch(url: str) -> str:
             log_tool_blocked("web_fetch", "unknown", f"redirect: {final_reason}")
             return f"Redirect blocked: {final_reason}"
 
+        # DNS rebinding defense: check actual connection IP
+        ip_safe, ip_reason = _check_response_ip(response)
+        if not ip_safe:
+            log_tool_blocked("web_fetch", "unknown", ip_reason)
+            return f"URL blocked: {ip_reason}"
+
         # Extract with trafilatura from already-fetched HTML (no second request)
-        text = trafilatura.extract(response.text)
+        text = trafilatura.extract(html_text)
         if text:
             return text[:32000]
 
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(html_text, "html.parser")
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
