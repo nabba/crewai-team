@@ -296,6 +296,16 @@
   <div id="proposals-list"><div class="empty">No proposals yet</div></div>
 </div>
 
+<!-- ── Knowledge Base ─────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="section-title">Knowledge Base</div>
+  <div id="kb-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+    <div class="empty">Loading&hellip;</div>
+  </div>
+  <div id="kb-categories" style="margin-bottom:10px"></div>
+  <div id="kb-documents"></div>
+</div>
+
 <!-- ── Schedule & Activity Feed ──────────────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
@@ -359,6 +369,15 @@
       <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">policies</td><td>Shows all active self-learned policies that guide agent behavior.</td></tr>
       <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">retrospective</td><td>Runs a retrospective analysis of recent execution data to discover patterns and generate new policies.</td></tr>
       <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">program</td><td>Shows the evolution program (research directions from workspace/program.md).</td></tr>
+
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:12px;border-bottom:none">Knowledge Base</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb</td><td>Shows knowledge base status: document count, chunk count, categories, and estimated tokens.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb list</td><td>Lists all documents in the knowledge base with format, category, and chunk counts.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb add &lt;url&gt; [category]</td><td>Ingests a URL into the knowledge base. Optional category (default: general). Example: <code>kb add https://docs.example.com technical</code></td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">&#x1F4CE; + kb add [category]</td><td>Send a file attachment with text "kb add" to ingest it. Supports PDF, DOCX, PPTX, XLSX, CSV, TXT, MD, HTML, JSON.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb search &lt;query&gt;</td><td>Searches the knowledge base and returns top matching passages with relevance scores and sources.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb remove &lt;source&gt;</td><td>Removes a document from the knowledge base by its source path.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb reset</td><td>Deletes all data from the knowledge base. Use with caution.</td></tr>
     </tbody>
   </table>
   <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;font-size:.78rem;color:var(--muted)">
@@ -816,6 +835,58 @@ onSnapshot(doc(db, "status", "evolution"), s => {
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.hypothesis||"—"}</span>
       <span style="color:var(--muted);font-size:.75rem">${e.delta !== undefined ? (e.delta >= 0 ? '+' : '') + (e.delta*100).toFixed(2) + '%' : '—'}</span>
     </div>`).join("");
+});
+
+// ── Knowledge Base ──────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "knowledge_base"), s => {
+  const statsEl = document.getElementById("kb-stats");
+  const catsEl = document.getElementById("kb-categories");
+  const docsEl = document.getElementById("kb-documents");
+  if (!s.exists()) {
+    statsEl.innerHTML = '<div class="empty">No knowledge base data yet</div>';
+    catsEl.innerHTML = '';
+    docsEl.innerHTML = '';
+    return;
+  }
+  const d = s.data();
+
+  // Stats cards
+  statsEl.innerHTML = [
+    { label: "Documents", value: d.total_documents || 0 },
+    { label: "Chunks", value: d.total_chunks || 0 },
+    { label: "Characters", value: (d.total_characters || 0).toLocaleString() },
+    { label: "Est. Tokens", value: `~${(d.estimated_tokens || 0).toLocaleString()}` },
+  ].map(s => `<div style="background:var(--bg);border-radius:8px;padding:10px 14px;text-align:center">
+    <div style="font-size:1.3rem;font-weight:700;color:var(--blue)">${s.value}</div>
+    <div style="font-size:.72rem;color:var(--muted)">${s.label}</div>
+  </div>`).join("");
+
+  // Categories
+  const cats = d.categories || {};
+  if (Object.keys(cats).length) {
+    catsEl.innerHTML = '<div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Categories: ' +
+      Object.entries(cats).map(([c, n]) =>
+        `<span style="display:inline-block;background:rgba(88,166,255,.12);color:var(--blue);border-radius:4px;padding:1px 8px;margin:2px;font-size:.72rem">${esc(c)} (${n})</span>`
+      ).join("") + '</div>';
+  } else {
+    catsEl.innerHTML = '';
+  }
+
+  // Document list
+  const docs = d.documents || [];
+  if (!docs.length) {
+    docsEl.innerHTML = '<div class="empty" style="font-size:.78rem">No documents ingested. Use <code>kb add</code> via Signal to add documents.</div>';
+    return;
+  }
+  docsEl.innerHTML = `<table style="width:100%;font-size:.78rem"><thead><tr><th>Document</th><th>Format</th><th>Category</th><th>Chunks</th><th>Added</th></tr></thead><tbody>` +
+    docs.map(d => `<tr>
+      <td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.source)}</td>
+      <td><span class="badge" style="background:rgba(88,166,255,.15);color:var(--blue)">${esc(d.format)}</span></td>
+      <td style="color:var(--muted)">${esc(d.category)}</td>
+      <td style="text-align:right">${d.chunks}</td>
+      <td style="color:var(--muted)">${d.ingested_at ? d.ingested_at.slice(0, 10) : "—"}</td>
+    </tr>`).join("") + `</tbody></table>`;
+  touch();
 });
 
 // ── Model Catalog & Role Assignments ─────────────────────────────────────────

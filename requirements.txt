@@ -19,3 +19,6 @@ openpyxl>=3.1
 Pillow>=10.0
 litellm>=1.50.0
 mem0ai>=0.1.0
+langchain-text-splitters>=0.2.0
+python-pptx>=0.6.21
+html2text>=2024.2.0

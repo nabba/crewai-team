@@ -236,6 +236,12 @@ def heartbeat() -> None:
             report_catalog()
         except Exception:
             pass
+
+        # Push knowledge base stats
+        try:
+            report_knowledge_base()
+        except Exception:
+            pass
     _fire(_write)
 
 
@@ -672,6 +678,38 @@ def report_catalog() -> None:
         })
     except Exception:
         logger.debug("firebase_reporter: catalog write failed", exc_info=True)
+
+
+def report_knowledge_base() -> None:
+    """Push knowledge base stats to Firestore for the dashboard."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.knowledge_base.vectorstore import KnowledgeStore
+        store = KnowledgeStore()
+        stats = store.stats()
+        # Compact document list for dashboard
+        docs = []
+        for d in stats.get("documents", [])[:50]:
+            docs.append({
+                "source": d.get("source", "unknown"),
+                "format": d.get("format", "?"),
+                "category": d.get("category", "general"),
+                "chunks": d.get("total_chunks", 0),
+                "ingested_at": d.get("ingested_at", ""),
+            })
+        db.collection("status").document("knowledge_base").set({
+            "total_documents": stats.get("total_documents", 0),
+            "total_chunks": stats.get("total_chunks", 0),
+            "total_characters": stats.get("total_characters", 0),
+            "estimated_tokens": stats.get("estimated_tokens", 0),
+            "categories": stats.get("categories", {}),
+            "documents": docs,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: knowledge_base write failed", exc_info=True)
 
 
 # ── Token usage stats ────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ from app.tools.self_report_tool import create_self_report_tool
 from app.tools.reflection_tool import ReflectionTool
 from app.souls.loader import compose_backstory
 from app.tools.mem0_tools import create_mem0_tools
+from app.knowledge_base.tools import KnowledgeSearchTool
 
 settings = get_settings()
 
@@ -31,6 +32,6 @@ def create_writer(force_tier: str | None = None) -> Agent:
         goal="Write clear, well-structured content including summaries, reports, documentation, and emails.",
         backstory=WRITER_BACKSTORY,
         llm=llm,
-        tools=[file_manager, web_search, read_attachment] + memory_tools + scoped_tools + mem0_tools + awareness_tools,
+        tools=[file_manager, web_search, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + awareness_tools,
         verbose=True,
     )
