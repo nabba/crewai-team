@@ -296,6 +296,29 @@ def _load_relevant_team_memory(task: str, n: int = 3) -> str:
     return "RELEVANT TEAM CONTEXT:\n" + "\n".join(blocks) + "\n\n"
 
 
+def _load_world_model_context(task: str, n: int = 3) -> str:
+    """Load relevant causal beliefs and prediction lessons from the world model (R2).
+
+    Turns the previously write-only world model into an active learning system.
+    Agents see past cause→effect patterns relevant to their current task.
+    """
+    try:
+        from app.self_awareness.world_model import recall_relevant_beliefs, recall_relevant_predictions
+        beliefs = recall_relevant_beliefs(task, n=n)
+        predictions = recall_relevant_predictions(task, n=2)
+        items = beliefs + predictions
+        if not items:
+            return ""
+        blocks = [f"- {item[:300]}" for item in items]
+        return (
+            "LESSONS FROM PAST EXPERIENCE (world model):\n"
+            + "\n".join(blocks)
+            + "\nNOTE: Apply these lessons when relevant to your current task.\n\n"
+        )
+    except Exception:
+        return ""
+
+
 def _load_policies_for_crew(task: str, crew_name: str) -> str:
     """Load relevant policies for a crew (S6: runs in parallel with other context)."""
     try:
@@ -797,16 +820,18 @@ class Commander:
 
         t0 = _time.monotonic()
 
-        # S6: Select relevant context + policies in parallel (4 independent queries)
+        # S6+R2: Select relevant context + policies + world model in parallel
         f_skills = _ctx_pool.submit(_load_relevant_skills, crew_task)
         f_memory = _ctx_pool.submit(_load_relevant_team_memory, crew_task)
         f_kb = _ctx_pool.submit(_load_knowledge_base_context, crew_task)
         f_policies = _ctx_pool.submit(_load_policies_for_crew, crew_task, crew_name)
+        f_world = _ctx_pool.submit(_load_world_model_context, crew_task)
         context = (
             f_skills.result(timeout=5)
             + f_memory.result(timeout=5)
             + f_kb.result(timeout=5)
             + f_policies.result(timeout=5)
+            + f_world.result(timeout=5)
         )
 
         # Inject conversation history so specialist crews understand follow-ups (Q2)
@@ -842,19 +867,79 @@ class Commander:
 
         duration_s = _time.monotonic() - t0
 
-        # S2: Post-crew async hook — self-awareness telemetry runs off critical path.
-        # Saves 3-6s per request by not making the LLM call self_report/reflection tools.
+        # S2+R1+R3: Post-crew async hook — heuristic self-awareness telemetry.
+        # Generates real confidence/completeness signals from observable data
+        # (no LLM needed), keeping the proactive scanner and retrospective crew fed.
         def _post_crew_telemetry():
             try:
                 cache_store(crew_name, crew_task, result, ttl=1800 if difficulty <= 3 else 3600)
                 _store_ecological_report(crew_name, difficulty, duration_s)
                 if difficulty >= 6:
                     _store_world_model_prediction(crew_name, difficulty, result, duration_s)
-                # Store a lightweight self-report without LLM involvement
+
+                # R1: Heuristic self-report — derive confidence from observable signals
+                has_result = bool(result and len(result.strip()) > 30)
+                is_slow = duration_s > 90
+                is_failure_pattern = has_result and any(
+                    p.match(result.strip()) for p in _QUALITY_FAILURE_PATTERNS
+                )
+                if not has_result or is_failure_pattern:
+                    confidence = "low"
+                    completeness = "failed" if not has_result else "partial"
+                elif is_slow or len(result.strip()) < 150:
+                    confidence = "medium"
+                    completeness = "partial" if len(result.strip()) < 100 else "complete"
+                else:
+                    confidence = "high"
+                    completeness = "complete"
+
+                import json as _json
                 from app.memory.chromadb_manager import store as mem_store
-                mem_store("self_reports", f"crew={crew_name} d={difficulty} dur={duration_s:.1f}s ok={bool(result)}", {
-                    "agent": crew_name, "confidence": "high" if result and len(result) > 50 else "low",
+                report = _json.dumps({
+                    "role": crew_name,
+                    "task_summary": crew_task[:200],
+                    "confidence": confidence,
+                    "completeness": completeness,
+                    "blockers": "",
+                    "risks": "slow response" if is_slow else "",
+                    "needs_from_team": "",
+                    "duration_s": round(duration_s, 1),
                 })
+                mem_store("self_reports", report, {
+                    "role": crew_name, "confidence": confidence,
+                    "completeness": completeness,
+                    "ts": __import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ).isoformat(),
+                })
+
+                # R3: Heuristic reflection — no LLM, just observable outcomes
+                went_well = f"Completed in {duration_s:.0f}s" if has_result else ""
+                went_wrong = ""
+                if not has_result:
+                    went_wrong = "Empty or failed output"
+                elif is_slow:
+                    went_wrong = f"Slow: {duration_s:.0f}s"
+                elif is_failure_pattern:
+                    went_wrong = "Output matched failure pattern"
+
+                reflection = _json.dumps({
+                    "role": crew_name,
+                    "task": crew_task[:200],
+                    "went_well": went_well,
+                    "went_wrong": went_wrong,
+                    "lesson": f"{crew_name} d={difficulty} → {confidence} in {duration_s:.0f}s",
+                    "would_change": "",
+                })
+                from app.memory.chromadb_manager import store_team
+                mem_store(f"reflections_{crew_name}", reflection, {
+                    "role": crew_name, "type": "reflection",
+                    "ts": __import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ).isoformat(),
+                })
+                store_team(reflection, {"role": crew_name, "type": "reflection"})
+
             except Exception:
                 logger.debug("Post-crew telemetry failed", exc_info=True)
         _ctx_pool.submit(_post_crew_telemetry)

@@ -10,7 +10,6 @@ from app.tools.file_manager import file_manager
 from app.tools.attachment_reader import read_attachment
 from app.tools.self_report_tool import create_self_report_tool
 from app.tools.reflection_tool import ReflectionTool
-from app.tools.world_model_tool import create_world_model_tool
 from app.souls.loader import compose_backstory
 from app.tools.mem0_tools import create_mem0_tools
 from app.knowledge_base.tools import KnowledgeSearchTool
@@ -44,15 +43,13 @@ def create_researcher(force_tier: str | None = None, light: bool = False) -> Age
         tools = [web_search, web_fetch, KnowledgeSearchTool()]
         backstory = _COMPACT_RESEARCHER_BACKSTORY
     else:
+        # R5: Removed world_model_tool (write-only, never read) and self-awareness
+        # tools (self_report, reflection) — telemetry now runs in post-crew hook.
+        # This saves ~600 tokens per LLM call (3 fewer tool descriptions).
         memory_tools = create_memory_tools(collection="researcher")
         scoped_tools = create_scoped_memory_tools("researcher")
         mem0_tools = create_mem0_tools("researcher")
-        awareness_tools = [
-            create_self_report_tool("researcher"),
-            ReflectionTool(agent_role="researcher"),
-            create_world_model_tool("researcher"),
-        ]
-        tools = [web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + awareness_tools
+        tools = [web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools
         backstory = RESEARCHER_BACKSTORY
 
     return Agent(

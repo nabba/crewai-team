@@ -818,13 +818,13 @@ class TestAgentsHaveSelfAwareness(unittest.TestCase):
 
     def _check_agent_source(self, filepath):
         source = (Path(__file__).parent.parent / filepath).read_text()
-        # Self-model is now loaded via compose_backstory (which calls format_self_model_block internally)
+        # Self-model is loaded via compose_backstory (which calls format_self_model_block internally)
         self.assertTrue(
             "format_self_model_block" in source or "compose_backstory" in source,
             f"Expected format_self_model_block or compose_backstory in {filepath}"
         )
-        self.assertIn("create_self_report_tool", source)
-        self.assertIn("ReflectionTool", source)
+        # R5: Self-report and reflection tools moved to post-crew hook.
+        # Agents still have scoped memory tools for operational memory.
         self.assertIn("create_scoped_memory_tools", source)
 
     def test_researcher(self):
