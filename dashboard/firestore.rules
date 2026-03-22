@@ -29,6 +29,15 @@ service cloud.firestore {
       allow update: if true;  // backend updates status to done/error
     }
 
+    // Proposal actions — dashboard creates approve/reject/rollback actions
+    match /proposal_actions/{doc} {
+      allow read: if true;
+      allow create: if request.resource.data.status == 'pending'
+                    && request.resource.data.action in ['approve', 'reject', 'rollback']
+                    && request.resource.data.keys().hasAll(['proposal_id', 'action', 'status']);
+      allow update: if true;  // backend updates status to done/error
+    }
+
     // Deny everything else
     match /{document=**} { allow read, write: if false; }
   }
