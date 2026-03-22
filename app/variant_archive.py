@@ -13,9 +13,9 @@ of agent variants with Darwinian selection.
 import json
 import logging
 import hashlib
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from app.utils import now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +24,13 @@ _MAX_VARIANTS = 500
 
 
 def _load() -> list[dict]:
-    try:
-        if ARCHIVE_PATH.exists():
-            return json.loads(ARCHIVE_PATH.read_text())
-    except (json.JSONDecodeError, OSError):
-        pass
-    return []
+    from app.utils import load_json_file
+    return load_json_file(ARCHIVE_PATH, default=[])
 
 
 def _save(variants: list[dict]) -> None:
-    try:
-        ARCHIVE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        ARCHIVE_PATH.write_text(json.dumps(variants[-_MAX_VARIANTS:], indent=2))
-    except OSError:
-        logger.warning("Failed to save variant archive", exc_info=True)
+    from app.utils import save_json_file
+    save_json_file(ARCHIVE_PATH, variants, max_entries=_MAX_VARIANTS)
 
 
 def add_variant(
@@ -65,7 +58,7 @@ def add_variant(
         "status": status,
         "files_changed": files_changed or [],
         "mutation_summary": mutation_summary[:300],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": now_iso(),
         "generation": 0,  # computed from parent chain
     }
 

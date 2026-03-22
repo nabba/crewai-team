@@ -34,20 +34,13 @@ _journal_lock = threading.Lock()
 # ── Error journal ─────────────────────────────────────────────────────────────
 
 def _load_journal() -> list[dict]:
-    try:
-        if ERROR_JOURNAL.exists():
-            return json.loads(ERROR_JOURNAL.read_text())
-    except (json.JSONDecodeError, OSError):
-        pass
-    return []
+    from app.utils import load_json_file
+    return load_json_file(ERROR_JOURNAL, default=[])
 
 
 def _save_journal(entries: list[dict]) -> None:
-    try:
-        ERROR_JOURNAL.parent.mkdir(parents=True, exist_ok=True)
-        ERROR_JOURNAL.write_text(json.dumps(entries[-_MAX_JOURNAL_ENTRIES:], indent=2))
-    except OSError:
-        logger.warning("Failed to write error journal", exc_info=True)
+    from app.utils import save_json_file
+    save_json_file(ERROR_JOURNAL, entries, max_entries=_MAX_JOURNAL_ENTRIES)
 
 
 def log_error(

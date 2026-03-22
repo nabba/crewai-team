@@ -787,30 +787,30 @@ class TestCrewsHaveBeliefUpdates(unittest.TestCase):
         self.assertIn('"completed"', source)
         self.assertIn('"failed"', source)
 
-    def test_coding_crew_has_beliefs(self):
+    def test_coding_crew_uses_base(self):
         source = (Path(__file__).parent.parent / "app/crews/coding_crew.py").read_text()
-        self.assertIn("update_belief", source)
-        self.assertIn('"working"', source)
+        self.assertIn("run_single_agent_crew", source)
 
-    def test_writing_crew_has_beliefs(self):
+    def test_writing_crew_uses_base(self):
         source = (Path(__file__).parent.parent / "app/crews/writing_crew.py").read_text()
+        self.assertIn("run_single_agent_crew", source)
+
+    def test_base_crew_has_beliefs_and_metrics(self):
+        source = (Path(__file__).parent.parent / "app/crews/base_crew.py").read_text()
         self.assertIn("update_belief", source)
-        self.assertIn('"working"', source)
+        self.assertIn("record_metric", source)
+        self.assertIn("crew_started", source)
+        self.assertIn("crew_completed", source)
+        self.assertIn("diagnose_and_fix", source)
 
 
 class TestCrewsHavePolicies(unittest.TestCase):
-    """Test that policies are loaded — now centralized in commander._run_crew()."""
+    """Test that policies are loaded — centralized in commander._run_crew()."""
 
     def test_commander_loads_policies_for_crews(self):
-        # S6: Policy loading moved to commander._run_crew() parallel context fetch
         source = (Path(__file__).parent.parent / "app/agents/commander.py").read_text()
         self.assertIn("_load_policies_for_crew", source)
         self.assertIn("load_relevant_policies", source)
-
-    def test_crews_have_benchmarks(self):
-        for crew_file in ["research_crew.py", "coding_crew.py", "writing_crew.py"]:
-            source = (Path(__file__).parent.parent / f"app/crews/{crew_file}").read_text()
-            self.assertIn("record_metric", source, f"{crew_file} missing record_metric")
 
 
 class TestAgentsHaveSelfAwareness(unittest.TestCase):

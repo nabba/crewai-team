@@ -66,7 +66,8 @@ def _get_db():
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    from app.utils import now_iso
+    return now_iso()
 
 
 def _fire(fn):
