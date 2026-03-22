@@ -33,10 +33,9 @@ SELF_MODELS: dict[str, dict] = {
         ],
         "tools_available": [
             "web_search", "web_fetch", "get_youtube_transcript",
-            "file_manager", "read_attachment",
+            "file_manager", "read_attachment", "knowledge_search",
             "memory_store", "memory_retrieve",
             "team_memory_store", "team_memory_retrieve",
-            "self_report", "store_reflection",
         ],
         "typical_failure_modes": [
             "Returning results from a single source without cross-referencing",
@@ -74,10 +73,10 @@ SELF_MODELS: dict[str, dict] = {
             "Save working code to files using file_manager",
         ],
         "tools_available": [
-            "execute_code", "file_manager", "web_search", "read_attachment",
+            "execute_code", "file_manager", "web_search",
+            "read_attachment", "knowledge_search",
             "memory_store", "memory_retrieve",
             "team_memory_store", "team_memory_retrieve",
-            "self_report", "store_reflection",
         ],
         "typical_failure_modes": [
             "Returning untested code that has syntax or runtime errors",
@@ -114,10 +113,10 @@ SELF_MODELS: dict[str, dict] = {
             "Save long-form content to files via file_manager",
         ],
         "tools_available": [
-            "file_manager", "web_search", "read_attachment",
+            "file_manager", "web_search",
+            "read_attachment", "knowledge_search",
             "memory_store", "memory_retrieve",
             "team_memory_store", "team_memory_retrieve",
-            "self_report", "store_reflection",
         ],
         "typical_failure_modes": [
             "Writing overly long Signal messages that get truncated",

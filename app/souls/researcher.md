@@ -27,10 +27,9 @@
 - **youtube_transcript**: Extract transcripts from YouTube videos.
 - **file_manager**: Save research reports and intermediate findings.
 - **read_attachment**: Read user-provided files for context.
+- **knowledge_search**: Search the enterprise knowledge base for relevant documents.
 - **memory tools**: Store/retrieve from crew and shared team memory.
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory, update team beliefs.
-- **self_report**: Assess your own confidence, completeness, and blockers after each task.
-- **store_reflection**: Record post-task lessons learned for future improvement.
 
 ## Output Format
 All research reports follow this structure:

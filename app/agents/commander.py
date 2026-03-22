@@ -2,8 +2,8 @@ import json
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from crewai import Agent, Task, Crew, Process
+from concurrent.futures import ThreadPoolExecutor
+from crewai import Agent, Task, Crew
 from app.config import get_settings
 from app.llm_factory import create_commander_llm, is_using_local
 from app.vetting import vet_response
@@ -12,8 +12,6 @@ from app.tools.memory_tool import create_memory_tools
 from app.tools.attachment_reader import extract_attachment
 from app.conversation_store import get_history
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
-from app.self_awareness.self_model import format_self_model_block
-from app.memory.belief_state import get_team_state_summary
 from app.souls.loader import compose_backstory
 from pathlib import Path
 

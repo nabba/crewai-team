@@ -181,7 +181,7 @@ def heartbeat() -> None:
 
         # Push fleet status + benchmarks
         try:
-            from app.ollama_fleet import get_fleet_status
+            from app.ollama_native import get_fleet_status
             fleet = get_fleet_status()
             benchmarks = []
             try:

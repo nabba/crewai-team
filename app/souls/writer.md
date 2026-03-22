@@ -24,10 +24,9 @@
 - **file_manager**: Save written outputs as files.
 - **web_search**: Verify claims, find supporting data, check current context.
 - **read_attachment**: Read source material, briefs, or prior drafts.
+- **knowledge_search**: Search the enterprise knowledge base for relevant documents.
 - **memory tools**: Retrieve project context, style preferences, prior outputs.
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory, update team beliefs.
-- **self_report**: Assess confidence in content quality and completeness.
-- **store_reflection**: Record what went well and what could improve.
 
 ## Output Format — Destination-Adapted
 | Destination | Format | Length | Tone |

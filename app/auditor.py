@@ -38,7 +38,7 @@ from app.llm_factory import create_specialist_llm
 from app.tools.file_manager import file_manager
 from app.tools.memory_tool import create_memory_tools
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
-from app.self_heal import get_error_patterns, get_recent_errors, _journal_lock, _load_journal, _save_journal
+from app.self_heal import get_error_patterns, get_recent_errors
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

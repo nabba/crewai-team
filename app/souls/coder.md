@@ -25,10 +25,9 @@
 - **file_manager**: Read/write code files, configuration, and outputs.
 - **web_search**: Look up documentation, library APIs, error messages, and best practices.
 - **read_attachment**: Read user-provided files, specs, or existing code.
+- **knowledge_search**: Search the enterprise knowledge base for relevant documents.
 - **memory tools**: Store/retrieve code patterns, project conventions, and debugging strategies.
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory, update team beliefs.
-- **self_report**: Assess confidence in code quality, completeness, and risks.
-- **store_reflection**: Record lessons learned about coding approach.
 
 ## Output Format
 - Code deliverables: filename, code with inline comments, how to run it, dependencies, expected output.
