@@ -918,6 +918,136 @@ def report_token_stats() -> None:
     _fire(_write)
 
 
+# ── Self-Healing/Evolving Dashboard Data ─────────────────────────────────────
+
+def report_anomalies() -> None:
+    """Push recent anomaly alerts to Firestore for the dashboard."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            from app.anomaly_detector import get_recent_alerts
+            alerts = get_recent_alerts(20)
+            db.collection("status").document("anomalies").set({
+                "recent_alerts": alerts,
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: anomalies write failed", exc_info=True)
+    _fire(_write)
+
+
+def report_variants() -> None:
+    """Push variant archive summary to Firestore for the dashboard."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            from app.variant_archive import get_recent_variants, get_drift_score
+            recent = get_recent_variants(20)
+            drift = get_drift_score()
+            max_gen = max((v.get("generation", 0) for v in recent), default=0) if recent else 0
+            db.collection("status").document("variants").set({
+                "recent": recent,
+                "drift_score": drift,
+                "max_generation": max_gen,
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: variants write failed", exc_info=True)
+    _fire(_write)
+
+
+def report_tech_radar() -> None:
+    """Push tech radar discoveries to Firestore for the dashboard."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            from app.memory.scoped_memory import retrieve_operational
+            items = retrieve_operational("scope_tech_radar", "technology discovery", n=20)
+            discoveries = []
+            for item in (items or []):
+                # Parse stored format: [category] title: summary. Action: ...
+                import re as _re
+                m = _re.match(r'\[(\w+)\]\s*(.+?):\s*(.+?)(?:\.\s*Action:\s*(.+))?$', item, _re.DOTALL)
+                if m:
+                    discoveries.append({
+                        "category": m.group(1),
+                        "title": m.group(2).strip(),
+                        "summary": m.group(3).strip(),
+                        "action": (m.group(4) or "").strip(),
+                    })
+                else:
+                    discoveries.append({"category": "unknown", "title": item[:80], "summary": item[:200]})
+            db.collection("status").document("tech_radar").set({
+                "discoveries": discoveries[:15],
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: tech_radar write failed", exc_info=True)
+    _fire(_write)
+
+
+def report_deploys() -> None:
+    """Push recent deploy log to Firestore for the dashboard."""
+    def _write():
+        db = _get_db()
+        if not db:
+            return
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            deploy_log = _Path("/app/workspace/deploy_log.json")
+            if deploy_log.exists():
+                entries = _json.loads(deploy_log.read_text())[-10:]
+            else:
+                entries = []
+            db.collection("status").document("deploys").set({
+                "recent": entries,
+                "updated_at": _now_iso(),
+            })
+        except Exception:
+            logger.debug("firebase_reporter: deploys write failed", exc_info=True)
+    _fire(_write)
+
+
+def report_proposal_actions() -> None:
+    """Poll proposal_actions collection for dashboard-initiated approve/reject."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        docs = db.collection("proposal_actions").where("status", "==", "pending").limit(5).get()
+        for snap in docs:
+            data = snap.to_dict()
+            pid = data.get("proposal_id")
+            action = data.get("action")
+            if not pid or not action:
+                snap.reference.update({"status": "invalid"})
+                continue
+            try:
+                if action == "approve":
+                    from app.proposals import approve_proposal
+                    result = approve_proposal(pid)
+                elif action == "reject":
+                    from app.proposals import reject_proposal
+                    result = reject_proposal(pid)
+                elif action == "rollback":
+                    result = f"Rollback #{pid} — use Signal for rollback"
+                else:
+                    result = f"Unknown action: {action}"
+                snap.reference.update({"status": "done", "result": result[:200]})
+                logger.info(f"firebase_reporter: proposal action {action} #{pid}: {result[:100]}")
+            except Exception as e:
+                snap.reference.update({"status": "error", "error": str(e)[:200]})
+    except Exception:
+        logger.debug("firebase_reporter: proposal actions poll failed", exc_info=True)
+
+
 # ── KB Queue Poller ──────────────────────────────────────────────────────────
 
 _kb_poll_stop = threading.Event()

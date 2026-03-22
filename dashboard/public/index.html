@@ -180,6 +180,37 @@
     .projection { font-size: 1.6rem; font-weight: 700; color: var(--green); }
     .projection-detail { font-size: .7rem; color: var(--muted); margin-top: 4px; }
 
+    /* ── Proposal action buttons ─────────────────────────────── */
+    .proposal-btn { border: none; padding: 3px 10px; border-radius: 5px; font-size: .65rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+    .proposal-btn.approve { background: rgba(52,211,153,.2); color: var(--green); }
+    .proposal-btn.approve:hover { background: rgba(52,211,153,.4); }
+    .proposal-btn.reject { background: rgba(248,113,113,.2); color: var(--red); }
+    .proposal-btn.reject:hover { background: rgba(248,113,113,.4); }
+    .proposal-btn.revert { background: rgba(251,191,36,.2); color: var(--yellow); }
+    .proposal-btn.revert:hover { background: rgba(251,191,36,.4); }
+    .proposal-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Anomaly alerts ───────────────────────────────────────── */
+    .anomaly-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .72rem; }
+    .anomaly-item:last-child { border-bottom: none; }
+    .anomaly-sigma { font-weight: 700; font-size: .68rem; padding: 1px 6px; border-radius: 5px; }
+    .anomaly-sigma.warn { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .anomaly-sigma.crit { background: rgba(248,113,113,.15); color: var(--red); }
+
+    /* ── Variant items ────────────────────────────────────────── */
+    .variant-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .72rem; }
+    .variant-item:last-child { border-bottom: none; }
+    .gen-badge { font-size: .6rem; padding: 1px 5px; border-radius: 4px; background: rgba(96,165,250,.15); color: var(--blue); font-weight: 700; }
+
+    /* ── Tech radar items ─────────────────────────────────────── */
+    .radar-item { padding: 5px 0; border-bottom: 1px solid rgba(36,45,58,.3); font-size: .72rem; }
+    .radar-item:last-child { border-bottom: none; }
+    .radar-category { font-size: .6rem; padding: 1px 6px; border-radius: 4px; font-weight: 700; }
+    .radar-category.models { background: rgba(96,165,250,.15); color: var(--blue); }
+    .radar-category.frameworks { background: rgba(167,139,250,.15); color: var(--purple); }
+    .radar-category.research { background: rgba(52,211,153,.15); color: var(--green); }
+    .radar-category.tools { background: rgba(251,191,36,.15); color: var(--yellow); }
+
     .empty { color: var(--muted); font-size: .75rem; padding: 10px 0; text-align: center; }
     #last-updated { font-size: .62rem; color: var(--dim); text-align: right; }
 
@@ -353,7 +384,31 @@
   </div>
 </div>
 
-<!-- ── Proposals ──────────────────────────────────────────────── -->
+<!-- ── Self-Healing & Evolution Monitor ────────────────────────── -->
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title">🛡️ Anomaly Detection</div>
+    <div id="anomaly-list"><div class="empty">No anomalies — system healthy</div></div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="section-title">🧬 Evolution Genealogy</div>
+    <div id="variant-stats" style="margin-bottom:6px"></div>
+    <div id="variant-list"><div class="empty">No variants yet</div></div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card" style="margin:0">
+    <div class="section-title">🔬 Tech Radar</div>
+    <div id="tech-radar-list"><div class="empty">No tech discoveries yet — runs during idle time</div></div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="section-title">🏗️ Self-Deploy Pipeline</div>
+    <div id="deploy-pipeline"><div class="empty">No deployments</div></div>
+  </div>
+</div>
+
+<!-- ── Proposals (with approve/reject) ───────────────────────── -->
 <div class="card">
   <div class="section-title">Improvement Proposals</div>
   <div id="proposals-list"><div class="empty">No proposals yet</div></div>
@@ -392,34 +447,95 @@
 <!-- ── Signal Commands Reference ──────────────────────────────── -->
 <details class="card">
   <summary class="section-title" style="margin-bottom:0;cursor:pointer">Signal Commands Reference</summary>
+  <div style="margin-top:10px;font-size:.72rem;color:var(--muted);line-height:1.5;margin-bottom:12px">
+    Send any message to the bot via Signal on your iPhone. The Commander agent automatically classifies
+    your request and routes it to the right specialist crew (Research, Coding, Writing, Media). You can also
+    use the commands below to control the system, manage proposals, monitor evolution, and access diagnostics.
+    File attachments (PDF, DOCX, XLSX, images) are automatically extracted and included as context.
+  </div>
   <div class="table-wrap">
-  <table style="margin-top:10px">
-    <thead><tr><th>Command</th><th>Description</th></tr></thead>
+  <table>
+    <thead><tr><th style="min-width:180px">Command</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">General</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">hello / any question</td><td>Commander routes to the right crew or answers directly</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">&#x1F4CE; Send file(s)</td><td>Attach PDF, DOCX, XLSX, JPG, PNG — extracted as context</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>System health, pending proposals, composite score</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Learning</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Add to learning queue (processed at 3 AM or on demand)</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">watch &lt;youtube_url&gt;</td><td>Extract video transcript into skill file</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Process learning queue immediately</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Scan and create improvement proposals</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Proposals</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>List pending improvement proposals</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve / reject &lt;id&gt;</td><td>Approve or reject a proposal</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Evolution</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve [deep]</td><td>Run evolution cycle (single or extended)</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">experiments / results</td><td>Show experiment journal or results ledger</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Errors & Audit</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">errors / fix errors</td><td>Show errors or trigger resolution loop</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit</td><td>Code audit with auto-fix</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">LLM & Fleet</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">llm / fleet / catalog / tokens</td><td>LLM config, fleet status, model catalog, token usage</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">mode &lt;local|hybrid|cloud|insane&gt;</td><td>Switch LLM mode</td></tr>
-      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:8px;border-bottom:none;font-size:.7rem">Knowledge Base</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb / kb list / kb add &lt;url&gt;</td><td>KB status, list docs, add URL</td></tr>
-      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb search &lt;query&gt;</td><td>Search knowledge base</td></tr>
+      <!-- General -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">📱 General — Natural Language Interaction</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">Send any question or request. Commander classifies it by type and difficulty (1-10), then dispatches to the right crew. Multiple requests can be processed in parallel.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">any question or request</td><td>Commander routes to Research, Coding, Writing, or Media crew based on content</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">📎 Send file(s)</td><td>Attach PDF, DOCX, XLSX, JPG, PNG — text is extracted and included as task context</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">status</td><td>System health overview: composite score, pending proposals, LLM mode, error count</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">llm</td><td>Detailed LLM configuration: current mode, cost mode, model assignments per role</td></tr>
+
+      <!-- LLM & Fleet -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">🤖 LLM Fleet — Model Management</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">The system manages 18+ models across 5 tiers (local/free/budget/mid/premium). LLM mode controls which tiers are used. Cost mode controls quality vs cost trade-off per role.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">mode &lt;local|hybrid|cloud|insane&gt;</td><td>Switch LLM mode. Local = Ollama only. Hybrid = try local → API → Claude. Cloud = API only. Insane = premium everywhere.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet</td><td>Ollama fleet status: loaded models, GPU memory, speeds</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">catalog</td><td>Full model catalog with tiers, costs, and current role assignments</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">tokens [hour|day|week|month]</td><td>Token usage and cost breakdown by model and time period</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet pull &lt;model&gt;</td><td>Download and load a new Ollama model (e.g. <code>fleet pull gemma3:27b</code>)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fleet stop all</td><td>Unload all models from GPU memory</td></tr>
+
+      <!-- Learning -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">📚 Learning — Self-Improvement</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">The system continuously learns new topics and stores knowledge as skill files. Learning runs at 3 AM daily and during idle time. Skills are semantically matched and injected into relevant tasks.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">learn &lt;topic&gt;</td><td>Add a topic to the learning queue (e.g. <code>learn kubernetes networking</code>)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">show learning queue</td><td>View pending topics in the queue</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">watch &lt;youtube_url&gt;</td><td>Extract video transcript and distill into a skill file</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">run self-improvement now</td><td>Process the learning queue immediately (bypasses schedule)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">improve</td><td>Scan for skill gaps and create improvement proposals</td></tr>
+
+      <!-- Proposals & Self-Deploy -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">📋 Proposals — Human-Gated Self-Modification</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">The system creates proposals for improvements (skills, code fixes, config changes). All code changes require your explicit approval. Approved code is deployed to the live system with hot-reload — no restart needed.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">proposals</td><td>List all pending proposals with IDs, types, and titles</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">diff &lt;id&gt;</td><td>View detailed proposal: description, reasoning, and file contents</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">approve &lt;id&gt;</td><td>Approve and deploy a proposal. Code changes are validated (AST + security) and hot-reloaded.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">reject &lt;id&gt;</td><td>Reject a proposal (with reasoning stored for future learning)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">rollback &lt;id&gt;</td><td>Revert a previously approved proposal from backup</td></tr>
+
+      <!-- Evolution -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">🧬 Evolution — Autonomous Self-Improvement</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">DGM-inspired evolution loop: propose → mutate → evaluate → keep/discard. Each mutation is tested against real tasks. Runs every 6h and during idle time. Max 3 promoted mutations per day. Variant genealogy tracks lineage.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve</td><td>Run an evolution session (5 experiments)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">evolve deep</td><td>Extended evolution session (15 experiments)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">experiments</td><td>Show recent experiment journal (keep/discard history)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">results</td><td>Show results ledger (TSV format, all experiments)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">variants</td><td>Show variant archive with genealogy (DGM-style lineage)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">metrics</td><td>Full system metrics: composite score, component breakdowns</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">program</td><td>View evolution research directions (editable program.md)</td></tr>
+
+      <!-- Self-Healing & Monitoring -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">🛡️ Self-Healing & Monitoring</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">Errors are automatically logged, diagnosed, and fixed. The anomaly detector monitors system health metrics and triggers healing when deviations exceed 2σ. Error patterns are tracked with a 24h resolution cooldown.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">errors</td><td>Show recent errors with type, crew, and diagnosis status</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">fix errors</td><td>Manually trigger error resolution loop for recurring patterns</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">anomalies</td><td>Show recent anomaly detection alerts (metric deviations)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit</td><td>Run a code quality audit across the codebase</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">audit status</td><td>Show audit activity, error resolution status, and deploy log</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">deploys</td><td>Show recent deployment log (auto-deploys from approved proposals)</td></tr>
+
+      <!-- Tech Radar -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">🔬 Tech Radar — Internet Technology Monitor</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">Scans the internet for new LLM models, agent frameworks, and research papers. Runs daily during idle time. High-relevance discoveries trigger a Signal notification. New models are auto-proposed for catalog addition.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">tech radar</td><td>Show recent technology discoveries (models, frameworks, papers)</td></tr>
+
+      <!-- Knowledge Base -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">📖 Knowledge Base — Enterprise RAG</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">Ingest documents (PDF, DOCX, XLSX, URLs) into a semantic search index. All agents automatically search the KB for relevant context before answering questions. Upload via Signal attachment or dashboard.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb</td><td>Knowledge base status: document count, chunks, estimated tokens</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb list</td><td>List all ingested documents with format, category, and chunk count</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb add &lt;url&gt; [category]</td><td>Ingest a URL into the knowledge base (e.g. <code>kb add https://docs.example.com technical</code>)</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">📎 + kb add [category]</td><td>Ingest attached file(s) into the KB (send file with message "kb add research")</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb search &lt;query&gt;</td><td>Semantic search across all ingested documents</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb remove &lt;source&gt;</td><td>Remove a document from the knowledge base</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">kb reset</td><td>Clear the entire knowledge base</td></tr>
+
+      <!-- Meta-Cognitive -->
+      <tr><td colspan="2" style="font-weight:700;color:var(--blue);padding-top:10px;border-bottom:none;font-size:.72rem">🧠 Meta-Cognitive — Introspection</td></tr>
+      <tr><td colspan="2" style="color:var(--muted);font-size:.68rem;border-bottom:none;padding-top:0">The retrospective crew analyzes past performance and generates TRIGGER/ACTION/EVIDENCE policies. Policies are automatically injected into future tasks to improve behavior. The system runs retrospectives at 4 AM and during idle time.</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">retrospective</td><td>Run a meta-cognitive retrospective analysis now</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">benchmarks</td><td>Show performance benchmarks and period-over-period trends</td></tr>
+      <tr><td style="white-space:nowrap;font-weight:600;color:var(--blue)">policies</td><td>Show stored improvement policies (TRIGGER → ACTION)</td></tr>
     </tbody>
   </table>
   </div>
@@ -625,21 +741,120 @@ onSnapshot(doc(db,"schedule","jobs"), s => {
   }).join("");
 });
 
-// ── Proposals ────────────────────────────────────────────────────────────────
+// ── Proposals (with approve/reject/revert actions) ──────────────────────────
 onSnapshot(doc(db,"status","proposals"), s => {
   const el = document.getElementById("proposals-list");
   if (!s.exists()) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
   const proposals = s.data().proposals || [];
   if (!proposals.length) { el.innerHTML='<div class="empty">No proposals yet</div>'; return; }
-  const SC = { pending: "var(--yellow)", approved: "var(--green)", rejected: "var(--muted)" };
-  el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr></thead><tbody>` +
-    proposals.map(p => `<tr>
-      <td style="font-weight:700">#${p.id||"?"}</td>
-      <td>${esc(p.title)||"—"}</td>
-      <td><span class="badge" style="background:rgba(96,165,250,.15);color:var(--blue)">${esc(p.type)||"?"}</span></td>
-      <td><span style="color:${SC[p.status]||"var(--muted)"};font-weight:600">${esc(p.status)||"?"}</span></td>
-      <td style="color:var(--muted)">${p.created_at ? p.created_at.slice(0,10) : "—"}</td>
-    </tr>`).join("") + `</tbody></table></div>`;
+  const SC = { pending: "var(--yellow)", approved: "var(--green)", rejected: "var(--muted)", auto_rejected: "var(--dim)" };
+  el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>` +
+    proposals.map(p => {
+      let actions = '';
+      if (p.status === 'pending') {
+        actions = `<button class="proposal-btn approve" onclick="proposalAction(${p.id},'approve')">✓ Approve</button>
+                   <button class="proposal-btn reject" onclick="proposalAction(${p.id},'reject')">✕ Reject</button>`;
+      } else if (p.status === 'approved') {
+        actions = `<button class="proposal-btn revert" onclick="proposalAction(${p.id},'rollback')">↩ Revert</button>`;
+      }
+      return `<tr>
+        <td style="font-weight:700">#${p.id||"?"}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)||"—"}</td>
+        <td><span class="badge" style="background:rgba(96,165,250,.15);color:var(--blue)">${esc(p.type)||"?"}</span></td>
+        <td><span style="color:${SC[p.status]||"var(--muted)"};font-weight:600">${esc(p.status)||"?"}</span></td>
+        <td style="color:var(--muted)">${p.created_at ? p.created_at.slice(0,10) : "—"}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join("") + `</tbody></table></div>`;
+});
+
+// ── Proposal actions (approve/reject/rollback via Firestore queue) ───────────
+window.proposalAction = async function(id, action) {
+  try {
+    await addDoc(collection(db, "proposal_actions"), {
+      proposal_id: id,
+      action: action,
+      created_at: serverTimestamp(),
+      status: "pending"
+    });
+    // Visual feedback
+    event.target.disabled = true;
+    event.target.textContent = action === 'approve' ? 'Approving…' : action === 'reject' ? 'Rejecting…' : 'Reverting…';
+  } catch (e) {
+    alert("Action failed: " + e.message);
+  }
+};
+
+// ── Anomaly Detection ────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "anomalies"), s => {
+  const el = document.getElementById("anomaly-list");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No anomalies — system healthy</div>'; return; }
+  const alerts = s.data().recent_alerts || [];
+  if (!alerts.length) { el.innerHTML = '<div class="empty">No anomalies — system healthy ✓</div>'; return; }
+  el.innerHTML = alerts.slice(0, 8).map(a => {
+    const cls = a.sigma >= 3 ? 'crit' : 'warn';
+    return `<div class="anomaly-item">
+      <span class="anomaly-sigma ${cls}">${a.sigma||0}σ</span>
+      <span style="flex:1">${esc(a.type||a.metric)} <span style="color:var(--muted)">— ${esc(a.metric)}=${a.value}</span></span>
+      <span style="color:var(--dim);font-size:.65rem">${rel(a.ts)}</span>
+    </div>`;
+  }).join("");
+});
+
+// ── Variant Archive (Evolution Genealogy) ────────────────────────────────────
+onSnapshot(doc(db, "status", "variants"), s => {
+  const el = document.getElementById("variant-list");
+  const statsEl = document.getElementById("variant-stats");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No variants yet</div>'; statsEl.innerHTML = ''; return; }
+  const d = s.data();
+  const variants = d.recent || [];
+  const drift = d.drift_score || 0;
+  const maxGen = d.max_generation || 0;
+  statsEl.innerHTML = `<div style="font-size:.75rem">
+    <span style="color:var(--blue);font-weight:700">Drift: ${drift}</span> mutations ·
+    Gen ${maxGen} ·
+    ${variants.filter(v => v.status === 'keep').length}/${variants.length} kept
+  </div>`;
+  if (!variants.length) { el.innerHTML = '<div class="empty">No variants</div>'; return; }
+  el.innerHTML = variants.slice(0, 8).map(v => `
+    <div class="variant-item">
+      <span class="gen-badge">G${v.generation||0}</span>
+      <span class="evo-status ${v.status||''}">${(v.status||"?").toUpperCase()}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.hypothesis)||"—"}</span>
+      <span style="color:var(--muted);font-size:.65rem">${v.delta !== undefined ? (v.delta >= 0 ? '+' : '') + v.delta.toFixed(4) : '—'}</span>
+    </div>`).join("");
+});
+
+// ── Tech Radar ──────────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "tech_radar"), s => {
+  const el = document.getElementById("tech-radar-list");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No tech discoveries yet — runs during idle time</div>'; return; }
+  const discoveries = s.data().discoveries || [];
+  if (!discoveries.length) { el.innerHTML = '<div class="empty">No discoveries</div>'; return; }
+  el.innerHTML = discoveries.slice(0, 8).map(d => `
+    <div class="radar-item">
+      <span class="radar-category ${d.category||''}">${esc(d.category||"?")}</span>
+      <strong>${esc(d.title||"?")}</strong>
+      <div style="color:var(--muted);font-size:.68rem;margin-top:2px">${esc(d.summary||"")}</div>
+    </div>`).join("");
+});
+
+// ── Deploy Pipeline ─────────────────────────────────────────────────────────
+onSnapshot(doc(db, "status", "deploys"), s => {
+  const el = document.getElementById("deploy-pipeline");
+  if (!s.exists()) { el.innerHTML = '<div class="empty">No deployments</div>'; return; }
+  const deploys = s.data().recent || [];
+  if (!deploys.length) { el.innerHTML = '<div class="empty">No deployments</div>'; return; }
+  el.innerHTML = deploys.slice(0, 6).map(d => {
+    const icon = d.status === 'success' ? '✅' : d.status === 'blocked' ? '🚫' : '⏳';
+    const color = d.status === 'success' ? 'var(--green)' : d.status === 'blocked' ? 'var(--red)' : 'var(--yellow)';
+    return `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(36,45,58,.3);font-size:.72rem">
+      <span>${icon}</span>
+      <span style="color:${color};font-weight:600">${esc(d.status)}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.reason||"")}</span>
+      <span style="color:var(--dim);font-size:.65rem">${d.ts ? rel(d.ts) : "—"}</span>
+    </div>`;
+  }).join("");
 });
 
 // ── Activity Feed ────────────────────────────────────────────────────────────

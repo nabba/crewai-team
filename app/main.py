@@ -273,9 +273,11 @@ async def lifespan(app: FastAPI):
         sync_trigger,
         kwargs={"backup_repo": settings.workspace_backup_repo},
     )
-    # Heartbeat — keep monitoring dashboard "last_seen" fresh + anomaly detection
+    # Heartbeat — keep monitoring dashboard "last_seen" fresh + anomaly detection + dashboard data
+    _hb_counter = [0]
     def _heartbeat_with_anomaly():
         heartbeat()
+        _hb_counter[0] += 1
         try:
             from app.anomaly_detector import collect_and_check, handle_alerts
             alerts = collect_and_check()
@@ -283,6 +285,20 @@ async def lifespan(app: FastAPI):
                 handle_alerts(alerts)
         except Exception:
             pass
+        # Push self-healing/evolving data to dashboard every 5 minutes (every 5th heartbeat)
+        if _hb_counter[0] % 5 == 0:
+            try:
+                from app.firebase_reporter import (
+                    report_anomalies, report_variants, report_tech_radar,
+                    report_deploys, report_proposal_actions,
+                )
+                report_anomalies()
+                report_variants()
+                report_tech_radar()
+                report_deploys()
+                report_proposal_actions()  # process dashboard approve/reject clicks
+            except Exception:
+                pass
     scheduler.add_job(_heartbeat_with_anomaly, "interval", seconds=60, id="heartbeat")
     scheduler.start()
 
