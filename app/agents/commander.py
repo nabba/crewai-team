@@ -296,6 +296,18 @@ def _load_relevant_team_memory(task: str, n: int = 3) -> str:
     return "RELEVANT TEAM CONTEXT:\n" + "\n".join(blocks) + "\n\n"
 
 
+def _load_policies_for_crew(task: str, crew_name: str) -> str:
+    """Load relevant policies for a crew (S6: runs in parallel with other context)."""
+    try:
+        # Map crew_name to agent role for policy matching
+        _crew_to_role = {"research": "researcher", "coding": "coder", "writing": "writer", "media": "media_analyst"}
+        role = _crew_to_role.get(crew_name, crew_name)
+        from app.policies.policy_loader import load_relevant_policies
+        return load_relevant_policies(task, role)
+    except Exception:
+        return ""
+
+
 def _load_knowledge_base_context(task: str, n: int = 4) -> str:
     """Retrieve knowledge base passages relevant to the current task (RAG).
 
@@ -654,6 +666,26 @@ def _store_reflexion_failure(task: str, trials: int, reflections: list[str]) -> 
         logger.debug("Failed to store reflexion failure", exc_info=True)
 
 
+def _run_proactive_scan(result: str, crew_names: str, user_input: str) -> str:
+    """Run proactive trigger scan and return notes string (or empty)."""
+    try:
+        from app.proactive.trigger_scanner import scan_for_triggers, execute_proactive_action
+        triggers = scan_for_triggers(
+            crew_results={"result": result, "crews": crew_names},
+            task_description=user_input,
+        )
+        notes = []
+        for trigger in triggers[:2]:
+            logger.info(f"Proactive trigger: {trigger['trigger_type']}: {trigger['description'][:80]}")
+            addition = execute_proactive_action(trigger, result)
+            if addition:
+                notes.append(addition)
+        return "\n".join(notes)
+    except Exception:
+        logger.debug("Proactive scan failed", exc_info=True)
+        return ""
+
+
 class Commander:
     def __init__(self):
         self.llm = create_commander_llm()
@@ -671,6 +703,9 @@ class Commander:
         if fast is not None:
             return fast
 
+        # S4/S1: Routing needs ONLY history + user input for classification.
+        # Memory queries (skills, team_state, mem0, KB) are deferred to _run_crew()
+        # where they actually matter. This saves ~200ms and ~2000 input tokens.
         history_block = ""
         if sender:
             history_text = get_history(sender, n=3)
@@ -681,46 +716,8 @@ class Commander:
                     + "\n</recent_history>\n\n"
                 )
 
-        # Run independent I/O operations in parallel (skills, team state, mem0)
-        skills_context = ""
-        team_state_block = ""
-        mem0_context = ""
-
-        def _fetch_skills():
-            return _load_skill_names()
-
-        def _fetch_team_state():
-            ts = get_team_state_summary()
-            return f"{ts}\n\n" if ts else ""
-
-        def _fetch_mem0():
-            try:
-                from app.memory.mem0_manager import search_shared
-                results = search_shared(user_input, n=3)
-                if results:
-                    facts = [r.get("memory", "")[:200] for r in results
-                             if isinstance(r, dict) and r.get("memory")]
-                    if facts:
-                        return (
-                            "KNOWN FACTS (from persistent memory):\n"
-                            + "\n".join(f"- {f}" for f in facts) + "\n\n"
-                        )
-            except Exception:
-                pass
-            return ""
-
-        fut_skills = _ctx_pool.submit(_fetch_skills)
-        fut_state = _ctx_pool.submit(_fetch_team_state)
-        fut_mem0 = _ctx_pool.submit(_fetch_mem0)
-        skills_context = fut_skills.result(timeout=5)
-        team_state_block = fut_state.result(timeout=5)
-        mem0_context = fut_mem0.result(timeout=5)
-
         prompt = (
             f"{ROUTING_PROMPT}\n\n"
-            f"{team_state_block}"
-            f"{mem0_context}"
-            f"{skills_context}"
             f"{history_block}"
             f"{attachment_context}"
             f"User request:\n\n{wrap_user_input(user_input)}"
@@ -800,14 +797,16 @@ class Commander:
 
         t0 = _time.monotonic()
 
-        # Select relevant context in parallel (3 independent vector DB queries)
+        # S6: Select relevant context + policies in parallel (4 independent queries)
         f_skills = _ctx_pool.submit(_load_relevant_skills, crew_task)
         f_memory = _ctx_pool.submit(_load_relevant_team_memory, crew_task)
         f_kb = _ctx_pool.submit(_load_knowledge_base_context, crew_task)
+        f_policies = _ctx_pool.submit(_load_policies_for_crew, crew_task, crew_name)
         context = (
             f_skills.result(timeout=5)
             + f_memory.result(timeout=5)
             + f_kb.result(timeout=5)
+            + f_policies.result(timeout=5)
         )
 
         # Inject conversation history so specialist crews understand follow-ups (Q2)
@@ -843,24 +842,22 @@ class Commander:
 
         duration_s = _time.monotonic() - t0
 
-        # Store result in semantic cache (TTL scales with difficulty)
-        cache_ttl = 1800 if difficulty <= 3 else 3600  # 30min for simple, 1h for complex
-        cache_store(crew_name, crew_task, result, ttl=cache_ttl)
-
-        # L5: Store ecological footprint (non-blocking, best-effort)
-        try:
-            _store_ecological_report(crew_name, difficulty, duration_s)
-        except Exception:
-            logger.debug("Ecological report storage failed", exc_info=True)
-
-        # L2: Store prediction result for complex tasks (world model learning)
-        if difficulty >= 6:
+        # S2: Post-crew async hook — self-awareness telemetry runs off critical path.
+        # Saves 3-6s per request by not making the LLM call self_report/reflection tools.
+        def _post_crew_telemetry():
             try:
-                _store_world_model_prediction(
-                    crew_name, difficulty, result, duration_s
-                )
+                cache_store(crew_name, crew_task, result, ttl=1800 if difficulty <= 3 else 3600)
+                _store_ecological_report(crew_name, difficulty, duration_s)
+                if difficulty >= 6:
+                    _store_world_model_prediction(crew_name, difficulty, result, duration_s)
+                # Store a lightweight self-report without LLM involvement
+                from app.memory.chromadb_manager import store as mem_store
+                mem_store("self_reports", f"crew={crew_name} d={difficulty} dur={duration_s:.1f}s ok={bool(result)}", {
+                    "agent": crew_name, "confidence": "high" if result and len(result) > 50 else "low",
+                })
             except Exception:
-                logger.debug("World model prediction storage failed", exc_info=True)
+                logger.debug("Post-crew telemetry failed", exc_info=True)
+        _ctx_pool.submit(_post_crew_telemetry)
 
         return result
 
@@ -1388,6 +1385,7 @@ class Commander:
         # ── Step 2: Dispatch ──────────────────────────────────────────────
         from app.llm_factory import get_last_tier
         reflexion_exhausted = False  # L3: tracks if reflexion retries were used up
+        _proactive_done = False  # S10: track if proactive scan already ran in parallel
 
         # Fetch conversation history once for crew injection (Q2)
         _crew_history = ""
@@ -1415,11 +1413,16 @@ class Commander:
                     conversation_history=_crew_history,
                 )
 
-            # Risk-based verification (replaces binary vetting)
-            final_result = vet_response(
-                user_input, final_result, crew_name,
-                difficulty=difficulty, model_tier=get_last_tier() or "unknown",
+            # S10: Run vetting + proactive scan in parallel (independent operations)
+            _vet_future = _ctx_pool.submit(
+                vet_response, user_input, final_result, crew_name,
+                difficulty, get_last_tier() or "unknown",
             )
+            _proactive_notes = _run_proactive_scan(final_result, crew_name, user_input)
+            final_result = _vet_future.result(timeout=30)
+            if _proactive_notes:
+                final_result += "\n\n---\n" + _proactive_notes
+            _proactive_done = True
         else:
             # Multiple crews — parallel dispatch with streaming
             from app.crews.parallel_runner import run_parallel
@@ -1523,24 +1526,11 @@ class Commander:
             except Exception:
                 pass
 
-        # ── Step 4: Proactive scan — append up to 2 notes to response (Q9)
-        # Runs synchronously (fast, no LLM calls) so notes appear in the response.
-        try:
-            from app.proactive.trigger_scanner import scan_for_triggers, execute_proactive_action
-            triggers = scan_for_triggers(
-                crew_results={"result": final_result, "crews": crew_names},
-                task_description=user_input,
-            )
-            proactive_notes = []
-            for trigger in triggers[:2]:
-                logger.info(f"Proactive trigger: {trigger['trigger_type']}: {trigger['description'][:80]}")
-                addition = execute_proactive_action(trigger, final_result)
-                if addition:
-                    proactive_notes.append(addition)
-            if proactive_notes:
-                final_result += "\n\n---\n" + "\n".join(proactive_notes)
-        except Exception:
-            logger.debug("Proactive scan failed", exc_info=True)
+        # ── Step 4: Proactive scan — only if not already done in parallel (S10)
+        if not _proactive_done:
+            notes = _run_proactive_scan(final_result, crew_names, user_input)
+            if notes:
+                final_result += "\n\n---\n" + notes
 
         # ── Step 5: L6 Epistemic Humility — transparent uncertainty labeling ─
         # Check if the response should carry a confidence note.

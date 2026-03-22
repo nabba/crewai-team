@@ -181,11 +181,13 @@ def assess_risk_level(
     if difficulty >= 8:
         return "full"
 
-    # Premium models on easy tasks — trust them
-    if model_tier == "premium" and difficulty <= 3:
+    # Easy tasks (difficulty <= 3) with premium or budget/mid models — trust them.
+    # S5: Saves 2-4s per simple question by skipping the vetting LLM call.
+    # Quality gate in commander already catches refusals and meta-commentary.
+    if difficulty <= 3 and model_tier in ("premium", "budget", "mid"):
         return "none"
 
-    # Budget/mid models on easy writing/research — schema check only
+    # Budget/mid models on moderate writing/research — schema check only
     if model_tier in ("budget", "mid") and crew_name in ("writing", "research") and difficulty <= 5:
         return "schema"
 

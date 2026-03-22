@@ -13,7 +13,6 @@ from app.firebase_reporter import (
 )
 from app.crews.parallel_runner import run_parallel
 from app.memory.belief_state import update_belief
-from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
 from app.conversation_store import estimate_eta
 
@@ -28,16 +27,12 @@ Research the following topic thoroughly:
 {user_input}
 
 Search the web for at least 3 high-quality sources. Read articles and extract key
-information. Store all findings in team memory.
+information.
 
 Compile a structured research report with:
 1. Key findings
 2. Important details and data points
 3. Sources (with URLs)
-
-After completing your research, use the self_report tool to assess your confidence,
-completeness, and any blockers. Then use store_reflection to record what you learned
-about your own performance on this task.
 """
 
 # Concise template for simple factual questions (difficulty 1-3).
@@ -216,7 +211,8 @@ class ResearchCrew:
 
     def _run_simple(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
         """Fast path for simple factual questions — concise answer, no extras."""
-        researcher = create_researcher(force_tier=force_tier)
+        # S8/S9: Light agent with only 3 tools and compact backstory
+        researcher = create_researcher(force_tier=force_tier, light=True)
         task = Task(
             description=SIMPLE_RESEARCH_TEMPLATE.format(user_input=wrap_user_input(topic)),
             expected_output="A concise, direct answer to the question.",
@@ -230,13 +226,9 @@ class ResearchCrew:
     def _run_single(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
         """Single-agent research for simple topics."""
         researcher = create_researcher(force_tier=force_tier)
-        policies = load_relevant_policies(topic, "researcher")
-        policies_block = f"\n{policies}\n" if policies else ""
+        # S6: Policy loading moved to commander._run_crew() parallel context fetch
         task = Task(
-            description=(
-                policies_block
-                + RESEARCH_TASK_TEMPLATE.format(user_input=wrap_user_input(topic))
-            ),
+            description=RESEARCH_TASK_TEMPLATE.format(user_input=wrap_user_input(topic)),
             expected_output="A structured research report with key findings and sources.",
             agent=researcher,
         )
@@ -331,9 +323,7 @@ class ResearchCrew:
                                 f"IMPORTANT: Focus ONLY on your assigned subtopic. "
                                 f"Do not attempt to cover the broader topic.\n\n"
                                 f"Search the web, read at least 2 sources. "
-                                f"Store key findings in shared team memory. "
-                                f"Return a concise summary with sources. "
-                                f"Then use self_report to assess your confidence and completeness."
+                                f"Return a concise summary with sources."
                             ),
                             expected_output="Research findings with sources.",
                             agent=researcher,

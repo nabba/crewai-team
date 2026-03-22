@@ -19,23 +19,47 @@ settings = get_settings()
 
 RESEARCHER_BACKSTORY = compose_backstory("researcher")
 
+# S9: Compact backstory for simple tasks — just the essential identity and rules.
+# Saves ~2000 tokens per LLM call (×4-6 calls = 8000-12000 tokens per task).
+_COMPACT_RESEARCHER_BACKSTORY = (
+    "You are a Researcher — an intelligence analyst who finds, verifies, and "
+    "synthesizes information from web sources. You distrust information by default "
+    "and verify across multiple sources. Never fabricate URLs or data. "
+    "Distinguish between verified fact, inference, and speculation."
+)
 
-def create_researcher(force_tier: str | None = None) -> Agent:
+
+def create_researcher(force_tier: str | None = None, light: bool = False) -> Agent:
+    """Create a researcher agent.
+
+    Args:
+        force_tier: Override model tier selection.
+        light: If True, use minimal tools and compact backstory (S8/S9).
+               Used for difficulty ≤ 3 simple factual questions.
+    """
     llm = create_specialist_llm(max_tokens=4096, role="research", force_tier=force_tier)
-    memory_tools = create_memory_tools(collection="researcher")
-    scoped_tools = create_scoped_memory_tools("researcher")
-    mem0_tools = create_mem0_tools("researcher")
-    awareness_tools = [
-        create_self_report_tool("researcher"),
-        ReflectionTool(agent_role="researcher"),
-        create_world_model_tool("researcher"),
-    ]
+
+    if light:
+        # S8: Only the tools needed for a quick factual lookup
+        tools = [web_search, web_fetch, KnowledgeSearchTool()]
+        backstory = _COMPACT_RESEARCHER_BACKSTORY
+    else:
+        memory_tools = create_memory_tools(collection="researcher")
+        scoped_tools = create_scoped_memory_tools("researcher")
+        mem0_tools = create_mem0_tools("researcher")
+        awareness_tools = [
+            create_self_report_tool("researcher"),
+            ReflectionTool(agent_role="researcher"),
+            create_world_model_tool("researcher"),
+        ]
+        tools = [web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + awareness_tools
+        backstory = RESEARCHER_BACKSTORY
 
     return Agent(
         role="Researcher",
         goal="Find accurate, comprehensive information on any topic using web search, article reading, and YouTube transcripts.",
-        backstory=RESEARCHER_BACKSTORY,
+        backstory=backstory,
         llm=llm,
-        tools=[web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + awareness_tools,
+        tools=tools,
         verbose=True,
     )

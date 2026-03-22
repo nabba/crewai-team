@@ -26,8 +26,20 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+# S3: Per-model locks so different models can spawn concurrently.
+# Also a fast-path check outside the lock for "already loaded" case.
+_model_locks: dict[str, threading.Lock] = {}
+_model_locks_lock = threading.Lock()  # protects the dict itself
 _last_used: dict[str, float] = {}  # model → monotonic timestamp
+
+
+def _get_model_lock(model: str) -> threading.Lock:
+    """Get or create a per-model lock."""
+    if model not in _model_locks:
+        with _model_locks_lock:
+            if model not in _model_locks:
+                _model_locks[model] = threading.Lock()
+    return _model_locks[model]
 
 PULL_TIMEOUT = 600  # seconds to wait for model pull
 STARTUP_TIMEOUT = 60  # seconds to wait for model to load
@@ -97,12 +109,21 @@ def ensure_volume() -> None:
 def spawn_model(model: str) -> str | None:
     """Ensure a model is available and loaded. Returns the API base URL.
 
-    1. Check if native Ollama is running
-    2. Check if model is already loaded in GPU memory
-    3. If not loaded, pull if necessary, then warm up
-    4. Return the URL for the gateway to use
+    S3: Uses per-model locks so different models spawn concurrently.
+    Fast-path: if model is already loaded, returns immediately without locking.
     """
-    with _lock:
+    # Fast-path: check if already loaded without acquiring the lock
+    url = _gateway_url()
+    try:
+        loaded = _get_loaded_models()
+        if any(model in m for m in loaded):
+            _last_used[model] = time.monotonic()
+            return url
+    except Exception:
+        pass
+
+    # Need to spawn — acquire per-model lock (doesn't block other models)
+    with _get_model_lock(model):
         return _spawn_locked(model)
 
 

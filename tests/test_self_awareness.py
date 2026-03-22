@@ -799,22 +799,18 @@ class TestCrewsHaveBeliefUpdates(unittest.TestCase):
 
 
 class TestCrewsHavePolicies(unittest.TestCase):
-    """Test that all crews load policies."""
+    """Test that policies are loaded — now centralized in commander._run_crew()."""
 
-    def test_research_crew_loads_policies(self):
-        source = (Path(__file__).parent.parent / "app/crews/research_crew.py").read_text()
+    def test_commander_loads_policies_for_crews(self):
+        # S6: Policy loading moved to commander._run_crew() parallel context fetch
+        source = (Path(__file__).parent.parent / "app/agents/commander.py").read_text()
+        self.assertIn("_load_policies_for_crew", source)
         self.assertIn("load_relevant_policies", source)
-        self.assertIn("record_metric", source)
 
-    def test_coding_crew_loads_policies(self):
-        source = (Path(__file__).parent.parent / "app/crews/coding_crew.py").read_text()
-        self.assertIn("load_relevant_policies", source)
-        self.assertIn("record_metric", source)
-
-    def test_writing_crew_loads_policies(self):
-        source = (Path(__file__).parent.parent / "app/crews/writing_crew.py").read_text()
-        self.assertIn("load_relevant_policies", source)
-        self.assertIn("record_metric", source)
+    def test_crews_have_benchmarks(self):
+        for crew_file in ["research_crew.py", "coding_crew.py", "writing_crew.py"]:
+            source = (Path(__file__).parent.parent / f"app/crews/{crew_file}").read_text()
+            self.assertIn("record_metric", source, f"{crew_file} missing record_metric")
 
 
 class TestAgentsHaveSelfAwareness(unittest.TestCase):

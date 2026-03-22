@@ -72,6 +72,11 @@ def load_agents_protocol() -> str:
     return _load_file("agents_protocol.md")
 
 
+# S14: Cache composed backstories — soul files don't change at runtime.
+# Saves disk reads and string concatenation on every agent creation.
+_backstory_cache: dict[str, str] = {}
+
+
 def compose_backstory(role: str) -> str:
     """Compose a full agent backstory from soul files + self-model + metacognition.
 
@@ -83,7 +88,11 @@ def compose_backstory(role: str) -> str:
       5. Metacognitive preamble (L1 self-awareness protocol)
 
     If no soul files exist, falls back to just the self-model block.
+    Results are cached at module level (soul files don't change at runtime).
     """
+    if role in _backstory_cache:
+        return _backstory_cache[role]
+
     parts = []
 
     constitution = load_constitution()
@@ -106,4 +115,6 @@ def compose_backstory(role: str) -> str:
     # L1: Metacognitive preamble — calibrates confidence and reasoning strategy
     parts.append(METACOGNITIVE_PREAMBLE)
 
-    return "\n\n".join(parts) if parts else ""
+    result = "\n\n".join(parts) if parts else ""
+    _backstory_cache[role] = result
+    return result

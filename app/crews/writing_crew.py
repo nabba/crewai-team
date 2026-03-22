@@ -6,7 +6,6 @@ from app.sanitize import wrap_user_input
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
 from app.self_heal import diagnose_and_fix
 from app.memory.belief_state import update_belief
-from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
 from app.llm_selector import difficulty_to_tier
 
@@ -24,10 +23,6 @@ well-structured content. Adapt the length and format based on the destination:
 - Files: can be longer, use Markdown formatting
 
 If the output is a document or report, save it using the file_manager tool.
-
-After completing the task, use the self_report tool to assess your confidence in the
-content quality and completeness. Then use store_reflection to record what went well
-and what could improve about your writing approach.
 """
 
 
@@ -43,14 +38,9 @@ class WritingCrew:
         force_tier = difficulty_to_tier(difficulty, get_mode())
         writer = create_writer(force_tier=force_tier)
 
-        policies = load_relevant_policies(task_description, "writer")
-        policies_block = f"\n{policies}\n" if policies else ""
-
+        # S6: Policy loading moved to commander._run_crew() parallel context fetch
         task = Task(
-            description=(
-                policies_block
-                + WRITING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description))
-            ),
+            description=WRITING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description)),
             expected_output="Well-written content appropriate for the destination format.",
             agent=writer,
         )

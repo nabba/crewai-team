@@ -6,7 +6,6 @@ from app.sanitize import wrap_user_input
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
 from app.self_heal import diagnose_and_fix
 from app.memory.belief_state import update_belief
-from app.policies.policy_loader import load_relevant_policies
 from app.benchmarks import record_metric
 from app.llm_selector import difficulty_to_tier
 
@@ -23,10 +22,6 @@ If the code fails, debug and fix it. Save the final working code to a file using
 the file_manager tool.
 
 Return the working code along with its output.
-
-After completing the task, use the self_report tool to assess your confidence in the
-code quality, completeness, and any risks. Then use store_reflection to record lessons
-learned about your coding approach.
 """
 
 
@@ -42,14 +37,9 @@ class CodingCrew:
         force_tier = difficulty_to_tier(difficulty, get_mode())
         coder = create_coder(force_tier=force_tier)
 
-        policies = load_relevant_policies(task_description, "coder")
-        policies_block = f"\n{policies}\n" if policies else ""
-
+        # S6: Policy loading moved to commander._run_crew() parallel context fetch
         task = Task(
-            description=(
-                policies_block
-                + CODING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description))
-            ),
+            description=CODING_TASK_TEMPLATE.format(user_input=wrap_user_input(task_description)),
             expected_output="Working code with execution output, saved to a file.",
             agent=coder,
         )
