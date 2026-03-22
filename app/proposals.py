@@ -35,6 +35,35 @@ def _next_id() -> int:
     return max(existing, default=0) + 1
 
 
+def _is_duplicate_proposal(title: str, proposal_type: str) -> bool:
+    """H1: Check if a similar proposal already exists (pending).
+
+    Uses word overlap to detect duplicates like "Data Visualization Tool"
+    vs "Data Visualization Integration". Threshold: 60% word overlap.
+    """
+    from collections import Counter
+    title_words = Counter(title.lower().split())
+    if not title_words:
+        return False
+
+    for existing in list_proposals("pending"):
+        if existing.get("type") != proposal_type:
+            continue
+        existing_words = Counter(existing.get("title", "").lower().split())
+        if not existing_words:
+            continue
+        shared = sum((title_words & existing_words).values())
+        total = max(sum(title_words.values()), sum(existing_words.values()), 1)
+        if shared / total >= 0.6:
+            logger.debug(f"Duplicate proposal skipped: '{title}' ≈ '{existing.get('title')}'")
+            return True
+    return False
+
+
+# H1: Cap total pending proposals — auto-reject oldest when limit exceeded
+_MAX_PENDING_PROPOSALS = 30
+
+
 def create_proposal(
     title: str,
     description: str,
@@ -44,6 +73,9 @@ def create_proposal(
     """
     Create a new improvement proposal.
 
+    H1: Deduplicates against existing pending proposals (60% word overlap).
+    Caps total pending proposals at _MAX_PENDING_PROPOSALS.
+
     Args:
         title: Short title (used in Signal summary)
         description: Detailed description of what and why
@@ -51,8 +83,24 @@ def create_proposal(
         files: dict of {relative_path: file_content} to be applied on approval
 
     Returns:
-        The proposal ID (integer)
+        The proposal ID (integer), or -1 if skipped as duplicate
     """
+    # H1: Deduplication check
+    if _is_duplicate_proposal(title, proposal_type):
+        return -1
+
+    # H1: Prune oldest pending proposals if over cap
+    pending = list_proposals("pending")
+    if len(pending) > _MAX_PENDING_PROPOSALS:
+        # Auto-reject the oldest excess proposals
+        oldest = sorted(pending, key=lambda p: p.get("created_at", ""))
+        for old in oldest[:len(pending) - _MAX_PENDING_PROPOSALS]:
+            try:
+                reject_proposal(old["id"])
+                logger.info(f"Auto-rejected stale proposal #{old['id']}: {old.get('title', '')[:40]}")
+            except Exception:
+                pass
+
     pid = _next_id()
     safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)[:40].strip()
     dirname = f"{pid:03d}_{safe_title.replace(' ', '_')}"

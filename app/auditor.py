@@ -275,7 +275,9 @@ def _run_error_resolution_locked() -> str:
         if track["attempts"] >= MAX_FIX_ATTEMPTS:
             continue  # Give up after max attempts
 
-        # Check if last fix worked (no new errors since last attempt)
+        # H3: Check if last fix worked — require 24h cooldown with no recurrence.
+        # Previously any absence of errors was treated as "resolved", which
+        # incorrectly credited transient error cessation to the diagnosis agent.
         if track["last_attempt"]:
             new_errors_since = [
                 e for e in errors
@@ -283,13 +285,21 @@ def _run_error_resolution_locked() -> str:
                 and e.get("ts", "") > track["last_attempt"]
             ]
             if not new_errors_since:
-                # Fix worked! Mark as resolved
-                track["resolved"] = True
-                tracker[pattern_key] = track
-                _save_tracker(tracker)
-                _log_audit("error_resolved", f"Pattern {pattern_key} resolved after {track['attempts']} attempts")
-                resolved_count += 1
-                logger.info(f"auditor: error pattern {pattern_key} RESOLVED after {track['attempts']} attempts")
+                # No new errors — but require 24h cooldown before declaring resolved
+                try:
+                    last_attempt_time = datetime.fromisoformat(track["last_attempt"])
+                    hours_since = (datetime.now(timezone.utc) - last_attempt_time).total_seconds() / 3600
+                    if hours_since >= 24:
+                        track["resolved"] = True
+                        tracker[pattern_key] = track
+                        _save_tracker(tracker)
+                        _log_audit("error_resolved", f"Pattern {pattern_key} resolved after {track['attempts']} attempts (24h clear)")
+                        resolved_count += 1
+                        logger.info(f"auditor: error pattern {pattern_key} RESOLVED after {track['attempts']} attempts")
+                    else:
+                        logger.debug(f"auditor: {pattern_key} — no new errors but only {hours_since:.0f}h since last fix (need 24h)")
+                except (ValueError, TypeError):
+                    pass
                 continue
 
         # Need to attempt a fix
@@ -315,11 +325,14 @@ def _run_error_resolution_locked() -> str:
 
 
 def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | None:
-    """Generate and apply a targeted fix for an error pattern."""
-    task_id = crew_started("self_improvement", f"Fix: {pattern_key}", eta_seconds=180)
+    """Generate a targeted fix for an error pattern.
+
+    H5/H7: Uses direct LLM call instead of CrewAI Crew.
+    H4: Includes actual source code from traceback.
+    """
+    task_id = crew_started("self_improvement", f"Fix: {pattern_key}", eta_seconds=60)
 
     try:
-        # Gather context: the most recent error matching this pattern
         matching = [
             e for e in errors
             if f"{e.get('crew', '?')}:{e.get('error_type', '?')}" == pattern_key
@@ -330,83 +343,64 @@ def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | Non
 
         latest = matching[-1]
         previous_fixes = "\n".join(f"- Attempt {i+1}: {f}" for i, f in enumerate(track.get("fixes_applied", [])))
-
-        llm = create_specialist_llm(max_tokens=8192, role="architecture")
-
-        fixer = Agent(
-            role="Error Resolution Engineer",
-            goal="Permanently eliminate recurring errors by producing exact code fixes.",
-            backstory=(
-                "You are a senior engineer fixing recurring production errors. "
-                "Previous fix attempts are listed below — you must try a DIFFERENT approach. "
-                "You have access to the full codebase via file_manager. "
-                "Read the relevant source files, understand the root cause, and write the fix. "
-                "Use file_manager (action 'write', path 'applied_code/app/...') to save fixed files."
-            ),
-            llm=llm,
-            tools=[file_manager] + create_memory_tools(collection="skills"),
-            verbose=False,
-        )
-
         tb_text = "\n".join(latest.get("traceback", []))
 
-        task = Task(
-            description=(
-                f"Fix this recurring error (attempt #{track['attempts']+1}/{MAX_FIX_ATTEMPTS}):\n\n"
-                f"Error pattern: {pattern_key}\n"
-                f"Occurrences: {len(matching)}\n"
-                f"Error type: {latest['error_type']}\n"
-                f"Error message: {latest['error_msg']}\n"
-                f"Traceback:\n{tb_text}\n"
-                f"Crew: {latest['crew']}\n"
-                f"Context: {latest.get('context', 'none')}\n\n"
-                + (f"Previous fix attempts (FAILED — try something different):\n{previous_fixes}\n\n"
-                   if previous_fixes else "")
-                + f"Steps:\n"
-                f"1. Read the source file(s) mentioned in the traceback using file_manager (action 'read')\n"
-                f"2. Identify the ROOT CAUSE (not just the symptom)\n"
-                f"3. Write the fixed file using file_manager (action 'write', path 'applied_code/app/...')\n"
-                f"4. Respond with JSON:\n"
-                f'   {{"fix": "description of what you changed and why", '
-                f'"files": ["applied_code/app/file.py"]}}\n\n'
-                f"RULES:\n"
-                f"- Make the MINIMUM change needed to fix the error\n"
-                f"- Do NOT refactor unrelated code\n"
-                f"- If you can't fix it, respond with: {{\"fix\": \"unable to fix\", \"reason\": \"...\"}}"
-            ),
-            expected_output="JSON with fix description and list of changed files.",
-            agent=fixer,
+        # H4: Read actual source code from traceback
+        from app.self_heal import _read_source_from_traceback
+        source_context = _read_source_from_traceback(latest)
+
+        # H5/H7: Direct LLM call — no CrewAI overhead
+        llm = create_specialist_llm(max_tokens=2048, role="architecture")
+
+        prompt = (
+            f"Fix this recurring error (attempt #{track['attempts']+1}/{MAX_FIX_ATTEMPTS}):\n\n"
+            f"Error: {pattern_key} ({len(matching)} occurrences)\n"
+            f"Message: {latest['error_msg']}\n"
+            f"Traceback:\n{tb_text}\n"
+            f"Crew: {latest['crew']}\n"
+        )
+        if source_context:
+            prompt += f"\nSource code:\n{source_context[:6000]}\n"
+        if previous_fixes:
+            prompt += f"\nPrevious FAILED attempts:\n{previous_fixes}\n"
+        prompt += (
+            f"\nRespond with ONLY JSON:\n"
+            f'{{"fix": "description of the root cause and exact code change needed", '
+            f'"fixable": true|false}}\n\n'
+            f"If you cannot determine the fix from the traceback, set fixable=false.\n"
+            f"Make the MINIMUM change needed. Do NOT refactor unrelated code."
         )
 
-        crew = Crew(agents=[fixer], tasks=[task], process=Process.sequential, verbose=False)
-        raw = str(crew.kickoff()).strip()
+        raw = str(llm.call(prompt)).strip()
 
         from app.utils import safe_json_parse
         result, err = safe_json_parse(raw)
-        if result is not None:
+        if result and isinstance(result, dict):
             fix_desc = result.get("fix", "unknown")
-            files = result.get("files", [])
+            fixable = result.get("fixable", False)
 
-            if files and fix_desc != "unable to fix":
-                # Create proposal for user approval — NEVER auto-deploy LLM code
+            if fixable and fix_desc and fix_desc != "unable to fix":
                 from app.proposals import create_proposal
-                create_proposal(
+                pid = create_proposal(
                     title=f"Fix: {pattern_key}"[:100],
                     description=fix_desc[:2000],
                     proposal_type="code",
                 )
+                if pid > 0:
+                    _log_audit("error_fix_proposed",
+                               f"Pattern {pattern_key} attempt #{track['attempts']+1}: {fix_desc}",
+                               [])
+                    crew_completed("self_improvement", task_id, f"Fix proposed: {fix_desc[:100]}")
+                    return fix_desc[:200]
 
-                _log_audit("error_fix_applied",
-                           f"Pattern {pattern_key} attempt #{track['attempts']+1}: {fix_desc}",
-                           files)
-                crew_completed("self_improvement", task_id, f"Fix applied: {fix_desc[:100]}")
-                return fix_desc[:200]
-
-        crew_completed("self_improvement", task_id, "Fix attempted")
-        return raw[:200]
+        crew_completed("self_improvement", task_id, "Fix attempted — not fixable from traceback")
+        return None
 
     except Exception as exc:
-        crew_failed("self_improvement", task_id, str(exc)[:200])
+        try:
+            crew_failed("self_improvement", task_id, str(exc)[:200])
+        except Exception:
+            pass
         logger.error(f"auditor: error fix attempt failed: {exc}")
         return None
 

@@ -100,6 +100,11 @@ _active_diagnoses = 0
 _MAX_CONCURRENT_DIAGNOSES = 2
 _diagnoses_lock = threading.Lock()
 
+# H2/H6: Track skill files created per error pattern to prevent spam.
+# Key = "crew:error_type", value = count of skill files already created.
+_skill_files_per_pattern: dict[str, int] = {}
+_MAX_SKILLS_PER_PATTERN = 2  # max skill files per unique error pattern
+
 
 def diagnose_and_fix(
     crew: str,
@@ -149,112 +154,140 @@ def diagnose_and_fix(
     t.start()
 
 
+def _read_source_from_traceback(entry: dict) -> str:
+    """H4: Extract source file content referenced in traceback frames.
+
+    Reads the actual source code so the diagnosis can see what went wrong.
+    """
+    source_blocks = []
+    for frame in entry.get("traceback", []):
+        # Extract file path from traceback frame: '  File "/app/app/foo.py", line 42, in bar'
+        match = re.search(r'File "(/app/app/[^"]+)"', frame)
+        if not match:
+            continue
+        filepath = Path(match.group(1))
+        if not filepath.exists() or filepath.suffix != ".py":
+            continue
+        try:
+            content = filepath.read_text()
+            if len(content) > 8000:
+                content = content[:8000] + "\n# ... (truncated)"
+            rel = str(filepath).replace("/app/", "")
+            source_blocks.append(f"--- {rel} ---\n{content}")
+        except OSError:
+            continue
+    return "\n\n".join(source_blocks[:3])  # max 3 files
+
+
 def _diagnose_background(entry: dict) -> None:
-    """Background diagnosis: analyze error, search for solutions, create fix."""
+    """Background diagnosis: analyze error and create fix.
+
+    H5/H7: Uses direct LLM call instead of full CrewAI Crew (saves 3-5 LLM
+    round-trips). H4: Includes actual source code from traceback.
+    H2/H6: Caps skill file creation per error pattern.
+    """
+    task_id = None
     try:
-        from crewai import Agent, Task, Crew, Process, LLM
-        from app.tools.web_search import web_search
-        from app.tools.memory_tool import create_memory_tools
-        from app.tools.file_manager import file_manager
         from app.proposals import create_proposal
 
-        task_id = crew_started("self_improvement", f"Self-heal: {entry['error_type']}", eta_seconds=90)
+        task_id = crew_started("self_improvement", f"Self-heal: {entry['error_type']}", eta_seconds=30)
 
-        llm = create_specialist_llm(max_tokens=4096, role="architecture")
-        memory_tools = create_memory_tools(collection="skills")
+        # H4: Read actual source code referenced in traceback
+        source_context = _read_source_from_traceback(entry)
 
         # Gather error pattern context
         patterns = get_error_patterns()
+        pattern_key = f"{entry['crew']}:{entry['error_type']}"
         pattern_summary = ", ".join(f"{k}({v}x)" for k, v in list(patterns.items())[:10])
 
-        doctor = Agent(
-            role="System Doctor",
-            goal="Diagnose agent failures and create fixes so the same error never happens again.",
-            backstory=(
-                "You are the self-healing module of an AI agent team. When a crew fails, "
-                "you analyze the error, search for solutions, and create either a knowledge "
-                "skill file (so the team handles it better next time) or a code fix proposal. "
-                "Your goal: make the system more resilient with every failure."
-            ),
-            llm=llm,
-            tools=[web_search, file_manager] + memory_tools,
-            verbose=False,
-        )
+        # H2/H6: Check if we've already created enough skill files for this pattern
+        existing_skills = _skill_files_per_pattern.get(pattern_key, 0)
+        skill_creation_allowed = existing_skills < _MAX_SKILLS_PER_PATTERN
 
         tb_text = "\n".join(entry.get("traceback", []))
-        # Sanitize user input to prevent secondary prompt injection —
-        # a malicious user message that caused the error could inject
-        # instructions into the diagnosis agent's task description.
         safe_user_input = sanitize_input(entry.get("user_input", "")[:300])
 
-        task = Task(
-            description=(
-                f"An error occurred in the '{entry['crew']}' crew. Diagnose it and create a fix.\n\n"
-                f"Error type: {entry['error_type']}\n"
-                f"Error message: {entry['error_msg']}\n"
-                f"Traceback (last 3 frames):\n{tb_text}\n"
-                f"User input that triggered it: {safe_user_input}\n"
-                f"Context: {entry.get('context', 'none')}\n\n"
-                f"Recurring error patterns: {pattern_summary or 'none yet'}\n\n"
-                f"Your tasks:\n"
-                f"1. Analyze WHY this error happened\n"
-                f"2. Search the web if needed for solutions\n"
-                f"3. Create a fix — choose ONE:\n"
-                f"   a) Knowledge fix: Save a skill file to skills/ using file_manager "
-                f'(action "write", path "skills/fix_<topic>.md") that teaches the team '
-                f"how to handle this situation. Also store a summary in shared team memory.\n"
-                f"   b) Code fix: Respond with a JSON object for a code proposal:\n"
-                f'   {{"fix_type": "code", "title": "...", "description": "...", '
-                f'"files": {{"path": "content"}}}}\n\n'
-                f"Prefer knowledge fixes for user-input issues and capability gaps.\n"
-                f"Use code fixes only for actual bugs or missing tool functionality.\n\n"
-                f"If the error is transient (network timeout, rate limit), just save a "
-                f"brief note in team memory about it and respond with:\n"
-                f'{{"fix_type": "transient", "note": "explanation"}}'
-            ),
-            expected_output='Either a skill file saved + team memory updated, or a JSON fix object.',
-            agent=doctor,
+        # H5/H7: Direct LLM call — no CrewAI overhead (saves 60-90s)
+        llm = create_specialist_llm(max_tokens=2048, role="architecture")
+
+        prompt = (
+            f"You are diagnosing an error in an AI agent system.\n\n"
+            f"Error type: {entry['error_type']}\n"
+            f"Error message: {entry['error_msg']}\n"
+            f"Traceback:\n{tb_text}\n"
+            f"Crew: {entry['crew']}\n"
+            f"User input: {safe_user_input}\n"
+            f"Context: {entry.get('context', 'none')}\n"
+            f"Recurring patterns: {pattern_summary or 'none'}\n\n"
         )
 
-        crew_obj = Crew(agents=[doctor], tasks=[task], process=Process.sequential, verbose=False)
-        raw = str(crew_obj.kickoff()).strip()
+        if source_context:
+            prompt += f"Source code from traceback:\n{source_context[:6000]}\n\n"
 
-        # Try to parse as JSON (code or transient fix)
-        raw_clean = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw_clean = re.sub(r'\s*```$', '', raw_clean)
-        try:
-            fix = json.loads(raw_clean)
+        prompt += (
+            f"Respond with ONLY a JSON object:\n"
+            f'{{"diagnosis": "root cause in 1-2 sentences", '
+            f'"fix_type": "code"|"transient"|"skill", '
+            f'"title": "short title", '
+            f'"description": "what to change and why"}}\n\n'
+            f"Use fix_type=\"transient\" for network/rate/timeout errors.\n"
+            f"Use fix_type=\"code\" for actual bugs (describe the exact fix).\n"
+            f"Use fix_type=\"skill\" ONLY for capability gaps (NOT for code bugs).\n"
+        )
+
+        if not skill_creation_allowed:
+            prompt += f"\nNOTE: {existing_skills} skill files already exist for this error pattern. Do NOT suggest fix_type=\"skill\".\n"
+
+        raw = str(llm.call(prompt)).strip()
+
+        # Parse JSON response
+        from app.utils import safe_json_parse
+        fix, err = safe_json_parse(raw)
+
+        if fix and isinstance(fix, dict):
             fix_type = fix.get("fix_type", "")
+            diagnosis = fix.get("diagnosis", "")
+            title = fix.get("title", f"Fix: {entry['error_type']}")[:100]
+            description = fix.get("description", diagnosis)[:2000]
 
-            if fix_type == "code":
-                # Create a code proposal for user approval
+            if fix_type == "code" and description:
                 pid = create_proposal(
-                    title=fix.get("title", f"Auto-fix: {entry['error_type']}")[:100],
-                    description=fix.get("description", "Auto-generated fix for recurring error")[:2000],
+                    title=title,
+                    description=f"Diagnosis: {diagnosis}\n\nFix: {description}",
                     proposal_type="code",
-                    files=fix.get("files") if isinstance(fix.get("files"), dict) else None,
                 )
-                logger.info(f"self_heal: created code proposal #{pid} for {entry['error_type']}")
+                if pid > 0:
+                    logger.info(f"self_heal: created code proposal #{pid} for {entry['error_type']}")
+
+            elif fix_type == "skill" and skill_creation_allowed:
+                # Store a concise skill note in team memory (not a file)
+                try:
+                    from app.memory.chromadb_manager import store_team
+                    store_team(
+                        f"ERROR FIX [{pattern_key}]: {diagnosis}. Resolution: {description}",
+                        {"type": "error_fix", "pattern": pattern_key},
+                    )
+                    _skill_files_per_pattern[pattern_key] = existing_skills + 1
+                    logger.info(f"self_heal: stored knowledge fix for {pattern_key}")
+                except Exception:
+                    pass
 
             elif fix_type == "transient":
-                logger.info(f"self_heal: transient error noted: {fix.get('note', '')[:100]}")
+                logger.info(f"self_heal: transient error: {diagnosis[:100]}")
 
-        except (json.JSONDecodeError, AttributeError):
-            # Agent likely saved a skill file directly — that's fine
-            logger.info("self_heal: knowledge fix applied (skill file saved)")
+        else:
+            logger.warning(f"self_heal: couldn't parse diagnosis: {err}")
 
-        # Mark as diagnosed in journal
         _mark_diagnosed(entry["ts"])
-
-        crew_completed("self_improvement", task_id,
-                       f"Diagnosed: {entry['error_type']}")
+        crew_completed("self_improvement", task_id, f"Diagnosed: {entry['error_type']}")
 
     except Exception as diag_exc:
-        logger.error(f"self_heal: diagnosis itself failed: {diag_exc}")
-        try:
-            crew_failed("self_improvement", task_id, str(diag_exc)[:200])
-        except Exception:
-            pass
+        logger.error(f"self_heal: diagnosis failed: {diag_exc}")
+        if task_id:
+            try:
+                crew_failed("self_improvement", task_id, str(diag_exc)[:200])
+            except Exception:
+                pass
 
 
 def _mark_diagnosed(error_ts: str) -> None:
