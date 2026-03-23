@@ -379,8 +379,34 @@ def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None
     return task_id
 
 
-def crew_completed(crew: str, task_id: str, result_preview: str = "") -> None:
-    """Mark a crew as idle and record task completion."""
+def _get_tracker_data() -> tuple[int, str, float]:
+    """Get token usage from the active request cost tracker (if any)."""
+    try:
+        from app.rate_throttle import get_active_tracker
+        t = get_active_tracker()
+        if t and t.call_count > 0:
+            model_str = ", ".join(sorted(t.models_used)) if t.models_used else ""
+            return t.total_tokens, model_str, t.total_cost_usd
+    except Exception:
+        pass
+    return 0, "", 0.0
+
+
+def crew_completed(crew: str, task_id: str, result_preview: str = "",
+                   tokens_used: int = 0, model: str = "",
+                   cost_usd: float = 0.0) -> None:
+    """Mark a crew as idle and record task completion with token/model data.
+
+    If tokens_used/model are not provided, attempts to read from the active
+    RequestCostTracker automatically.
+    """
+    # Auto-fill from tracker if not explicitly provided
+    if tokens_used == 0:
+        _t, _m, _c = _get_tracker_data()
+        if _t > 0:
+            tokens_used = _t
+            if not model: model = _m
+            if cost_usd == 0: cost_usd = _c
     def _write():
         db = _get_db()
         if not db:
@@ -394,11 +420,18 @@ def crew_completed(crew: str, task_id: str, result_preview: str = "") -> None:
                 "eta": None,
                 "last_updated": now,
             })
-            db.collection("tasks").document(task_id).update({
+            update_data = {
                 "state": "completed",
                 "completed_at": now,
                 "result_preview": result_preview[:300],
-            })
+            }
+            if tokens_used > 0:
+                update_data["tokens_used"] = tokens_used
+            if model:
+                update_data["model"] = model
+            if cost_usd > 0:
+                update_data["cost_usd"] = round(cost_usd, 6)
+            db.collection("tasks").document(task_id).update(update_data)
             _add_activity(db, "task_completed", crew, result_preview[:200], task_id)
         except Exception:
             logger.debug("firebase_reporter: crew_completed write failed", exc_info=True)

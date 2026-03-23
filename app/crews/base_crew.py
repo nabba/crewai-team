@@ -57,17 +57,25 @@ def run_single_agent_crew(
     start = _time.monotonic()
 
     from app.conversation_store import estimate_eta
+    from app.llm_mode import get_mode
+    force_tier = difficulty_to_tier(difficulty, get_mode())
+    agent = create_agent_fn(force_tier=force_tier)
+
+    # Extract model name from the agent's LLM for the task record
+    _model_name = ""
+    try:
+        _model_name = getattr(agent, 'llm', None) and getattr(agent.llm, 'model', '') or ''
+    except Exception:
+        pass
+
     task_id = crew_started(
         crew_name,
         f"{crew_name.title()}: {task_description[:100]}",
         eta_seconds=estimate_eta(crew_name),
         parent_task_id=parent_task_id,
+        model=_model_name,
     )
     update_belief(agent_role, "working", current_task=task_description[:100])
-
-    from app.llm_mode import get_mode
-    force_tier = difficulty_to_tier(difficulty, get_mode())
-    agent = create_agent_fn(force_tier=force_tier)
 
     task = Task(
         description=task_template.format(user_input=wrap_user_input(task_description)),
@@ -88,7 +96,20 @@ def run_single_agent_crew(
 
         update_belief(agent_role, "completed", current_task=task_description[:100])
         record_metric("task_completion_time", duration, {"crew": crew_name})
-        crew_completed(crew_name, task_id, result[:200])
+
+        # Capture token usage from active request tracker
+        _tokens = 0; _model = ""; _cost = 0.0
+        try:
+            from app.rate_throttle import get_active_tracker
+            t = get_active_tracker()
+            if t:
+                _tokens = t.total_tokens
+                _model = ", ".join(sorted(t.models_used)) if t.models_used else ""
+                _cost = t.total_cost_usd
+        except Exception:
+            pass
+        crew_completed(crew_name, task_id, result[:200],
+                       tokens_used=_tokens, model=_model, cost_usd=_cost)
         return result
     except Exception as exc:
         update_belief(agent_role, "failed", current_task=task_description[:100])
