@@ -295,13 +295,33 @@ def _propose_mutation(context: str, tried_hashes: set[str]) -> MutationSpec | No
         return None  # Already applied, no need to run through ExperimentRunner
 
     elif action == "code":
-        # Code proposals still go through the approval system
+        code_files = result.get("files") if isinstance(result.get("files"), dict) else None
+        if not code_files:
+            logger.info(f"Evolution: code action but no files provided")
+            return None
+
+        # AUTO_DEPLOY_CODE: If env var EVOLUTION_AUTO_DEPLOY=true, run the code
+        # through the full safety + measurement pipeline, then auto-deploy if it
+        # passes. Otherwise, create a proposal for human approval.
+        auto_deploy = os.environ.get("EVOLUTION_AUTO_DEPLOY", "false").lower() == "true"
+
+        if auto_deploy:
+            # Run through ExperimentRunner: backup → apply → measure → keep/revert
+            mutation = MutationSpec(
+                experiment_id=exp_id,
+                hypothesis=hypothesis,
+                change_type="code",
+                files=code_files,
+            )
+            return mutation  # Return to session loop for standard measurement
+
+        # Human approval path (default)
         from app.proposals import create_proposal
         pid = create_proposal(
             title=result.get("title", hypothesis)[:100],
             description=result.get("description", hypothesis)[:2000],
             proposal_type="code",
-            files=result.get("files") if isinstance(result.get("files"), dict) else None,
+            files=code_files,
         )
         record_experiment(
             experiment_id=exp_id,
@@ -312,8 +332,21 @@ def _propose_mutation(context: str, tried_hashes: set[str]) -> MutationSpec | No
             status="pending",
             files_changed=[],
         )
+        # Notify user about pending proposal via Signal
+        try:
+            from app.signal_client import send_message
+            from app.config import get_settings
+            s = get_settings()
+            send_message(
+                s.signal_owner_number,
+                f"🔬 EVOLUTION PROPOSAL #{pid}: {hypothesis[:100]}\n"
+                f"Files: {', '.join(code_files.keys())}\n"
+                f"Reply 'approve {pid}' to deploy or 'reject {pid}' to discard.",
+            )
+        except Exception:
+            pass
         logger.info(f"Evolution: created code proposal #{pid} — {hypothesis}")
-        return None  # Code proposals don't get auto-tested
+        return None
 
     else:
         logger.info(f"Evolution: unknown action '{action}', skipping")

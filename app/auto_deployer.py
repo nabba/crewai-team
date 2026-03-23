@@ -338,6 +338,30 @@ def _deploy_locked(reason: str) -> str:
     except Exception:
         pass
 
+    # Notify user via Signal about successful deploy
+    if deployed and not reload_errors:
+        try:
+            from app.signal_client import send_message
+            from app.config import get_settings
+            s = get_settings()
+            send_message(
+                s.signal_owner_number,
+                f"✅ DEPLOYED: {', '.join(deployed[:3])} ({reason[:60]}). "
+                f"Monitoring for 60s...",
+            )
+        except Exception:
+            pass
+
+    # Start post-deploy error monitoring in background
+    if deployed and not reload_errors:
+        monitor = threading.Thread(
+            target=_post_deploy_monitor,
+            args=(deployed, backup, reason),
+            daemon=True,
+            name="deploy-monitor",
+        )
+        monitor.start()
+
     return msg
 
 
@@ -429,6 +453,77 @@ def _log_deploy(status: str, reason: str, files: list, error: str = "") -> None:
         DEPLOY_LOG.write_text(json.dumps(log[-100:], indent=2))
     except (OSError, json.JSONDecodeError):
         pass
+
+
+def _post_deploy_monitor(deployed_files: list[str], backup_dir: Path, reason: str) -> None:
+    """Monitor for error spike after deploy and auto-rollback if detected.
+
+    Runs in a background thread. Waits 60s, then checks if error rate spiked.
+    If errors increased significantly, restores backup and notifies via Signal.
+    """
+    import time as _time
+
+    # Wait for deployed code to be exercised
+    _time.sleep(60)
+
+    try:
+        from app.self_heal import get_recent_errors
+        errors = get_recent_errors(20)
+        # Count errors in last 2 minutes (should include post-deploy period)
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        recent = [e for e in errors if e.get("ts", "") > cutoff]
+
+        if len(recent) >= 3:
+            # Error spike detected — rollback
+            logger.warning(
+                f"auto_deployer: {len(recent)} errors in 2 min after deploy — "
+                f"auto-rolling back {len(deployed_files)} files"
+            )
+            import shutil as _shutil
+            rolled = 0
+            for filepath in deployed_files:
+                backup_file = backup_dir / filepath
+                live_file = Path("/app") / filepath
+                if backup_file.exists():
+                    try:
+                        _shutil.copy2(backup_file, live_file)
+                        rolled += 1
+                    except OSError:
+                        pass
+
+            # Hot-reload restored modules
+            import importlib, sys
+            for filepath in deployed_files:
+                if filepath.endswith(".py"):
+                    mod = filepath[:-3].replace("/", ".")
+                    if mod in sys.modules:
+                        try:
+                            importlib.reload(sys.modules[mod])
+                        except Exception:
+                            pass
+
+            _log_deploy("auto_rollback", f"Error spike ({len(recent)} in 2min) after: {reason}", deployed_files)
+
+            # Notify user via Signal
+            try:
+                from app.signal_client import send_message
+                from app.config import get_settings
+                s = get_settings()
+                send_message(
+                    s.signal_owner_number,
+                    f"⚠️ AUTO-ROLLBACK: {len(recent)} errors detected after deploying "
+                    f"{', '.join(deployed_files[:3])}. Reverted {rolled} files to backup. "
+                    f"Reason: {reason[:80]}",
+                )
+            except Exception:
+                pass
+
+            logger.info(f"auto_deployer: auto-rollback complete — {rolled} files restored")
+        else:
+            logger.info(f"auto_deployer: post-deploy check OK — {len(recent)} errors in 2min (threshold: 3)")
+    except Exception as exc:
+        logger.debug(f"auto_deployer: post-deploy monitor error: {exc}")
 
 
 def get_deploy_log(n: int = 10) -> str:

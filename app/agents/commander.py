@@ -1248,6 +1248,23 @@ class Commander:
             from app.auto_deployer import get_deploy_log
             return f"Deploy Log:\n{get_deploy_log(10)}"
 
+        if lower == "auto deploy on":
+            import os
+            os.environ["EVOLUTION_AUTO_DEPLOY"] = "true"
+            return ("✅ Auto-deploy ENABLED. Code mutations that pass all safety checks + "
+                    "composite_score improvement will deploy automatically with 60s monitoring.\n"
+                    "Send 'auto deploy off' to disable.")
+
+        if lower == "auto deploy off":
+            import os
+            os.environ["EVOLUTION_AUTO_DEPLOY"] = "false"
+            return "🔒 Auto-deploy DISABLED. Code proposals require human approval."
+
+        if lower == "auto deploy":
+            import os
+            state = os.environ.get("EVOLUTION_AUTO_DEPLOY", "false")
+            return f"Auto-deploy is {'ENABLED ✅' if state == 'true' else 'DISABLED 🔒'}.\nSend 'auto deploy on' or 'auto deploy off' to change."
+
         # Step 9: diff and rollback commands for governance
         if lower.startswith("diff "):
             try:

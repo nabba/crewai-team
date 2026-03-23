@@ -251,6 +251,19 @@ def _diagnose_background(entry: dict) -> None:
                 )
                 if pid > 0:
                     logger.info(f"self_heal: created code proposal #{pid} for {entry['error_type']}")
+                    # Notify user via Signal about the proposal
+                    try:
+                        from app.signal_client import send_message
+                        from app.config import get_settings
+                        s = get_settings()
+                        send_message(
+                            s.signal_owner_number,
+                            f"🔧 SELF-HEAL PROPOSAL #{pid}: {title}\n"
+                            f"Error: {entry['error_type']}\n"
+                            f"Reply 'approve {pid}' to deploy or 'diff {pid}' to review.",
+                        )
+                    except Exception:
+                        pass
 
             elif fix_type == "skill" and skill_creation_allowed:
                 # Store a concise skill note in team memory (not a file)

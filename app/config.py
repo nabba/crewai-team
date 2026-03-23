@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     evolution_iterations: int = 5         # experiments per evolution session
     evolution_deep_iterations: int = 15   # experiments for "evolve deep" command
 
+    # Auto-deploy: when true, code mutations that pass ALL safety checks
+    # + composite_score improvement are deployed automatically without human
+    # approval. Post-deploy monitoring auto-rollbacks on error spike.
+    # Default: false (human approval via Signal required for code changes).
+    evolution_auto_deploy: bool = False
+
     # ── Local LLM (Native Ollama + Metal GPU) ─────────────────────────────
     # Uses native Ollama installation for Metal GPU acceleration.
     # All roles default to qwen3:30b-a3b (MoE, ~20GB, 15-22 tok/s on M4 Max).
