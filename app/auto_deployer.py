@@ -314,11 +314,13 @@ def _deploy_locked(reason: str) -> str:
     _log_deploy("success", reason, deployed)
     logger.info(f"auto_deployer: {msg}")
 
-    # R2: Hot-reload deployed modules so changes take effect without restart.
-    # Uses importlib.reload() for each modified module. This is imperfect
-    # (circular imports, cached references) but handles simple fixes.
-    reloaded = _hot_reload_modules(deployed)
-    if reloaded:
+    # F4: Hot-reload with verification + auto-rollback on failure.
+    # If any module fails to reload, restore ALL files from backup and abort.
+    reloaded, reload_errors = _hot_reload_modules_safe(deployed, backup)
+    if reload_errors:
+        msg += f" RELOAD FAILURES (auto-reverted): {', '.join(reload_errors)}"
+        logger.error(f"auto_deployer: {len(reload_errors)} reload failures — reverted all files")
+    elif reloaded:
         msg += f" Hot-reloaded: {', '.join(reloaded)}"
         logger.info(f"auto_deployer: hot-reloaded {len(reloaded)} modules")
 
@@ -339,33 +341,65 @@ def _deploy_locked(reason: str) -> str:
     return msg
 
 
-def _hot_reload_modules(deployed_files: list[str]) -> list[str]:
-    """Attempt to hot-reload deployed Python modules.
+def _hot_reload_modules_safe(deployed_files: list[str], backup_dir: Path | None) -> tuple[list[str], list[str]]:
+    """Hot-reload deployed modules with verification and auto-rollback.
 
-    R2: Converts file paths like 'app/tools/web_search.py' to module names
-    like 'app.tools.web_search' and calls importlib.reload(). Returns list
-    of successfully reloaded module names.
+    F4: If ANY module fails to reload, restore ALL deployed files from backup
+    and return the error list. This prevents the system from entering a
+    hybrid state (disk has new code, memory has old code).
 
-    This is best-effort — some modules may have cached references that
-    won't update. But for simple fixes (adding error handling, changing
-    constants, fixing logic), it works without restart.
+    Returns (reloaded_modules, error_list). If error_list is non-empty,
+    rollback was performed.
     """
     import importlib
     import sys
+    import shutil
 
     reloaded = []
+    errors = []
+    py_modules = []
+
     for filepath in deployed_files:
         if not filepath.endswith(".py"):
             continue
-        # Convert path to module name: "app/tools/web_search.py" → "app.tools.web_search"
         module_name = filepath[:-3].replace("/", ".")
         if module_name in sys.modules:
+            py_modules.append((filepath, module_name))
+
+    # Attempt reload of all modules
+    for filepath, module_name in py_modules:
+        try:
+            importlib.reload(sys.modules[module_name])
+            reloaded.append(module_name)
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+            logger.error(f"auto_deployer: reload FAILED for {module_name}: {exc}")
+
+    # F4: If any reload failed, rollback ALL deployed files from backup
+    if errors and backup_dir and backup_dir.exists():
+        logger.warning(f"auto_deployer: {len(errors)} reload failures — rolling back ALL files")
+        rollback_count = 0
+        for filepath in deployed_files:
+            backup_file = backup_dir / filepath
+            live_file = Path("/app") / filepath
+            if backup_file.exists():
+                try:
+                    shutil.copy2(backup_file, live_file)
+                    rollback_count += 1
+                except OSError as e:
+                    logger.error(f"auto_deployer: rollback failed for {filepath}: {e}")
+        logger.info(f"auto_deployer: rolled back {rollback_count}/{len(deployed_files)} files")
+
+        # Re-reload the restored modules to get back to known state
+        for filepath, module_name in py_modules:
             try:
                 importlib.reload(sys.modules[module_name])
-                reloaded.append(module_name)
-            except Exception as exc:
-                logger.warning(f"auto_deployer: reload failed for {module_name}: {exc}")
-    return reloaded
+            except Exception:
+                pass  # best effort — at least files are restored on disk
+
+        _log_deploy("rollback", f"Auto-rollback: {'; '.join(errors)}", deployed_files)
+
+    return reloaded, errors
 
 
 def _cleanup_empty_dirs(root: Path) -> None:

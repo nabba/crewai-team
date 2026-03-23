@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 LEDGER_PATH = Path("/app/workspace/results.tsv")
 _ledger_lock = threading.Lock()
 
-# TSV header
-_HEADER = "ts\texperiment_id\tmetric_before\tmetric_after\tdelta\tstatus\tchange_type\thypothesis\tfiles_changed\n"
+# TSV header — F8: added detail column for keep/discard reasoning
+_HEADER = "ts\texperiment_id\tmetric_before\tmetric_after\tdelta\tstatus\tchange_type\thypothesis\tfiles_changed\tdetail\n"
 
 
 def _ensure_ledger() -> None:
@@ -40,6 +40,7 @@ def record_experiment(
     metric_after: float,
     status: str,
     files_changed: list[str] | None = None,
+    detail: str = "",
 ) -> None:
     """
     Append one experiment result to the ledger.
@@ -52,12 +53,14 @@ def record_experiment(
         metric_after: composite_score after mutation (0.0 for crashes)
         status: "keep", "discard", or "crash"
         files_changed: List of files that were modified
+        detail: F8 — reason for keep/discard (fed back to evolution agent)
     """
     delta = metric_after - metric_before if metric_after > 0 else 0.0
     files_str = ",".join(files_changed) if files_changed else ""
 
-    # Sanitize tabs/newlines from hypothesis
+    # Sanitize tabs/newlines from hypothesis and detail
     clean_hyp = hypothesis.replace("\t", " ").replace("\n", " ")[:120]
+    clean_detail = detail.replace("\t", " ").replace("\n", " ")[:200]
 
     row = (
         f"{datetime.now(timezone.utc).isoformat()}\t"
@@ -68,7 +71,8 @@ def record_experiment(
         f"{status}\t"
         f"{change_type}\t"
         f"{clean_hyp}\t"
-        f"{files_str}\n"
+        f"{files_str}\t"
+        f"{clean_detail}\n"
     )
 
     with _ledger_lock:
@@ -109,6 +113,7 @@ def get_recent_results(n: int = 20) -> list[dict]:
             "change_type": parts[6],
             "hypothesis": parts[7],
             "files_changed": parts[8].split(",") if len(parts) > 8 and parts[8] else [],
+            "detail": parts[9] if len(parts) > 9 else "",  # F8: reason column
         })
     return results
 

@@ -269,7 +269,11 @@ def _diagnose_background(entry: dict) -> None:
                 logger.info(f"self_heal: transient error: {diagnosis[:100]}")
 
         else:
+            # F5: Do NOT mark as diagnosed if we couldn't parse the response.
+            # This allows the error to be re-diagnosed on next cycle.
             logger.warning(f"self_heal: couldn't parse diagnosis: {err}")
+            crew_completed("self_improvement", task_id, f"Diagnosis parse failed: {entry['error_type']}")
+            return  # <-- early return: don't mark diagnosed
 
         _mark_diagnosed(entry["ts"])
         crew_completed("self_improvement", task_id, f"Diagnosed: {entry['error_type']}")

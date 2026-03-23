@@ -165,7 +165,7 @@ class ExperimentRunner:
             detail=detail,
         )
 
-        # 8. Record in ledger
+        # 8. Record in ledger (F8: include detail for agent feedback)
         record_experiment(
             experiment_id=result.experiment_id,
             hypothesis=result.hypothesis,
@@ -174,6 +174,7 @@ class ExperimentRunner:
             metric_after=result.metric_after,
             status=result.status,
             files_changed=result.files_changed,
+            detail=detail,
         )
 
         logger.info(

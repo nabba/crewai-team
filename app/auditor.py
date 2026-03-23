@@ -406,6 +406,7 @@ def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | Non
                     title=f"Fix: {pattern_key}"[:100],
                     description=fix_desc[:2000],
                     proposal_type="code",
+                    resolution_target=pattern_key,  # F3: track which error this fixes
                 )
                 if pid > 0:
                     _log_audit("error_fix_proposed",

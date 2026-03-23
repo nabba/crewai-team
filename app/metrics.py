@@ -23,15 +23,19 @@ SKILLS_DIR = Path("/app/workspace/skills")
 # ── Component metrics ────────────────────────────────────────────────────────
 
 def _task_success_rate() -> float:
-    """Fraction of recent tasks that completed without error (0.0-1.0)."""
+    """Fraction of recent tasks that completed without error (0.0-1.0).
+
+    Returns 0.5 (neutral) when no task data exists, so evolution can't game
+    the score by running experiments during idle periods with no user tasks.
+    """
     try:
         from app.conversation_store import count_recent_tasks
         total, successful = count_recent_tasks(hours=24)
         if total == 0:
-            return 1.0  # no data = assume healthy
+            return 0.5  # no data = neutral, not "healthy"
         return successful / total
     except Exception:
-        return 1.0
+        return 0.5
 
 
 def _error_rate_24h() -> float:
@@ -80,11 +84,11 @@ def _self_heal_rate() -> float:
         from app.self_heal import get_recent_errors
         errors = get_recent_errors(50)
         if not errors:
-            return 1.0
+            return 0.5  # no data = neutral
         diagnosed = sum(1 for e in errors if e.get("diagnosed"))
         return diagnosed / len(errors)
     except Exception:
-        return 1.0
+        return 0.5
 
 
 def _skill_count() -> int:

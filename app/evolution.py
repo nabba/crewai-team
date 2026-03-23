@@ -97,13 +97,31 @@ def _build_evolution_context() -> str:
             if f.name != "learning_queue.md":
                 skill_names.append(f.stem)
 
-    # Format recent experiments
+    # F8: Format recent experiments WITH reasons for keep/discard
+    # so the agent learns from failures and doesn't repeat them
     exp_lines = []
-    for r in recent_results[-10:]:
+    kept_count = 0
+    discarded_count = 0
+    for r in recent_results[-15:]:
+        status = r.get("status", "?")
+        delta = r.get("delta", 0)
+        hyp = r.get("hypothesis", "")[:60]
+        detail = r.get("detail", "")[:80]
+        if status == "keep":
+            kept_count += 1
+        elif status == "discard":
+            discarded_count += 1
         exp_lines.append(
-            f"  [{r['status']:7s}] {r['delta']:+.4f} | {r['hypothesis'][:60]}"
+            f"  [{status:7s}] Δ={delta:+.4f} | {hyp}"
+            + (f"\n           Reason: {detail}" if detail else "")
         )
-    experiments_text = "\n".join(exp_lines) if exp_lines else "  No experiments yet."
+    if exp_lines:
+        experiments_text = (
+            f"  Summary: {kept_count} kept, {discarded_count} discarded out of {len(recent_results)} recent\n"
+            + "\n".join(exp_lines)
+        )
+    else:
+        experiments_text = "  No experiments yet."
 
     # Format error patterns
     pattern_lines = []

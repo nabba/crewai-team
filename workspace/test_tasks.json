@@ -35,6 +35,76 @@
     "suite": "fixed"
   },
   {
+    "task": "How does HTTPS encryption work?",
+    "crew": "research",
+    "difficulty": 3,
+    "validation": "contains:TLS",
+    "suite": "fixed"
+  },
+  {
+    "task": "Write a Python function to find the greatest common divisor of two numbers",
+    "crew": "coding",
+    "difficulty": 3,
+    "validation": "contains:def",
+    "suite": "fixed"
+  },
+  {
+    "task": "What are the three laws of thermodynamics?",
+    "crew": "research",
+    "difficulty": 3,
+    "validation": "min_length:100",
+    "suite": "fixed"
+  },
+  {
+    "task": "Write a professional out-of-office reply for a 2-week vacation",
+    "crew": "writing",
+    "difficulty": 2,
+    "validation": "min_length:80",
+    "suite": "fixed"
+  },
+  {
+    "task": "Explain what a Docker container is in simple terms",
+    "crew": "research",
+    "difficulty": 2,
+    "validation": "contains:container",
+    "suite": "fixed"
+  },
+  {
+    "task": "Write a Python function that validates an email address format",
+    "crew": "coding",
+    "difficulty": 4,
+    "validation": "contains:def",
+    "suite": "fixed"
+  },
+  {
+    "task": "What is the difference between SQL and NoSQL databases?",
+    "crew": "research",
+    "difficulty": 3,
+    "validation": "min_length:100",
+    "suite": "fixed"
+  },
+  {
+    "task": "Write a short README introduction for an open-source project called TaskFlow",
+    "crew": "writing",
+    "difficulty": 3,
+    "validation": "min_length:100",
+    "suite": "fixed"
+  },
+  {
+    "task": "Write a Python class for a stack data structure with push, pop, and peek methods",
+    "crew": "coding",
+    "difficulty": 4,
+    "validation": "contains:class",
+    "suite": "fixed"
+  },
+  {
+    "task": "Explain the CAP theorem in distributed systems",
+    "crew": "research",
+    "difficulty": 4,
+    "validation": "contains:consistency",
+    "suite": "fixed"
+  },
+  {
     "task": "What programming language is most popular in 2026?",
     "crew": "research",
     "difficulty": 3,
@@ -67,6 +137,41 @@
     "crew": "writing",
     "difficulty": 2,
     "validation": "min_length:50",
+    "suite": "rotating"
+  },
+  {
+    "task": "What are the key differences between REST and GraphQL APIs?",
+    "crew": "research",
+    "difficulty": 4,
+    "validation": "min_length:100",
+    "suite": "rotating"
+  },
+  {
+    "task": "Write a Python decorator that logs function execution time",
+    "crew": "coding",
+    "difficulty": 4,
+    "validation": "contains:def",
+    "suite": "rotating"
+  },
+  {
+    "task": "Write a bug report template for a software project",
+    "crew": "writing",
+    "difficulty": 3,
+    "validation": "min_length:100",
+    "suite": "rotating"
+  },
+  {
+    "task": "How does garbage collection work in Python?",
+    "crew": "research",
+    "difficulty": 3,
+    "validation": "contains:reference",
+    "suite": "rotating"
+  },
+  {
+    "task": "Write a Python async function that fetches data from 3 URLs concurrently",
+    "crew": "coding",
+    "difficulty": 5,
+    "validation": "contains:async",
     "suite": "rotating"
   }
 ]
