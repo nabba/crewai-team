@@ -372,10 +372,10 @@ class TestChromaDBExtensions(unittest.TestCase):
     """Test the new ChromaDB manager functions."""
 
     @patch("app.memory.chromadb_manager.get_client")
-    @patch("app.memory.chromadb_manager._model")
-    def test_retrieve_with_metadata(self, mock_model, mock_client):
-        from app.memory.chromadb_manager import retrieve_with_metadata
-        mock_model.encode.return_value = MagicMock(tolist=lambda: [0.1, 0.2])
+    @patch("app.memory.chromadb_manager.embed", return_value=[0.1, 0.2])
+    def test_retrieve_with_metadata(self, mock_embed, mock_client):
+        from app.memory.chromadb_manager import retrieve_with_metadata, _collections, _count_cache
+        _collections.clear(); _count_cache.clear()
         mock_col = MagicMock()
         mock_col.count.return_value = 2
         mock_col.query.return_value = {
@@ -392,9 +392,10 @@ class TestChromaDBExtensions(unittest.TestCase):
         self.assertEqual(results[0]["distance"], 0.1)
 
     @patch("app.memory.chromadb_manager.get_client")
-    @patch("app.memory.chromadb_manager._model")
-    def test_retrieve_with_metadata_empty(self, mock_model, mock_client):
-        from app.memory.chromadb_manager import retrieve_with_metadata
+    @patch("app.memory.chromadb_manager.embed", return_value=[0.1, 0.2])
+    def test_retrieve_with_metadata_empty(self, mock_embed, mock_client):
+        from app.memory.chromadb_manager import retrieve_with_metadata, _collections, _count_cache
+        _collections.clear(); _count_cache.clear()
         mock_col = MagicMock()
         mock_col.count.return_value = 0
         mock_client.return_value.get_or_create_collection.return_value = mock_col
