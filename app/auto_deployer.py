@@ -40,9 +40,22 @@ _BLOCKED_IMPORTS = frozenset({
     "yaml", "signal", "multiprocessing", "tempfile",
 })
 
-# Also block builtins used in code: eval(), exec(), compile(), __import__()
-_BLOCKED_CALLS = frozenset({"eval", "exec", "compile", "__import__", "getattr",
-                            "globals", "locals", "vars", "dir", "delattr", "setattr"})
+# Block dangerous builtins — both direct calls and attribute-based access.
+# "open" blocks arbitrary file I/O; "type" blocks __subclasses__ gadget chains;
+# "breakpoint" blocks debugger access.
+_BLOCKED_CALLS = frozenset({
+    "eval", "exec", "compile", "__import__", "getattr",
+    "globals", "locals", "vars", "dir", "delattr", "setattr",
+    "open", "type", "breakpoint", "input", "help",
+})
+
+# Attribute names that must NEVER appear in code — even as obj.attr access.
+# These enable sandbox escapes via Python's object model.
+_BLOCKED_ATTRS = frozenset({
+    "__builtins__", "__subclasses__", "__bases__", "__mro__",
+    "__class__", "__globals__", "__code__", "__func__",
+    "__self__", "__dict__",  # introspection used in gadget chains
+})
 
 # Files that self-modification systems (evolution, self-heal, auditor) must
 # NEVER be allowed to modify.  These enforce the security boundary.
@@ -150,19 +163,27 @@ def _check_dangerous_imports(tree: ast.AST) -> list[str]:
             if mod in _BLOCKED_IMPORTS or mod.split(".")[0] in _BLOCKED_IMPORTS:
                 violations.append(f"from {mod} import ...")
         elif isinstance(node, ast.Call):
-            # Check for dangerous builtin calls: eval(), exec(), compile(), __import__()
-            # Only block BARE calls (Name nodes), not method calls (Attribute nodes)
+            # Block dangerous builtin calls (bare Name nodes)
             # e.g., block `eval(x)` but allow `re.compile(pattern)`
             func = node.func
             name = None
             if isinstance(func, ast.Name):
                 name = func.id
             elif isinstance(func, ast.Attribute):
-                # Only block specific dangerous method calls on objects
-                if func.attr in ("eval", "exec", "__import__"):
+                # Block dangerous method calls on any object
+                if func.attr in ("eval", "exec", "__import__", "open"):
                     name = func.attr
             if name in _BLOCKED_CALLS:
                 violations.append(f"{name}() call")
+        elif isinstance(node, ast.Attribute):
+            # Block access to dangerous dunder attributes used in sandbox escapes
+            # e.g., obj.__subclasses__, obj.__bases__, obj.__mro__
+            if node.attr in _BLOCKED_ATTRS:
+                violations.append(f"blocked attribute access: {node.attr}")
+        elif isinstance(node, ast.Name):
+            # Block direct reference to __builtins__ (used in __builtins__["eval"])
+            if node.id in _BLOCKED_ATTRS:
+                violations.append(f"blocked name reference: {node.id}")
     return violations
 
 
