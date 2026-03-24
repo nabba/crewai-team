@@ -163,22 +163,25 @@ def _spawn_locked(model: str) -> str | None:
             logger.error("ollama_native: failed to pull %s: %s", model, exc)
             return None
 
-    # Warm up — load into GPU memory with a dummy request
-    logger.info("ollama_native: loading %s into GPU memory...", model)
-    try:
-        start = time.monotonic()
-        requests.post(
-            f"{reach}/api/generate",
-            json={"model": model, "prompt": "", "keep_alive": "10m"},
-            timeout=STARTUP_TIMEOUT,
-        )
-        load_ms = int((time.monotonic() - start) * 1000)
-        logger.info("ollama_native: %s ready (load: %dms)", model, load_ms)
-    except Exception as exc:
-        logger.warning("ollama_native: warm-up failed for %s: %s", model, exc)
-        # Return URL anyway — model might load on first real request
-        return url
+    # B4: Non-blocking warm-up — fire keep_alive request in background.
+    # Previously this BLOCKED 3-10s waiting for the model to load into GPU.
+    # Ollama loads the model on the first real inference request anyway, so
+    # blocking here just wastes time. The keep_alive hint is still useful to
+    # tell Ollama to keep the model in memory for 10 minutes.
+    def _warm():
+        try:
+            requests.post(
+                f"{reach}/api/generate",
+                json={"model": model, "prompt": "", "keep_alive": "10m"},
+                timeout=STARTUP_TIMEOUT,
+            )
+            logger.info("ollama_native: %s loaded into GPU memory", model)
+        except Exception:
+            pass  # model will load on first real request
 
+    import threading
+    threading.Thread(target=_warm, daemon=True, name=f"ollama-warm-{model}").start()
+    logger.info("ollama_native: %s warm-up dispatched (non-blocking)", model)
     return url
 
 

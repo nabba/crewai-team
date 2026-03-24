@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 import chromadb
-from chromadb.config import Settings
 
 from app.knowledge_base import config
 from app.knowledge_base.ingestion import (
@@ -44,20 +43,15 @@ class KnowledgeStore:
     ):
         Path(persist_dir).mkdir(parents=True, exist_ok=True)
 
-        self._client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=Settings(anonymized_telemetry=False),
-        )
-
-        self._embedding_fn = (
-            chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=embedding_model,
-            )
-        )
+        # B6: Reuse the shared ChromaDB client from chromadb_manager instead of
+        # creating a duplicate PersistentClient (which loaded a second
+        # SentenceTransformer model). Now uses the Ollama Metal GPU embedding
+        # backend shared with the memory system.
+        from app.memory.chromadb_manager import get_client
+        self._client = get_client()
 
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
-            embedding_function=self._embedding_fn,
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -102,9 +96,11 @@ class KnowledgeStore:
         except Exception:
             pass  # where clause may fail if no docs exist yet
 
+        from app.memory.chromadb_manager import embed
         self._collection.add(
             ids=[c.chunk_id for c in chunks],
             documents=[c.text for c in chunks],
+            embeddings=[embed(c.text) for c in chunks],
             metadatas=[c.metadata for c in chunks],
         )
 
@@ -148,9 +144,11 @@ class KnowledgeStore:
             }
             chunks.append(DocumentChunk(text=chunk_content, metadata=metadata))
 
+        from app.memory.chromadb_manager import embed
         self._collection.add(
             ids=[c.chunk_id for c in chunks],
             documents=[c.text for c in chunks],
+            embeddings=[embed(c.text) for c in chunks],
             metadatas=[c.metadata for c in chunks],
         )
 
@@ -195,8 +193,9 @@ class KnowledgeStore:
         if category:
             where_filter = {"category": category}
 
+        from app.memory.chromadb_manager import embed
         results = self._collection.query(
-            query_texts=[question],
+            query_embeddings=[embed(question)],
             n_results=min(top_k, self._collection.count()),
             where=where_filter,
             include=["documents", "metadatas", "distances"],
