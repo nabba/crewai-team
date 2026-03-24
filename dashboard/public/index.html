@@ -36,7 +36,7 @@
 
     /* ── Chat Section ─────────────────────────────────────────── */
     #chat-section { display: flex; flex-direction: column; }
-    #chat-messages-main { height: 280px; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 6px; }
+    #chat-messages-main { height: 220px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 4px; }
     .chat-input-main { display: flex; gap: 6px; }
     .chat-input-main input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; color: var(--text); font-size: .72rem; outline: none; }
     .chat-input-main input:focus { border-color: var(--blue); }
@@ -49,7 +49,7 @@
 
     /* ── Section ───────────────────────────────────────────────── */
     .section-title { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px; margin-bottom: var(--gap); box-shadow: var(--shadow); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 8px; margin-bottom: var(--gap); box-shadow: var(--shadow); }
 
     /* ── Stats Row — always visible ───────────────────────────── */
     .stats-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin-bottom: var(--gap); }
@@ -409,7 +409,7 @@
 <div class="two-col">
   <div class="card" style="margin:0">
     <div class="section-title">Skills Learned</div>
-    <div id="skills-list"><div class="empty">No skills yet</div></div>
+    <div id="skills-list" style="max-height:180px;overflow-y:auto"><div class="empty">No skills yet</div></div>
     <div class="cmd-bar">
       <button class="cmd-btn" onclick="sendCmd('improve')">Improve</button>
       <button class="cmd-btn" onclick="sendCmd('show learning queue')">Queue</button>
@@ -420,7 +420,7 @@
   <div class="card" style="margin:0">
     <div class="section-title">Model Catalog & Roles</div>
     <div id="role-assignments"><div class="empty">Loading…</div></div>
-    <div id="model-catalog" style="max-height:200px;overflow-y:auto"></div>
+    <div id="model-catalog" style="max-height:160px;overflow-y:auto"></div>
     <div class="cmd-bar">
       <button class="cmd-btn" onclick="sendCmd('fleet')">Fleet Status</button>
       <button class="cmd-btn" onclick="sendCmd('catalog')">Catalog</button>
@@ -435,7 +435,7 @@
   <div class="card" style="margin:0">
     <div class="section-title">Errors & Self-Healing</div>
     <div id="error-patterns"></div>
-    <div id="error-list"><div class="empty">No errors</div></div>
+    <div id="error-list" style="max-height:180px;overflow-y:auto"><div class="empty">No errors</div></div>
     <div class="cmd-bar">
       <button class="cmd-btn" onclick="sendCmd('errors')">Show Errors</button>
       <button class="cmd-btn green" onclick="sendCmd('fix errors')">Fix Errors</button>
@@ -447,7 +447,7 @@
   <div class="card" style="margin:0">
     <div class="section-title">Evolution Experiments</div>
     <div id="evo-stats" style="margin-bottom:6px"></div>
-    <div id="evo-list"><div class="empty">No experiments yet</div></div>
+    <div id="evo-list" style="max-height:180px;overflow-y:auto"><div class="empty">No experiments yet</div></div>
     <div class="cmd-bar">
       <button class="cmd-btn green" onclick="sendCmd('evolve')">Evolve</button>
       <button class="cmd-btn warn" onclick="sendCmd('evolve deep')">Evolve Deep</button>
@@ -691,7 +691,7 @@ const etaIn = iso => {
   if (s < 3600) return `${Math.floor(s/60)}m`;
   return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
 };
-const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", self_improvement:"🧠", retrospective:"🔄" };
+const ICONS = { commander:"🧭", research:"🔬", coding:"💻", writing:"✍️", media:"📸", self_improvement:"🧠", retrospective:"🔄", evolution:"🧬" };
 const EVT = { task_started:"▶️", task_completed:"✅", task_failed:"❌", task_delegated:"↗️" };
 const touch = () => document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
 const pct = v => (v * 100).toFixed(0) + "%";
@@ -726,7 +726,7 @@ function _updateUptime() {
 }
 
 // ── Crews ────────────────────────────────────────────────────────────────────
-const CREWS = ["commander","research","coding","writing","self_improvement","retrospective"];
+const CREWS = ["commander","research","coding","writing","media","self_improvement","retrospective","evolution"];
 const crewData = {};
 let _taskSnap = null;
 
@@ -1355,7 +1355,7 @@ onSnapshot(doc(db, "status", "catalog"), s => {
   const models = d.models || [];
   const assignments = d.role_assignments || {};
   const costMode = d.cost_mode || "balanced";
-  const roleNames = ["commander","research","coding","writing","critic","vetting","self_improve","synthesis","planner"];
+  const roleNames = ["commander","research","coding","writing","media","critic","introspector","vetting","self_improve","synthesis","planner","default"];
   rolesEl.innerHTML = `<div style="font-size:.68rem;color:var(--muted);margin-bottom:4px">Cost mode: <strong style="color:var(--blue)">${esc(costMode)}</strong></div>` +
     `<div class="table-wrap"><table style="font-size:.72rem"><tbody>` +
     roleNames.filter(r => assignments[r]).map(r => {

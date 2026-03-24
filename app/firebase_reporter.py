@@ -1239,11 +1239,9 @@ def start_chat_inbox_poller(handle_fn) -> None:
                     # Write the user message to chat_messages so Signal users see it
                     report_chat_message("user", text, source="dashboard")
 
-                    # Process via the same handler as Signal
+                    # Process via the same handler as Signal (sync call)
                     try:
-                        loop = asyncio.new_event_loop()
-                        result = loop.run_until_complete(handle_fn(text))
-                        loop.close()
+                        result = handle_fn(text)
 
                         # Write assistant response to chat_messages
                         report_chat_message("assistant", result, source="dashboard")

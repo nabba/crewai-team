@@ -322,27 +322,26 @@ async def lifespan(app: FastAPI):
 
     # Chat inbox poller — processes messages sent from the dashboard
     # and delivers them through the same Commander pipeline as Signal
-    async def _handle_chat_message(text: str) -> str:
+    def _handle_chat_message(text: str) -> str:
         """Process a dashboard chat message through Commander, same as Signal.
 
+        This is a SYNC function — called from the Firebase polling thread.
         Dashboard input is UNTRUSTED — apply same sanitization as Signal messages.
         """
         from app.sanitize import sanitize_input
         text = sanitize_input(text)
         if not text.strip():
             return "Empty or blocked message."
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            _commander_pool, commander.handle, text, settings.signal_owner_number, []
-        )
-        # Also send to Signal so the user sees it there too
+        # Run commander synchronously (we're already in a thread)
+        result = commander.handle(text, settings.signal_owner_number, [])
+        # Mirror to Signal so the user sees it there too (sync call)
         try:
-            await signal_client.send(settings.signal_owner_number, f"[Dashboard] {text}")
+            from app.signal_client import _chunk_at_sentences, MAX_SIGNAL_LENGTH
+            signal_client._send_sync(settings.signal_owner_number, f"[Dashboard] {text}"[:MAX_SIGNAL_LENGTH])
             from app.agents.commander import _MAX_RESPONSE_LENGTH, truncate_for_signal
-            if len(result) > _MAX_RESPONSE_LENGTH:
-                await signal_client.send(settings.signal_owner_number, truncate_for_signal(result))
-            else:
-                await signal_client.send(settings.signal_owner_number, result)
+            resp_text = truncate_for_signal(result) if len(result) > _MAX_RESPONSE_LENGTH else result
+            for chunk in _chunk_at_sentences(resp_text, MAX_SIGNAL_LENGTH):
+                signal_client._send_sync(settings.signal_owner_number, chunk)
         except Exception:
             logger.debug("Failed to mirror chat response to Signal", exc_info=True)
         return result
