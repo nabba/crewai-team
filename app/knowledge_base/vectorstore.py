@@ -14,7 +14,9 @@ from typing import Optional
 
 import chromadb
 
-from app.knowledge_base import config
+# Use direct module import to avoid circular dependency:
+# __init__.py imports vectorstore → vectorstore imports __init__ (for config) → circular
+import app.knowledge_base.config as config
 from app.knowledge_base.ingestion import (
     DocumentChunk,
     IngestionResult,

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.knowledge_base import config
+import app.knowledge_base.config as config  # direct module import (avoids circular via __init__)
 
 logger = logging.getLogger(__name__)
 
