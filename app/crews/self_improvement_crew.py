@@ -256,14 +256,11 @@ class SelfImprovementCrew:
         crew = Crew(agents=[analyst], tasks=[task], process=Process.sequential, verbose=True)
         raw = str(crew.kickoff()).strip()
 
-        # Parse proposals
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-
-        try:
-            proposals_data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning(f"Failed to parse improvement proposals: {raw[:200]}")
+        # Parse proposals — use safe_json_parse which handles fences + prose preamble
+        from app.utils import safe_json_parse
+        proposals_data, parse_err = safe_json_parse(raw)
+        if proposals_data is None:
+            logger.warning(f"Failed to parse improvement proposals: {parse_err} | {raw[:200]}")
             return []
 
         if not isinstance(proposals_data, list):

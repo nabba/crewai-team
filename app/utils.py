@@ -95,8 +95,46 @@ def safe_json_parse(
     try:
         result = json.loads(cleaned)
         return result, ""
+    except json.JSONDecodeError:
+        pass
+
+    # LLMs often return prose preamble before JSON — extract first { ... } or [ ... ]
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = cleaned.find(start_char)
+        if start == -1:
+            continue
+        depth = 0
+        in_string = False
+        escape_next = False
+        for i in range(start, len(cleaned)):
+            c = cleaned[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if c == '\\' and in_string:
+                escape_next = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == start_char:
+                depth += 1
+            elif c == end_char:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        result = json.loads(cleaned[start:i + 1])
+                        return result, ""
+                    except json.JSONDecodeError:
+                        break  # malformed, try next start_char
+
+    # Nothing worked — report error from original text
+    try:
+        json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        # Provide a useful error snippet
         pos = exc.pos or 0
         snippet = cleaned[max(0, pos - 20):pos + 20]
         return None, f"JSON parse error at pos {pos}: {exc.msg} near '{snippet}'"
+    return None, "no JSON object/array found in text"

@@ -288,6 +288,19 @@ def _diagnose_background(entry: dict) -> None:
             crew_completed("self_improvement", task_id, f"Diagnosis parse failed: {entry['error_type']}")
             return  # <-- early return: don't mark diagnosed
 
+        # Store causal belief in world model for future context
+        if fix and isinstance(fix, dict) and fix.get("diagnosis"):
+            try:
+                from app.self_awareness.world_model import store_causal_belief
+                store_causal_belief(
+                    cause=f"{entry.get('crew', 'unknown')}:{entry.get('error_type', 'unknown')}",
+                    effect=fix.get("diagnosis", "")[:200],
+                    confidence="high" if fix.get("fix_type") == "code" else "medium",
+                    source="self_heal",
+                )
+            except Exception:
+                pass
+
         _mark_diagnosed(entry["ts"])
         crew_completed("self_improvement", task_id, f"Diagnosed: {entry['error_type']}")
 

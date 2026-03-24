@@ -61,7 +61,7 @@ def _get_config() -> dict:
         "vector_store": {
             "provider": "pgvector",
             "config": {
-                "url": pg_url,
+                "connection_string": pg_url,
                 "collection_name": "crewai_memories",
             },
         },

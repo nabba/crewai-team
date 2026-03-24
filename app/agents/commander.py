@@ -938,6 +938,13 @@ class Commander:
                 })
                 store_team(reflection, {"role": crew_name, "type": "reflection"})
 
+                # Revise beliefs about crew performance (inter-agent awareness)
+                from app.memory.belief_state import revise_beliefs
+                obs = f"{crew_name} completed task (d={difficulty}) with {confidence} confidence in {duration_s:.0f}s"
+                if went_wrong:
+                    obs += f" — issue: {went_wrong}"
+                revise_beliefs(obs, crew_name)
+
             except Exception:
                 logger.debug("Post-crew telemetry failed", exc_info=True)
         _ctx_pool.submit(_post_crew_telemetry)
@@ -1142,8 +1149,14 @@ class Commander:
             return format_benchmarks_for_display()
 
         if lower in ("policies", "show policies"):
-            from app.policies.policy_loader import format_policies_for_display
-            return format_policies_for_display()
+            from app.policies.policy_loader import format_policies_for_display, get_policy_stats
+            display = format_policies_for_display()
+            stats = get_policy_stats()
+            if stats:
+                display += f"\n\n📊 Stats: {stats.get('count', 0)} policies"
+                if stats.get('oldest'):
+                    display += f", oldest: {stats['oldest'][:10]}"
+            return display
 
         if lower == "evolve":
             from app.evolution import run_evolution_session
@@ -1556,6 +1569,14 @@ class Commander:
         crew_names = ", ".join(d.get("crew", "?") for d in decisions)
         crew_completed("commander", task_id, f"Routed to: {crew_names}")
         logger.info(f"Commander dispatching to [{crew_names}]")
+
+        # Audit log: record dispatch event
+        try:
+            from app.audit import log_crew_dispatch
+            for d in decisions:
+                log_crew_dispatch(d.get("crew", "?"), user_input[:100])
+        except Exception:
+            pass
 
         # ── Step 2: Dispatch ──────────────────────────────────────────────
         from app.llm_factory import get_last_tier

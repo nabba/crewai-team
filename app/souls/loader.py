@@ -103,6 +103,10 @@ def compose_backstory(role: str) -> str:
     if soul:
         parts.append(soul)
 
+    protocol = load_agents_protocol()
+    if protocol:
+        parts.append(protocol)
+
     style = load_style()
     if style:
         parts.append(style)

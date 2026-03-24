@@ -290,12 +290,13 @@ async def lifespan(app: FastAPI):
             try:
                 from app.firebase_reporter import (
                     report_anomalies, report_variants, report_tech_radar,
-                    report_deploys, report_proposal_actions,
+                    report_deploys, report_proposal_actions, report_proposals,
                 )
                 report_anomalies()
                 report_variants()
                 report_tech_radar()
                 report_deploys()
+                report_proposals()  # push pending proposals to dashboard
                 report_proposal_actions()  # process dashboard approve/reject clicks
             except Exception:
                 pass
