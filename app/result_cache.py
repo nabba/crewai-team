@@ -18,6 +18,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _COLLECTION_NAME = "result_cache"
+_store_counter = 0  # E3: only prune every 50 stores
 _SIMILARITY_THRESHOLD = 0.92  # cosine similarity cutoff
 _TTL_SECONDS = 3600  # 1 hour default
 _MAX_CACHED = 500  # prune beyond this
@@ -101,8 +102,11 @@ def store(crew_name: str, task: str, result: str, ttl: int = _TTL_SECONDS):
         )
         logger.debug(f"result_cache STORE: crew={crew_name}, task={task[:80]}")
 
-        # Prune old entries if collection grows too large
-        if col.count() > _MAX_CACHED:
+        # E3: Prune old entries only every 50 stores (not every time).
+        # col.count() is O(n) and _prune() loads all metadata — expensive.
+        global _store_counter
+        _store_counter += 1
+        if _store_counter % 50 == 0 and col.count() > _MAX_CACHED:
             _prune(col)
     except Exception:
         logger.debug("result_cache store failed", exc_info=True)

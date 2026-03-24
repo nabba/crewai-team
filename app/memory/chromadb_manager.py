@@ -42,9 +42,28 @@ def get_client():
     return _client
 
 
+# E4: Cache collection objects — avoid get_or_create_collection() per operation.
+# Also cache count() to avoid O(n) scan on every retrieve call.
+_collections: dict[str, object] = {}
+_count_cache: dict[str, int] = {}  # collection → last known count
+
+
+def _get_col(name: str):
+    """Get a ChromaDB collection, caching the object for reuse."""
+    if name not in _collections:
+        _collections[name] = get_client().get_or_create_collection(name)
+    return _collections[name]
+
+
+def _get_count(col, name: str) -> int:
+    """Get collection count, using cached value when available."""
+    if name not in _count_cache:
+        _count_cache[name] = col.count()
+    return _count_cache[name]
+
+
 def store(collection_name: str, text: str, metadata: dict = None):
     # H1: Validate content before storage to prevent memory poisoning attacks.
-    # Injection patterns in stored memory can affect all future agent queries.
     try:
         from app.sanitize import validate_content
         if not validate_content(text):
@@ -53,11 +72,10 @@ def store(collection_name: str, text: str, metadata: dict = None):
                 f"Memory store BLOCKED — injection pattern detected in "
                 f"collection={collection_name}: {text[:80]!r}"
             )
-            return  # reject poisoned content silently
+            return
     except ImportError:
-        pass  # sanitize not available in test environment
-    client = get_client()
-    col = client.get_or_create_collection(collection_name)
+        pass
+    col = _get_col(collection_name)
     embedding = embed(text)
     col.add(
         documents=[text],
@@ -65,17 +83,19 @@ def store(collection_name: str, text: str, metadata: dict = None):
         metadatas=[metadata or {}],
         ids=[str(uuid.uuid4())],
     )
+    # Invalidate count cache for this collection
+    _count_cache.pop(collection_name, None)
 
 
 def retrieve(collection_name: str, query: str, n: int = 5) -> list[str]:
-    n = min(max(1, n), 50)  # cap between 1 and 50 results
-    client = get_client()
-    col = client.get_or_create_collection(collection_name)
-    if col.count() == 0:
+    n = min(max(1, n), 50)
+    col = _get_col(collection_name)
+    cnt = _get_count(col, collection_name)
+    if cnt == 0:
         return []
     embedding = embed(query)
     results = col.query(
-        query_embeddings=[embedding], n_results=min(n, col.count())
+        query_embeddings=[embedding], n_results=min(n, cnt)
     )
     return results["documents"][0]
 
@@ -93,19 +113,16 @@ def retrieve_team(query: str, n: int = 5) -> list[str]:
 def retrieve_with_metadata(
     collection_name: str, query: str, n: int = 5
 ) -> list[dict]:
-    """Retrieve documents with their metadata and distances.
-
-    Returns list of {"document": str, "metadata": dict, "distance": float}.
-    """
+    """Retrieve documents with their metadata and distances."""
     n = min(max(1, n), 50)
-    client = get_client()
-    col = client.get_or_create_collection(collection_name)
-    if col.count() == 0:
+    col = _get_col(collection_name)
+    cnt = _get_count(col, collection_name)
+    if cnt == 0:
         return []
-    embedding = _model.encode(query).tolist()
+    embedding = embed(query)  # E4: use cached embed(), not raw _model.encode()
     results = col.query(
         query_embeddings=[embedding],
-        n_results=min(n, col.count()),
+        n_results=min(n, cnt),
         include=["documents", "metadatas", "distances"],
     )
     items = []
@@ -120,24 +137,19 @@ def retrieve_with_metadata(
 def retrieve_filtered(
     collection_name: str, query: str, where: dict, n: int = 5
 ) -> list[str]:
-    """Retrieve documents filtered by a ChromaDB 'where' clause.
-
-    Example: retrieve_filtered("scope_policies", "research", {"importance": "high"})
-    """
+    """Retrieve documents filtered by a ChromaDB 'where' clause."""
     n = min(max(1, n), 50)
-    client = get_client()
-    col = client.get_or_create_collection(collection_name)
-    if col.count() == 0:
+    col = _get_col(collection_name)
+    cnt = _get_count(col, collection_name)
+    if cnt == 0:
         return []
-    embedding = _model.encode(query).tolist()
+    embedding = embed(query)  # E4: use cached embed()
     try:
         results = col.query(
             query_embeddings=[embedding],
-            n_results=min(n, col.count()),
+            n_results=min(n, cnt),
             where=where,
         )
         return results["documents"][0] if results["documents"] else []
     except Exception:
-        # Fallback: if where clause fails (e.g., no matching metadata keys),
-        # return unfiltered results
         return retrieve(collection_name, query, n)

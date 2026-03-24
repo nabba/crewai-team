@@ -76,24 +76,30 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
     except ValueError:
         pass  # Not a raw IP, continue with DNS resolution
 
-    # M3: Resolve hostname with timeout and check for private/internal IPs
-    _old_timeout = socket.getdefaulttimeout()
-    try:
-        socket.setdefaulttimeout(5)  # 5s DNS timeout prevents hanging
-        resolved_addrs = []
+    # M3: Resolve hostname with timeout and check for private/internal IPs.
+    # E8: Use thread-scoped timeout instead of global socket.setdefaulttimeout()
+    # which is thread-unsafe and affects all concurrent network operations.
+    import concurrent.futures
+    def _resolve():
+        resolved = []
         for info in socket.getaddrinfo(hostname, parsed.port or 443):
             addr = info[4][0]
             if _is_private_ip(addr):
-                return False, f"Blocked private/internal IP: {addr}"
-            resolved_addrs.append(addr)
+                raise ValueError(f"Blocked private/internal IP: {addr}")
+            resolved.append(addr)
+        return resolved
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            resolved_addrs = pool.submit(_resolve).result(timeout=5)
         if not resolved_addrs:
             return False, f"No addresses resolved for: {hostname}"
+    except ValueError as e:
+        return False, str(e)
+    except concurrent.futures.TimeoutError:
+        return False, f"DNS resolution timed out for: {hostname}"
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
-    except socket.timeout:
-        return False, f"DNS resolution timed out for: {hostname}"
-    finally:
-        socket.setdefaulttimeout(_old_timeout)
 
     return True, ""
 
