@@ -19,7 +19,8 @@
       --gap: 8px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; min-height: 100dvh; padding: var(--gap); font-size: 12px; -webkit-font-smoothing: antialiased; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; min-height: 100dvh; padding: var(--gap); padding: var(--gap) env(safe-area-inset-right, var(--gap)) var(--gap) env(safe-area-inset-left, var(--gap)); font-size: 12px; -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; }
 
     /* ── Header — sticky on mobile ─────────────────────────────── */
     header { position: sticky; top: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: space-between; padding: 6px 0 8px; margin-bottom: var(--gap); flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--border); }
@@ -36,7 +37,7 @@
 
     /* ── Chat Section ─────────────────────────────────────────── */
     #chat-section { display: flex; flex-direction: column; }
-    #chat-messages-main { height: 220px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 4px; }
+    #chat-messages-main { height: clamp(160px, 25vh, 280px); overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 4px; }
     .chat-input-main { display: flex; gap: 6px; }
     .chat-input-main input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; color: var(--text); font-size: .72rem; outline: none; }
     .chat-input-main input:focus { border-color: var(--blue); }
@@ -160,7 +161,7 @@
     #kb-category { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font-size: .72rem; margin-left: 8px; }
 
     /* ── Feed ──────────────────────────────────────────────────── */
-    #feed { max-height: 200px; overflow-y: auto; }
+    #feed { max-height: clamp(120px, 20vh, 200px); overflow-y: auto; }
     .feed-item { display: flex; gap: 4px; padding: 3px 0; border-bottom: 1px solid rgba(36,45,58,.2); font-size: .65rem; line-height: 1.3; animation: fadeIn .2s; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(-2px)} to{opacity:1;transform:none} }
     .feed-time { color: var(--muted); font-size: .58rem; min-width: 38px; }
@@ -228,43 +229,65 @@
     .empty { color: var(--muted); font-size: .68rem; padding: 8px 0; text-align: center; }
     #last-updated { font-size: .55rem; color: var(--dim); text-align: right; }
 
-    /* ── Responsive ────────────────────────────────────────────── */
+    /* ── Responsive — tablet (601–1024px) ───────────────────── */
     @media (max-width: 1024px) {
       .stats-row { grid-template-columns: repeat(3, 1fr); }
-      .three-col { grid-template-columns: 1fr; }
+      .three-col { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ── Responsive — large phone / small tablet (481–768px) ── */
     @media (max-width: 768px) {
       body { padding: 6px; }
-      .stats-row { grid-template-columns: repeat(3, 1fr); }
-      #crews-grid { grid-template-columns: repeat(2, 1fr); }
       .two-col { grid-template-columns: 1fr; }
-      header { gap: 6px; }
-      .tab-nav { gap: 1px; }
-      .tab-btn { padding: 4px 10px; font-size: .62rem; }
+      .three-col { grid-template-columns: 1fr; }
+      #crews-grid { grid-template-columns: repeat(2, 1fr); }
+      header { flex-direction: column; align-items: stretch; gap: 6px; }
+      header > :first-child { display: flex; justify-content: space-between; align-items: center; }
+      .header-controls { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+      #chat-messages-main { height: 180px; }
     }
+
+    /* ── Responsive — phone (≤480px) ──────────────────────────── */
     @media (max-width: 480px) {
-      :root { --gap: 6px; }
-      body { padding: 4px; font-size: 11px; }
-      .stats-row { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+      :root { --gap: 5px; }
+      body { padding: 4px env(safe-area-inset-right, 0) 4px env(safe-area-inset-left, 0); font-size: 11px; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); gap: 4px; }
       #crews-grid { grid-template-columns: 1fr 1fr; gap: 4px; }
-      .card { padding: 8px; }
+      .card { padding: 6px; }
       .stat-card { padding: 4px 2px; }
-      .stat-val { font-size: .95rem; }
-      .stat-lbl { font-size: .5rem; }
-      h1 { font-size: .9rem; }
-      table { font-size: .62rem; }
-      th, td { padding: 3px 4px; }
-      .crew-card { padding: 6px 8px; }
-      .crew-name { font-size: .65rem; }
-      .crew-task { font-size: .6rem; min-height: 16px; }
-      #token-summary .big { font-size: .95rem; }
-      .projection { font-size: 1.1rem; }
+      .stat-val { font-size: .9rem; }
+      .stat-lbl { font-size: .48rem; }
+      .stat-sub { font-size: .48rem; }
+      h1 { font-size: .85rem; }
+      .subtitle { display: none; }
+      table { font-size: .6rem; }
+      th, td { padding: 3px 3px; }
+      .crew-card { padding: 5px 7px; }
+      .crew-name { font-size: .62rem; }
+      .crew-task { font-size: .58rem; min-height: 14px; -webkit-line-clamp: 1; }
+      .crew-meta { gap: 3px; }
+      #token-summary .big { font-size: .9rem; }
+      .projection { font-size: 1rem; }
       .cmd-bar { gap: 3px; }
-      .cmd-btn { padding: 2px 7px; font-size: .56rem; }
-      .section-title { font-size: .55rem; letter-spacing: .8px; }
-      #mode-selector { width: 100%; justify-content: center; }
-      .mode-btn { padding: 3px 8px; font-size: .58rem; }
+      .cmd-btn { padding: 3px 8px; font-size: .55rem; min-height: 28px; }
+      .section-title { font-size: .52rem; letter-spacing: .7px; }
+      #mode-selector { width: 100%; justify-content: center; overflow-x: auto; }
+      .mode-btn { padding: 4px 8px; font-size: .58rem; min-height: 28px; }
       .toggle-group { padding: 2px 6px; }
+      #chat-messages-main { height: 160px; }
+      .chat-input-main button { padding: 8px 12px; min-height: 36px; }
+      .chat-input-main input { min-height: 36px; }
+      .proposal-btn { min-height: 28px; padding: 4px 10px; }
+      .feed-item { font-size: .6rem; }
+      #feed { max-height: 150px; }
+    }
+
+    /* ── Responsive — very small phone (≤360px) ───────────────── */
+    @media (max-width: 360px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      #crews-grid { grid-template-columns: 1fr; }
+      .mode-btn { padding: 3px 6px; font-size: .55rem; }
+      h1 { font-size: .75rem; }
     }
 
     /* ── Signal Commands (collapsible) ─────────────────────────── */
@@ -287,9 +310,7 @@
     .cmd-btn.green:hover { background: rgba(52,211,153,.25); }
     .cmd-btn:disabled { opacity: .4; cursor: not-allowed; }
 
-    @media (max-width: 480px) {
-      #chat-messages-main { height: 200px; }
-    }
+    /* chat height handled in main 480px breakpoint above */
   </style>
 </head>
 <body>
@@ -308,7 +329,7 @@
       <div class="subtitle">Agent Team Monitor</div>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <div class="header-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <div id="mode-selector">
       <button class="mode-btn" data-mode="local">Local</button>
       <button class="mode-btn active" data-mode="hybrid">Hybrid</button>
