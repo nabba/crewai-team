@@ -857,7 +857,7 @@ function renderTasks() {
   tbody.innerHTML = snap.docs.map(d => {
     const t = d.data();
     const tid = d.id;
-    storeTaskData(tid, t);
+    window.storeTaskData(tid, t);
     const isChild = t.parent_task_id;
     const indent = isChild ? 'padding-left:22px' : '';
     const prefix = isChild ? '<span style="color:var(--dim)">└ </span>' : '';
@@ -1535,9 +1535,8 @@ function _initChatListener() {
 })();
 // ── Task Detail Modal ──────────────────────────────────────────────────────
 const _taskDataMap = {};
-function storeTaskData(id, data) { _taskDataMap[id] = data; }
-
-function openTaskModal(taskId) {
+window.storeTaskData = function(id, data) { _taskDataMap[id] = data; };
+window.openTaskModal = function(taskId) {
   const t = _taskDataMap[taskId];
   if (!t) return;
   const m = document.getElementById('task-modal');
@@ -1628,12 +1627,12 @@ function openTaskModal(taskId) {
 
   // Load healing data async for failed tasks
   if (t.state === 'failed') loadHealingData(taskId, t);
-}
+};
 
-function closeTaskModal() {
+window.closeTaskModal = function() {
   document.getElementById('task-modal').classList.remove('open');
   document.body.style.overflow = '';
-}
+};
 
 // Close on overlay click or Escape
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTaskModal(); });
