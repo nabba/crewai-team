@@ -1469,6 +1469,138 @@ setInterval(() => {
   renderCrews();
   renderTasks();
 }, 5000);
+
+// ── Task Detail Modal (must be in module script to access ICONS, esc, fmtDuration, fmtNum) ──
+const _taskDataMap = {};
+window.storeTaskData = function(id, data) { _taskDataMap[id] = data; };
+
+window.openTaskModal = function(taskId) {
+  const t = _taskDataMap[taskId];
+  if (!t) return;
+  const m = document.getElementById('task-modal');
+  const icon = ICONS[t.crew] || '🤖';
+  const stateColor = t.state === 'completed' ? 'green' : t.state === 'failed' ? 'red' : 'blue';
+
+  let durationSec = 0;
+  if (t.started_at) {
+    const start = new Date(t.started_at).getTime();
+    const end = t.completed_at ? new Date(t.completed_at).getTime() : (t.state === 'running' ? Date.now() : start);
+    durationSec = (end - start) / 1000;
+  }
+
+  const started = t.started_at ? new Date(t.started_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+  const completed = t.completed_at ? new Date(t.completed_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : (t.state === 'running' ? 'In progress…' : '—');
+  const tokens = t.tokens_used ? fmtNum(t.tokens_used) : '—';
+  const cost = t.cost_usd ? '$' + t.cost_usd.toFixed(4) : '—';
+  const model = t.model || '—';
+
+  let html = `
+    <div class="modal-head">
+      <h3>${icon} <span>${esc(t.crew || '—')}</span> <span class="badge ${t.state||''}" style="margin-left:4px">${t.state||'—'}</span></h3>
+      <button class="modal-close" onclick="closeTaskModal()" title="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <div class="modal-label">Task</div>
+        <div class="modal-task-text">${esc(t.summary || '—')}</div>
+      </div>
+      <div class="modal-grid">
+        <div class="modal-stat"><div class="val ${stateColor}">${fmtDuration(durationSec)}</div><div class="lbl">Duration</div></div>
+        <div class="modal-stat"><div class="val cyan">${tokens}</div><div class="lbl">Tokens</div></div>
+        <div class="modal-stat"><div class="val green">${cost}</div><div class="lbl">Cost</div></div>
+        <div class="modal-stat"><div class="val blue">${esc(model)}</div><div class="lbl">LLM Model</div></div>
+      </div>
+      <div class="modal-section" style="margin-top:10px">
+        <div class="modal-grid">
+          <div><div class="modal-label">Started</div><div class="modal-value">${started}</div></div>
+          <div><div class="modal-label">${t.state==='completed'?'Completed':'Status'}</div><div class="modal-value">${completed}</div></div>
+        </div>
+      </div>`;
+
+  if (t.delegated_from || t.delegated_to || t.parent_task_id) {
+    html += `<div class="modal-section"><div class="modal-label">Flow</div><div class="modal-value">`;
+    if (t.delegated_from && t.delegated_to) {
+      html += `${ICONS[t.delegated_from]||'🤖'} ${esc(t.delegated_from)} → ${ICONS[t.delegated_to]||'🤖'} ${esc(t.delegated_to)}`;
+    }
+    if (t.parent_task_id) html += ` <code style="font-size:.6rem">parent: ${esc(t.parent_task_id).substring(0,8)}…</code>`;
+    html += `</div></div>`;
+  }
+
+  if (t.result_preview) {
+    html += `<div class="modal-section"><div class="modal-label">Result Preview</div><div class="modal-task-text">${esc(t.result_preview)}</div></div>`;
+  }
+
+  if (t.state === 'failed') {
+    html += `<div class="modal-section">
+      <div class="modal-label" style="color:var(--red)">Error</div>
+      <div class="modal-task-text" style="border-color:rgba(248,113,113,.3)">${esc(t.error || 'Unknown error')}</div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-label">Self-Healing Response</div>
+      <div class="heal-timeline" id="heal-timeline-${esc(taskId)}">
+        <div class="heal-step pending"><div class="heal-label">Loading…</div></div>
+      </div>
+    </div>`;
+  }
+
+  html += `</div>`;
+  document.getElementById('task-modal-content').innerHTML = html;
+  m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (t.state === 'failed') _loadHealingData(taskId, t);
+};
+
+window.closeTaskModal = function() {
+  document.getElementById('task-modal').classList.remove('open');
+  document.body.style.overflow = '';
+};
+document.addEventListener('keydown', e => { if (e.key === 'Escape') window.closeTaskModal(); });
+
+function _loadHealingData(taskId, task) {
+  const el = document.getElementById('heal-timeline-' + taskId);
+  if (!el) return;
+
+  if (task.heal_action) {
+    const healTime = task.heal_at ? new Date(task.heal_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+    const cls = (task.heal_action === 'proposal_created' || task.heal_action === 'knowledge_fix') ? 'success' : 'pending';
+    const icon = task.heal_action === 'proposal_created' ? '🔧' : task.heal_action === 'knowledge_fix' ? '📚' : task.heal_action === 'transient' ? '🔄' : '⏳';
+    let proposalLink = '';
+    if (task.heal_proposal_id) {
+      proposalLink = `<div style="margin-top:4px"><button class="cmd-btn" onclick="closeTaskModal();sendCmd('diff ${task.heal_proposal_id}')" style="font-size:.6rem">View Proposal #${task.heal_proposal_id}</button> <button class="cmd-btn green" onclick="closeTaskModal();sendCmd('approve ${task.heal_proposal_id}')" style="font-size:.6rem">Approve</button></div>`;
+    }
+    el.innerHTML = `<div class="heal-step ${cls}">
+      <div class="heal-label">${icon} ${esc(task.heal_action.replace(/_/g,' '))} <span style="color:var(--dim);font-weight:400;font-size:.6rem">${healTime}</span></div>
+      <div class="heal-detail">${esc(task.heal_detail || '')}</div>
+      ${proposalLink}
+    </div>`;
+    return;
+  }
+
+  const fbRef = collection(db, 'activities');
+  getDocs(query(fbRef, where('task_id', '==', taskId), orderBy('ts', 'desc'), limit(10)))
+    .then(snap => {
+      if (snap.empty) {
+        el.innerHTML = '<div class="heal-step pending"><div class="heal-label">⏳ Diagnosis in progress</div><div class="heal-detail">The self-healing system is analyzing this error.</div></div>';
+        return;
+      }
+      const events = [];
+      snap.forEach(d => events.push(d.data()));
+      events.reverse();
+      el.innerHTML = events.map(ev => {
+        const evTime = ev.ts ? new Date(ev.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+        let cls = 'pending';
+        if (ev.event === 'task_completed' || ev.event === 'proposal_created') cls = 'success';
+        if (ev.event === 'task_failed') cls = 'fail';
+        return `<div class="heal-step ${cls}">
+          <div class="heal-label">${esc((ev.event||'event').replace(/_/g,' '))} <span style="color:var(--dim);font-weight:400;font-size:.6rem">${evTime}</span></div>
+          <div class="heal-detail">${esc(ev.detail || ev.preview || '')}</div>
+        </div>`;
+      }).join('') || '<div class="heal-step pending"><div class="heal-label">No healing activity recorded</div></div>';
+    })
+    .catch(() => {
+      el.innerHTML = '<div class="heal-step pending"><div class="heal-label">Could not load healing data</div></div>';
+    });
+}
 </script>
 <script>
 // ── Chat Section Logic (inline, not floating) ───────────────────
@@ -1533,169 +1665,7 @@ function _initChatListener() {
     if (window._db && window._fb) { clearInterval(check); _initChatListener(); }
   }, 500);
 })();
-// ── Task Detail Modal ──────────────────────────────────────────────────────
-const _taskDataMap = {};
-window.storeTaskData = function(id, data) { _taskDataMap[id] = data; };
-window.openTaskModal = function(taskId) {
-  const t = _taskDataMap[taskId];
-  if (!t) return;
-  const m = document.getElementById('task-modal');
-  const icon = ICONS[t.crew] || '🤖';
-  const stateColor = t.state === 'completed' ? 'green' : t.state === 'failed' ? 'red' : 'blue';
-
-  // Duration
-  let durationSec = 0;
-  if (t.started_at) {
-    const start = new Date(t.started_at).getTime();
-    const end = t.completed_at ? new Date(t.completed_at).getTime() : (t.state === 'running' ? Date.now() : start);
-    durationSec = (end - start) / 1000;
-  }
-
-  // Format times
-  const started = t.started_at ? new Date(t.started_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
-  const completed = t.completed_at ? new Date(t.completed_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : (t.state === 'running' ? 'In progress…' : '—');
-  const tokens = t.tokens_used ? fmtNum(t.tokens_used) : '—';
-  const cost = t.cost_usd ? '$' + t.cost_usd.toFixed(4) : '—';
-  const model = t.model || '—';
-
-  // Build modal content
-  let html = `
-    <div class="modal-head">
-      <h3>${icon} <span>${esc(t.crew || '—')}</span> <span class="badge ${t.state||''}" style="margin-left:4px">${t.state||'—'}</span></h3>
-      <button class="modal-close" onclick="closeTaskModal()" title="Close">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-section">
-        <div class="modal-label">Task</div>
-        <div class="modal-task-text">${esc(t.summary || '—')}</div>
-      </div>
-
-      <div class="modal-grid">
-        <div class="modal-stat"><div class="val ${stateColor}">${fmtDuration(durationSec)}</div><div class="lbl">Duration</div></div>
-        <div class="modal-stat"><div class="val cyan">${tokens}</div><div class="lbl">Tokens</div></div>
-        <div class="modal-stat"><div class="val green">${cost}</div><div class="lbl">Cost</div></div>
-        <div class="modal-stat"><div class="val blue">${esc(model)}</div><div class="lbl">LLM Model</div></div>
-      </div>
-
-      <div class="modal-section" style="margin-top:10px">
-        <div class="modal-grid">
-          <div><div class="modal-label">Started</div><div class="modal-value">${started}</div></div>
-          <div><div class="modal-label">${t.state==='completed'?'Completed':'Status'}</div><div class="modal-value">${completed}</div></div>
-        </div>
-      </div>`;
-
-  // Flow info
-  if (t.delegated_from || t.delegated_to || t.parent_task_id) {
-    html += `<div class="modal-section">
-      <div class="modal-label">Flow</div>
-      <div class="modal-value">`;
-    if (t.delegated_from && t.delegated_to) {
-      html += `${ICONS[t.delegated_from]||'🤖'} ${esc(t.delegated_from)} → ${ICONS[t.delegated_to]||'🤖'} ${esc(t.delegated_to)}`;
-    }
-    if (t.parent_task_id) html += ` <code style="font-size:.6rem">parent: ${esc(t.parent_task_id).substring(0,8)}…</code>`;
-    html += `</div></div>`;
-  }
-
-  // Result preview
-  if (t.result_preview) {
-    html += `<div class="modal-section">
-      <div class="modal-label">Result Preview</div>
-      <div class="modal-task-text">${esc(t.result_preview)}</div>
-    </div>`;
-  }
-
-  // Error + self-healing timeline for failed tasks
-  if (t.state === 'failed') {
-    html += `<div class="modal-section">
-      <div class="modal-label" style="color:var(--red)">Error</div>
-      <div class="modal-task-text" style="border-color:rgba(248,113,113,.3)">${esc(t.error || 'Unknown error')}</div>
-    </div>
-    <div class="modal-section">
-      <div class="modal-label">Self-Healing Response</div>
-      <div class="heal-timeline" id="heal-timeline-${esc(taskId)}">
-        <div class="heal-step pending">
-          <div class="heal-label">Loading healing data…</div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  html += `</div>`;
-  document.getElementById('task-modal-content').innerHTML = html;
-  m.classList.add('open');
-  document.body.style.overflow = 'hidden';
-
-  // Load healing data async for failed tasks
-  if (t.state === 'failed') loadHealingData(taskId, t);
-};
-
-window.closeTaskModal = function() {
-  document.getElementById('task-modal').classList.remove('open');
-  document.body.style.overflow = '';
-};
-
-// Close on overlay click or Escape
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTaskModal(); });
-
-function loadHealingData(taskId, task) {
-  const el = document.getElementById('heal-timeline-' + taskId);
-  if (!el) return;
-
-  // Check inline heal fields first (written directly to the task doc)
-  if (task.heal_action) {
-    const healTime = task.heal_at ? new Date(task.heal_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
-    const cls = task.heal_action === 'proposal_created' ? 'success'
-              : task.heal_action === 'knowledge_fix' ? 'success'
-              : task.heal_action === 'transient' ? 'pending' : 'pending';
-    const icon = task.heal_action === 'proposal_created' ? '🔧'
-               : task.heal_action === 'knowledge_fix' ? '📚'
-               : task.heal_action === 'transient' ? '🔄' : '⏳';
-    let proposalLink = '';
-    if (task.heal_proposal_id) {
-      proposalLink = `<div style="margin-top:4px"><button class="cmd-btn" onclick="closeTaskModal();sendCmd('diff ${task.heal_proposal_id}')" style="font-size:.6rem">View Proposal #${task.heal_proposal_id}</button> <button class="cmd-btn green" onclick="closeTaskModal();sendCmd('approve ${task.heal_proposal_id}')" style="font-size:.6rem">Approve</button></div>`;
-    }
-    el.innerHTML = `
-      <div class="heal-step ${cls}">
-        <div class="heal-label">${icon} ${esc(task.heal_action.replace(/_/g,' '))} <span style="color:var(--dim);font-weight:400;font-size:.6rem">${healTime}</span></div>
-        <div class="heal-detail">${esc(task.heal_detail || '')}</div>
-        ${proposalLink}
-      </div>`;
-    return;
-  }
-
-  // Fallback: query activities collection for this task
-  if (!window._db || !window._fb) {
-    el.innerHTML = '<div class="heal-step pending"><div class="heal-label">⏳ Diagnosis queued</div><div class="heal-detail">The self-healing system is analyzing this error.</div></div>';
-    return;
-  }
-  const { collection: col, query: q, where: w, orderBy: ob, limit: lim, getDocs } = window._fb;
-  getDocs(q(col(window._db, 'activities'), w('task_id', '==', taskId), ob('ts', 'desc'), lim(10)))
-    .then(snap => {
-      if (snap.empty) {
-        el.innerHTML = '<div class="heal-step pending"><div class="heal-label">⏳ Diagnosis in progress</div><div class="heal-detail">The self-healing system is analyzing this error. Check Proposals for any fix that was generated.</div></div>';
-        return;
-      }
-      let html = '';
-      const events = [];
-      snap.forEach(d => events.push(d.data()));
-      events.reverse();
-      events.forEach(ev => {
-        const evTime = ev.ts ? new Date(ev.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
-        let cls = 'pending';
-        if (ev.event === 'task_completed' || ev.event === 'proposal_created') cls = 'success';
-        if (ev.event === 'task_failed') cls = 'fail';
-        const label = ev.event ? ev.event.replace(/_/g, ' ') : 'event';
-        html += `<div class="heal-step ${cls}">
-          <div class="heal-label">${esc(label)} <span style="color:var(--dim);font-weight:400;font-size:.6rem">${evTime}</span></div>
-          <div class="heal-detail">${esc(ev.detail || ev.preview || '')}</div>
-        </div>`;
-      });
-      el.innerHTML = html || '<div class="heal-step pending"><div class="heal-label">No healing activity recorded</div></div>';
-    })
-    .catch(() => {
-      el.innerHTML = '<div class="heal-step pending"><div class="heal-label">Could not load healing data</div></div>';
-    });
-}
+// Task modal code is in the module script above (needs ICONS, esc, fmtDuration, fmtNum)
 </script>
 
 <!-- Task Detail Modal -->
