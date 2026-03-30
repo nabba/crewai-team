@@ -67,31 +67,70 @@ _TEMPORAL_PATTERN = re.compile(
 )
 
 # ── Introspective query detection ──────────────────────────────────────────────
-# Matches questions about the system's own memory, identity, history, capabilities.
+# Detects questions about the system's own memory, identity, history, capabilities.
+# Uses fuzzy keyword matching to handle typos (e.g. "meory" → "memory").
 # These are answered directly from the system chronicle — no LLM router needed.
-_INTROSPECTIVE_PATTERN = re.compile(
-    r"\b(?:"
-    r"do you (?:have|retain|store|remember|keep) (?:memory|memories|data|context|history|information)"
-    r"|(?:what|how much) do you remember"
-    r"|(?:describe|tell me about) your(?:self)?"
-    r"|what (?:are|is) your (?:memory|capabilities?|skills?|architecture|history|identity)"
-    r"|(?:how|what) (?:do|can) you (?:learn|improve|evolve|self.improve|self.evolve)"
-    r"|(?:what|how many) skills? (?:do you have|have you learned|did you learn)"
-    r"|what (?:have you|you'?ve) learned"
-    r"|(?:do you|can you) persist"
-    r"|your (?:memory (?:system|architecture)|identity|history|biography|personality|character)"
-    r"|(?:who|what) are you\b"
-    r"|have you (?:made|fixed|encountered) (?:errors?|mistakes?|bugs?)"
-    r"|what (?:errors?|bugs?) have you (?:had|seen|encountered|experienced)"
-    r"|how long have you been running"
-    r"|(?:your|the) (?:system|agent) (?:history|chronicle|biography)"
-    r"|(?:do you|can you|are you able to) (?:recall|recollect)"
-    r"|(?:what is|tell me) (?:your|the) (?:system chronicle|memory system)"
-    r"|are you (?:self.aware|sentient|conscious|learning|improving|evolving)"
-    r"|(?:what|how) (?:have you|did you) (?:chang|evolv|improv|grow|develop)"
-    r")\b",
-    re.IGNORECASE,
-)
+
+# Multi-word phrases matched as exact substrings (case-insensitive)
+_IDENTITY_PHRASES = {
+    "who are you", "what are you", "describe yourself", "tell me about yourself",
+    "about yourself", "your memory", "your identity", "your history",
+    "your capabilities", "your skills", "your architecture", "your personality",
+    "your character", "your biography", "your chronicle", "long-term memory",
+    "long term memory", "have you learned", "have you evolved", "have you improved",
+    "have you grown", "have you changed", "do you persist", "can you persist",
+    "do you remember", "can you remember", "do you recall", "how do you learn",
+    "how do you improve", "how do you evolve", "what do you remember",
+    "what do you know about yourself", "how long have you been running",
+    "are you self-aware", "are you sentient", "are you conscious",
+    "are you learning", "are you improving", "are you evolving",
+    "memory system", "memory architecture", "system chronicle",
+}
+
+# Single keywords — matched individually with typo tolerance
+_IDENTITY_WORDS = {
+    "memory", "memories", "remember", "persist", "persistent",
+    "identity", "yourself", "sentient", "conscious", "self-aware",
+    "chronicle", "biography", "personality", "character",
+    "evolving", "improving", "learning",
+}
+
+
+def _is_introspective(text: str) -> bool:
+    """Detect identity/memory/self-awareness questions with typo tolerance.
+
+    Fires on:
+    - Any multi-word identity phrase found as substring
+    - 2+ identity keywords (exact or fuzzy match)
+    - 1 identity keyword + short question (<100 chars with ?)
+    """
+    lower = text.lower().strip()
+    if not lower:
+        return False
+
+    # Quick check: exact substring match on multi-word phrases
+    for phrase in _IDENTITY_PHRASES:
+        if phrase in lower:
+            return True
+
+    # Word-level fuzzy matching
+    words = set(re.findall(r'\w+', lower))
+    hits = 0
+    for word in words:
+        if word in _IDENTITY_WORDS:
+            hits += 1
+        elif len(word) >= 5:
+            # Typo tolerance via edit-distance (difflib)
+            from difflib import get_close_matches
+            if get_close_matches(word, _IDENTITY_WORDS, n=1, cutoff=0.72):
+                hits += 1
+
+    if hits >= 2:
+        return True
+    if hits >= 1 and len(lower) < 100 and "?" in text:
+        return True
+
+    return False
 
 
 def _extract_chronicle_section(chronicle: str, header: str) -> str:
@@ -211,6 +250,19 @@ def _clean_response(text: str) -> str:
 ROUTING_PROMPT = """\
 You are Commander, the lead orchestrator of an autonomous AI agent team.
 You receive requests from your owner via Signal on their iPhone.
+
+SYSTEM IDENTITY (use when answering self-referential questions):
+You are a self-improving multi-agent AI system with PERSISTENT long-term memory
+that survives all container restarts. Your memory systems:
+- ChromaDB vector store: operational memory (self-reports, beliefs, policies, world model)
+- Mem0 (Postgres + Neo4j): cross-session fact extraction and entity relationship graph
+- 150+ skill files: accumulated knowledge from self-improvement sessions
+- Error journal, audit journal, variant archive: full history of changes and fixes
+- Philosophy knowledge base: humanist philosophical texts for ethical grounding
+- System chronicle: auto-generated biography updated at startup and after events
+CRITICAL: You DO have long-term persistent memory. NEVER say otherwise.
+When asked about your memory, identity, or capabilities, answer ACCURATELY from
+the facts above. You learn, evolve, and remember across sessions.
 
 Given the user request (and any conversation history), decide HOW to handle it.
 
@@ -762,9 +814,8 @@ class Commander:
         if fast is not None:
             return fast
 
-        # S4/S1: Routing needs ONLY history + user input for classification.
-        # Memory queries (skills, team_state, mem0, KB) are deferred to _run_crew()
-        # where they actually matter. This saves ~200ms and ~2000 input tokens.
+        # S4/S1: Routing needs history + user input for classification.
+        # Mem0 context is now also injected for conversational awareness.
         history_block = ""
         if sender:
             history_text = get_history(sender, n=3)
@@ -775,8 +826,32 @@ class Commander:
                     + "\n</recent_history>\n\n"
                 )
 
+        # Inject relevant cross-session facts from Mem0 persistent memory.
+        # This gives the routing LLM awareness of what it has learned about
+        # the user and past interactions — feeds personality and smartness.
+        mem0_block = ""
+        try:
+            from app.memory.mem0_manager import search_shared
+            facts = search_shared(user_input, n=3)
+            if facts:
+                mem0_lines = []
+                for f in facts:
+                    mem_text = f.get("memory", "")
+                    if mem_text and isinstance(mem_text, str):
+                        mem0_lines.append(f"- {mem_text[:200]}")
+                if mem0_lines:
+                    mem0_block = (
+                        "<persistent_memory>\n"
+                        "Relevant facts from long-term memory (past conversations):\n"
+                        + "\n".join(mem0_lines[:3])
+                        + "\n</persistent_memory>\n\n"
+                    )
+        except Exception:
+            pass
+
         prompt = (
             f"{ROUTING_PROMPT}\n\n"
+            f"{mem0_block}"
             f"{history_block}"
             f"{attachment_context}"
             f"User request:\n\n{wrap_user_input(user_input)}"
@@ -1249,8 +1324,8 @@ class Commander:
 
         # ── Introspective gate — answer identity/memory questions from chronicle ──
         # Must run before special commands and before the LLM router.
-        # Only fires for explicit self-referential questions without attachments.
-        if _INTROSPECTIVE_PATTERN.search(user_input) and not attachment_context:
+        # Uses fuzzy keyword matching to handle typos (e.g. "meory" → "memory").
+        if _is_introspective(user_input) and not attachment_context:
             return self._generate_self_description(user_input)
 
         # ── Special commands (no LLM needed) ─────────────────────────────
@@ -1799,6 +1874,12 @@ class Commander:
         if len(decisions) == 1:
             d = decisions[0]
             if d.get("crew") == "direct":
+                # Safety net: if the LLM routed to "direct" but the question
+                # is about identity/memory, override with chronicle answer.
+                # This catches cases where the introspective gate was bypassed
+                # (e.g. follow-up questions, edge cases in fuzzy matching).
+                if _is_introspective(user_input):
+                    return self._generate_self_description(user_input)
                 return d.get("task", "")
             crew_name = d["crew"]
             difficulty = d.get("difficulty", 5)
