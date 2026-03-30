@@ -85,7 +85,7 @@ def create_commander_llm() -> LLM:
             if not entry or entry["provider"] != "anthropic":
                 entry = get_model("claude-sonnet-4.6")
             if entry:
-                return _cached_llm(entry["model_id"], max_tokens=512, api_key=anthropic_key)
+                return _cached_llm(entry["model_id"], max_tokens=1024, api_key=anthropic_key)
     except Exception:
         pass
 
@@ -95,9 +95,9 @@ def create_commander_llm() -> LLM:
     # Use deepseek-v3.2 — strong at JSON routing tasks, very cheap
     fallback_entry = get_model("deepseek-v3.2")
     if fallback_entry:
-        return _cached_llm(fallback_entry["model_id"], max_tokens=512, api_key=openrouter_key)
+        return _cached_llm(fallback_entry["model_id"], max_tokens=1024, api_key=openrouter_key)
     # Last resort: any available model
-    return _cached_llm("openrouter/deepseek/deepseek-chat", max_tokens=512, api_key=openrouter_key)
+    return _cached_llm("openrouter/deepseek/deepseek-chat", max_tokens=1024, api_key=openrouter_key)
 
 
 def create_specialist_llm(

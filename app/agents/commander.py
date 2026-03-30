@@ -144,6 +144,44 @@ def _extract_chronicle_section(chronicle: str, header: str) -> str:
     return chronicle[idx:end].strip()
 
 
+def _recover_truncated_routing(raw: str) -> list[dict] | None:
+    """Try to extract usable routing decisions from truncated JSON.
+
+    When the LLM hits max_tokens mid-JSON, we get something like:
+      {"crews": [{"crew": "research", "task": "...", "difficulty": 7}, {"crew": "coding", "task": "Create a comprehens
+    This function extracts complete crew entries before the truncation point.
+    Returns None if no usable entries found.
+    """
+    try:
+        # Find all complete {"crew": "...", "task": "...", "difficulty": N} objects
+        # using a greedy regex
+        pattern = r'\{\s*"crew"\s*:\s*"(\w+)"\s*,\s*"task"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"difficulty"\s*:\s*(\d+)\s*\}'
+        matches = re.findall(pattern, raw, re.DOTALL)
+        if not matches:
+            # Try alternate field order (difficulty before task)
+            pattern2 = r'\{\s*"crew"\s*:\s*"(\w+)"\s*,\s*"difficulty"\s*:\s*(\d+)\s*,\s*"task"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}'
+            matches2 = re.findall(pattern2, raw, re.DOTALL)
+            if matches2:
+                matches = [(crew, task, diff) for crew, diff, task in matches2]
+
+        if matches:
+            decisions = []
+            valid_crews = {"research", "coding", "writing", "media", "direct"}
+            for crew, task, diff in matches:
+                if crew in valid_crews and task:
+                    decisions.append({
+                        "crew": crew,
+                        "task": task,
+                        "difficulty": int(diff) if diff.isdigit() else 5,
+                    })
+            if decisions:
+                logger.info(f"Recovered {len(decisions)} routing decisions from truncated JSON")
+                return decisions
+    except Exception:
+        pass
+    return None
+
+
 def _try_fast_route(user_input: str, has_attachments: bool) -> list[dict] | None:
     """Attempt to route without an LLM call using keyword patterns.
 
@@ -889,9 +927,9 @@ class Commander:
                         from app.config import get_openrouter_api_key
                         fallback = get_model("deepseek-v3.2")
                         if fallback:
-                            active_llm = _cached_llm(fallback["model_id"], max_tokens=512, api_key=get_openrouter_api_key())
+                            active_llm = _cached_llm(fallback["model_id"], max_tokens=1024, api_key=get_openrouter_api_key())
                         else:
-                            active_llm = _cached_llm("openrouter/deepseek/deepseek-chat", max_tokens=512, api_key=get_openrouter_api_key())
+                            active_llm = _cached_llm("openrouter/deepseek/deepseek-chat", max_tokens=1024, api_key=get_openrouter_api_key())
                     except Exception as fallback_exc:
                         logger.error(f"Commander routing: fallback LLM setup failed: {fallback_exc}")
                         raise exc
@@ -911,8 +949,16 @@ class Commander:
         from app.utils import safe_json_parse
         parsed, err = safe_json_parse(raw)
         if parsed is None:
-            logger.warning(f"Commander routing parse failed ({err}), using direct: {raw[:100]}")
-            return [{"crew": "direct", "task": raw}]
+            # JSON parse failed — likely truncated output from max_tokens limit.
+            # Try to recover: extract the first crew/task from the truncated JSON
+            # rather than returning raw JSON to the user.
+            logger.warning(f"Commander routing parse failed ({err}), attempting recovery: {raw[:150]}")
+            recovered = _recover_truncated_routing(raw)
+            if recovered:
+                return recovered
+            # Final fallback: route to research crew with the original user input
+            # (better than showing raw JSON to user)
+            return [{"crew": "research", "task": user_input, "difficulty": 5}]
 
         # Accept both {"crews": [...]} and legacy {"crew": ..., "task": ...}
         if "crews" in parsed and isinstance(parsed["crews"], list):
@@ -1329,9 +1375,15 @@ class Commander:
             return self._generate_self_description(user_input)
 
         # ── Special commands (no LLM needed) ─────────────────────────────
-        if lower.startswith("learn "):
-            topic = user_input[6:].strip()[:200]
-            topic = re.sub(r'[^a-zA-Z0-9 _\-]', '', topic).strip()
+
+        # "please learn <topic>" / "start learning <topic>" — add to queue AND run now
+        _learn_now_match = re.match(
+            r"^(?:please\s+)?(?:learn|start\s+learn(?:ing)?)\s+(.+)",
+            lower,
+        )
+        if _learn_now_match:
+            topic = _learn_now_match.group(1).strip()[:200]
+            topic = re.sub(r'[^a-zA-Z0-9 _\-,.]', '', topic).strip()
             if not topic:
                 return "Please provide a valid topic to learn."
             _QUEUE_ROOT = Path("/app/workspace")
@@ -1343,6 +1395,19 @@ class Commander:
             queue_file.parent.mkdir(parents=True, exist_ok=True)
             with open(queue_file, "a") as f:
                 f.write(f"\n{topic}")
+            # If user said "please learn" or "start learning", run immediately
+            if lower.startswith("please") or "start" in lower:
+                try:
+                    from app.crews.self_improvement_crew import SelfImprovementCrew
+                    SelfImprovementCrew().run()
+                    try:
+                        from app.memory.system_chronicle import generate_and_save
+                        _ctx_pool.submit(generate_and_save)
+                    except Exception:
+                        pass
+                    return f"Learned about: {topic}. Skill files updated."
+                except Exception as e:
+                    return f"Added '{topic}' to queue but learning failed: {str(e)[:200]}"
             return f"Added to learning queue: {topic}"
 
         if lower == "show learning queue":
