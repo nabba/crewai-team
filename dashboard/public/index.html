@@ -1545,18 +1545,8 @@ async function uploadKBFiles(files) {
 }
 
 // ── Philosophy KB ────────────────────────────────────────────────────────────
-// Determine gateway URL: same-origin when served from gateway /dashboard,
-// otherwise use the gateway URL from localStorage or default
-const PHIL_API = (() => {
-  // If served from the gateway itself, use relative paths
-  if (location.port === "8765" || location.pathname.startsWith("/dashboard")) return "";
-  // Check localStorage for configured gateway URL
-  const stored = localStorage.getItem("gateway_url");
-  if (stored) return stored.replace(/\/$/, "");
-  // Default: assume gateway is on the same host, port 8765
-  return `${location.protocol}//${location.hostname}:8765`;
-})();
-
+// Uses Firestore queue (same pattern as KB upload) — dashboard writes to
+// phil_queue collection, gateway poller picks up and ingests.
 const philZone = document.getElementById("phil-upload-zone");
 const philFile = document.getElementById("phil-file");
 const philStatus = document.getElementById("phil-upload-status");
@@ -1572,6 +1562,7 @@ philZone.addEventListener("drop", e => {
 philFile.addEventListener("change", () => { if (philFile.files.length) uploadPhilFiles(philFile.files); });
 
 async function uploadPhilFiles(files) {
+  const MAX_SIZE = 2 * 1024 * 1024; // 2MB Firestore doc limit
   const author = document.getElementById("phil-author").value.trim();
   const tradition = document.getElementById("phil-tradition").value;
   const era = document.getElementById("phil-era").value;
@@ -1580,15 +1571,25 @@ async function uploadPhilFiles(files) {
   let success = 0, failed = 0, lastErr = "";
   for (const file of files) {
     try {
-      if (file.size > 10 * 1024 * 1024) { lastErr = `${file.name} exceeds 10MB limit`; failed++; continue; }
-      const fd = new FormData();
-      fd.append("file", file);
-      if (author) fd.append("author", author);
-      if (tradition) fd.append("tradition", tradition);
-      if (era) fd.append("era", era);
-      if (title) fd.append("title", title);
-      const resp = await fetch(PHIL_API + "/philosophy/upload", { method: "POST", body: fd });
-      if (!resp.ok) { const e = await resp.json().catch(() => ({})); lastErr = e.detail || resp.statusText; failed++; continue; }
+      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 2MB limit`; failed++; continue; }
+      // Read file as text (philosophy files are .md/.txt)
+      const text = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsText(file);
+      });
+      // Write to Firestore phil_queue — gateway poller picks this up
+      await addDoc(collection(db, "phil_queue"), {
+        filename: file.name,
+        content: text,
+        author: author || "",
+        tradition: tradition || "",
+        era: era || "",
+        title: title || "",
+        status: "pending",
+        created_at: serverTimestamp(),
+      });
       success++;
     } catch (e) {
       lastErr = e.message || "Upload error";
@@ -1596,89 +1597,75 @@ async function uploadPhilFiles(files) {
     }
   }
   const msg = [];
-  if (success) msg.push(`<span style="color:var(--green)">${success} uploaded</span>`);
+  if (success) msg.push(`<span style="color:var(--green)">${success} queued for ingestion</span>`);
   if (failed) msg.push(`<span style="color:var(--red)">${failed} failed: ${esc(lastErr.slice(0,80))}</span>`);
   philStatus.innerHTML = msg.join(" · ");
   philFile.value = "";
-  if (success) { loadPhilStatus(); setTimeout(() => { philStatus.innerHTML = ""; }, 8000); }
+  if (success) setTimeout(() => { philStatus.innerHTML = ""; }, 8000);
 }
 
-async function loadPhilStatus() {
-  try {
-    const [statusResp, textsResp] = await Promise.all([
-      fetch(PHIL_API + "/philosophy/status"),
-      fetch(PHIL_API + "/philosophy/texts"),
-    ]);
-    const stats = await statusResp.json();
-    const texts = await textsResp.json();
-    const statsEl = document.getElementById("phil-stats");
-    const textsEl = document.getElementById("phil-texts");
-    const countEl = document.getElementById("phil-chunk-count");
-
-    if (stats.total_chunks > 0) {
-      countEl.textContent = `${stats.total_chunks} chunks`;
-      statsEl.innerHTML = [
-        { label: "Texts", value: stats.total_texts || 0 },
-        { label: "Chunks", value: stats.total_chunks || 0 },
-        { label: "Authors", value: (stats.authors || []).length },
-        { label: "Traditions", value: (stats.traditions || []).length },
-      ].map(s => `<div class="stat-card"><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join("");
-    } else {
-      countEl.textContent = "";
-      statsEl.innerHTML = '<div class="empty">No philosophy texts yet</div>';
-    }
-
-    if (texts.texts && texts.texts.length > 0) {
-      textsEl.innerHTML = `<div style="overflow-x:auto"><table class="task-table"><thead><tr>
-        <th>Title</th><th>Author</th><th>Tradition</th><th>Era</th><th></th>
-      </tr></thead><tbody>` + texts.texts.map(t => `<tr>
-        <td style="font-weight:600">${esc(t.title || t.filename)}</td>
-        <td style="color:var(--muted)">${esc(t.author || "—")}</td>
-        <td><span class="badge" style="background:rgba(192,132,252,.12);color:var(--purple)">${esc(t.tradition || "—")}</span></td>
-        <td style="color:var(--muted)">${esc(t.era || "—")}</td>
-        <td><button class="cmd-btn danger" style="font-size:.58rem;padding:1px 6px" onclick="deletePhilText('${esc(t.filename)}')">Del</button></td>
-      </tr>`).join("") + `</tbody></table></div>`;
-    } else {
-      textsEl.innerHTML = "";
-    }
-  } catch (e) {
-    console.error("Philosophy status load failed:", e);
-  }
-}
-
-async function deletePhilText(filename) {
+function deletePhilText(filename) {
   if (!confirm(`Delete "${filename}" from philosophy KB?`)) return;
-  try {
-    const resp = await fetch(`${PHIL_API}/philosophy/texts/${encodeURIComponent(filename)}`, { method: "DELETE" });
-    if (resp.ok) loadPhilStatus();
-  } catch (e) {
-    console.error("Delete failed:", e);
-  }
+  // Write a delete request to Firestore — gateway poller processes it
+  addDoc(collection(db, "phil_queue"), {
+    action: "delete",
+    filename: filename,
+    status: "pending",
+    created_at: serverTimestamp(),
+  }).catch(e => console.error("Delete request failed:", e));
 }
 
-async function reingestPhil() {
-  philStatus.innerHTML = `<span style="color:var(--purple)">Re-ingesting all texts…</span>`;
-  try {
-    const resp = await fetch(PHIL_API + "/philosophy/reingest", { method: "POST" });
-    const data = await resp.json();
-    philStatus.innerHTML = `<span style="color:var(--green)">${data.files_processed || 0} files, ${data.total_chunks || 0} chunks</span>`;
-    loadPhilStatus();
-    setTimeout(() => { philStatus.innerHTML = ""; }, 8000);
-  } catch (e) {
-    philStatus.innerHTML = `<span style="color:var(--red)">Re-ingest failed: ${e.message}</span>`;
-  }
+function reingestPhil() {
+  philStatus.innerHTML = `<span style="color:var(--purple)">Re-ingest queued…</span>`;
+  addDoc(collection(db, "phil_queue"), {
+    action: "reingest",
+    status: "pending",
+    created_at: serverTimestamp(),
+  }).then(() => {
+    philStatus.innerHTML = `<span style="color:var(--purple)">Re-ingesting… (check back in a moment)</span>`;
+    setTimeout(() => { philStatus.innerHTML = ""; }, 15000);
+  }).catch(e => {
+    philStatus.innerHTML = `<span style="color:var(--red)">Failed: ${e.message}</span>`;
+  });
 }
 
-// Also listen for Firestore updates (from heartbeat reporting)
+// Real-time dashboard updates from Firestore (pushed by gateway heartbeat)
 onSnapshot(doc(db, "status", "philosophy_kb"), s => {
-  if (!s.exists()) return;
-  const d = s.data();
+  const statsEl = document.getElementById("phil-stats");
+  const textsEl = document.getElementById("phil-texts");
   const countEl = document.getElementById("phil-chunk-count");
-  if (d.total_chunks) countEl.textContent = `${d.total_chunks} chunks`;
-});
+  if (!s.exists()) { statsEl.innerHTML = '<div class="empty">No philosophy texts yet</div>'; textsEl.innerHTML = ''; countEl.textContent = ''; return; }
+  const d = s.data();
 
-// Load on startup
-loadPhilStatus();
+  if (d.total_chunks > 0) {
+    countEl.textContent = `${d.total_chunks} chunks`;
+    statsEl.innerHTML = [
+      { label: "Texts", value: d.total_texts || 0 },
+      { label: "Chunks", value: d.total_chunks || 0 },
+      { label: "Authors", value: (d.authors || []).length },
+      { label: "Traditions", value: (d.traditions || []).length },
+    ].map(s => `<div class="stat-card"><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join("");
+  } else {
+    countEl.textContent = "";
+    statsEl.innerHTML = '<div class="empty">No philosophy texts yet</div>';
+  }
+
+  const texts = d.texts || [];
+  if (texts.length > 0) {
+    textsEl.innerHTML = `<div style="overflow-x:auto"><table class="task-table"><thead><tr>
+      <th>Title</th><th>Author</th><th>Tradition</th><th>Era</th><th></th>
+    </tr></thead><tbody>` + texts.map(t => `<tr>
+      <td style="font-weight:600">${esc(t.title || t.filename)}</td>
+      <td style="color:var(--muted)">${esc(t.author || "—")}</td>
+      <td><span class="badge" style="background:rgba(192,132,252,.12);color:var(--purple)">${esc(t.tradition || "—")}</span></td>
+      <td style="color:var(--muted)">${esc(t.era || "—")}</td>
+      <td><button class="cmd-btn danger" style="font-size:.58rem;padding:1px 6px" onclick="deletePhilText('${esc(t.filename)}')">Del</button></td>
+    </tr>`).join("") + `</tbody></table></div>`;
+  } else {
+    textsEl.innerHTML = "";
+  }
+  touch();
+});
 
 // ── Model Catalog & Roles ────────────────────────────────────────────────────
 onSnapshot(doc(db, "status", "catalog"), s => {

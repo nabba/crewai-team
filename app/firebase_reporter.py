@@ -946,16 +946,186 @@ def report_philosophy_kb() -> None:
         from app.philosophy.vectorstore import get_store
         store = get_store()
         stats = store.get_stats()
+
+        # Build texts list for dashboard table
+        texts_list = []
+        try:
+            from pathlib import Path
+            from app.philosophy.ingestion import extract_frontmatter
+            from app.philosophy import config as phil_config
+            texts_dir = Path(phil_config.TEXTS_DIR)
+            if texts_dir.exists():
+                for f in sorted(texts_dir.glob("*.md")):
+                    if f.name.upper() == "README.MD":
+                        continue
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        meta, _ = extract_frontmatter(content)
+                        texts_list.append({
+                            "filename": f.name,
+                            "author": meta.get("author", "Unknown"),
+                            "tradition": meta.get("tradition", "Unknown"),
+                            "era": meta.get("era", "Unknown"),
+                            "title": meta.get("title", f.stem),
+                        })
+                    except Exception:
+                        texts_list.append({"filename": f.name, "author": "?", "tradition": "?", "era": "?", "title": f.stem})
+        except Exception:
+            pass
+
         db.collection("status").document("philosophy_kb").set({
             "total_chunks": stats.get("total_chunks", 0),
             "total_texts": stats.get("total_texts", 0),
             "traditions": stats.get("traditions", []),
             "authors": stats.get("authors", []),
             "titles": stats.get("titles", []),
+            "texts": texts_list,
             "updated_at": _now_iso(),
         })
     except Exception:
         logger.debug("firebase_reporter: philosophy_kb write failed", exc_info=True)
+
+
+# ── Philosophy Queue Poller ──────────────────────────────────────────────────
+
+_phil_poll_stop = threading.Event()
+
+
+def start_phil_queue_poller() -> None:
+    """Poll Firestore phil_queue for pending uploads/actions and process them."""
+
+    def _poll_phil():
+        while not _phil_poll_stop.wait(10):
+            db = _get_db()
+            if not db:
+                continue
+            try:
+                docs = (
+                    db.collection("phil_queue")
+                    .where("status", "==", "pending")
+                    .limit(5)
+                    .get()
+                )
+                if not docs:
+                    continue
+
+                for snap in docs:
+                    data = snap.to_dict()
+                    action = data.get("action", "upload")
+
+                    try:
+                        if action == "delete":
+                            # Delete a text and its chunks
+                            fname = data.get("filename", "")
+                            if fname:
+                                from app.philosophy.vectorstore import get_store
+                                store = get_store()
+                                removed = store.remove_by_source(fname)
+                                # Remove file from disk
+                                from pathlib import Path
+                                from app.philosophy import config as phil_config
+                                fpath = Path(phil_config.TEXTS_DIR) / fname
+                                if fpath.exists():
+                                    fpath.unlink()
+                                snap.reference.update({
+                                    "status": "done",
+                                    "chunks_removed": removed,
+                                    "processed_at": _now_iso(),
+                                })
+                                logger.info(f"firebase_reporter: phil deleted '{fname}' ({removed} chunks)")
+                            else:
+                                snap.reference.update({"status": "error", "error": "No filename"})
+
+                        elif action == "reingest":
+                            # Re-ingest all texts
+                            from app.philosophy.vectorstore import get_store
+                            from app.philosophy.ingestion import ingest_directory
+                            from pathlib import Path
+                            from app.philosophy import config as phil_config
+                            store = get_store()
+                            store.reset_collection()
+                            summary = ingest_directory(Path(phil_config.TEXTS_DIR), store)
+                            snap.reference.update({
+                                "status": "done",
+                                "files_processed": summary.get("files_processed", 0),
+                                "total_chunks": summary.get("total_chunks", 0),
+                                "processed_at": _now_iso(),
+                            })
+                            logger.info(f"firebase_reporter: phil reingest complete: {summary}")
+
+                        else:
+                            # Default: upload/ingest a new text
+                            content = data.get("content", "")
+                            fname = data.get("filename", "upload.md")
+                            author = data.get("author", "")
+                            tradition = data.get("tradition", "")
+                            era = data.get("era", "")
+                            title = data.get("title", "")
+
+                            if not content:
+                                snap.reference.update({"status": "error", "error": "Empty content"})
+                                continue
+
+                            # Sanitize filename
+                            import re as _re
+                            safe_name = _re.sub(r"[^\w\-.]", "_", fname)
+                            if not safe_name.endswith((".md", ".txt")):
+                                safe_name += ".md"
+
+                            # If no frontmatter in content and metadata provided, prepend it
+                            if not content.lstrip().startswith("---") and any([author, tradition, era, title]):
+                                fm_lines = ["---"]
+                                if author: fm_lines.append(f"author: {author}")
+                                if tradition: fm_lines.append(f"tradition: {tradition}")
+                                if era: fm_lines.append(f"era: {era}")
+                                if title: fm_lines.append(f"title: {title}")
+                                fm_lines.append("---\n")
+                                content = "\n".join(fm_lines) + content
+
+                            # Save to texts directory
+                            from pathlib import Path
+                            from app.philosophy import config as phil_config
+                            texts_dir = Path(phil_config.TEXTS_DIR)
+                            texts_dir.mkdir(parents=True, exist_ok=True)
+                            dest = texts_dir / safe_name
+                            dest.write_text(content, encoding="utf-8")
+
+                            # Ingest
+                            from app.philosophy.ingestion import ingest_text
+                            chunks_added = ingest_text(
+                                text=content,
+                                filename=safe_name,
+                                author=author or "Unknown",
+                                tradition=tradition or "Unknown",
+                                era=era or "Unknown",
+                                title=title or fname,
+                            )
+
+                            snap.reference.update({
+                                "status": "done",
+                                "chunks_created": chunks_added,
+                                "processed_at": _now_iso(),
+                            })
+                            logger.info(f"firebase_reporter: phil ingested '{safe_name}' -> {chunks_added} chunks")
+
+                    except Exception as e:
+                        snap.reference.update({
+                            "status": "error",
+                            "error": str(e)[:200],
+                            "processed_at": _now_iso(),
+                        })
+                        logger.warning(f"firebase_reporter: phil queue error for '{data.get('filename', '?')}': {e}")
+
+                # After processing any items, refresh dashboard stats
+                report_philosophy_kb()
+
+            except Exception:
+                pass
+        logger.debug("firebase_reporter: phil poll stopped")
+
+    t = threading.Thread(target=_poll_phil, daemon=True, name="firebase-phil-poll")
+    t.start()
+    logger.info("firebase_reporter: Philosophy queue poller started (10s interval)")
 
 
 # ── L5: Ecological awareness stats ────────────────────────────────────────────

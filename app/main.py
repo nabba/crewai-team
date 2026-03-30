@@ -30,7 +30,8 @@ from app.workspace_sync import setup_workspace_repo, sync_workspace
 from app.firebase_reporter import (
     report_system_online, report_system_offline, heartbeat, report_schedule,
     cleanup_stale_tasks, report_llm_mode, start_mode_listener,
-    start_kb_queue_poller, report_chat_message, start_chat_inbox_poller,
+    start_kb_queue_poller, start_phil_queue_poller,
+    report_chat_message, start_chat_inbox_poller,
 )
 from app import idle_scheduler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -322,6 +323,7 @@ async def lifespan(app: FastAPI):
         report_llm_mode(settings.llm_mode)
     start_mode_listener()
     start_kb_queue_poller()
+    start_phil_queue_poller()
 
     # Chat inbox poller — processes messages sent from the dashboard
     # and delivers them through the same Commander pipeline as Signal
@@ -363,6 +365,13 @@ async def lifespan(app: FastAPI):
 
     # Create philosophy KB directories
     os.makedirs("/app/workspace/philosophy/texts", exist_ok=True)
+
+    # Push philosophy KB stats to dashboard on startup
+    try:
+        from app.firebase_reporter import report_philosophy_kb
+        await asyncio.to_thread(report_philosophy_kb)
+    except Exception:
+        pass
 
     # Generate system chronicle at startup — gives agents accurate self-knowledge
     try:
