@@ -1545,7 +1545,7 @@ async function uploadKBFiles(files) {
   if (success) setTimeout(() => { kbStatus.innerHTML = ""; }, 8000);
 }
 
-function deleteKBDoc(sourcePath, displayName) {
+window.deleteKBDoc = function(sourcePath, displayName) {
   if (!confirm(`Delete "${displayName}" from knowledge base?`)) return;
   addDoc(collection(db, "kb_queue"), {
     action: "delete",
@@ -1557,7 +1557,7 @@ function deleteKBDoc(sourcePath, displayName) {
     document.getElementById("kb-upload-status").innerHTML = `<span style="color:var(--orange)">Deleting "${esc(displayName)}"…</span>`;
     setTimeout(() => { document.getElementById("kb-upload-status").innerHTML = ""; }, 8000);
   }).catch(e => console.error("KB delete failed:", e));
-}
+};
 
 // ── Philosophy KB ────────────────────────────────────────────────────────────
 // Uses Firestore queue (same pattern as KB upload) — dashboard writes to
@@ -1619,7 +1619,7 @@ async function uploadPhilFiles(files) {
   if (success) setTimeout(() => { philStatus.innerHTML = ""; }, 8000);
 }
 
-function deletePhilText(filename) {
+window.deletePhilText = function(filename) {
   if (!confirm(`Delete "${filename}" from philosophy KB?`)) return;
   // Write a delete request to Firestore — gateway poller processes it
   addDoc(collection(db, "phil_queue"), {
@@ -1628,9 +1628,9 @@ function deletePhilText(filename) {
     status: "pending",
     created_at: serverTimestamp(),
   }).catch(e => console.error("Delete request failed:", e));
-}
+};
 
-function reingestPhil() {
+window.reingestPhil = function() {
   philStatus.innerHTML = `<span style="color:var(--purple)">Re-ingest queued…</span>`;
   addDoc(collection(db, "phil_queue"), {
     action: "reingest",
@@ -1642,7 +1642,7 @@ function reingestPhil() {
   }).catch(e => {
     philStatus.innerHTML = `<span style="color:var(--red)">Failed: ${e.message}</span>`;
   });
-}
+};
 
 // Real-time dashboard updates from Firestore (pushed by gateway heartbeat)
 onSnapshot(doc(db, "status", "philosophy_kb"), s => {
