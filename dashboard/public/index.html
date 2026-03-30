@@ -54,6 +54,13 @@
 
     /* ── Stats Row — always visible ───────────────────────────── */
     .stats-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin-bottom: var(--gap); }
+    .credit-alert { display: flex; align-items: center; gap: 10px; background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.35); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 4px; }
+    .credit-alert .ca-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .credit-alert .ca-body { flex: 1; min-width: 0; }
+    .credit-alert .ca-title { font-size: .72rem; font-weight: 700; color: var(--red); }
+    .credit-alert .ca-msg { font-size: .65rem; color: var(--muted); margin-top: 1px; }
+    .credit-alert .ca-btn { flex-shrink: 0; background: var(--red); color: #fff; border: none; border-radius: 4px; padding: 4px 10px; font-size: .65rem; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap; }
+    .credit-alert .ca-btn:hover { opacity: .85; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 4px; text-align: center; }
     .stat-val { font-size: 1.1rem; font-weight: 700; color: var(--blue); line-height: 1.2; }
     .stat-lbl { font-size: .55rem; color: var(--muted); margin-top: 1px; text-transform: uppercase; letter-spacing: .5px; }
@@ -398,6 +405,10 @@
   <div class="stat-card"><div class="stat-val" id="s-mode">—</div><div class="stat-lbl">Mode</div></div>
   <div class="stat-card"><div class="stat-val" id="s-uptime">—</div><div class="stat-lbl">Uptime</div></div>
 </div>
+
+<!-- ── Credit Alerts (hidden until credits depleted) ─────────── -->
+<!-- ── Credit Alerts Banner (hidden until credits depleted) ──── -->
+<div id="credit-alerts-section" style="display:none;margin-bottom:var(--gap)"></div>
 
 <!-- ── Chat + Connection ────────────────────────────────────── -->
 <div class="two-col">
@@ -1233,23 +1244,58 @@ onSnapshot(doc(db, "status", "signal"), s => {
 
 // ── Credit Alerts ──────────────────────────────────────────────
 onSnapshot(doc(db, "status", "credit_alerts"), s => {
-  const el = document.getElementById("credit-alerts");
-  if (!s.exists()) { el.innerHTML = ""; return; }
+  const inlineEl = document.getElementById("credit-alerts");
+  const banner = document.getElementById("credit-alerts-section");
+
+  const clearAll = () => {
+    if (inlineEl) inlineEl.innerHTML = "";
+    if (banner) banner.style.display = "none";
+  };
+
+  if (!s.exists()) { clearAll(); return; }
   const alerts = s.data().alerts || {};
-  const keys = Object.keys(alerts).filter(k => !alerts[k].resolved);
-  if (!keys.length) { el.innerHTML = ""; return; }
-  el.innerHTML = keys.map(k => {
-    const a = alerts[k];
-    const name = esc(a.provider || k).toUpperCase();
-    const url = esc(a.url || "");
-    const msg = esc((a.error || "").substring(0, 120));
-    const link = url ? `<a href="${url}" target="_blank" rel="noopener" style="color:#60a5fa;text-decoration:underline;font-weight:700;margin-left:6px">Top Up →</a>` : "";
-    return `<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:6px;margin-bottom:4px">` +
-      `<span style="font-size:1rem">⚠️</span>` +
-      `<div style="flex:1"><div style="font-size:.72rem;font-weight:700;color:var(--red)">${name} Credits Exhausted</div>` +
-      `<div style="font-size:.6rem;color:var(--muted);margin-top:1px">${msg}</div></div>` +
-      link + `</div>`;
+  const active = Object.values(alerts).filter(a => !a.resolved);
+  if (!active.length) { clearAll(); return; }
+
+  const _BILLING_URLS = {
+    anthropic:  "https://console.anthropic.com/settings/billing",
+    openrouter: "https://openrouter.ai/settings/credits",
+    openai:     "https://platform.openai.com/settings/organization/billing",
+    google:     "https://console.cloud.google.com/billing",
+  };
+
+  const cards = active.map(a => {
+    const provider = (a.provider || "").toLowerCase();
+    const name = provider.toUpperCase();
+    const url = a.url || _BILLING_URLS[provider] || "";
+    const btnHtml = url
+      ? `<a class="ca-btn" href="${url}" target="_blank" rel="noopener noreferrer">Add Credits →</a>`
+      : "";
+    return `<div class="credit-alert">
+      <div class="ca-icon">⚠️</div>
+      <div class="ca-body">
+        <div class="ca-title">${esc(name)} credits exhausted — bot routing degraded</div>
+        <div class="ca-msg">Top up to restore full model quality. System is currently falling back to OpenRouter.</div>
+      </div>
+      ${btnHtml}
+    </div>`;
   }).join("");
+
+  // Prominent banner at top of page
+  if (banner) {
+    banner.innerHTML = cards;
+    banner.style.display = "block";
+  }
+
+  // Also small indicator inside Connection Health card
+  if (inlineEl) {
+    inlineEl.innerHTML = active.map(a => {
+      const provider = (a.provider || "").toLowerCase();
+      const url = a.url || _BILLING_URLS[provider] || "";
+      const link = url ? `<a href="${url}" target="_blank" rel="noopener" style="color:var(--red);font-weight:700;margin-left:6px;font-size:.65rem">Add Credits →</a>` : "";
+      return `<div style="font-size:.65rem;color:var(--red);padding-top:4px">⚠️ ${esc((a.provider||"").toUpperCase())} credits exhausted${link}</div>`;
+    }).join("");
+  }
 });
 
 function renderConnections(cbData) {

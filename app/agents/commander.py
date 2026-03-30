@@ -763,6 +763,14 @@ class Commander:
                 if (is_credit_error or is_auth_error) and attempt == 1:
                     # Primary LLM (Claude) has no credits — switch to OpenRouter fallback
                     logger.warning(f"Commander routing: primary LLM failed ({exc.__class__.__name__}: credit/auth), switching to OpenRouter fallback")
+                    # Report to dashboard so user sees the credit warning
+                    try:
+                        from app.firebase_reporter import detect_credit_error, report_credit_alert
+                        provider = detect_credit_error(exc)
+                        if provider:
+                            report_credit_alert(provider, str(exc)[:300])
+                    except Exception:
+                        pass
                     try:
                         from app.llm_factory import _cached_llm, get_model
                         from app.config import get_openrouter_api_key
