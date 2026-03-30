@@ -232,6 +232,50 @@ def record_tokens(
         logger.debug("llm_benchmarks: failed to record tokens", exc_info=True)
 
 
+def get_tokens_since(since_iso: str) -> dict:
+    """Return aggregated token usage recorded after `since_iso` (ISO timestamp).
+
+    Returns: {"total_tokens": int, "cost_usd": float, "models": str}
+    Used by crews to attribute tokens to a specific task run.
+
+    Deduplicates double-recordings: the same LLM call is recorded by both
+    the litellm patch AND the BaseLLM patch. We deduplicate by selecting only
+    the first record per (second-level timestamp, total_tokens) pair.
+    """
+    try:
+        conn = _get_conn()
+        # Deduplicate: group by second + token count to avoid counting same
+        # LLM call twice (litellm path + BaseLLM path both record it).
+        rows = conn.execute(
+            "SELECT MIN(model) as model, total_tokens, MIN(cost_usd) as cost_usd "
+            "FROM token_usage "
+            "WHERE ts >= ? "
+            "GROUP BY strftime('%Y-%m-%dT%H:%M:%S', ts), total_tokens "
+            "ORDER BY total_tokens DESC",
+            (since_iso,),
+        ).fetchall()
+        if not rows:
+            return {"total_tokens": 0, "cost_usd": 0.0, "models": ""}
+        total_tokens = sum(r[1] or 0 for r in rows)
+        total_cost = sum(r[2] or 0.0 for r in rows)
+        # Collect unique model names, stripping provider prefixes for display
+        model_names = []
+        seen = set()
+        for r in rows:
+            raw = r[0] or ""
+            m = raw.split("/")[-1]  # strip provider prefix (openrouter/deepseek/...)
+            if m and m not in seen:
+                seen.add(m)
+                model_names.append(m)
+        return {
+            "total_tokens": total_tokens,
+            "cost_usd": round(total_cost, 6),
+            "models": ", ".join(model_names[:3]),  # cap at 3 for display
+        }
+    except Exception:
+        return {"total_tokens": 0, "cost_usd": 0.0, "models": ""}
+
+
 def get_token_stats(period: str = "day") -> list[dict]:
     """
     Aggregate token usage by model for a time period.

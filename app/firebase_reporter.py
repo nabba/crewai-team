@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 _db = None
 _db_lock = threading.Lock()
+
+# Track task start times so crew_completed can query llm_benchmarks for tokens
+# Used as a fallback when the ContextVar tracker doesn't capture data (thread pool issue).
+_task_start_times: dict[str, str] = {}  # task_id -> ISO start timestamp
+_task_start_lock = threading.Lock()
 _PROJECT_ID = "botarmy-ba0c9"
 
 # Bounded thread pool prevents unbounded thread accumulation when Firestore is slow.
@@ -333,6 +338,9 @@ def crew_started(crew: str, task_summary: str, eta_seconds: Optional[int] = None
     model: the LLM model name used for this task (e.g. "qwen3:30b-a3b").
     """
     task_id = uuid.uuid4().hex
+    # Record start time for token attribution fallback in crew_completed
+    with _task_start_lock:
+        _task_start_times[task_id] = datetime.now(timezone.utc).isoformat()
     eta_iso = None
     if eta_seconds:
         eta_iso = (datetime.now(timezone.utc) + timedelta(seconds=eta_seconds)).isoformat()
@@ -392,6 +400,20 @@ def _get_tracker_data() -> tuple[int, str, float]:
     return 0, "", 0.0
 
 
+def _get_tokens_since(since_iso: str) -> tuple[int, str, float]:
+    """Fallback: read tokens from llm_benchmarks recorded after since_iso.
+
+    More reliable than the ContextVar tracker when CrewAI uses thread pools
+    that don't inherit the calling thread's context variable.
+    """
+    try:
+        from app.llm_benchmarks import get_tokens_since
+        data = get_tokens_since(since_iso)
+        return data["total_tokens"], data["models"], data["cost_usd"]
+    except Exception:
+        return 0, "", 0.0
+
+
 def crew_completed(crew: str, task_id: str, result_preview: str = "",
                    tokens_used: int = 0, model: str = "",
                    cost_usd: float = 0.0) -> None:
@@ -407,6 +429,23 @@ def crew_completed(crew: str, task_id: str, result_preview: str = "",
             tokens_used = _t
             if not model: model = _m
             if cost_usd == 0: cost_usd = _c
+
+    # Fallback: query llm_benchmarks for tokens recorded during this task.
+    # This is more reliable than the ContextVar tracker when CrewAI uses
+    # a thread pool that doesn't inherit the calling context.
+    if tokens_used == 0:
+        with _task_start_lock:
+            since = _task_start_times.pop(task_id, None)
+        if since:
+            _t, _m, _c = _get_tokens_since(since)
+            if _t > 0:
+                tokens_used = _t
+                if not model: model = _m
+                if cost_usd == 0: cost_usd = _c
+    else:
+        # Clean up start time even if we got data from tracker
+        with _task_start_lock:
+            _task_start_times.pop(task_id, None)
     def _write():
         db = _get_db()
         if not db:
@@ -440,6 +479,9 @@ def crew_completed(crew: str, task_id: str, result_preview: str = "",
 
 def crew_failed(crew: str, task_id: str, error: str = "") -> None:
     """Mark a task as failed."""
+    # Clean up start time tracking on failure
+    with _task_start_lock:
+        _task_start_times.pop(task_id, None)
     def _write():
         db = _get_db()
         if not db:
