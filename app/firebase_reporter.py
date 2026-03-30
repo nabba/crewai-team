@@ -446,6 +446,20 @@ def crew_completed(crew: str, task_id: str, result_preview: str = "",
         # Clean up start time even if we got data from tracker
         with _task_start_lock:
             _task_start_times.pop(task_id, None)
+
+    # Clean model name: strip provider prefixes and deduplicate
+    # e.g. "deepseek/deepseek-chat-v3, openrouter/deepseek/deepseek-chat" → "deepseek-chat-v3"
+    if model:
+        parts: set[str] = set()
+        for m in model.split(","):
+            m = m.strip()
+            if m:
+                # strip provider prefix (e.g. "openrouter/deepseek/deepseek-chat" → "deepseek-chat")
+                clean = m.split("/")[-1]
+                if clean and clean not in ("unknown",):
+                    parts.add(clean)
+        model = ", ".join(sorted(parts)) if parts else model
+
     def _write():
         db = _get_db()
         if not db:
