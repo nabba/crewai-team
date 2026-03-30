@@ -1482,13 +1482,14 @@ onSnapshot(doc(db, "status", "knowledge_base"), s => {
     docsEl.innerHTML = '<div class="empty" style="font-size:.72rem">No documents. Upload above or use <code>kb add</code> via Signal.</div>';
     return;
   }
-  docsEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Document</th><th>Format</th><th>Category</th><th>Chunks</th><th>Added</th></tr></thead><tbody>` +
+  docsEl.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Document</th><th>Format</th><th>Category</th><th>Chunks</th><th>Added</th><th></th></tr></thead><tbody>` +
     docs.map(d => `<tr>
-      <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.source)}</td>
+      <td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.source_path || d.source)}">${esc(d.original_name || d.source)}</td>
       <td><span class="badge" style="background:rgba(96,165,250,.12);color:var(--blue)">${esc(d.format)}</span></td>
       <td style="color:var(--muted)">${esc(d.category)}</td>
       <td style="text-align:right">${d.chunks}</td>
       <td style="color:var(--muted)">${d.ingested_at ? d.ingested_at.slice(0, 10) : "—"}</td>
+      <td><button class="cmd-btn danger" style="font-size:.58rem;padding:1px 6px" onclick="deleteKBDoc('${esc(d.source_path || d.source)}','${esc(d.original_name || d.source)}')">Del</button></td>
     </tr>`).join("") + `</tbody></table></div>`;
   touch();
 });
@@ -1542,6 +1543,20 @@ async function uploadKBFiles(files) {
   kbStatus.innerHTML = msg.join(" · ");
   kbFile.value = "";
   if (success) setTimeout(() => { kbStatus.innerHTML = ""; }, 8000);
+}
+
+function deleteKBDoc(sourcePath, displayName) {
+  if (!confirm(`Delete "${displayName}" from knowledge base?`)) return;
+  addDoc(collection(db, "kb_queue"), {
+    action: "delete",
+    source_path: sourcePath,
+    filename: displayName,
+    status: "pending",
+    created_at: serverTimestamp(),
+  }).then(() => {
+    document.getElementById("kb-upload-status").innerHTML = `<span style="color:var(--orange)">Deleting "${esc(displayName)}"…</span>`;
+    setTimeout(() => { document.getElementById("kb-upload-status").innerHTML = ""; }, 8000);
+  }).catch(e => console.error("KB delete failed:", e));
 }
 
 // ── Philosophy KB ────────────────────────────────────────────────────────────

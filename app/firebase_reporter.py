@@ -914,11 +914,45 @@ def report_knowledge_base() -> None:
         from app.knowledge_base.vectorstore import KnowledgeStore
         store = KnowledgeStore()
         stats = store.stats()
-        # Compact document list for dashboard
+
+        # Build a mapping from source_path → original filename from kb_queue history
+        filename_map = {}
+        try:
+            queue_docs = (
+                db.collection("kb_queue")
+                .where("status", "==", "done")
+                .limit(100)
+                .get()
+            )
+            for qd in queue_docs:
+                qdata = qd.to_dict()
+                sp = qdata.get("source_path", "")
+                orig = qdata.get("original_filename", "")
+                if sp and orig:
+                    filename_map[sp] = orig
+        except Exception:
+            pass
+
+        # Compact document list for dashboard — include original filename + source_path
         docs = []
         for d in stats.get("documents", [])[:50]:
+            source_path = d.get("source_path", "")
+            source_name = d.get("source", "unknown")
+            # Try to resolve original filename
+            original_name = filename_map.get(source_path, "")
+            if not original_name:
+                # Fallback: strip temp prefixes like "kb_MyDoc_abc123.md" → "MyDoc"
+                import re as _re
+                cleaned = _re.sub(r'^kb_', '', source_name)
+                cleaned = _re.sub(r'_[a-z0-9]{6,}\.(md|txt|pdf|docx|pptx|xlsx|csv|html|json)$', r'.\1', cleaned)
+                if cleaned != source_name:
+                    original_name = cleaned
+                else:
+                    original_name = source_name
             docs.append({
-                "source": d.get("source", "unknown"),
+                "source": source_name,
+                "source_path": source_path,
+                "original_name": original_name,
                 "format": d.get("format", "?"),
                 "category": d.get("category", "general"),
                 "chunks": d.get("total_chunks", 0),
@@ -1358,11 +1392,36 @@ def start_kb_queue_poller() -> None:
                         content_b64 = data.get("content_b64", "")
                         fname = data.get("filename", "upload.txt")
                         category = data.get("category", "general")
+                        action = data.get("action", "upload")
+
+                        # Handle delete action
+                        if action == "delete":
+                            source_path = data.get("source_path", "")
+                            if source_path:
+                                from app.knowledge_base.vectorstore import KnowledgeStore
+                                ks = KnowledgeStore()
+                                removed = ks.remove_document(source_path)
+                                snap.reference.update({
+                                    "status": "done",
+                                    "removed": removed,
+                                    "processed_at": _now_iso(),
+                                })
+                                logger.info(f"firebase_reporter: KB removed '{source_path}' ({removed} chunks)")
+                                report_knowledge_base()
+                            else:
+                                snap.reference.update({"status": "error", "error": "No source_path"})
+                            continue
 
                         raw = base64.b64decode(content_b64)
 
+                        # Use original filename as prefix so ingestion captures it
+                        import re as _re
+                        safe_prefix = _re.sub(r'[^\w\-.]', '_', fname.rsplit('.', 1)[0])[:40] + "_"
                         suffix = "." + fname.rsplit(".", 1)[-1] if "." in fname else ".txt"
-                        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                        with tempfile.NamedTemporaryFile(
+                            suffix=suffix, prefix=f"kb_{safe_prefix}",
+                            delete=False,
+                        ) as tmp:
                             tmp.write(raw)
                             tmp_path = tmp.name
 
@@ -1371,12 +1430,16 @@ def start_kb_queue_poller() -> None:
                             ks = KnowledgeStore()
                             result = ks.add_document(tmp_path, category=category)
 
+                            # Store original filename mapping in Firestore for dashboard
                             snap.reference.update({
                                 "status": "done",
                                 "chunks_created": result.chunks_created,
+                                "original_filename": fname,
+                                "source_path": tmp_path,
                                 "processed_at": _now_iso(),
                             })
                             logger.info(f"firebase_reporter: KB ingested '{fname}' -> {result.chunks_created} chunks")
+                            report_knowledge_base()
                         finally:
                             import os as _os
                             _os.unlink(tmp_path)
