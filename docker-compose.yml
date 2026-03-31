@@ -120,6 +120,29 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # ── Signal messaging infrastructure ──────────────────────────
+  # signal-cli runs on the HOST (macOS ARM — account DB is architecture-specific).
+  # The forwarder container polls signal-cli via host.docker.internal and
+  # forwards inbound messages to the gateway's /signal/inbound endpoint.
+  signal-forwarder:
+    build: ./signal
+    restart: unless-stopped
+    environment:
+      SIGNAL_CLI_HTTP_URL: http://host.docker.internal:7583
+      GATEWAY_URL: http://gateway:${GATEWAY_PORT}/signal/inbound
+      GATEWAY_SECRET: ${GATEWAY_SECRET}
+      POLL_INTERVAL: "1"
+    depends_on:
+      - gateway
+    networks:
+      - external   # needs host.docker.internal access
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
 networks:
   external:
     driver: bridge

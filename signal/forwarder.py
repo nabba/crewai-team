@@ -10,7 +10,7 @@ signal-cli must be running in daemon mode with --receive-mode manual:
 Environment variables:
     GATEWAY_SECRET      — shared secret for authenticating with the gateway
     SIGNAL_CLI_HTTP_URL — signal-cli HTTP endpoint (default: http://127.0.0.1:7583)
-    GATEWAY_URL         — gateway inbound endpoint (default: http://127.0.0.1:8765/signal/inbound)
+    GATEWAY_URL         — gateway inbound endpoint (default: http://gateway:8765/signal/inbound)
     POLL_INTERVAL       — seconds between polls when idle (default: 1)
 """
 import json
@@ -18,8 +18,8 @@ import os
 import time
 import requests
 
-SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://127.0.0.1:7583")
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8765/signal/inbound")
+SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://host.docker.internal:7583")
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://gateway:8765/signal/inbound")
 GATEWAY_SECRET = os.environ.get("GATEWAY_SECRET", "")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "1"))
 
