@@ -148,6 +148,13 @@ def cleanup_stale_tasks() -> None:
                     "started_at": None,
                 }, merge=True)
 
+            # Clear stale credit alerts from previous session — they'll be
+            # re-raised if the problem persists on the first API call.
+            db.collection("status").document("credit_alerts").set({
+                "alerts": {},
+                "updated_at": _now_iso(),
+            })
+
             if cleaned:
                 logger.info(f"firebase_reporter: cleaned up {cleaned} stale running tasks")
         except Exception:
