@@ -615,7 +615,7 @@
   <div class="cmd-bar">
     <button class="cmd-btn" onclick="sendCmd('kb list')">List Docs</button>
     <button class="cmd-btn" onclick="sendCmd('kb status')">KB Status</button>
-    <button class="cmd-btn danger" onclick="if(confirm('Reset entire knowledge base?'))sendCmd('kb reset')">Reset KB</button>
+    <button class="cmd-btn danger" onclick="resetKB()">Reset KB</button>
   </div>
 </div>
 
@@ -1547,16 +1547,44 @@ async function uploadKBFiles(files) {
 
 window.deleteKBDoc = function(sourcePath, displayName) {
   if (!confirm(`Delete "${displayName}" from knowledge base?`)) return;
-  addDoc(collection(db, "kb_queue"), {
-    action: "delete",
-    source_path: sourcePath,
-    filename: displayName,
-    status: "pending",
-    created_at: serverTimestamp(),
-  }).then(() => {
-    document.getElementById("kb-upload-status").innerHTML = `<span style="color:var(--orange)">Deleting "${esc(displayName)}"…</span>`;
-    setTimeout(() => { document.getElementById("kb-upload-status").innerHTML = ""; }, 8000);
-  }).catch(e => console.error("KB delete failed:", e));
+  const statusEl = document.getElementById("kb-upload-status");
+  statusEl.innerHTML = `<span style="color:var(--orange)">Deleting "${esc(displayName)}"…</span>`;
+  // Try direct gateway API first (works when accessed from /dashboard same-origin)
+  fetch("/kb/remove", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({source_path: sourcePath}),
+  }).then(r => {
+    if (r.ok) {
+      statusEl.innerHTML = `<span style="color:var(--green)">Deleted "${esc(displayName)}"</span>`;
+      setTimeout(() => { statusEl.innerHTML = ""; }, 5000);
+      return;
+    }
+    throw new Error("API returned " + r.status);
+  }).catch(() => {
+    // Fallback: send via chat command
+    sendCmd(`kb remove ${sourcePath}`);
+    statusEl.innerHTML = `<span style="color:var(--blue)">Delete requested via chat…</span>`;
+    setTimeout(() => { statusEl.innerHTML = ""; }, 5000);
+  });
+};
+
+window.resetKB = function() {
+  if (!confirm("Reset entire knowledge base? This deletes ALL documents.")) return;
+  const statusEl = document.getElementById("kb-upload-status");
+  statusEl.innerHTML = `<span style="color:var(--orange)">Resetting knowledge base…</span>`;
+  fetch("/kb/reset", { method: "POST" }).then(r => {
+    if (r.ok) {
+      statusEl.innerHTML = `<span style="color:var(--green)">Knowledge base reset</span>`;
+      setTimeout(() => { statusEl.innerHTML = ""; }, 5000);
+      return;
+    }
+    throw new Error("API returned " + r.status);
+  }).catch(() => {
+    sendCmd("kb reset");
+    statusEl.innerHTML = `<span style="color:var(--blue)">Reset requested via chat…</span>`;
+    setTimeout(() => { statusEl.innerHTML = ""; }, 5000);
+  });
 };
 
 // ── Philosophy KB ────────────────────────────────────────────────────────────

@@ -743,6 +743,47 @@ async def kb_status():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.post("/kb/remove")
+async def kb_remove(request: Request):
+    """Remove a document from the knowledge base by source_path."""
+    try:
+        body = await request.json()
+        source_path = body.get("source_path", "")
+        if not source_path:
+            raise HTTPException(status_code=400, detail="source_path required")
+        store = await asyncio.to_thread(_get_kb_store)
+        count = await asyncio.to_thread(store.remove_document, source_path)
+        # Refresh dashboard stats (fire-and-forget)
+        try:
+            from app.firebase_reporter import report_knowledge_base
+            report_knowledge_base()
+        except Exception:
+            pass
+        return {"status": "ok", "removed": count, "source_path": source_path}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("KB remove failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/kb/reset")
+async def kb_reset_endpoint():
+    """Reset the entire knowledge base."""
+    try:
+        store = await asyncio.to_thread(_get_kb_store)
+        await asyncio.to_thread(store.reset)
+        try:
+            from app.firebase_reporter import report_knowledge_base
+            report_knowledge_base()
+        except Exception:
+            pass
+        return {"status": "ok", "message": "Knowledge base has been reset"}
+    except Exception as exc:
+        logger.exception("KB reset failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
