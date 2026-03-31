@@ -77,6 +77,23 @@ PROTECTED_FILES = frozenset({
     "Dockerfile",
     "docker-compose.yml",
     "dashboard/firestore.rules",
+    # Soul / constitution files — define system values, identity, and behavioral
+    # constraints.  These must never be modified by self-improvement proposals.
+    # Internal Python code only READS these files (via loader.py); nothing writes them.
+    "app/souls/constitution.md",
+    "app/souls/commander.md",
+    "app/souls/loader.py",
+    "app/souls/style.md",
+    "app/souls/agents_protocol.md",
+    "app/souls/coder.md",
+    "app/souls/critic.md",
+    "app/souls/researcher.md",
+    "app/souls/writer.md",
+    "app/souls/media_analyst.md",
+    "app/souls/self_improver.md",
+    # Homeostatic regulation module — contains immutable set-point TARGETS.
+    # Runtime state lives in workspace/homeostasis.json (not protected).
+    "app/self_awareness/homeostasis.py",
 })
 
 

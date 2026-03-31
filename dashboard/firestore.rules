@@ -9,39 +9,46 @@ service cloud.firestore {
     match /activities/{doc} { allow read: if true; allow write: if false; }
     match /schedule/{doc}   { allow read: if true; allow write: if false; }
 
-    // Config — public read/write (dashboard controls)
+    // Config — authenticated read/write (dashboard controls)
+    // request.auth != null is satisfied by anonymous sign-in in the dashboard JS.
+    // Prevents unauthenticated internet users from changing LLM mode.
     match /config/llm {
       allow read: if true;
-      allow write: if request.resource.data.keys().hasOnly(['mode', 'updated_at'])
+      allow write: if request.auth != null
+                   && request.resource.data.keys().hasOnly(['mode', 'updated_at'])
                    && request.resource.data.mode in ['local', 'cloud', 'hybrid', 'insane'];
     }
     match /config/background_tasks {
       allow read: if true;
-      allow write: if request.resource.data.keys().hasOnly(['enabled', 'updated_at'])
+      allow write: if request.auth != null
+                   && request.resource.data.keys().hasOnly(['enabled', 'updated_at'])
                    && request.resource.data.enabled is bool;
     }
 
-    // KB upload/delete queue — dashboard creates pending docs, backend processes
+    // KB upload/delete queue — authenticated dashboard creates pending docs, backend processes
     match /kb_queue/{doc} {
       allow read: if true;
-      allow create: if request.resource.data.status == 'pending';
-      allow update: if true;  // backend updates status to done/error
+      allow create: if request.auth != null
+                    && request.resource.data.status == 'pending';
+      allow update: if true;  // backend (admin SDK) updates status to done/error
     }
 
-    // Philosophy KB upload queue — dashboard creates pending docs, backend processes
+    // Philosophy KB upload queue — authenticated dashboard creates pending docs, backend processes
     match /phil_queue/{doc} {
       allow read: if true;
-      allow create: if request.resource.data.status == 'pending';
-      allow update: if true;  // backend updates status to done/error
+      allow create: if request.auth != null
+                    && request.resource.data.status == 'pending';
+      allow update: if true;  // backend (admin SDK) updates status to done/error
     }
 
-    // Proposal actions — dashboard creates approve/reject/rollback actions
+    // Proposal actions — authenticated dashboard creates approve/reject/rollback actions
     match /proposal_actions/{doc} {
       allow read: if true;
-      allow create: if request.resource.data.status == 'pending'
+      allow create: if request.auth != null
+                    && request.resource.data.status == 'pending'
                     && request.resource.data.action in ['approve', 'reject', 'rollback']
                     && request.resource.data.keys().hasAll(['proposal_id', 'action', 'status']);
-      allow update: if true;  // backend updates status to done/error
+      allow update: if true;  // backend (admin SDK) updates status to done/error
     }
 
     // Chat messages — backend writes, dashboard reads
@@ -50,15 +57,16 @@ service cloud.firestore {
       allow write: if false;  // backend-only via admin SDK
     }
 
-    // Chat inbox — dashboard creates pending messages, backend processes them
+    // Chat inbox — authenticated dashboard creates pending messages, backend processes them
     match /chat_inbox/{doc} {
       allow read: if true;
-      allow create: if request.resource.data.status == 'pending'
+      allow create: if request.auth != null
+                    && request.resource.data.status == 'pending'
                     && request.resource.data.keys().hasAll(['text', 'status', 'ts'])
                     && request.resource.data.text is string
                     && request.resource.data.text.size() > 0
                     && request.resource.data.text.size() <= 4000;
-      allow update: if true;  // backend updates status to done/error
+      allow update: if true;  // backend (admin SDK) updates status to done/error
     }
 
     // Deny everything else

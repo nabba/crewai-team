@@ -784,6 +784,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, doc, collection, onSnapshot,
          query, orderBy, limit, where, getDocs,
          setDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 // Firebase Storage removed — uploads go inline via Firestore kb_queue
 
 const app = initializeApp({
@@ -795,6 +796,13 @@ const app = initializeApp({
   appId:             "1:680485464185:web:48cf3f9dc4d91068128ca8",
 });
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Sign in anonymously so Firestore rules can verify request.auth != null.
+// This prevents unauthenticated internet users from writing to Firestore
+// directly (e.g. injecting fake commands into chat_inbox).
+// The backend uses Admin SDK which bypasses rules entirely — unaffected.
+signInAnonymously(auth).catch(e => console.warn("Firebase anon auth failed:", e));
 
 // Expose to non-module chat pane script
 window._db = db;
