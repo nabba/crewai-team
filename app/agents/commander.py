@@ -676,7 +676,7 @@ def _check_escalation_triggers(
 
 # Patterns that indicate a failed or low-quality output
 _QUALITY_FAILURE_PATTERNS = [
-    re.compile(r"^I (?:cannot|can't|am unable to|don't)", re.IGNORECASE),
+    re.compile(r"^I (?:cannot|can't|am unable to|don't|apologize)", re.IGNORECASE),
     re.compile(r"^(?:sorry|apologies|unfortunately),?\s+I", re.IGNORECASE),
     re.compile(r"^As an AI", re.IGNORECASE),
     re.compile(r"^\{.*\}$", re.DOTALL),  # raw JSON
@@ -1446,6 +1446,23 @@ class Commander:
                 except Exception as e:
                     return f"Added '{topic}' to queue but learning failed: {str(e)[:200]}"
             return f"Added to learning queue: {topic}"
+
+        if lower in ("skills", "list skills", "show skills"):
+            skills_dir = Path("/app/workspace/skills")
+            if not skills_dir.exists():
+                return "No skill files yet. Use 'learn <topic>' to start learning."
+            files = sorted(skills_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+            if not files:
+                return "No skill files yet."
+            total = len(files)
+            # Show most recent 20 with domain grouping
+            lines = [f"Skill Files: {total} total\n"]
+            for f in files[:20]:
+                name = f.stem.replace("_", " ").replace("-", " ")
+                lines.append(f"  - {name}")
+            if total > 20:
+                lines.append(f"\n  ...and {total - 20} more. Use 'skills' via Signal for the full list.")
+            return "\n".join(lines)
 
         if lower == "show learning queue":
             _QUEUE_ROOT = Path("/app/workspace")
