@@ -978,6 +978,40 @@ def report_knowledge_base() -> None:
         logger.debug("firebase_reporter: knowledge_base write failed", exc_info=True)
 
 
+def report_evolution_stats() -> None:
+    """Push evolution DGM-DB stats to Firestore for the dashboard."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        import os
+        if os.environ.get("EVOLUTION_USE_DGM_DB", "false").lower() != "true":
+            return
+        from app.evolution_db.archive_db import get_evolution_stats
+        stats = get_evolution_stats()
+        # Serialize recent variants for Firestore (UUIDs → strings, datetimes → ISO)
+        recent = []
+        for v in stats.get("recent", []):
+            recent.append({
+                "id": str(v.get("id", "")),
+                "agent_name": v.get("agent_name", ""),
+                "generation": v.get("generation", 0),
+                "composite_score": v.get("composite_score") or 0.0,
+                "passed": v.get("passed_threshold", False),
+                "reasoning": (v.get("modification_reasoning") or "")[:100],
+            })
+        db.collection("status").document("evolution").set({
+            "total_variants": stats.get("total_variants", 0),
+            "passed_variants": stats.get("passed_variants", 0),
+            "best_score": stats.get("best_score", 0.0),
+            "active_runs": stats.get("active_runs", 0),
+            "recent": recent,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase_reporter: evolution stats write failed", exc_info=True)
+
+
 def report_philosophy_kb() -> None:
     """Push philosophy knowledge base stats to Firestore for the dashboard."""
     db = _get_db()

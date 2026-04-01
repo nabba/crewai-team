@@ -299,8 +299,9 @@ async def lifespan(app: FastAPI):
                 report_deploys()
                 report_proposals()  # push pending proposals to dashboard
                 report_proposal_actions()  # process dashboard approve/reject clicks
-                from app.firebase_reporter import report_philosophy_kb
+                from app.firebase_reporter import report_philosophy_kb, report_evolution_stats
                 report_philosophy_kb()
+                report_evolution_stats()
             except Exception:
                 pass
     scheduler.add_job(_heartbeat_with_anomaly, "interval", seconds=60, id="heartbeat")

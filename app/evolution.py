@@ -81,6 +81,88 @@ def _get_tried_hypotheses(n: int = 50) -> set[str]:
     return hashes
 
 
+# ── DGM-DB integration ───────────────────────────────────────────────────────
+
+def _store_dgm_variant(mutation, result, run_id, generation):
+    """Store experiment result in PostgreSQL archive with LLM-as-judge scoring."""
+    from app.evolution_db.archive_db import add_variant, add_lineage
+
+    # Build source code from mutation files
+    source_parts = []
+    file_paths = []
+    for fpath, content in mutation.files.items():
+        source_parts.append(f"# --- {fpath} ---\n{content}")
+        file_paths.append(fpath)
+    source_code = "\n\n".join(source_parts)
+
+    # Base scores from the experiment result
+    scores = {
+        "composite_metric": result.metric_after,
+        "delta": result.delta,
+        "status": result.status,
+    }
+
+    # Run LLM-as-judge evaluation (only for kept variants to save cost)
+    judge_model = ""
+    if result.status == "keep":
+        try:
+            from app.evolution_db.judge import LLMJudge
+            judge = LLMJudge()
+            judge_result = judge.evaluate_output(
+                task_description=mutation.hypothesis,
+                agent_output=result.detail,
+                rubric={
+                    "dimensions": [
+                        {"name": "quality", "weight": 0.35,
+                         "criteria": "Is the improvement meaningful and well-implemented?"},
+                        {"name": "safety", "weight": 0.0,
+                         "criteria": "No dangerous patterns, blocked imports, or security issues?"},
+                        {"name": "constitutional_compliance", "weight": 0.30,
+                         "criteria": "Does the change align with system constitution and humanist principles?"},
+                        {"name": "efficiency", "weight": 0.15,
+                         "criteria": "Is the change minimal and focused? No unnecessary complexity?"},
+                        {"name": "robustness", "weight": 0.20,
+                         "criteria": "Does the change handle edge cases and errors?"},
+                    ]
+                },
+            )
+            scores["judge"] = judge_result.get("scores", {})
+            scores["judge_composite"] = judge_result.get("composite", 0.0)
+            judge_model = "evo_critic"
+        except Exception as e:
+            logger.debug(f"DGM-DB: judge evaluation failed: {e}")
+
+    composite = scores.get("judge_composite", result.metric_after)
+
+    variant_id = add_variant(
+        agent_name=mutation.change_type,  # "skill" or "code"
+        target_type=mutation.change_type,
+        generation=generation,
+        parent_id=None,  # TODO: track parent from UCB selection
+        source_code=source_code,
+        file_path=",".join(file_paths),
+        modification_diff="",
+        modification_reasoning=mutation.hypothesis,
+        scores=scores,
+        composite_score=composite,
+        passed_threshold=(result.status == "keep"),
+        proposer_model="avo_pipeline",
+        judge_model=judge_model,
+    )
+
+    if run_id and variant_id:
+        try:
+            from app.evolution_db.archive_db import update_run
+            update_run(run_id, generations_completed=generation + 1)
+            if result.status == "keep":
+                update_run(run_id, best_variant_id=variant_id)
+        except Exception:
+            pass
+
+    logger.info(f"DGM-DB: stored variant {variant_id[:8] if variant_id else '?'} "
+                f"(score={composite:.4f}, judge={'yes' if judge_model else 'no'})")
+
+
 # ── System state context ─────────────────────────────────────────────────────
 
 def _build_evolution_context() -> str:
@@ -513,6 +595,21 @@ def run_evolution_session(max_iterations: int = 5) -> str:
     discarded = 0
     crashed = 0
 
+    # DGM-DB: Create evolution run record in PostgreSQL
+    dgm_run_id = None
+    if os.environ.get("EVOLUTION_USE_DGM_DB", "false").lower() == "true":
+        try:
+            from app.evolution_db.archive_db import create_run
+            dgm_run_id = create_run(
+                agent_name="system",
+                target_type="mixed",
+                max_generations=max_iterations,
+                config={"avo_enabled": True, "rate_limit": _MAX_DAILY_PROMOTIONS},
+            )
+            logger.info(f"DGM-DB: evolution run {dgm_run_id[:8]}")
+        except Exception as e:
+            logger.debug(f"DGM-DB: failed to create run: {e}")
+
     try:
         for i in range(max_iterations):
             # Cooperative yield: abort if a user task arrived
@@ -611,6 +708,13 @@ def run_evolution_session(max_iterations: int = 5) -> str:
             except Exception:
                 logger.debug("Failed to store evo_memory", exc_info=True)
 
+            # DGM-DB: Store variant in PostgreSQL archive + run LLM judge
+            if os.environ.get("EVOLUTION_USE_DGM_DB", "false").lower() == "true":
+                try:
+                    _store_dgm_variant(mutation, result, dgm_run_id, i)
+                except Exception:
+                    logger.debug("DGM-DB: failed to store variant", exc_info=True)
+
             # Self-supervision: check for stagnation and cycles every 3 iterations
             if i > 0 and (i + 1) % 3 == 0:
                 try:
@@ -649,6 +753,14 @@ def run_evolution_session(max_iterations: int = 5) -> str:
                 f"Evolution iteration {i + 1}: {result.status} "
                 f"({result.detail})"
             )
+
+        # DGM-DB: Mark run as completed
+        if dgm_run_id:
+            try:
+                from app.evolution_db.archive_db import update_run
+                update_run(dgm_run_id, status="completed")
+            except Exception:
+                pass
 
         summary = (
             f"Evolution session complete: {max_iterations} iterations\n"

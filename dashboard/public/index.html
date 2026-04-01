@@ -664,6 +664,18 @@
   </div>
 </div>
 
+<!-- ── Evolution (DGM-DB) ────────────────────────────────────────── -->
+<div class="card">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Evolution (DGM-DB)</span>
+    <span id="evo-status-badge" style="font-size:.68rem;color:var(--green)"></span>
+  </div>
+  <div id="evo-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:10px">
+    <div class="empty">No evolution data yet</div>
+  </div>
+  <div id="evo-recent" style="max-height:140px;overflow-y:auto"></div>
+</div>
+
 <!-- ── Schedule & Activity Feed ───────────────────────────────── -->
 <div class="two-col">
   <div class="card" style="margin:0">
@@ -1679,6 +1691,43 @@ window.reingestPhil = function() {
     philStatus.innerHTML = `<span style="color:var(--red)">Failed: ${e.message}</span>`;
   });
 };
+
+// ── Evolution (DGM-DB) real-time updates ──────────────────────────────────────
+onSnapshot(doc(db, "status", "evolution"), s => {
+  const statsEl = document.getElementById("evo-stats");
+  const recentEl = document.getElementById("evo-recent");
+  const badge = document.getElementById("evo-status-badge");
+  if (!s.exists()) { statsEl.innerHTML = '<div class="empty">No evolution data yet</div>'; recentEl.innerHTML = ''; badge.textContent = ''; return; }
+  const d = s.data();
+  if (d.total_variants > 0) {
+    badge.textContent = d.active_runs > 0 ? 'RUNNING' : 'idle';
+    badge.style.color = d.active_runs > 0 ? 'var(--green)' : 'var(--muted)';
+    statsEl.innerHTML = [
+      { label: "Variants", value: d.total_variants || 0 },
+      { label: "Passed", value: d.passed_variants || 0 },
+      { label: "Best Score", value: (d.best_score || 0).toFixed(4) },
+      { label: "Active Runs", value: d.active_runs || 0 },
+    ].map(s => `<div class="stat-card"><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join("");
+  } else {
+    badge.textContent = "";
+    statsEl.innerHTML = '<div class="empty">No evolution data yet</div>';
+  }
+  const recent = d.recent || [];
+  if (recent.length > 0) {
+    recentEl.innerHTML = `<div style="overflow-x:auto"><table class="task-table"><thead><tr>
+      <th>Gen</th><th>Agent</th><th>Score</th><th>Status</th><th>Reasoning</th>
+    </tr></thead><tbody>` + recent.map(v => `<tr>
+      <td>${v.generation}</td>
+      <td>${esc(v.agent_name || "?")}</td>
+      <td style="font-weight:600">${(v.composite_score || 0).toFixed(4)}</td>
+      <td><span class="badge" style="background:${v.passed ? 'rgba(74,222,128,.15)' : 'rgba(248,113,113,.15)'};color:${v.passed ? 'var(--green)' : 'var(--red)'}">${v.passed ? 'kept' : 'discarded'}</span></td>
+      <td style="color:var(--muted);font-size:.7rem">${esc((v.reasoning || "").slice(0,60))}</td>
+    </tr>`).join("") + `</tbody></table></div>`;
+  } else {
+    recentEl.innerHTML = "";
+  }
+  touch();
+});
 
 // Real-time dashboard updates from Firestore (pushed by gateway heartbeat)
 onSnapshot(doc(db, "status", "philosophy_kb"), s => {
