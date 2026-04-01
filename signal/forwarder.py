@@ -1,32 +1,29 @@
 """
-Forwards inbound Signal messages from signal-cli JSON-RPC to the FastAPI gateway.
+Forwards inbound Signal messages from signal-cli REST API to the FastAPI gateway.
 
-Uses HTTP polling against signal-cli's JSON-RPC `receive` endpoint.
-signal-cli must be running in daemon mode with --receive-mode manual:
-
-    signal-cli -a +NUMBER daemon --socket /tmp/signal-cli.sock \
-        --http 127.0.0.1:7583 --receive-mode manual --no-receive-stdout
+Uses HTTP polling against signal-cli's /v1/receive/{number} REST endpoint.
+signal-cli must be running in 'normal' mode (REST API).
 
 Environment variables:
-    GATEWAY_SECRET      — shared secret for authenticating with the gateway
-    SIGNAL_CLI_HTTP_URL — signal-cli HTTP endpoint (default: http://127.0.0.1:7583)
-    GATEWAY_URL         — gateway inbound endpoint (default: http://gateway:8765/signal/inbound)
-    POLL_INTERVAL       — seconds between polls when idle (default: 1)
+    GATEWAY_SECRET        — shared secret for authenticating with the gateway
+    SIGNAL_CLI_HTTP_URL   — signal-cli HTTP base URL (default: http://signal-cli:8080)
+    SIGNAL_NUMBER         — Signal account number to receive from (e.g. +46731727774)
+    GATEWAY_URL           — gateway inbound endpoint (default: http://gateway:8765/signal/inbound)
+    POLL_INTERVAL         — seconds between polls when idle (default: 1)
 """
 import json
 import os
 import time
 import requests
 
-SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://host.docker.internal:7583")
+SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://signal-cli:8080")
+SIGNAL_NUMBER = os.environ.get("SIGNAL_NUMBER", "")
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://gateway:8765/signal/inbound")
 GATEWAY_SECRET = os.environ.get("GATEWAY_SECRET", "")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "1"))
 
 # Reusable HTTP sessions for connection pooling
 _signal_session = requests.Session()
-_signal_session.headers["Content-Type"] = "application/json"
-
 _gateway_session = requests.Session()
 
 
@@ -34,27 +31,40 @@ def log(msg):
     print(f"[forwarder] {msg}", flush=True)
 
 
-def _receive_messages() -> list:
-    """Poll signal-cli HTTP `receive` endpoint for new messages."""
+def _get_number() -> str:
+    """Resolve the Signal number to poll — from env or auto-detected via /v1/accounts."""
+    if SIGNAL_NUMBER:
+        return SIGNAL_NUMBER
     try:
-        resp = _signal_session.post(
-            SIGNAL_CLI_URL.rstrip("/") + "/api/v1/rpc",
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "receive",
-                "params": {"timeout": 5},
-            },
-            timeout=15,
+        resp = _signal_session.get(
+            SIGNAL_CLI_URL.rstrip("/") + "/v1/accounts",
+            timeout=5,
         )
-        data = resp.json()
-        if "error" in data:
-            err = data["error"].get("message", "")
-            # "already being received" means signal-cli is in on-start mode — not fatal
-            if "already being received" not in err:
-                log(f"receive error: {err}")
+        accounts = resp.json()
+        if accounts:
+            number = accounts[0].get("number", "")
+            log(f"Auto-detected Signal number: {number}")
+            return number
+    except Exception as e:
+        log(f"Could not auto-detect number: {e}")
+    return ""
+
+
+def _receive_messages(number: str) -> list:
+    """Poll signal-cli REST API for new messages."""
+    try:
+        resp = _signal_session.get(
+            SIGNAL_CLI_URL.rstrip("/") + f"/v1/receive/{number}",
+            params={"timeout": int(POLL_INTERVAL) + 1},
+            timeout=POLL_INTERVAL + 5,
+        )
+        if resp.status_code == 200:
+            return resp.json() or []
+        if resp.status_code == 400:
+            # No messages or transient error
             return []
-        return data.get("result", [])
+        log(f"receive HTTP {resp.status_code}: {resp.text[:200]}")
+        return []
     except requests.exceptions.ConnectionError:
         return []  # signal-cli not running yet
     except Exception as e:
@@ -113,28 +123,27 @@ def _process_envelope(envelope: dict) -> None:
         log(f"Failed to forward: {e}")
 
 
-def poll_loop():
+def poll_loop(number: str):
     """Continuously poll signal-cli for new messages and forward them."""
-    log(f"Polling signal-cli at {SIGNAL_CLI_URL} every {POLL_INTERVAL}s")
+    log(f"Polling signal-cli at {SIGNAL_CLI_URL}/v1/receive/{number} every {POLL_INTERVAL}s")
     log(f"Forwarding to {GATEWAY_URL}")
 
     consecutive_errors = 0
 
     while True:
-        messages = _receive_messages()
+        messages = _receive_messages(number)
 
         if messages:
             consecutive_errors = 0
-            for msg in messages:
-                envelope = msg.get("envelope", msg)
+            for envelope in messages:
                 try:
                     _process_envelope(envelope)
                 except Exception as e:
                     log(f"Error processing envelope: {e}")
-        elif messages is not None:
+        else:
             consecutive_errors = 0
 
-        # Adaptive backoff: if signal-cli is down, slow down polling
+        # Adaptive backoff on connection errors
         if consecutive_errors > 10:
             time.sleep(min(consecutive_errors, 30))
         else:
@@ -149,18 +158,24 @@ def main():
     log("Waiting for signal-cli...")
     while True:
         try:
-            resp = _signal_session.post(
-                SIGNAL_CLI_URL.rstrip("/") + "/api/v1/rpc",
-                json={"jsonrpc": "2.0", "id": 1, "method": "version"},
+            resp = _signal_session.get(
+                SIGNAL_CLI_URL.rstrip("/") + "/v1/about",
                 timeout=5,
             )
-            version = resp.json().get("result", {}).get("version", "?")
-            log(f"signal-cli v{version} is ready")
+            about = resp.json()
+            mode = about.get("mode", "?")
+            version = about.get("version", "?")
+            log(f"signal-cli v{version} ({mode} mode) is ready")
             break
         except Exception:
             time.sleep(3)
 
-    poll_loop()
+    number = _get_number()
+    if not number:
+        log("ERROR: No Signal number found. Set SIGNAL_NUMBER env var.")
+        raise SystemExit(1)
+
+    poll_loop(number)
 
 
 if __name__ == "__main__":

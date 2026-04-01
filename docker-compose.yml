@@ -121,21 +121,47 @@ services:
       - no-new-privileges:true
 
   # ── Signal messaging infrastructure ──────────────────────────
-  # signal-cli runs on the HOST (macOS ARM — account DB is architecture-specific).
-  # The forwarder container polls signal-cli via host.docker.internal and
-  # forwards inbound messages to the gateway's /signal/inbound endpoint.
+  # signal-cli REST API container (normal mode).
+  # Account data stored in named volume signal-data.
+  # Register once with: docker exec -it crewai-team-signal-cli-1 signal-cli -a +NUMBER register
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    restart: unless-stopped
+    environment:
+      MODE: normal
+    volumes:
+      - signal-data:/home/.local/share/signal-cli
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/about >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # Polls signal-cli REST API and forwards inbound messages to the gateway.
   signal-forwarder:
     build: ./signal
     restart: unless-stopped
     environment:
-      SIGNAL_CLI_HTTP_URL: http://host.docker.internal:7583
+      SIGNAL_CLI_HTTP_URL: http://signal-cli:8080
+      SIGNAL_NUMBER: ${SIGNAL_NUMBER:-}
       GATEWAY_URL: http://gateway:${GATEWAY_PORT}/signal/inbound
       GATEWAY_SECRET: ${GATEWAY_SECRET}
       POLL_INTERVAL: "1"
     depends_on:
-      - gateway
+      signal-cli:
+        condition: service_healthy
+      gateway:
+        condition: service_started
     networks:
-      - external   # needs host.docker.internal access
+      - internal
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -149,3 +175,6 @@ networks:
   internal:
     driver: bridge
     internal: true   # No internet access for ChromaDB or docker-proxy
+
+volumes:
+  signal-data:    # Persists signal-cli account registration across container restarts
