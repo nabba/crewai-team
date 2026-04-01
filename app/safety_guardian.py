@@ -35,6 +35,11 @@ TIER3_FILES = [
     "app/security.py",
     "app/sanitize.py",
     "app/vetting.py",
+    "app/version_manifest.py",
+    "app/sandbox_runner.py",
+    "app/health_monitor.py",
+    "app/self_healer.py",
+    "app/reference_tasks.py",
 ]
 
 # ── IMMUTABLE: Drift detection thresholds ─────────────────────────────────

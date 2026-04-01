@@ -102,6 +102,13 @@ PROTECTED_FILES = frozenset({
     "app/feedback_pipeline.py",
     "app/modification_engine.py",
     "app/prompt_registry.py",
+    # Fast deployment infrastructure — version manifest, sandbox, health, self-healing
+    "app/version_manifest.py",
+    "app/sandbox_runner.py",
+    "app/health_monitor.py",
+    "app/self_healer.py",
+    "app/reference_tasks.py",
+    "Dockerfile.sandbox",
 })
 
 

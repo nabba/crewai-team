@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     safety_auto_rollback: bool = True      # auto-rollback on negative feedback
     safety_max_negative_before_rollback: int = 2   # negative reactions before rollback
 
+    # ── Fast deployment infrastructure ───────────────────────────────────
+    sandbox_evolution_enabled: bool = True    # use Docker sandbox for code mutations
+    sandbox_parallel_count: int = 2           # max parallel sandbox instances
+    health_monitor_enabled: bool = True       # continuous health monitoring
+    self_healing_enabled: bool = True         # auto-remediation on health alerts
+    version_manifest_enabled: bool = True     # composite version tracking
+
     # ── Local LLM (Native Ollama + Metal GPU) ─────────────────────────────
     # Uses native Ollama installation for Metal GPU acceleration.
     # All roles default to qwen3:30b-a3b (MoE, ~20GB, 15-22 tok/s on M4 Max).

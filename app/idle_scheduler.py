@@ -296,6 +296,27 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: modification engine failed", exc_info=True)
     jobs.append(("modification-engine", _modification_engine))
 
+    # ── Health monitor: evaluate dimensional health ─────────────────
+    def _health_evaluate():
+        try:
+            from app.health_monitor import evaluate_health
+            alerts = evaluate_health()
+            if alerts:
+                logger.info(f"idle_scheduler: health monitor found {len(alerts)} alert(s)")
+        except Exception:
+            logger.debug("idle_scheduler: health evaluation failed", exc_info=True)
+    jobs.append(("health-evaluate", _health_evaluate))
+
+    # ── Version manifest: periodic snapshot for rollback safety ────
+    def _version_snapshot():
+        try:
+            from app.version_manifest import create_manifest, cleanup_old_snapshots
+            create_manifest(promoted_by="system", reason="periodic snapshot")
+            cleanup_old_snapshots(keep_latest=10)
+        except Exception:
+            logger.debug("idle_scheduler: version snapshot failed", exc_info=True)
+    jobs.append(("version-snapshot", _version_snapshot))
+
     # ── Tech radar: scan internet for new technologies ────────────────
     def _tech_radar():
         from app.crews.tech_radar_crew import run_tech_scan

@@ -371,6 +371,42 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Prompt registry initialization failed (non-fatal)", exc_info=True)
 
+    # Initialize version manifest — create initial manifest if none exists
+    try:
+        from app.version_manifest import get_current_manifest, create_manifest, MANIFESTS_DIR
+        MANIFESTS_DIR.mkdir(parents=True, exist_ok=True)
+        if not get_current_manifest():
+            await asyncio.to_thread(create_manifest, "system", "initial boot manifest")
+            logger.info("Version manifest: created initial manifest")
+    except Exception:
+        logger.warning("Version manifest initialization failed (non-fatal)", exc_info=True)
+
+    # Health monitor — wire self-healer alerts
+    try:
+        from app.health_monitor import get_monitor
+        from app.self_healer import SelfHealer
+        monitor = get_monitor()
+        healer = SelfHealer()
+
+        async def _on_health_alert(alerts):
+            try:
+                await healer.handle_alerts(alerts)
+            except Exception:
+                logger.debug("Self-healer alert handling failed", exc_info=True)
+
+        def _sync_alert_handler(alerts):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(_on_health_alert(alerts))
+            except Exception:
+                pass
+
+        monitor.on_alert(_sync_alert_handler)
+        logger.info("Health monitor + self-healer initialized")
+    except Exception:
+        logger.warning("Health monitor initialization failed (non-fatal)", exc_info=True)
+
     # Create philosophy KB directories
     os.makedirs("/app/workspace/philosophy/texts", exist_ok=True)
 
@@ -495,6 +531,19 @@ async def receive_signal(request: Request):
                         payload.get("target_timestamp", 0),
                         payload.get("is_remove", False),
                     )
+            # Acknowledge with 👀 on the message the user reacted to
+            target_ts = payload.get("target_timestamp", 0)
+            if target_ts and not payload.get("is_remove", False):
+                try:
+                    client = SignalClient()
+                    await client.react(
+                        recipient=sender,
+                        emoji="👀",
+                        target_author=_s.signal_bot_number,
+                        target_timestamp=target_ts,
+                    )
+                except Exception:
+                    logger.debug("Failed to send 👀 ack for feedback", exc_info=True)
         except Exception:
             logger.debug("Feedback reaction processing failed", exc_info=True)
         return {"status": "accepted"}
@@ -559,6 +608,8 @@ def _get_feedback_pipeline():
 async def handle_task(sender: str, text: str, attachments: list = None,
                       msg_timestamp: int = 0):
     global _inflight_tasks
+    import time as _time
+    _task_start = _time.monotonic()
     # Start task tracking for metrics
     task_row_id = start_task(sender)
 
@@ -659,6 +710,20 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         # Record successful task completion with timing
         complete_task(task_row_id, success=True)
 
+        # Record health metrics for this interaction
+        try:
+            from app.health_monitor import InteractionMetrics, record_interaction
+            import time as _time
+            record_interaction(InteractionMetrics(
+                timestamp=_time.time(),
+                task_id=str(task_row_id),
+                success=True,
+                latency_ms=((_time.monotonic() - _task_start) * 1000) if '_task_start' in dir() else 0,
+                crew_used=commander.last_crew_used if hasattr(commander, 'last_crew_used') else "",
+            ))
+        except Exception:
+            pass
+
         # ── Prepare for Signal delivery ─────────────────────────────────
         from app.agents.commander import _MAX_RESPONSE_LENGTH, truncate_for_signal
 
@@ -684,6 +749,20 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 
         # Record failed task for metrics
         complete_task(task_row_id, success=False, error_type=type(exc).__name__)
+
+        # Record health metrics for failed interaction
+        try:
+            from app.health_monitor import InteractionMetrics, record_interaction
+            record_interaction(InteractionMetrics(
+                timestamp=_time.time(),
+                task_id=str(task_row_id),
+                success=False,
+                latency_ms=(_time.monotonic() - _task_start) * 1000,
+                error_type=type(exc).__name__,
+                crew_used=commander.last_crew_used if hasattr(commander, 'last_crew_used') else "",
+            ))
+        except Exception:
+            pass
 
         # Trigger self-healing: diagnose the error in the background
         diagnose_and_fix(

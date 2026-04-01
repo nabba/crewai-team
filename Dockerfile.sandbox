@@ -1,0 +1,43 @@
+# Dockerfile.sandbox — Isolated evaluation environment for code evolution
+#
+# Key differences from production Dockerfile:
+#   - No network access (network_mode=none in docker-compose)
+#   - Read-only rootfs
+#   - No Signal, Firebase, or external API access
+#   - Only Ollama via host gateway for local LLM inference
+#   - Smaller footprint (no gosu, yt-dlp, dashboard)
+#
+# Pre-warm: docker build -t crewai-sandbox:latest -f Dockerfile.sandbox .
+# Pre-warmed start: ~2s vs ~15s cold build
+
+FROM python:3.11-slim@sha256:6d98ca198cea726f2c86da2699594339a7b7ff08e49728797b4ed6e3b5c3b62a
+
+WORKDIR /app
+
+# Minimal system deps (git for diff operations)
+RUN apt-get update && apt-get install -y \
+    git \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (same as production for compatibility)
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ app/
+
+# Create workspace and sandbox directories
+RUN mkdir -p workspace/output workspace/skills /sandbox
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app /sandbox
+
+USER appuser
+
+# Sandbox mode flag — checked by app modules to disable external calls
+ENV SANDBOX_MODE=true
+ENV EVALUATION_TIMEOUT=300
+
+# No CMD — invoked with explicit command from sandbox_runner.py
