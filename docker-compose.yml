@@ -121,54 +121,11 @@ services:
       - no-new-privileges:true
 
   # ── Signal messaging infrastructure ──────────────────────────
-  # signal-cli REST API container (normal mode).
-  # Account data stored in named volume signal-data.
-  # Register once with: docker exec -it crewai-team-signal-cli-1 signal-cli -a +NUMBER register
-  signal-cli:
-    image: bbernhard/signal-cli-rest-api:latest
-    restart: unless-stopped
-    environment:
-      MODE: normal
-    volumes:
-      - signal-data:/home/.local/share/signal-cli
-    networks:
-      - external   # Needs internet to connect to Signal servers
-      - internal   # Forwarder connects via internal network
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/about >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-
-  # Polls signal-cli REST API and forwards inbound messages to the gateway.
-  signal-forwarder:
-    build: ./signal
-    restart: unless-stopped
-    environment:
-      SIGNAL_CLI_HTTP_URL: http://signal-cli:8080
-      SIGNAL_NUMBER: ${SIGNAL_NUMBER:-}
-      GATEWAY_URL: http://gateway:${GATEWAY_PORT}/signal/inbound
-      GATEWAY_SECRET: ${GATEWAY_SECRET}
-      POLL_INTERVAL: "1"
-    depends_on:
-      signal-cli:
-        condition: service_healthy
-      gateway:
-        condition: service_started
-    networks:
-      - internal
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 64m
+  # Both signal-cli and forwarder run on the HOST via launchd:
+  #   com.botarmy.signal-cli       — signal-cli daemon (--http 127.0.0.1:7583)
+  #   com.botarmy.signal-forwarder — polls signal-cli, forwards to gateway
+  # Docker networking causes WebSocket receive failures, so host is required.
+  # Forwarder forwards to http://127.0.0.1:8765/signal/inbound (gateway port).
 
 networks:
   external:
@@ -177,5 +134,4 @@ networks:
     driver: bridge
     internal: true   # No internet access for ChromaDB or docker-proxy
 
-volumes:
-  signal-data:    # Persists signal-cli account registration across container restarts
+volumes: {}
