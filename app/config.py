@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     # Default: false (human approval via Signal required for code changes).
     evolution_auto_deploy: bool = False
 
+    # ── Self-improving feedback loop ─────────────────────────────────────
+    feedback_enabled: bool = True          # collect feedback signals
+    modification_enabled: bool = True      # allow modification engine to run
+    modification_tier1_auto: bool = True   # autonomous Tier 1 modifications
+    safety_auto_rollback: bool = True      # auto-rollback on negative feedback
+    safety_max_negative_before_rollback: int = 2   # negative reactions before rollback
+
     # ── Local LLM (Native Ollama + Metal GPU) ─────────────────────────────
     # Uses native Ollama installation for Metal GPU acceleration.
     # All roles default to qwen3:30b-a3b (MoE, ~20GB, 15-22 tok/s on M4 Max).

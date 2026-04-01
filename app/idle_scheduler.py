@@ -235,6 +235,67 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         SelfImprovementCrew().run_improvement_scan()
     jobs.append(("improvement-scan", _improvement_scan))
 
+    # ── Feedback aggregation: detect patterns in user feedback ──────────
+    def _feedback_aggregate():
+        try:
+            from app.config import get_settings
+            s = get_settings()
+            if not s.mem0_postgres_url:
+                return
+            from app.feedback_pipeline import FeedbackPipeline
+            pipeline = FeedbackPipeline(s.mem0_postgres_url)
+            patterns = pipeline.aggregate_patterns()
+            if patterns:
+                logger.info(f"idle_scheduler: feedback aggregation found {len(patterns)} patterns")
+        except Exception:
+            logger.debug("idle_scheduler: feedback aggregation failed", exc_info=True)
+    jobs.append(("feedback-aggregate", _feedback_aggregate))
+
+    # ── Safety health check: monitor for post-promotion regressions ────
+    def _safety_health_check():
+        try:
+            from app.config import get_settings
+            s = get_settings()
+            if not s.mem0_postgres_url or not s.safety_auto_rollback:
+                return
+            import app.prompt_registry as registry
+            from app.safety_guardian import SafetyGuardian
+            guardian = SafetyGuardian(s.mem0_postgres_url, registry)
+            rollbacks = guardian.check_post_promotion_health()
+            if rollbacks:
+                logger.info(f"idle_scheduler: safety check triggered {len(rollbacks)} rollback(s)")
+            # Also check drift
+            alerts = guardian.check_drift()
+            if alerts:
+                logger.warning(f"idle_scheduler: drift detection found {len(alerts)} alert(s)")
+        except Exception:
+            logger.debug("idle_scheduler: safety health check failed", exc_info=True)
+    jobs.append(("safety-health-check", _safety_health_check))
+
+    # ── Modification engine: propose prompt changes from feedback ─────
+    def _modification_engine():
+        try:
+            from app.config import get_settings
+            s = get_settings()
+            if not s.mem0_postgres_url:
+                return
+            from app.feedback_pipeline import FeedbackPipeline
+            from app.modification_engine import ModificationEngine
+            import app.prompt_registry as registry
+            pipeline = FeedbackPipeline(s.mem0_postgres_url)
+            try:
+                from app.eval_sandbox import EvalSandbox
+                sandbox = EvalSandbox(s.mem0_postgres_url, registry)
+            except Exception:
+                sandbox = None
+            engine = ModificationEngine(s.mem0_postgres_url, registry, pipeline, sandbox)
+            results = engine.process_triggered_patterns()
+            if results:
+                logger.info(f"idle_scheduler: modification engine processed {len(results)} patterns")
+        except Exception:
+            logger.debug("idle_scheduler: modification engine failed", exc_info=True)
+    jobs.append(("modification-engine", _modification_engine))
+
     # ── Tech radar: scan internet for new technologies ────────────────
     def _tech_radar():
         from app.crews.tech_radar_crew import run_tech_scan

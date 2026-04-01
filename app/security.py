@@ -15,6 +15,16 @@ WINDOW_MINUTES = 10
 _MAX_TRACKED_SENDERS = 1000  # Prevent memory exhaustion from spoofed senders
 
 
+def _sender_hash(sender: str) -> str:
+    """Return a stable, non-reversible hash of a sender's phone number.
+
+    Delegates to conversation_store._sender_id for consistency across
+    all subsystems that need sender identification.
+    """
+    from app.conversation_store import _sender_id
+    return _sender_id(sender)
+
+
 def _redact_number(number: str) -> str:
     """Redact phone number for safe logging: +3725100500 -> +372***0500"""
     if len(number) > 7:

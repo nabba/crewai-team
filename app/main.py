@@ -364,6 +364,13 @@ async def lifespan(app: FastAPI):
     idle_scheduler.start()
     logger.info("Idle scheduler started — background work runs when no user tasks active")
 
+    # Initialize versioned prompt registry — extracts souls/*.md on first boot
+    try:
+        from app.prompt_registry import init_registry
+        await asyncio.to_thread(init_registry)
+    except Exception:
+        logger.warning("Prompt registry initialization failed (non-fatal)", exc_info=True)
+
     # Create philosophy KB directories
     os.makedirs("/app/workspace/philosophy/texts", exist_ok=True)
 
@@ -465,6 +472,34 @@ async def receive_signal(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     payload = await request.json()
+
+    # ── Handle reaction feedback (from forwarder) ──────────────────────
+    if payload.get("type") == "reaction_feedback":
+        sender = payload.get("sender", "")
+        if not is_authorized_sender(sender):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        try:
+            from app.feedback_pipeline import FeedbackPipeline
+            from app.config import get_settings
+            _s = get_settings()
+            if _s.mem0_postgres_url:
+                pipeline = _get_feedback_pipeline()
+                if pipeline:
+                    from app.security import _sender_hash
+                    sender_id = _sender_hash(sender)
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        pipeline.process_reaction,
+                        sender_id,
+                        payload.get("emoji", ""),
+                        payload.get("target_timestamp", 0),
+                        payload.get("is_remove", False),
+                    )
+        except Exception:
+            logger.debug("Feedback reaction processing failed", exc_info=True)
+        return {"status": "accepted"}
+
+    # ── Handle regular messages ────────────────────────────────────────
     sender = payload.get("sender", "")
     text = payload.get("message", "").strip()
     timestamp = payload.get("timestamp", 0)
@@ -502,6 +537,23 @@ async def receive_signal(request: Request):
 
     asyncio.create_task(handle_task(sender, text, attachments, timestamp))
     return {"status": "accepted"}
+
+
+# Lazy-initialized feedback pipeline singleton
+_feedback_pipeline_instance = None
+
+def _get_feedback_pipeline():
+    """Get or create the feedback pipeline singleton."""
+    global _feedback_pipeline_instance
+    if _feedback_pipeline_instance is None:
+        try:
+            from app.feedback_pipeline import FeedbackPipeline
+            s = get_settings()
+            if s.mem0_postgres_url:
+                _feedback_pipeline_instance = FeedbackPipeline(s.mem0_postgres_url)
+        except Exception:
+            logger.debug("Feedback pipeline initialization failed", exc_info=True)
+    return _feedback_pipeline_instance
 
 
 async def handle_task(sender: str, text: str, attachments: list = None,
@@ -558,6 +610,51 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 
         # Extract facts into Mem0 persistent memory (fire-and-forget background task)
         asyncio.get_running_loop().run_in_executor(None, _extract_to_mem0, text, result)
+
+        # Record response metadata for feedback correlation (fire-and-forget)
+        try:
+            pipeline = _get_feedback_pipeline()
+            if pipeline:
+                from app.prompt_registry import get_prompt_versions_map
+                from app.security import _sender_hash
+                # We'll get the actual Signal send timestamp after sending;
+                # for now use msg_timestamp as a correlation key
+                asyncio.get_running_loop().run_in_executor(
+                    None,
+                    pipeline.record_response_metadata,
+                    msg_timestamp,  # placeholder — updated after send
+                    _sender_hash(sender),
+                    text[:2000],
+                    result[:2000],
+                    commander.last_crew_used if hasattr(commander, 'last_crew_used') else "",
+                    get_prompt_versions_map(),
+                    commander.last_model_used if hasattr(commander, 'last_model_used') else "",
+                    task_row_id,
+                )
+        except Exception:
+            logger.debug("Response metadata recording failed", exc_info=True)
+
+        # Check if user's message is a correction of the previous response
+        try:
+            pipeline = _get_feedback_pipeline()
+            if pipeline:
+                from app.conversation_store import get_history
+                from app.security import _sender_hash
+                history = get_history(sender, n=2)
+                if history:
+                    # Get the previous assistant response for context
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        pipeline.process_correction,
+                        _sender_hash(sender),
+                        text,
+                        text,  # current task as context
+                        result[:500],  # recent response
+                        commander.last_crew_used if hasattr(commander, 'last_crew_used') else "",
+                        0,  # prompt version (will be looked up)
+                    )
+        except Exception:
+            logger.debug("Correction detection failed", exc_info=True)
 
         # Record successful task completion with timing
         complete_task(task_row_id, success=True)

@@ -94,6 +94,14 @@ PROTECTED_FILES = frozenset({
     # Homeostatic regulation module — contains immutable set-point TARGETS.
     # Runtime state lives in workspace/homeostasis.json (not protected).
     "app/self_awareness/homeostasis.py",
+    # Self-improving feedback loop — Tier 3 (immutable) modules.
+    # These define evaluation functions, safety rules, and feedback classification.
+    # No agent or modification engine may alter them.
+    "app/eval_sandbox.py",
+    "app/safety_guardian.py",
+    "app/feedback_pipeline.py",
+    "app/modification_engine.py",
+    "app/prompt_registry.py",
 })
 
 

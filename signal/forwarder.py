@@ -64,6 +64,37 @@ def _process_envelope(envelope: dict) -> None:
     data_msg = envelope.get("dataMessage")
     if not data_msg:
         return
+
+    # Handle emoji reactions (feedback signals)
+    reaction = data_msg.get("reaction")
+    if reaction:
+        sender = envelope.get("source") or envelope.get("sourceNumber")
+        if not sender:
+            return
+        emoji = reaction.get("emoji", "")
+        target_ts = reaction.get("targetSentTimestamp", 0)
+        is_remove = reaction.get("isRemove", False)
+        log(f"Reaction from {sender[-4:]}: {emoji} on ts={target_ts} (remove={is_remove})")
+
+        payload = {
+            "type": "reaction_feedback",
+            "sender": sender,
+            "emoji": emoji,
+            "target_timestamp": target_ts,
+            "is_remove": is_remove,
+        }
+        headers = {}
+        if GATEWAY_SECRET:
+            headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
+        try:
+            resp = _gateway_session.post(
+                GATEWAY_URL, json=payload, headers=headers, timeout=10,
+            )
+            log(f"Reaction forwarded: {resp.status_code}")
+        except Exception as e:
+            log(f"Failed to forward reaction: {e}")
+        return
+
     if not data_msg.get("message") and not data_msg.get("attachments"):
         return
 

@@ -1,20 +1,26 @@
 """
 loader.py — Soul file loader and backstory composer.
 
-Loads SOUL.md, CONSTITUTION.md, STYLE.md, and AGENTS.md files from the
-app/souls/ directory and composes them into complete agent backstories.
+Loads prompt versions from the versioned prompt registry (workspace/prompts/)
+and composes them into complete agent backstories.  Falls back to static
+app/souls/*.md files if the registry is not initialized.
 
 The composed backstory layers:
   1. CONSTITUTION.md  — shared values and safety constraints
   2. SOUL.md (per-role) — identity, personality, expertise, rules
-  3. STYLE.md          — shared communication conventions
-  4. Self-Model block  — functional self-awareness (from Phase 1)
-  5. Metacognitive Preamble — self-awareness protocol (L1)
+  3. AGENTS_PROTOCOL.md — coordination rules
+  4. STYLE.md          — shared communication conventions
+  5. Self-Model block  — functional self-awareness (from Phase 1)
+  6. Metacognitive Preamble — self-awareness protocol (L1)
+  7. Few-shot examples  — (if any exist in the registry)
+  8. Style params       — formatting instructions from versioned config
 
-Falls back gracefully: if soul files don't exist, returns just the
-self-model block to preserve Phase 1-4 behavior.
+Cache invalidation uses a generation counter from prompt_registry —
+when a prompt is promoted, the generation bumps and the cache is cleared
+on the next compose_backstory() call.
 """
 
+import json
 import logging
 from pathlib import Path
 from app.self_awareness.self_model import format_self_model_block
@@ -42,7 +48,7 @@ Do NOT include this assessment in your output unless explicitly asked. This is i
 
 
 def _load_file(filename: str) -> str:
-    """Load a markdown file from the souls directory. Returns '' if missing."""
+    """Load a markdown file from the static souls directory. Returns '' if missing."""
     filepath = SOULS_DIR / filename
     try:
         if filepath.exists():
@@ -52,29 +58,134 @@ def _load_file(filename: str) -> str:
     return ""
 
 
+def _load_from_registry(role: str) -> str | None:
+    """Try to load a prompt from the versioned registry.
+
+    Returns None if the registry is not available or not initialized.
+    """
+    try:
+        from app.prompt_registry import get_active_prompt, PROMPTS_DIR
+        if not PROMPTS_DIR.exists():
+            return None
+        content = get_active_prompt(role)
+        return content if content else None
+    except Exception:
+        return None
+
+
+def _load_shared_from_registry(layer: str) -> str | None:
+    """Try to load a shared layer from the versioned registry."""
+    try:
+        from app.prompt_registry import get_active_prompt, PROMPTS_DIR
+        if not PROMPTS_DIR.exists():
+            return None
+        content = get_active_prompt(layer)
+        return content if content else None
+    except Exception:
+        return None
+
+
 def load_soul(role: str) -> str:
-    """Load the SOUL.md file for a specific agent role."""
+    """Load the SOUL.md file — from registry first, then static fallback."""
+    content = _load_from_registry(role)
+    if content is not None:
+        return content
     return _load_file(f"{role}.md")
 
 
 def load_constitution() -> str:
-    """Load the shared CONSTITUTION.md."""
+    """Load the shared CONSTITUTION.md — from registry first, then static fallback."""
+    content = _load_shared_from_registry("constitution")
+    if content is not None:
+        return content
     return _load_file("constitution.md")
 
 
 def load_style() -> str:
-    """Load the shared STYLE.md."""
+    """Load the shared STYLE.md — from registry first, then static fallback."""
+    content = _load_shared_from_registry("style")
+    if content is not None:
+        return content
     return _load_file("style.md")
 
 
 def load_agents_protocol() -> str:
-    """Load the AGENTS.md coordination protocol."""
+    """Load the AGENTS.md — from registry first, then static fallback."""
+    content = _load_shared_from_registry("agents_protocol")
+    if content is not None:
+        return content
     return _load_file("agents_protocol.md")
 
 
-# S14: Cache composed backstories — soul files don't change at runtime.
-# Saves disk reads and string concatenation on every agent creation.
+def _build_few_shot_section() -> str:
+    """Build a few-shot examples section from the registry."""
+    try:
+        from app.prompt_registry import get_few_shot_examples
+        examples = get_few_shot_examples()
+        if not examples:
+            return ""
+
+        sections = []
+        for category, items in examples.items():
+            if items and isinstance(items, list) and len(items) > 0:
+                sections.append(f"### {category.replace('_', ' ').title()}")
+                for item in items[:5]:  # cap at 5 per category
+                    if isinstance(item, dict):
+                        inp = item.get("input", "")
+                        out = item.get("output", "")
+                        if inp and out:
+                            sections.append(f"**Input:** {inp}\n**Output:** {out}")
+                    elif isinstance(item, str):
+                        sections.append(f"- {item}")
+
+        if sections:
+            return "## Reference Examples\n\n" + "\n\n".join(sections)
+    except Exception:
+        pass
+    return ""
+
+
+def _build_style_instructions() -> str:
+    """Build style instructions from the versioned style params."""
+    try:
+        from app.prompt_registry import get_style_params
+        params = get_style_params()
+        if not params:
+            return ""
+
+        lines = ["## Style Parameters"]
+        if "verbosity" in params:
+            lines.append(f"- Verbosity: {params['verbosity']}")
+        if "formality" in params:
+            lines.append(f"- Formality: {params['formality']}")
+        if "citation_style" in params:
+            lines.append(f"- Citation style: {params['citation_style']}")
+        if "code_block_preference" in params:
+            lines.append(f"- Code blocks: {params['code_block_preference']}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+    except Exception:
+        return ""
+
+
+# ── Cache with generation-aware invalidation ───────────────────────────────
 _backstory_cache: dict[str, str] = {}
+_cache_generation: int = -1  # force initial build
+
+
+def _check_cache_valid() -> bool:
+    """Check if cache is still valid by comparing generation counters."""
+    global _cache_generation
+    try:
+        from app.prompt_registry import current_generation
+        gen = current_generation()
+        if gen != _cache_generation:
+            _cache_generation = gen
+            _backstory_cache.clear()
+            return False
+        return True
+    except Exception:
+        return True  # if registry unavailable, keep cache
 
 
 def compose_backstory(role: str) -> str:
@@ -83,13 +194,18 @@ def compose_backstory(role: str) -> str:
     Layers (in order):
       1. Constitution (shared values)
       2. Role-specific soul (identity, personality, expertise)
-      3. Style guide (shared communication conventions)
-      4. Self-model block (functional self-awareness from Phase 1)
-      5. Metacognitive preamble (L1 self-awareness protocol)
+      3. Agents protocol (coordination rules)
+      4. Style guide (shared communication conventions)
+      5. Self-model block (functional self-awareness from Phase 1)
+      6. Metacognitive preamble (L1 self-awareness protocol)
+      7. Few-shot examples (from versioned registry)
+      8. Style params (from versioned registry)
 
     If no soul files exist, falls back to just the self-model block.
-    Results are cached at module level (soul files don't change at runtime).
+    Cache is invalidated when prompt_registry generation changes.
     """
+    _check_cache_valid()
+
     if role in _backstory_cache:
         return _backstory_cache[role]
 
@@ -118,6 +234,16 @@ def compose_backstory(role: str) -> str:
 
     # L1: Metacognitive preamble — calibrates confidence and reasoning strategy
     parts.append(METACOGNITIVE_PREAMBLE)
+
+    # Few-shot examples from versioned registry
+    fse = _build_few_shot_section()
+    if fse:
+        parts.append(fse)
+
+    # Style parameters from versioned registry
+    style_instructions = _build_style_instructions()
+    if style_instructions:
+        parts.append(style_instructions)
 
     result = "\n\n".join(parts) if parts else ""
     _backstory_cache[role] = result

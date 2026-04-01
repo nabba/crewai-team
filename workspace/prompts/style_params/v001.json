@@ -1,0 +1,7 @@
+{
+  "verbosity": "concise",
+  "formality": "casual-professional",
+  "max_signal_length": 1400,
+  "citation_style": "inline",
+  "code_block_preference": "fenced"
+}
