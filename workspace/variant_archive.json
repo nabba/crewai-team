@@ -168,5 +168,194 @@
     "mutation_summary": "Skill kept (delta=+0.2592, tests=1/2)",
     "timestamp": "2026-03-30T12:33:34.045223+00:00",
     "generation": 9
+  },
+  {
+    "id": "exp_202603312036_4101",
+    "parent_id": "exp_202603301132_a904",
+    "hypothesis": "Adding explicit validation and retry logic for None/empty LLM responses will reduce recurring ValueError errors and improve self-heal rate",
+    "change_type": "skill",
+    "fitness_before": 0.5,
+    "fitness_after": 0.875273,
+    "delta": 0.375273,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/llm_response_validation.md"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.3753, tests=2/2)",
+    "timestamp": "2026-03-31T20:37:34.570339+00:00",
+    "generation": 10
+  },
+  {
+    "id": "exp_202603312038_d93e",
+    "parent_id": "exp_202603312036_4101",
+    "hypothesis": "Optimizing web search result synthesis and summarization will improve output quality by reducing redundant or irrelevant information in responses.",
+    "change_type": "skill",
+    "fitness_before": 0.875273,
+    "fitness_after": 0.87871,
+    "delta": 0.003437,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/advanced_web_search_summarization.md"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.0034, tests=2/2)",
+    "timestamp": "2026-03-31T20:39:15.420765+00:00",
+    "generation": 11
+  },
+  {
+    "id": "exp_202603312049_2aec",
+    "parent_id": "exp_202603312038_d93e",
+    "hypothesis": "Adding robust validation and retry logic for LLM responses will reduce recurring errors like ValueError and BadRequestError, improving error resolution and self-heal rate.",
+    "change_type": "skill",
+    "fitness_before": 0.87871,
+    "fitness_after": 0.882293,
+    "delta": 0.003583,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/comprehensive_llm_error_handling.md"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.0036, tests=1/2)",
+    "timestamp": "2026-03-31T20:51:02.114114+00:00",
+    "generation": 12
+  },
+  {
+    "id": "exp_202603312054_0653",
+    "parent_id": "exp_202603312049_2aec",
+    "hypothesis": "Adding a skill for handling API connection errors will reduce recurring APIConnectionError incidents, as they currently account for 3 of the recent errors and past successes show error-handling skills improve reliability",
+    "change_type": "skill",
+    "fitness_before": 0.882293,
+    "fitness_after": 0.879293,
+    "delta": -0.003,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/api_error_handling.py"
+    ],
+    "mutation_summary": "Skill kept (delta=-0.0030, tests=2/2)",
+    "timestamp": "2026-03-31T21:01:07.614836+00:00",
+    "generation": 13
+  },
+  {
+    "id": "exp_202604010003_df87",
+    "parent_id": "exp_202603312054_0653",
+    "hypothesis": "Improving prompt engineering for concise Signal-friendly responses will enhance output quality and reduce redundancy, as current prompts may produce overly verbose or irrelevant content.",
+    "change_type": "skill",
+    "fitness_before": 0.879293,
+    "fitness_after": 0.853466,
+    "delta": -0.025827,
+    "test_pass_rate": 0.0,
+    "status": "discard",
+    "files_changed": [
+      "skills/prompt_templates.md"
+    ],
+    "mutation_summary": "Skill reverted (delta=-0.0258, tests=2/2)",
+    "timestamp": "2026-04-01T00:16:08.472802+00:00",
+    "generation": 14
+  },
+  {
+    "id": "exp_202604010003_3ae6",
+    "parent_id": "exp_202603312054_0653",
+    "hypothesis": "Improving prompt engineering for more concise Signal-friendly responses will enhance output quality and user satisfaction, as current responses may be verbose or less tailored to Signal's constraints.",
+    "change_type": "skill",
+    "fitness_before": 0.879293,
+    "fitness_after": 0.853466,
+    "delta": -0.025827,
+    "test_pass_rate": 0.0,
+    "status": "discard",
+    "files_changed": [
+      "skills/signal_prompt_optimization_skill.py"
+    ],
+    "mutation_summary": "Skill reverted (delta=-0.0258, tests=1/2)",
+    "timestamp": "2026-04-01T00:23:26.804256+00:00",
+    "generation": 14
+  },
+  {
+    "id": "exp_202604010030_5f93",
+    "parent_id": "exp_202603312054_0653",
+    "hypothesis": "Adding a validation wrapper with retry logic for LLM responses will reduce recurring errors like ValueError and BadRequestError, improving error rate and self-heal rate.",
+    "change_type": "code",
+    "fitness_before": 0.853466,
+    "fitness_after": 0.853466,
+    "delta": 0.0,
+    "test_pass_rate": 0.0,
+    "status": "discard",
+    "files_changed": [
+      "skills/validation.py",
+      "skills/handle_task.py",
+      "skills/research.py"
+    ],
+    "mutation_summary": "No improvement (delta=+0.0000), reverted",
+    "timestamp": "2026-04-01T00:30:27.656106+00:00",
+    "generation": 14
+  },
+  {
+    "id": "exp_202604010038_f5e1",
+    "parent_id": "exp_202603312054_0653",
+    "hypothesis": "Implementing explicit validation and retry logic for empty/None LLM responses will reduce recurring ValueError errors and improve task success rates.",
+    "change_type": "skill",
+    "fitness_before": 0.5,
+    "fitness_after": 0.853466,
+    "delta": 0.353466,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/validate_and_retry_llm_response.py"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.3535, tests=2/2)",
+    "timestamp": "2026-04-01T00:40:14.830450+00:00",
+    "generation": 14
+  },
+  {
+    "id": "exp_202604010059_f9da",
+    "parent_id": "exp_202604010038_f5e1",
+    "hypothesis": "Adding a skill for handling LLM API connection errors will reduce recurring APIConnectionError errors and improve task success rate.",
+    "change_type": "skill",
+    "fitness_before": 0.5,
+    "fitness_after": 0.853466,
+    "delta": 0.353466,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/llm_api_error_handling.py"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.3535, tests=2/2)",
+    "timestamp": "2026-04-01T01:00:57.775497+00:00",
+    "generation": 15
+  },
+  {
+    "id": "exp_202604010114_507d",
+    "parent_id": "exp_202604010059_f9da",
+    "hypothesis": "Improving multi-step reasoning patterns for complex tasks will enhance output quality and reduce redundancy in responses, particularly for queries requiring synthesis of multiple data points.",
+    "change_type": "skill",
+    "fitness_before": 0.853466,
+    "fitness_after": 0.853466,
+    "delta": 0.0,
+    "test_pass_rate": 0.0,
+    "status": "keep",
+    "files_changed": [
+      "skills/multi_step_reasoning_complex_tasks.py"
+    ],
+    "mutation_summary": "Skill kept (delta=+0.0000, tests=1/2)",
+    "timestamp": "2026-04-01T01:15:38.533992+00:00",
+    "generation": 16
+  },
+  {
+    "id": "exp_202604010119_ab84",
+    "parent_id": "exp_202604010114_507d",
+    "hypothesis": "Adding explicit validation and retry logic for None/empty LLM responses will reduce recurring ValueError errors",
+    "change_type": "code",
+    "fitness_before": 0.848216,
+    "fitness_after": 0.848216,
+    "delta": 0.0,
+    "test_pass_rate": 0.0,
+    "status": "discard",
+    "files_changed": [
+      "skills/comprehensive_llm_error_handling.py"
+    ],
+    "mutation_summary": "No improvement (delta=+0.0000), reverted",
+    "timestamp": "2026-04-01T01:19:27.786366+00:00",
+    "generation": 17
   }
 ]
