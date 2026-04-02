@@ -54,7 +54,7 @@ _DIRECT_PATTERNS = [
     r"\byour\s+(?:architecture|design|code|codebase|agents?|tools?|memory|config)\b",
     r"\bhow\s+(?:are\s+you|do\s+you)\s+(?:built|designed|structured|configured|work)\b",
     r"\byour\s+(?:name|version|capabilities|limitations?|purpose)\b",
-    r"\bhow\s+many\s+agents?\b", r"\bwhich\s+(?:llm|model)s?\s+do\s+you\s+use\b",
+    r"\bhow\s+many\s+agents?\b", r"\b(?:which|what)\s+(?:llm|model)s?\s+do\s+you\s+use\b",
     r"\byour\s+(?:llm|model)\s+cascade\b", r"\byour\s+(?:source\s+code|stack|setup)\b",
     r"\binspect\s+(?:yourself|your|the\s+system)\b", r"\byour\s+soul\b",
 ]
