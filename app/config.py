@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     self_healing_enabled: bool = True         # auto-remediation on health alerts
     version_manifest_enabled: bool = True     # composite version tracking
 
+    # ── Host Bridge (controlled external resource access) ──────────────
+    bridge_enabled: bool = False         # disabled by default — start bridge first
+    bridge_host: str = "host.docker.internal"
+    bridge_port: int = 9100
+
     # ── Agent Zero amendments ───────────────────────────────────────────
     history_compression_enabled: bool = True   # 3-tier conversation compression
     lifecycle_hooks_enabled: bool = True       # ordered execution hooks

@@ -20,3 +20,5 @@ dist/
 *.p12
 *.pfx
 firebase-service-account.json
+# Host Bridge — capability tokens contain secrets
+host_bridge/capabilities.json

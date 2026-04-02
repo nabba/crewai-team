@@ -1,0 +1,66 @@
+[
+  {
+    "agent_id": "commander",
+    "token": "cmd-GENERATE-WITH-python3-c-import-secrets-print-secrets-token-hex-16",
+    "allowed_actions": [
+      "filesystem.read", "filesystem.list", "filesystem.write",
+      "network.http", "network.scan",
+      "execute", "gpu.inference", "status"
+    ],
+    "allowed_paths": [
+      "/Users/YOUR_USER/BotArmy/crewai-team/workspace/*",
+      "/Users/YOUR_USER/BotArmy/crewai-team/app/*",
+      "/Users/YOUR_USER/Documents/*",
+      "/tmp/crewai-*"
+    ],
+    "blocked_paths": [],
+    "allowed_hosts": ["*"],
+    "max_requests_per_minute": 60,
+    "risk_ceiling": "critical"
+  },
+  {
+    "agent_id": "researcher",
+    "token": "res-GENERATE-YOUR-OWN-TOKEN",
+    "allowed_actions": ["filesystem.read", "filesystem.list", "network.http", "gpu.inference", "status"],
+    "allowed_paths": ["/Users/YOUR_USER/BotArmy/crewai-team/workspace/*", "/tmp/crewai-*"],
+    "blocked_paths": [],
+    "allowed_hosts": ["*"],
+    "max_requests_per_minute": 30,
+    "risk_ceiling": "medium"
+  },
+  {
+    "agent_id": "coder",
+    "token": "cod-GENERATE-YOUR-OWN-TOKEN",
+    "allowed_actions": ["filesystem.read", "filesystem.list", "filesystem.write", "network.http", "execute", "gpu.inference"],
+    "allowed_paths": ["/Users/YOUR_USER/BotArmy/crewai-team/workspace/*", "/Users/YOUR_USER/BotArmy/crewai-team/app/*", "/tmp/crewai-*"],
+    "blocked_paths": ["/Users/YOUR_USER/BotArmy/crewai-team/app/souls/*", "/Users/YOUR_USER/BotArmy/crewai-team/host_bridge/*"],
+    "allowed_hosts": ["github.com", "api.github.com", "pypi.org", "*"],
+    "max_requests_per_minute": 45,
+    "risk_ceiling": "high"
+  },
+  {
+    "agent_id": "writer",
+    "token": "wrt-GENERATE-YOUR-OWN-TOKEN",
+    "allowed_actions": ["filesystem.read", "filesystem.list", "filesystem.write", "network.http", "gpu.inference"],
+    "allowed_paths": ["/Users/YOUR_USER/BotArmy/crewai-team/workspace/output/*", "/tmp/crewai-*"],
+    "blocked_paths": [],
+    "allowed_hosts": ["*"],
+    "max_requests_per_minute": 20,
+    "risk_ceiling": "low"
+  },
+  {
+    "agent_id": "self_improver",
+    "token": "si-GENERATE-YOUR-OWN-TOKEN",
+    "allowed_actions": ["filesystem.read", "filesystem.list", "filesystem.write", "network.http", "execute", "gpu.inference"],
+    "allowed_paths": ["/Users/YOUR_USER/BotArmy/crewai-team/workspace/*", "/Users/YOUR_USER/BotArmy/crewai-team/app/*", "/tmp/crewai-*"],
+    "blocked_paths": [
+      "/Users/YOUR_USER/BotArmy/crewai-team/app/souls/*",
+      "/Users/YOUR_USER/BotArmy/crewai-team/workspace/philosophy/*",
+      "/Users/YOUR_USER/BotArmy/crewai-team/host_bridge/*",
+      "/Users/YOUR_USER/.crewai-bridge/*"
+    ],
+    "allowed_hosts": ["github.com", "api.github.com", "pypi.org", "arxiv.org"],
+    "max_requests_per_minute": 30,
+    "risk_ceiling": "high"
+  }
+]

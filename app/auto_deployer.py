@@ -127,6 +127,11 @@ PROTECTED_FILES = frozenset({
     "app/adaptive_ensemble.py",
     "app/map_elites.py",
     "app/cascade_evaluator.py",
+    # Host Bridge — controlled external resource access
+    "app/bridge_client.py",
+    "app/tools/bridge_tools.py",
+    "host_bridge/main.py",
+    "host_bridge/capabilities.json",
     # Fiction inspiration RAG — epistemic boundary enforcement
     "app/fiction_inspiration.py",
     # Agent Zero amendments — lifecycle hooks, compression, tool execution, isolation

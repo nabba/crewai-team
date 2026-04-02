@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.crewai.bridge</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/andrus/BotArmy/crewai-team/host_bridge/main.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BRIDGE_PORT</key>
+        <string>9100</string>
+        <key>SIGNAL_OWNER_NUMBER</key>
+        <string>+372XXXXXXXX</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/andrus/.crewai-bridge/bridge.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/andrus/.crewai-bridge/bridge.err</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/andrus/BotArmy/crewai-team</string>
+</dict>
+</plist>
