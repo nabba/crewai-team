@@ -191,7 +191,7 @@ class SelfImprovementCrew:
             _tokens = tracker.total_tokens if tracker else 0
             _model = ", ".join(sorted(tracker.models_used)) if tracker and tracker.models_used else ""
             _cost = tracker.total_cost_usd if tracker else 0.0
-            crew_completed("self_improvement", task_id, result[:200],
+            crew_completed("self_improvement", task_id, result[:2000],
                            tokens_used=_tokens, model=_model, cost_usd=_cost)
             logger.info(f"YouTube learning completed: {url}")
             return f"Watched and learned from video. Skill saved to skills/{skill_filename}.md\n\nKey takeaways:\n{result[:1000]}"

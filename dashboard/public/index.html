@@ -280,7 +280,7 @@
     .modal-stat .val.cyan { color: var(--cyan); }
     .modal-stat .val.red { color: var(--red); }
     .modal-stat .val.orange { color: var(--orange); }
-    .modal-task-text { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-size: .72rem; line-height: 1.45; max-height: 50vh; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+    .modal-task-text { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-size: .72rem; line-height: 1.5; min-height: 40px; max-height: 45vh; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
     .heal-timeline { border-left: 2px solid var(--border); padding-left: 10px; margin-top: 6px; }
     .heal-step { position: relative; padding: 4px 0 8px; font-size: .7rem; }
     .heal-step::before { content: ""; position: absolute; left: -14px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
@@ -1090,9 +1090,9 @@ function renderTasks() {
     } else if (t.crew) {
       flow = `<div class="task-flow">${ICONS["commander"]||""}<span class="arrow">→</span>${ICONS[t.crew]||"🤖"}</div>`;
     }
-    return `<tr${isChild?' style="opacity:.75"':''}>
+    return `<tr style="${isChild?'opacity:.75;':''}cursor:pointer" onclick="openTaskModal('${esc(tid)}')">
       <td style="${indent}">${prefix}${ICONS[t.crew]||"🤖"} ${esc(t.crew)||"—"}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a class="task-link" onclick="openTaskModal('${esc(tid)}')" title="Click for details">${esc(t.summary)||"—"}</a></td>
+      <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.summary||'')}">${esc(t.summary)||"—"}</td>
       <td>${modelTag}</td>
       <td>${tokenStr}</td>
       <td>${costStr}</td>

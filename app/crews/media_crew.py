@@ -86,7 +86,7 @@ class MediaCrew:
             _cost = tracker.total_cost_usd if tracker else 0.0
             update_belief("media_analyst", "completed", current_task=task_description[:100])
             record_metric("task_completion_time", _time.monotonic() - _start, {"crew": "media"})
-            crew_completed("media", task_id, result_str[:200],
+            crew_completed("media", task_id, result_str[:2000],
                            tokens_used=_tokens, model=_model, cost_usd=_cost)
             return result_str
         except Exception as exc:

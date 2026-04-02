@@ -772,7 +772,7 @@ def run_evolution_session(max_iterations: int = 5) -> str:
         _tokens = tracker.total_tokens if tracker else 0
         _model = ", ".join(sorted(tracker.models_used)) if tracker and tracker.models_used else ""
         _cost = tracker.total_cost_usd if tracker else 0.0
-        crew_completed("self_improvement", task_id, summary[:200],
+        crew_completed("self_improvement", task_id, summary[:2000],
                        tokens_used=_tokens, model=_model, cost_usd=_cost)
         return summary
 

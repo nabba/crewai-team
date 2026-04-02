@@ -220,7 +220,7 @@ class ResearchCrew:
         )
         crew = Crew(agents=[researcher], tasks=[task], process=Process.sequential, verbose=True)
         result_str = str(crew.kickoff())
-        crew_completed("research", task_id, result_str[:200])
+        crew_completed("research", task_id, result_str[:2000])
         return result_str
 
     def _run_single(self, topic: str, task_id: str, force_tier: str | None = None) -> str:
@@ -234,7 +234,7 @@ class ResearchCrew:
         )
         crew = Crew(agents=[researcher], tasks=[task], process=Process.sequential, verbose=True)
         result_str = str(crew.kickoff())
-        crew_completed("research", task_id, result_str[:200])
+        crew_completed("research", task_id, result_str[:2000])
         return result_str
 
     @staticmethod
@@ -335,7 +335,7 @@ class ResearchCrew:
                         result = str(crew.kickoff())
                         if not result or result.strip().lower() in ("none", ""):
                             raise ValueError("Empty LLM response")
-                        crew_completed("research", sub_id, result[:200])
+                        crew_completed("research", sub_id, result[:2000])
                         return result
                     except Exception as exc:
                         last_exc = exc
@@ -444,5 +444,5 @@ class ResearchCrew:
             + (f"\n\nNote: {len(failed)} sub-tasks failed." if failed else "")
         )
         result = str(llm.call(prompt)).strip()
-        crew_completed("research", parent_task_id, result[:200])
+        crew_completed("research", parent_task_id, result[:2000])
         return result

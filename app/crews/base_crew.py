@@ -124,7 +124,7 @@ def run_single_agent_crew(
                 _cost = t.total_cost_usd
         except Exception:
             pass
-        crew_completed(crew_name, task_id, result[:200],
+        crew_completed(crew_name, task_id, result[:2000],
                        tokens_used=_tokens, model=_model, cost_usd=_cost)
         return result
     except Exception as exc:
