@@ -91,6 +91,13 @@ PROTECTED_FILES = frozenset({
     "app/souls/writer.md",
     "app/souls/media_analyst.md",
     "app/souls/self_improver.md",
+    # Self-awareness proprioception — inspection, grounding, cogito, journal
+    "app/self_awareness/inspect_tools.py",
+    "app/self_awareness/query_router.py",
+    "app/self_awareness/grounding.py",
+    "app/self_awareness/knowledge_ingestion.py",
+    "app/self_awareness/cogito.py",
+    "app/self_awareness/journal.py",
     # Homeostatic regulation module — contains immutable set-point TARGETS.
     # Runtime state lives in workspace/homeostasis.json (not protected).
     "app/self_awareness/homeostasis.py",

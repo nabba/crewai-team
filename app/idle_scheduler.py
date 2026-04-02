@@ -317,6 +317,27 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: version snapshot failed", exc_info=True)
     jobs.append(("version-snapshot", _version_snapshot))
 
+    # ── Cogito: metacognitive self-reflection cycle ─────────────────────
+    def _cogito_cycle():
+        try:
+            from app.self_awareness.cogito import run_cogito
+            report = run_cogito()
+            logger.info(f"idle_scheduler: cogito cycle — health={report.overall_health}")
+        except Exception:
+            logger.debug("idle_scheduler: cogito cycle failed", exc_info=True)
+    jobs.append(("cogito-cycle", _cogito_cycle))
+
+    # ── Self-knowledge: re-ingest codebase for self-inspection ────────
+    def _self_knowledge_ingest():
+        try:
+            from app.self_awareness.knowledge_ingestion import ingest_codebase
+            result = ingest_codebase(full=False)
+            if result.get("chunks_added", 0) > 0:
+                logger.info(f"idle_scheduler: self-knowledge ingested {result['chunks_added']} chunks")
+        except Exception:
+            logger.debug("idle_scheduler: self-knowledge ingest failed", exc_info=True)
+    jobs.append(("self-knowledge-ingest", _self_knowledge_ingest))
+
     # ── Self-training: curate collected data + trigger training ─────────
     def _training_curate():
         try:
