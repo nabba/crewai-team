@@ -407,6 +407,23 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Health monitor initialization failed (non-fatal)", exc_info=True)
 
+    # ── Agent Zero amendments initialization ────────────────────────────
+    try:
+        if settings.lifecycle_hooks_enabled:
+            from app.lifecycle_hooks import get_registry
+            hook_reg = get_registry()
+            logger.info(f"Lifecycle hooks initialized ({len(hook_reg.list_hooks())} hooks)")
+    except Exception:
+        logger.warning("Lifecycle hooks init failed (non-fatal)", exc_info=True)
+
+    try:
+        if settings.project_isolation_enabled:
+            from app.project_isolation import get_manager
+            pm = get_manager()
+            logger.info(f"Project isolation initialized ({len(pm.list_projects())} projects)")
+    except Exception:
+        logger.warning("Project isolation init failed (non-fatal)", exc_info=True)
+
     # Create philosophy KB directories
     os.makedirs("/app/workspace/philosophy/texts", exist_ok=True)
 
@@ -644,6 +661,30 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             att_note = f" [+{len(attachments)} attachment(s)]"
         add_message(sender, "user", text + att_note)
 
+        # ── Agent Zero amendments: history + project detection ────────
+        try:
+            from app.config import get_settings as _gs
+            _s = _gs()
+
+            # History compression: track message in compressed history
+            if _s.history_compression_enabled:
+                from app.history_compression import get_history, Message as HMsg
+                from app.security import _sender_hash
+                h = get_history(_sender_hash(sender))
+                h.start_new_topic()
+                h.add_message(HMsg(role="user", content=text + att_note))
+
+            # Project isolation: auto-detect venture from task text
+            if _s.project_isolation_enabled:
+                from app.project_isolation import get_manager as _get_pm
+                _pm = _get_pm()
+                detected = _pm.detect_project(text)
+                if detected:
+                    _pm.activate(detected)
+                    logger.debug(f"Project detected: {detected}")
+        except Exception:
+            logger.debug("Amendment hooks (history/project) failed", exc_info=True)
+
         # Mirror to dashboard chat (so dashboard users see Signal messages)
         report_chat_message("user", text + att_note, source="signal")
 
@@ -658,6 +699,20 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 
         # Mirror to dashboard chat (so dashboard users see Signal responses)
         report_chat_message("assistant", result, source="signal")
+
+        # ── Agent Zero: record response in compressed history + async compress ──
+        try:
+            from app.config import get_settings as _gs2
+            _s2 = _gs2()
+            if _s2.history_compression_enabled:
+                from app.history_compression import get_history, Message as HMsg
+                from app.security import _sender_hash
+                h = get_history(_sender_hash(sender))
+                h.add_message(HMsg(role="assistant", content=result[:4000]))
+                if h.needs_compression:
+                    h.compress_async()
+        except Exception:
+            logger.debug("History compression post-response failed", exc_info=True)
 
         # Extract facts into Mem0 persistent memory (fire-and-forget background task)
         asyncio.get_running_loop().run_in_executor(None, _extract_to_mem0, text, result)

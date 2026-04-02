@@ -108,6 +108,12 @@ class Settings(BaseSettings):
     self_healing_enabled: bool = True         # auto-remediation on health alerts
     version_manifest_enabled: bool = True     # composite version tracking
 
+    # ── Agent Zero amendments ───────────────────────────────────────────
+    history_compression_enabled: bool = True   # 3-tier conversation compression
+    lifecycle_hooks_enabled: bool = True       # ordered execution hooks
+    tool_self_correction_enabled: bool = True  # LLM-guided tool error correction
+    project_isolation_enabled: bool = True     # per-venture memory namespacing
+
     # ── ATLAS: Autonomous Tool-Learning & Adaptive Skills ──────────────
     atlas_enabled: bool = True           # enable ATLAS capability layer
     atlas_api_scout_enabled: bool = True  # autonomous API discovery

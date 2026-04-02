@@ -121,6 +121,11 @@ PROTECTED_FILES = frozenset({
     "app/atlas/video_learner.py",
     "app/atlas/learning_planner.py",
     "app/atlas/audit_log.py",
+    # Agent Zero amendments — lifecycle hooks, compression, tool execution, isolation
+    "app/history_compression.py",
+    "app/lifecycle_hooks.py",
+    "app/tool_executor.py",
+    "app/project_isolation.py",
 })
 
 
