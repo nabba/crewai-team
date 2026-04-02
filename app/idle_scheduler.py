@@ -317,6 +317,19 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: version snapshot failed", exc_info=True)
     jobs.append(("version-snapshot", _version_snapshot))
 
+    # ── Fiction library: re-ingest new books periodically ───────────────
+    def _fiction_ingest():
+        try:
+            from app.fiction_inspiration import ingest_library, FICTION_LIBRARY_DIR
+            if FICTION_LIBRARY_DIR.exists() and any(FICTION_LIBRARY_DIR.glob("**/*.md")):
+                result = ingest_library()
+                if result.get("books_ingested", 0) > 0:
+                    logger.info(f"idle_scheduler: fiction library re-ingested "
+                                f"{result.get('total_chunks', 0)} chunks")
+        except Exception:
+            logger.debug("idle_scheduler: fiction ingest failed", exc_info=True)
+    jobs.append(("fiction-ingest", _fiction_ingest))
+
     # ── MAP-Elites: quality-diversity maintenance + migration ──────────
     def _map_elites_maintain():
         try:

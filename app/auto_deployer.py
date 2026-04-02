@@ -127,6 +127,8 @@ PROTECTED_FILES = frozenset({
     "app/adaptive_ensemble.py",
     "app/map_elites.py",
     "app/cascade_evaluator.py",
+    # Fiction inspiration RAG — epistemic boundary enforcement
+    "app/fiction_inspiration.py",
     # Agent Zero amendments — lifecycle hooks, compression, tool execution, isolation
     "app/history_compression.py",
     "app/lifecycle_hooks.py",
