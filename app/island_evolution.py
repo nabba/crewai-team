@@ -302,9 +302,10 @@ class IslandEvolution:
             island.generation = self._epoch + 1
             island.update_stagnation()
 
+        best_per_island = [round(max((i.fitness for i in isl.population), default=0), 3)
+                          for isl in self._islands]
         logger.debug(f"island_evolution: epoch {self._epoch} complete — "
-                    f"best fitness per island: "
-                    f"{[max((i.fitness for i in isl.population), default=0):.3f for isl in self._islands]}")
+                    f"best fitness per island: {best_per_island}")
 
     def _migrate(self) -> None:
         """Ring topology migration: top performer from each island → next island."""
