@@ -317,6 +317,42 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: version snapshot failed", exc_info=True)
     jobs.append(("version-snapshot", _version_snapshot))
 
+    # ── Parallel evolution: diverse archive exploration ────────────────
+    def _parallel_evolution():
+        try:
+            from app.parallel_evolution import run_parallel_evolution_cycle
+            result = run_parallel_evolution_cycle()
+            if result.get("best_candidate"):
+                logger.info(f"idle_scheduler: parallel evolution promoted: "
+                            f"{result['best_candidate'].get('strategy', '?')}")
+        except Exception:
+            logger.debug("idle_scheduler: parallel evolution failed", exc_info=True)
+    jobs.append(("parallel-evolution", _parallel_evolution))
+
+    # ── ATLAS: competence sync from skill library ─────────────────────
+    def _atlas_competence_sync():
+        try:
+            from app.atlas.competence_tracker import get_tracker
+            tracker = get_tracker()
+            updated = tracker.sync_from_skill_library()
+            if updated:
+                logger.info(f"idle_scheduler: ATLAS competence sync updated {updated} entries")
+        except Exception:
+            logger.debug("idle_scheduler: ATLAS competence sync failed", exc_info=True)
+    jobs.append(("atlas-competence-sync", _atlas_competence_sync))
+
+    # ── ATLAS: stale skill verification ───────────────────────────────
+    def _atlas_stale_check():
+        try:
+            from app.atlas.skill_library import get_library
+            library = get_library()
+            stale = library.get_stale_skills(max_age_days=30)
+            if stale:
+                logger.info(f"idle_scheduler: ATLAS found {len(stale)} stale skills")
+        except Exception:
+            logger.debug("idle_scheduler: ATLAS stale check failed", exc_info=True)
+    jobs.append(("atlas-stale-check", _atlas_stale_check))
+
     # ── Tech radar: scan internet for new technologies ────────────────
     def _tech_radar():
         from app.crews.tech_radar_crew import run_tech_scan

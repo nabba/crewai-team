@@ -109,6 +109,18 @@ PROTECTED_FILES = frozenset({
     "app/self_healer.py",
     "app/reference_tasks.py",
     "Dockerfile.sandbox",
+    # Parallel evolution — archive + sandbox orchestration
+    "app/parallel_evolution.py",
+    # ATLAS — autonomous tool-learning infrastructure (Tier 3)
+    "app/atlas/__init__.py",
+    "app/atlas/skill_library.py",
+    "app/atlas/auth_patterns.py",
+    "app/atlas/api_scout.py",
+    "app/atlas/code_forge.py",
+    "app/atlas/competence_tracker.py",
+    "app/atlas/video_learner.py",
+    "app/atlas/learning_planner.py",
+    "app/atlas/audit_log.py",
 })
 
 

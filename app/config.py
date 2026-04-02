@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     self_healing_enabled: bool = True         # auto-remediation on health alerts
     version_manifest_enabled: bool = True     # composite version tracking
 
+    # ── ATLAS: Autonomous Tool-Learning & Adaptive Skills ──────────────
+    atlas_enabled: bool = True           # enable ATLAS capability layer
+    atlas_api_scout_enabled: bool = True  # autonomous API discovery
+    atlas_video_learning_enabled: bool = True  # YouTube knowledge extraction
+    atlas_code_forge_enabled: bool = True  # grounded code generation
+    atlas_competence_tracking: bool = True  # competence gap detection
+
     # ── Local LLM (Native Ollama + Metal GPU) ─────────────────────────────
     # Uses native Ollama installation for Metal GPU acceleration.
     # All roles default to qwen3:30b-a3b (MoE, ~20GB, 15-22 tok/s on M4 Max).
