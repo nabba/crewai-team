@@ -490,6 +490,116 @@ def gpu_inference(req: GpuInferenceRequest, cap: Capability = Depends(authentica
     }, "OK")
     return {"response": data.get("response", ""), "model": req.model}
 
+# ── MLX LoRA Inference & Fusion ───────────────────────────────────────────────
+
+class MlxGenerateRequest(BaseModel):
+    model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    adapter_path: str = ""  # Empty = base model only
+    prompt: str
+    system: str = ""
+    max_tokens: int = 512
+    temperature: float = 0.7
+    seed: int = 42
+
+@app.post("/mlx/generate")
+def mlx_generate(req: MlxGenerateRequest, cap: Capability = Depends(authenticate)):
+    """Generate text using MLX with optional LoRA adapter."""
+    check_permission(cap, "mlx.generate")
+
+    # Validate adapter path if provided
+    if req.adapter_path:
+        check_path(cap, req.adapter_path)
+
+    cmd = [
+        "python", "-m", "mlx_lm.generate",
+        "--model", req.model,
+        "--max-tokens", str(req.max_tokens),
+        "--temp", str(req.temperature),
+        "--seed", str(req.seed),
+        "--prompt", req.prompt,
+    ]
+    if req.adapter_path:
+        cmd.extend(["--adapter-path", req.adapter_path])
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            audit_log(cap.agent_id, "mlx.generate", {
+                "model": req.model, "error": result.stderr[:200]
+            }, "FAILED")
+            raise HTTPException(status_code=500, detail=f"MLX generation failed: {result.stderr[:300]}")
+
+        # MLX outputs the prompt + generated text to stdout
+        # Strip the prompt echo to get just the generated response
+        output = result.stdout.strip()
+        # mlx_lm.generate prints: ==========\nPrompt: ...\n...\n==========\nGenerated text
+        # Try to extract just the generated portion
+        parts = output.split("==========")
+        response_text = parts[-1].strip() if len(parts) > 1 else output
+
+        audit_log(cap.agent_id, "mlx.generate", {
+            "model": req.model, "adapter": bool(req.adapter_path),
+            "prompt_len": len(req.prompt), "response_len": len(response_text)
+        }, "OK")
+        return {
+            "response": response_text,
+            "model": req.model,
+            "adapter": req.adapter_path or None,
+        }
+    except subprocess.TimeoutExpired:
+        audit_log(cap.agent_id, "mlx.generate", {"model": req.model}, "TIMEOUT")
+        raise HTTPException(status_code=408, detail="MLX generation timed out (120s)")
+    except FileNotFoundError:
+        raise HTTPException(status_code=501, detail="MLX not installed on host (pip install mlx-lm)")
+
+
+class MlxFuseRequest(BaseModel):
+    model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    adapter_path: str
+    output_path: str
+
+@app.post("/mlx/fuse")
+def mlx_fuse(req: MlxFuseRequest, cap: Capability = Depends(authenticate)):
+    """Fuse a LoRA adapter into a base model for faster inference."""
+    check_permission(cap, "mlx.fuse")
+    check_risk_tier(cap, "high")
+    check_path(cap, req.adapter_path)
+    check_path(cap, req.output_path)
+
+    cmd = [
+        "python", "-m", "mlx_lm.fuse",
+        "--model", req.model,
+        "--adapter-path", req.adapter_path,
+        "--save-path", req.output_path,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0:
+            audit_log(cap.agent_id, "mlx.fuse", {
+                "model": req.model, "error": result.stderr[:200]
+            }, "FAILED")
+            raise HTTPException(status_code=500, detail=f"MLX fusion failed: {result.stderr[:300]}")
+
+        audit_log(cap.agent_id, "mlx.fuse", {
+            "model": req.model, "adapter": req.adapter_path, "output": req.output_path
+        }, "OK")
+        return {
+            "status": "fused",
+            "model": req.model,
+            "output_path": req.output_path,
+        }
+    except subprocess.TimeoutExpired:
+        audit_log(cap.agent_id, "mlx.fuse", {"model": req.model}, "TIMEOUT")
+        raise HTTPException(status_code=408, detail="MLX fusion timed out (300s)")
+    except FileNotFoundError:
+        raise HTTPException(status_code=501, detail="MLX not installed on host (pip install mlx-lm)")
+
+
 # ── Approval webhook (for Signal responses) ───────────────────────────────────
 
 class ApprovalResponse(BaseModel):

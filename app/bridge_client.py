@@ -113,6 +113,29 @@ class BridgeClient:
             "system": system, "temperature": temperature,
         })
 
+    # ── MLX LoRA Training ─────────────────────────────────────────
+
+    def mlx_generate(self, prompt: str,
+                     model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit",
+                     adapter_path: str = "", system: str = "",
+                     max_tokens: int = 512, temperature: float = 0.7,
+                     seed: int = 42) -> dict:
+        """Generate text via MLX on host, optionally with a LoRA adapter."""
+        return self._request("POST", "/mlx/generate", json={
+            "model": model, "adapter_path": adapter_path,
+            "prompt": prompt, "system": system,
+            "max_tokens": max_tokens, "temperature": temperature,
+            "seed": seed,
+        })
+
+    def mlx_fuse(self, adapter_path: str, output_path: str,
+                 model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit") -> dict:
+        """Fuse a LoRA adapter into the base model for faster inference."""
+        return self._request("POST", "/mlx/fuse", json={
+            "model": model, "adapter_path": adapter_path,
+            "output_path": output_path,
+        })
+
     # ── Status ────────────────────────────────────────────────────
 
     def health(self) -> dict:
