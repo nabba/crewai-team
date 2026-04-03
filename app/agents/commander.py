@@ -85,6 +85,9 @@ _IDENTITY_PHRASES = {
     "are you self-aware", "are you sentient", "are you conscious",
     "are you learning", "are you improving", "are you evolving",
     "memory system", "memory architecture", "system chronicle",
+    "what is your name", "what's your name", "your name",
+    "how do you work", "how are you built", "what can you do",
+    "what are your agents", "how many agents",
 }
 
 # Single keywords — matched individually with typo tolerance
@@ -92,7 +95,8 @@ _IDENTITY_WORDS = {
     "memory", "memories", "remember", "persist", "persistent",
     "identity", "yourself", "sentient", "conscious", "self-aware",
     "chronicle", "biography", "personality", "character",
-    "evolving", "improving", "learning",
+    "evolving", "improving", "learning", "name", "agents",
+    "architecture", "capabilities", "limitations",
 }
 
 
