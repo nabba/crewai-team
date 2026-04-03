@@ -492,6 +492,9 @@ def gpu_inference(req: GpuInferenceRequest, cap: Capability = Depends(authentica
 
 # ── MLX LoRA Inference & Fusion ───────────────────────────────────────────────
 
+import sys
+_PYTHON = sys.executable  # Use the same Python that runs the bridge (venv with mlx-lm)
+
 class MlxGenerateRequest(BaseModel):
     model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit"
     adapter_path: str = ""  # Empty = base model only
@@ -511,7 +514,7 @@ def mlx_generate(req: MlxGenerateRequest, cap: Capability = Depends(authenticate
         check_path(cap, req.adapter_path)
 
     cmd = [
-        "python", "-m", "mlx_lm.generate",
+        _PYTHON, "-m", "mlx_lm", "generate",
         "--model", req.model,
         "--max-tokens", str(req.max_tokens),
         "--temp", str(req.temperature),
@@ -531,13 +534,16 @@ def mlx_generate(req: MlxGenerateRequest, cap: Capability = Depends(authenticate
             }, "FAILED")
             raise HTTPException(status_code=500, detail=f"MLX generation failed: {result.stderr[:300]}")
 
-        # MLX outputs the prompt + generated text to stdout
-        # Strip the prompt echo to get just the generated response
+        # MLX output format: ==========\n<generated text>\n==========\n<stats>
+        # Extract the text between the two ========== delimiters
         output = result.stdout.strip()
-        # mlx_lm.generate prints: ==========\nPrompt: ...\n...\n==========\nGenerated text
-        # Try to extract just the generated portion
         parts = output.split("==========")
-        response_text = parts[-1].strip() if len(parts) > 1 else output
+        if len(parts) >= 3:
+            response_text = parts[1].strip()  # Text between first and second delimiter
+        elif len(parts) == 2:
+            response_text = parts[1].strip()
+        else:
+            response_text = output
 
         audit_log(cap.agent_id, "mlx.generate", {
             "model": req.model, "adapter": bool(req.adapter_path),
@@ -569,7 +575,7 @@ def mlx_fuse(req: MlxFuseRequest, cap: Capability = Depends(authenticate)):
     check_path(cap, req.output_path)
 
     cmd = [
-        "python", "-m", "mlx_lm.fuse",
+        _PYTHON, "-m", "mlx_lm", "fuse",
         "--model", req.model,
         "--adapter-path", req.adapter_path,
         "--save-path", req.output_path,
