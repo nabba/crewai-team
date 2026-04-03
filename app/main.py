@@ -535,6 +535,14 @@ def _get_feedback_pipeline():
     return _feedback_pipeline_instance
 
 
+async def _safe_react(sender: str, msg_timestamp: int):
+    """Send 👀 reaction in background — never block the handler."""
+    try:
+        await signal_client.react(sender, "👀", sender, msg_timestamp)
+    except Exception:
+        logger.debug("Failed to send 👀 reaction", exc_info=True)
+
+
 async def handle_task(sender: str, text: str, attachments: list = None,
                       msg_timestamp: int = 0):
     global _inflight_tasks
@@ -543,12 +551,10 @@ async def handle_task(sender: str, text: str, attachments: list = None,
     # Start task tracking for metrics
     task_row_id = start_task(sender)
 
-    # React with 👀 to acknowledge we're working on it
+    # React with 👀 to acknowledge we're working on it — fire-and-forget
+    # (don't await; Signal API roundtrip takes 3-5s and blocks the handler)
     if msg_timestamp:
-        try:
-            await signal_client.react(sender, "👀", sender, msg_timestamp)
-        except Exception:
-            logger.debug("Failed to send 👀 reaction", exc_info=True)
+        asyncio.ensure_future(_safe_react(sender, msg_timestamp))
 
     # Track activity for idle scheduler
     idle_scheduler.notify_task_start()

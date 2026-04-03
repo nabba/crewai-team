@@ -34,6 +34,19 @@ _SKILL_NAMES_TTL = 60.0  # seconds
 # Simple questions that can be classified without an Opus LLM call.
 # Returns (crew_name, difficulty) or None if no match.
 
+# ── Instant-reply map for trivial messages (no LLM call at all) ───────────────
+# Returns a direct text answer. Checked BEFORE _FAST_ROUTE_PATTERNS.
+_INSTANT_REPLIES: dict[re.Pattern, str] = {
+    re.compile(r"^ping\s*[!.?]*$", re.IGNORECASE): "Pong! 🏓",
+    re.compile(r"^pong\s*[!.?]*$", re.IGNORECASE): "Ping! 🏓",
+    re.compile(r"^(?:hi|hello|hey|hei|tere|yo)\s*[!.?]*$", re.IGNORECASE): "Hey! 👋 What can I help you with?",
+    re.compile(r"^(?:thanks|thank you|thx|aitäh|tänan)\s*[!.?]*$", re.IGNORECASE): "You're welcome! 🙂",
+    re.compile(r"^(?:good (?:morning|afternoon|evening|night))\s*[!.?]*$", re.IGNORECASE): "Hello! 👋 How can I help?",
+    re.compile(r"^(?:ok|okay|k|👍)\s*[!.?]*$", re.IGNORECASE): "👍",
+    re.compile(r"^test\s*[!.?]*$", re.IGNORECASE): "Working! ✅",
+    re.compile(r"^status\s*[!.?]*$", re.IGNORECASE): None,  # None = fall through to crew
+}
+
 _FAST_ROUTE_PATTERNS = [
     # Simple factual questions → research, difficulty 2
     (re.compile(
@@ -206,6 +219,16 @@ def _try_fast_route(user_input: str, has_attachments: bool) -> list[dict] | None
     Only fires for short, clear-intent messages without attachments.
     """
     text = user_input.strip()
+
+    # ── Instant replies: zero-LLM answers for trivial messages ──────────
+    # Only for very short messages (≤20 chars) — greetings, ping, thanks.
+    if len(text) <= 20 and not has_attachments:
+        for pattern, reply in _INSTANT_REPLIES.items():
+            if pattern.match(text):
+                if reply is None:
+                    break  # fall through to normal routing
+                logger.info(f"instant_reply: '{text}' → direct")
+                return [{"crew": "direct", "task": reply, "difficulty": 1}]
 
     # Skip fast-path for long/complex messages or those with attachments
     if len(text) > 200 or has_attachments:
@@ -868,40 +891,53 @@ class Commander:
         if fast is not None:
             return fast
 
-        # S4/S1: Routing needs history + user input for classification.
-        # Mem0 context is now also injected for conversational awareness.
-        history_block = ""
-        if sender:
-            history_text = get_history(sender, n=3)
-            if history_text:
-                history_block = (
-                    "<recent_history>\n"
-                    + history_text
-                    + "\n</recent_history>\n\n"
-                )
+        # S4/S1: Routing needs history + Mem0 context for classification.
+        # Run both lookups in parallel — they're independent I/O operations.
+        import concurrent.futures
 
-        # Inject relevant cross-session facts from Mem0 persistent memory.
-        # This gives the routing LLM awareness of what it has learned about
-        # the user and past interactions — feeds personality and smartness.
+        def _fetch_history():
+            if not sender:
+                return ""
+            h = get_history(sender, n=3)
+            return h if h else ""
+
+        def _fetch_mem0():
+            try:
+                from app.memory.mem0_manager import search_shared
+                facts = search_shared(user_input, n=3)
+                if facts:
+                    lines = []
+                    for f in facts:
+                        t = f.get("memory", "")
+                        if t and isinstance(t, str):
+                            lines.append(f"- {t[:200]}")
+                    return lines[:3]
+            except Exception:
+                pass
+            return []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            hist_fut = pool.submit(_fetch_history)
+            mem0_fut = pool.submit(_fetch_mem0)
+            history_text = hist_fut.result(timeout=5)
+            mem0_lines = mem0_fut.result(timeout=5)
+
+        history_block = ""
+        if history_text:
+            history_block = (
+                "<recent_history>\n"
+                + history_text
+                + "\n</recent_history>\n\n"
+            )
+
         mem0_block = ""
-        try:
-            from app.memory.mem0_manager import search_shared
-            facts = search_shared(user_input, n=3)
-            if facts:
-                mem0_lines = []
-                for f in facts:
-                    mem_text = f.get("memory", "")
-                    if mem_text and isinstance(mem_text, str):
-                        mem0_lines.append(f"- {mem_text[:200]}")
-                if mem0_lines:
-                    mem0_block = (
-                        "<persistent_memory>\n"
-                        "Relevant facts from long-term memory (past conversations):\n"
-                        + "\n".join(mem0_lines[:3])
-                        + "\n</persistent_memory>\n\n"
-                    )
-        except Exception:
-            pass
+        if mem0_lines:
+            mem0_block = (
+                "<persistent_memory>\n"
+                "Relevant facts from long-term memory (past conversations):\n"
+                + "\n".join(mem0_lines)
+                + "\n</persistent_memory>\n\n"
+            )
 
         prompt = (
             f"{ROUTING_PROMPT}\n\n"
@@ -2020,11 +2056,15 @@ class Commander:
                 )
 
             # S10: Run vetting + proactive scan in parallel (independent operations)
+            # Skip proactive scan for easy tasks — saves 5-10s of LLM latency
             _vet_future = _ctx_pool.submit(
                 vet_response, user_input, final_result, crew_name,
                 difficulty, get_last_tier() or "unknown",
             )
-            _proactive_notes = _run_proactive_scan(final_result, crew_name, user_input)
+            if difficulty >= 4:
+                _proactive_notes = _run_proactive_scan(final_result, crew_name, user_input)
+            else:
+                _proactive_notes = ""
             final_result = _vet_future.result(timeout=30)
             if _proactive_notes:
                 final_result += "\n\n---\n" + _proactive_notes
@@ -2133,7 +2173,9 @@ class Commander:
                 pass
 
         # ── Step 4: Proactive scan — only if not already done in parallel (S10)
-        if not _proactive_done:
+        # Skip for easy tasks (difficulty < 4) — saves 5-10s of LLM latency
+        primary_diff = decisions[0].get("difficulty", 5) if decisions else 5
+        if not _proactive_done and primary_diff >= 4:
             notes = _run_proactive_scan(final_result, crew_names, user_input)
             if notes:
                 final_result += "\n\n---\n" + notes
