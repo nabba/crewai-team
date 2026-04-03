@@ -256,13 +256,26 @@ class DynamicToolRegistry:
         Raises ToolSafetyError if name matches blocked patterns.
         Self-Improver cannot auto-approve.
         """
-        # Safety check: blocked patterns with Unicode normalization
-        # Prevents bypass via Cyrillic/homoglyph lookalike characters
+        # Safety check: blocked patterns with Unicode normalization + confusables
+        # NFKC handles within-script variants; confusables handle cross-script
+        # lookalikes (Cyrillic а→a, е→e, о→o, р→p, с→c, у→y, х→x, etc.)
         import unicodedata
-        name_normalized = unicodedata.normalize("NFKC", name).lower()
-        desc_normalized = unicodedata.normalize("NFKC", description).lower()
+        _CONFUSABLES = str.maketrans({
+            '\u0430': 'a', '\u0435': 'e', '\u043e': 'o', '\u0440': 'p',
+            '\u0441': 'c', '\u0443': 'y', '\u0445': 'x', '\u0456': 'i',
+            '\u0455': 's', '\u0458': 'j', '\u0422': 'T', '\u041d': 'H',
+            '\u0410': 'A', '\u0412': 'B', '\u0415': 'E', '\u041a': 'K',
+            '\u041c': 'M', '\u041e': 'O', '\u0420': 'P', '\u0421': 'C',
+            '\u0425': 'X', '\u0423': 'Y', '\u0417': '3',
+            '\uff41': 'a', '\uff42': 'b', '\uff43': 'c', '\uff44': 'd',  # fullwidth
+            '\uff45': 'e', '\uff46': 'f', '\uff4d': 'm', '\uff4e': 'n',
+            '\uff4f': 'o', '\uff50': 'p', '\uff52': 'r', '\uff53': 's',
+            '\uff54': 't', '\uff55': 'u', '\uff56': 'v', '\uff59': 'y',
+        })
+        name_safe = unicodedata.normalize("NFKC", name).translate(_CONFUSABLES).lower()
+        desc_safe = unicodedata.normalize("NFKC", description).translate(_CONFUSABLES).lower()
         for pattern in BLOCKED_PATTERNS:
-            if pattern in name_normalized or pattern in desc_normalized:
+            if pattern in name_safe or pattern in desc_safe:
                 raise ToolSafetyError(
                     f"Tool name/description matches blocked pattern '{pattern}'"
                 )
