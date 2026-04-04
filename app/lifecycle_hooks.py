@@ -342,6 +342,45 @@ def create_tool_memorizer_hook() -> HookFn:
     return memorize_tool_result
 
 
+def _create_budget_hook() -> HookFn:
+    """PRE_LLM_CALL at priority=2. Checks budget before API call.
+
+    Infrastructure-level enforcement — agents cannot bypass this.
+    If budget is exceeded, sets ctx.abort=True which prevents the LLM call.
+    """
+    def check_budget(ctx: HookContext) -> HookContext:
+        try:
+            from app.control_plane.budgets import get_budget_enforcer
+            from app.control_plane.projects import get_projects
+            from app.control_plane.cost_tracker import estimate_cost
+
+            enforcer = get_budget_enforcer()
+            project_id = get_projects().get_active_project_id()
+            agent_role = ctx.metadata.get("agent_role") or ctx.agent_id or "unknown"
+            model = ctx.metadata.get("model", "")
+            prompt = ctx.data.get("prompt", "")
+
+            est_cost = estimate_cost(model, prompt=prompt)
+            if est_cost <= 0:
+                return ctx  # Local model or free — no budget check needed
+
+            allowed, reason = enforcer.check_and_record(
+                project_id=project_id,
+                agent_role=agent_role,
+                estimated_cost_usd=est_cost,
+                estimated_tokens=max(len(prompt) // 4, 10),
+            )
+            if not allowed:
+                ctx.abort = True
+                ctx.abort_reason = reason or "Budget exceeded"
+                logger.warning(f"BUDGET BLOCK: {agent_role} — {reason}")
+        except Exception as e:
+            # Budget system failure should not block work (fail-open)
+            logger.debug(f"Budget hook error (allowing): {e}")
+        return ctx
+    return check_budget
+
+
 def create_health_metrics_hook() -> HookFn:
     """ON_COMPLETE at priority=60. Records interaction metrics."""
     def record_metrics(ctx: HookContext) -> HookContext:
@@ -396,6 +435,19 @@ def _register_defaults(registry: HookRegistry) -> None:
         priority=1, immutable=True,
         description="Block destructive operations (rm -rf, DROP TABLE, etc.)",
     )
+
+    # Priority 2: Budget enforcement (infrastructure-level, DGM safe)
+    try:
+        from app.config import get_settings as _gs
+        if _gs().control_plane_enabled and _gs().budget_enforcement_enabled:
+            registry.register(
+                "budget_enforcement", HookPoint.PRE_LLM_CALL,
+                _create_budget_hook(),
+                priority=2,
+                description="Atomic budget check before LLM API calls",
+            )
+    except Exception:
+        logger.debug("lifecycle_hooks: budget enforcement hook not available", exc_info=True)
 
     # Priority 10: Self-correction for malformed outputs
     registry.register(

@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     tool_self_correction_enabled: bool = True  # LLM-guided tool error correction
     project_isolation_enabled: bool = True     # per-venture memory namespacing
 
+    # ── Control Plane ─────────────────────────────────────────────────
+    control_plane_enabled: bool = True      # enable control plane (tickets, budgets, audit)
+    budget_enforcement_enabled: bool = True  # pre-call budget checks in llm_factory
+    ticket_system_enabled: bool = True      # create tickets from Signal messages
+    default_budget_per_agent_usd: float = 50.0  # monthly budget per agent
+    autonomous_mode: bool = False           # 24/7 heartbeat-driven ticket processing
+
     # ── ATLAS: Autonomous Tool-Learning & Adaptive Skills ──────────────
     atlas_enabled: bool = True           # enable ATLAS capability layer
     atlas_api_scout_enabled: bool = True  # autonomous API discovery
