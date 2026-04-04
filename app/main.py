@@ -784,7 +784,8 @@ except Exception:
 
 # ── React Dashboard (self-hosted, replaces Firebase) ─────────────────────
 # Mount LAST so API routes take precedence. Serves the React SPA build.
-_dashboard_build = Path("/app/dashboard/build")
+from pathlib import Path as _Path
+_dashboard_build = _Path("/app/dashboard/build")
 if _dashboard_build.exists() and (_dashboard_build / "index.html").exists():
     from fastapi.staticfiles import StaticFiles
     app.mount("/cp", StaticFiles(directory=str(_dashboard_build), html=True), name="dashboard-cp")
