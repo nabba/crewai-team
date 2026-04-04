@@ -134,7 +134,17 @@ def select_model(
                         default_model = name
                         break
 
-    # Step 5: Availability check
+    # Step 5: Tool-use compatibility check
+    # CrewAI agents need tool calling for most roles (research, coding, writing, media).
+    # Models that don't support tools (e.g. codestral via Ollama) will get a 400 error.
+    _ROLES_NEEDING_TOOLS = {"coding", "research", "writing", "media", "self_improve", "critic"}
+    if role in _ROLES_NEEDING_TOOLS:
+        default_entry = _cached_get_model(default_model)
+        if default_entry and default_entry.get("supports_tools") is False:
+            logger.info(f"llm_selector: {default_model} doesn't support tools, skipping for role={role}")
+            default_model = _find_fallback(role, task_type, settings, max_ram_gb)
+
+    # Step 6: Availability check
     if _model_available(default_model, settings, max_ram_gb):
         logger.info(f"llm_selector: role={role} task={task_type} mode={cost_mode} → {default_model}")
         return default_model
@@ -167,10 +177,16 @@ def _model_available(model_name: str, settings, max_ram_gb: float) -> bool:
     return False
 
 def _find_fallback(role: str, task_type: str, settings, max_ram_gb: float) -> str:
+    _needs_tools = role in {"coding", "research", "writing", "media", "self_improve", "critic"}
     for tier in ("free", "budget", "mid", "premium"):
         candidates = get_candidates_by_tier(task_type, [tier])
         for name, _score in candidates:
             if _model_available(name, settings, max_ram_gb):
+                # Skip models that don't support tools when role needs them
+                if _needs_tools:
+                    entry = get_model(name)
+                    if entry and entry.get("supports_tools") is False:
+                        continue
                 logger.info(f"llm_selector: fallback role={role} → {name} (tier={tier})")
                 return name
     logger.warning("llm_selector: all tiers failed, using Claude Sonnet 4.6")

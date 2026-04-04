@@ -68,8 +68,9 @@ CATALOG: dict[str, dict] = {
         "size_gb": 13, "ram_gb": 15, "speed": "fast",
         "context": 32_768, "multimodal": False,
         "cost_input_per_m": 0.0, "cost_output_per_m": 0.0,
-        "tool_use_reliability": 0.58,
-        "description": "Mistral code specialist — narrow but strong",
+        "tool_use_reliability": 0.0,
+        "supports_tools": False,  # Ollama codestral does NOT support tool calling
+        "description": "Mistral code specialist — code completion only, no tool use",
         "strengths": {"coding": 0.88, "debugging": 0.80, "general": 0.50},
     },
     "gemma3:27b": {
