@@ -701,6 +701,30 @@ class Commander:
         except Exception:
             pass
 
+        # ── Control Plane: create ticket for persistent tracking ──────────
+        _ticket_id = None
+        try:
+            from app.config import get_settings as _cgs
+            if _cgs().control_plane_enabled and _cgs().ticket_system_enabled:
+                from app.control_plane.tickets import get_tickets
+                from app.control_plane.projects import get_projects
+                _cp_project = get_projects().get_active_project_id()
+                _primary_diff = decisions[0].get("difficulty", 5) if decisions else 5
+                _ticket = get_tickets().create_from_signal(
+                    message=user_input, sender=sender,
+                    project_id=_cp_project, difficulty=_primary_diff,
+                )
+                _ticket_id = str(_ticket.get("id", "")) if _ticket else None
+                if _ticket_id and decisions:
+                    _primary_crew = decisions[0].get("crew", "direct")
+                    if _primary_crew != "direct":
+                        get_tickets().assign_to_crew(
+                            _ticket_id, _primary_crew,
+                            decisions[0].get("crew", "commander"),
+                        )
+        except Exception:
+            logger.debug("Control plane ticket creation failed", exc_info=True)
+
         # ── Step 2: Dispatch ──────────────────────────────────────────────
         from app.llm_factory import get_last_tier
         reflexion_exhausted = False  # L3: tracks if reflexion retries were used up
@@ -882,4 +906,18 @@ class Commander:
         # ── Step 6: Clean output for user delivery ──────────────────────────
         # Strip internal metadata (critic reviews, self-reports, debug info).
         # Truncation is handled by handle_task() which also writes .md attachment.
-        return _strip_internal_metadata(final_result)
+        cleaned = _strip_internal_metadata(final_result)
+
+        # ── Control Plane: complete ticket ────────────────────────────────
+        if _ticket_id:
+            try:
+                from app.control_plane.tickets import get_tickets
+                _cost = cost_tracker.total_cost_usd if cost_tracker else 0
+                _tokens = cost_tracker.total_tokens if cost_tracker else 0
+                get_tickets().complete(
+                    _ticket_id, cleaned[:500], cost_usd=_cost, tokens=_tokens,
+                )
+            except Exception:
+                logger.debug("Control plane ticket completion failed", exc_info=True)
+
+        return cleaned

@@ -537,5 +537,167 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         except Exception as exc:
             return f"Knowledge base error: {str(exc)[:200]}"
 
+    # ── Control Plane commands ───────────────────────────────────────────
+    if settings.control_plane_enabled:
+
+        # ── Project management ────────────────────────────────────────────
+        if lower in ("project list", "projects"):
+            try:
+                from app.control_plane.projects import get_projects
+                return get_projects().format_list()
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        _proj_switch = re.match(r"^project\s+switch\s+(\S+)", lower)
+        if _proj_switch:
+            try:
+                from app.control_plane.projects import get_projects
+                name = _proj_switch.group(1)
+                result = get_projects().switch(name)
+                if result:
+                    return f"Switched to project: {result.get('name')} — {result.get('mission', '')[:100]}"
+                return f"Project '{name}' not found. Use `project list` to see available projects."
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        if lower in ("project status", "project"):
+            try:
+                from app.control_plane.projects import get_projects
+                pm = get_projects()
+                pid = pm.get_active_project_id()
+                status = pm.get_status(pid)
+                proj = status.get("project", {})
+                tickets = status.get("tickets", {})
+                lines = [
+                    f"📋 Project: {proj.get('name', '?')}",
+                    f"   Mission: {proj.get('mission', '—')[:100]}",
+                    f"   Tickets: {tickets.get('todo', 0)} todo, {tickets.get('in_progress', 0)} in progress, "
+                    f"{tickets.get('done', 0)} done, {tickets.get('failed', 0)} failed",
+                ]
+                return "\n".join(lines)
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        # ── Ticket management ─────────────────────────────────────────────
+        if lower in ("tickets", "ticket list", "kanban"):
+            try:
+                from app.control_plane.tickets import get_tickets
+                from app.control_plane.projects import get_projects
+                pid = get_projects().get_active_project_id()
+                board = get_tickets().get_board(pid)
+                counts = board.get("counts", {})
+                lines = ["🎫 Tickets:"]
+                for status_name in ["todo", "in_progress", "review", "done", "failed", "blocked"]:
+                    items = board.get("board", {}).get(status_name, [])
+                    if items:
+                        lines.append(f"\n  {status_name.upper()} ({len(items)}):")
+                        for t in items[:5]:
+                            lines.append(f"    #{str(t['id'])[:8]} {t.get('title', '—')[:60]}")
+                return "\n".join(lines) if len(lines) > 1 else "No tickets yet."
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        _ticket_detail = re.match(r"^ticket\s+([0-9a-f-]+)", lower)
+        if _ticket_detail:
+            try:
+                from app.control_plane.tickets import get_tickets
+                ticket = get_tickets().get(_ticket_detail.group(1))
+                if not ticket:
+                    return "Ticket not found."
+                lines = [
+                    f"🎫 #{str(ticket['id'])[:8]}: {ticket.get('title', '—')[:100]}",
+                    f"   Status: {ticket.get('status')} | Priority: {ticket.get('priority')}",
+                    f"   Crew: {ticket.get('assigned_crew', '—')} | Agent: {ticket.get('assigned_agent', '—')}",
+                    f"   Cost: ${float(ticket.get('cost_usd', 0)):.4f} | Tokens: {ticket.get('tokens_used', 0)}",
+                ]
+                comments = ticket.get("comments", [])
+                if comments:
+                    lines.append(f"\n   Comments ({len(comments)}):")
+                    for c in comments[-5:]:
+                        lines.append(f"   [{c.get('author')}] {str(c.get('content', ''))[:80]}")
+                return "\n".join(lines)
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        # ── Budget management ─────────────────────────────────────────────
+        if lower in ("budget", "budget status", "budgets"):
+            try:
+                from app.control_plane.budgets import get_budget_enforcer
+                from app.control_plane.projects import get_projects
+                pid = get_projects().get_active_project_id()
+                return get_budget_enforcer().format_status(pid)
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        _budget_set = re.match(r"^budget\s+set\s+(\S+)\s+([\d.]+)", lower)
+        if _budget_set:
+            try:
+                from app.control_plane.budgets import get_budget_enforcer
+                from app.control_plane.projects import get_projects
+                role = _budget_set.group(1)
+                amount = float(_budget_set.group(2))
+                pid = get_projects().get_active_project_id()
+                get_budget_enforcer().set_budget(pid, role, amount)
+                return f"Budget set: {role} → ${amount:.2f}/month"
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        _budget_override = re.match(r"^budget\s+override\s+(\S+)\s+([\d.]+)", lower)
+        if _budget_override:
+            try:
+                from app.control_plane.budgets import get_budget_enforcer
+                from app.control_plane.projects import get_projects
+                role = _budget_override.group(1)
+                amount = float(_budget_override.group(2))
+                pid = get_projects().get_active_project_id()
+                get_budget_enforcer().override_budget(pid, role, amount)
+                return f"Budget overridden: {role} → ${amount:.2f}/month (unpaused)"
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        # ── Governance ────────────────────────────────────────────────────
+        if lower in ("pending", "governance", "governance pending"):
+            try:
+                from app.control_plane.governance import get_governance
+                return get_governance().format_pending()
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        # ── Audit trail ───────────────────────────────────────────────────
+        _audit_cmd = re.match(r"^audit(?:\s+(\S+))?", lower)
+        if _audit_cmd and lower.startswith("audit"):
+            try:
+                from app.control_plane.audit import get_audit
+                actor_filter = _audit_cmd.group(1)
+                if actor_filter == "costs":
+                    from app.control_plane.projects import get_projects
+                    pid = get_projects().get_active_project_id()
+                    summary = get_audit().cost_summary(pid)
+                    lines = ["💰 Cost Audit:"]
+                    for row in summary.get("by_actor", [])[:10]:
+                        lines.append(f"  {row.get('actor')}: ${float(row.get('total_cost') or 0):.4f} "
+                                     f"({row.get('calls')} calls, {row.get('total_tokens') or 0} tokens)")
+                    lines.append(f"\n  Total: ${summary.get('total_cost', 0):.4f}")
+                    return "\n".join(lines)
+                entries = get_audit().query(actor=actor_filter, limit=15)
+                if not entries:
+                    return "No audit entries found."
+                lines = ["📜 Audit Log:"]
+                for e in entries:
+                    ts = str(e.get("timestamp", ""))[:19]
+                    lines.append(f"  {ts} [{e.get('actor')}] {e.get('action')} "
+                                 f"{e.get('resource_type', '')}/{str(e.get('resource_id', ''))[:8]}")
+                return "\n".join(lines)
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
+        # ── Org chart ─────────────────────────────────────────────────────
+        if lower in ("org chart", "org", "team"):
+            try:
+                from app.control_plane.org_chart import format_org_chart
+                return format_org_chart()
+            except Exception as exc:
+                return f"Error: {str(exc)[:200]}"
+
     # No command matched
     return None

@@ -773,3 +773,11 @@ app.include_router(kb_router, prefix="/kb")
 # ── Health + Dashboard router (extracted to app/api/health.py) ─────────────────
 from app.api.health import router as health_router
 app.include_router(health_router)
+
+# ── Control Plane API routes ─────────────────────────────────────────────
+try:
+    from app.control_plane.dashboard_api import router as cp_router
+    app.include_router(cp_router)
+    logger.info("Control Plane API mounted at /api/cp/")
+except Exception:
+    logger.debug("Control Plane API not available", exc_info=True)
