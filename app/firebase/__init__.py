@@ -1,16 +1,24 @@
 """
-firebase_reporter.py — Backward-compatible facade.
+app.firebase — Firebase/Firestore integration package.
 
-Real code lives in app/firebase/ package. This shim re-exports every public
-name so that existing ``from app.firebase_reporter import X`` statements
-continue to work without modification.
+Re-exports all public names so that:
+  from app.firebase import X
+works for any name that was previously available via:
+  from app.firebase_reporter import X
 """
 
 # ── Infrastructure ───────────────────────────────────────────────────────────
-from app.firebase.infra import _get_db, _fire, _now_iso, _add_activity, _prune_activities, _executor  # noqa: F401
+from app.firebase.infra import (
+    _get_db,
+    _fire,
+    _now_iso,
+    _add_activity,
+    _prune_activities,
+    _executor,
+)
 
 # ── Publish (report_* functions, credit alerts, chat) ────────────────────────
-from app.firebase.publish import (  # noqa: F401
+from app.firebase.publish import (
     report_system_online,
     report_system_offline,
     heartbeat,
@@ -45,10 +53,12 @@ from app.firebase.publish import (  # noqa: F401
     detect_credit_error,
     _active_alerts,
     _trim_chat_messages,
+    _CREDIT_URLS,
+    _CREDIT_PATTERNS,
 )
 
 # ── Listeners (pollers, mode listener, Firestore reads) ─────────────────────
-from app.firebase.listeners import (  # noqa: F401
+from app.firebase.listeners import (
     read_llm_mode_from_firestore,
     start_mode_listener,
     start_kb_queue_poller,
@@ -58,7 +68,7 @@ from app.firebase.listeners import (  # noqa: F401
 )
 
 # ── Crew tracking (lifecycle events) ────────────────────────────────────────
-from app.firebase.crew_tracking import (  # noqa: F401
+from app.firebase.crew_tracking import (
     crew_started,
     crew_completed,
     crew_failed,
