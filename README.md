@@ -1,4 +1,4 @@
-# CrewAI Agent Team
+# AndrusAI Agent Team
 
 An autonomous, self-improving AI agent team built on [CrewAI](https://www.crewai.com/). Control it from your iPhone via Signal. Monitor it in real time from a Firebase-hosted dashboard.
 
