@@ -12,7 +12,7 @@ import { CostCharts } from './components/CostCharts';
 export default function App() {
   return (
     <ProjectProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/cp">
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
