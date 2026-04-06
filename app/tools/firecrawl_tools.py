@@ -287,10 +287,10 @@ def ingest_url_to_chromadb(
     if tags:
         base_meta.update(tags)
 
-    # Ingest
+    # Ingest — use the same PersistentClient as the rest of the system
     try:
-        import chromadb
-        chroma_client = chromadb.HttpClient(host="chromadb", port=8000)
+        from app.memory.chromadb_manager import get_client
+        chroma_client = get_client()
         collection = chroma_client.get_or_create_collection(collection_name)
 
         ids = [f"{content_hash}_{i}" for i in range(len(chunks))]
@@ -350,8 +350,8 @@ def ingest_crawl_to_chromadb(
             start = end - 200
 
         try:
-            import chromadb
-            chroma_client = chromadb.HttpClient(host="chromadb", port=8000)
+            from app.memory.chromadb_manager import get_client
+            chroma_client = get_client()
             collection = chroma_client.get_or_create_collection(collection_name)
             ids = [f"{content_hash}_{i}" for i in range(len(chunks))]
             meta = {
