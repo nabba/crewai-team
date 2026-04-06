@@ -2,7 +2,9 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
-  status: 'active' | 'paused' | 'completed' | 'failed';
+  mission?: string;
+  is_active: boolean;
+  config_json?: Record<string, unknown>;
   created_at: string;
   updated_at?: string;
 }
@@ -12,10 +14,17 @@ export interface Ticket {
   project_id: string;
   title: string;
   description?: string;
-  status: 'todo' | 'in_progress' | 'review' | 'done' | 'failed';
-  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'failed' | 'blocked';
+  priority: number;
   assigned_agent?: string;
-  cost?: number;
+  assigned_crew?: string;
+  source?: string;
+  difficulty?: number;
+  cost_usd: number;
+  tokens_used: number;
+  result_summary?: string;
+  started_at?: string;
+  completed_at?: string;
   created_at: string;
   updated_at?: string;
   comments?: TicketComment[];
@@ -25,77 +34,91 @@ export interface TicketComment {
   id: string;
   ticket_id: string;
   author: string;
-  body: string;
+  content: string;
+  metadata_json?: Record<string, unknown>;
   created_at: string;
 }
 
 export interface Budget {
-  id: string;
-  project_id?: string;
-  agent: string;
-  limit: number;
-  spent: number;
-  paused: boolean;
-  period?: string;
-  updated_at?: string;
+  agent_role: string;
+  period: string;
+  limit_usd: number;
+  spent_usd: number;
+  limit_tokens?: number;
+  spent_tokens?: number;
+  is_paused: boolean;
+  pct_used?: number;
+  warning_pct?: number;
+  project_name?: string;
 }
 
 export interface AuditEntry {
-  id: string;
+  id: number;
+  timestamp: string;
+  project_id?: string;
   actor: string;
   action: string;
-  resource?: string;
+  resource_type?: string;
   resource_id?: string;
-  cost?: number;
-  metadata?: Record<string, unknown>;
-  created_at: string;
+  detail_json?: Record<string, unknown>;
+  cost_usd?: number;
+  tokens?: number;
 }
 
 export interface GovernanceRequest {
   id: string;
-  type: string;
-  title: string;
-  description?: string;
+  project_id?: string;
+  request_type: string;
   requested_by: string;
-  status: 'pending' | 'approved' | 'rejected';
+  title: string;
+  detail_json?: Record<string, unknown>;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  expires_at?: string;
   created_at: string;
-  resolved_at?: string;
-  resolved_by?: string;
 }
 
 export interface OrgChartAgent {
-  id: string;
-  name: string;
-  role: string;
+  agent_role: string;
+  display_name: string;
   reports_to?: string;
-  status?: 'active' | 'idle' | 'offline';
-  children?: OrgChartAgent[];
+  job_description?: string;
+  soul_file?: string;
+  default_model?: string;
+  sort_order: number;
 }
 
 export interface HealthStatus {
-  status: 'ok' | 'degraded' | 'down';
-  version?: string;
-  uptime?: number;
-  services?: Record<string, string>;
-  timestamp?: string;
+  status: string;
+  tickets_total: number;
+  audit_entries: number;
+  governance_pending: number;
 }
 
 export interface CostEntry {
-  date: string;
-  total: number;
-  breakdown?: Record<string, number>;
+  day: string;
+  total_cost: number;
+  total_tokens: number;
+  call_count: number;
 }
 
 export interface AgentCost {
-  agent: string;
-  total: number;
-  count?: number;
+  actor: string;
+  calls: number;
+  total_cost: number;
+  total_tokens: number;
 }
 
 export interface KanbanBoard {
-  todo: Ticket[];
-  in_progress: Ticket[];
-  review: Ticket[];
-  done: Ticket[];
-  failed: Ticket[];
+  board: {
+    todo: Ticket[];
+    in_progress: Ticket[];
+    review: Ticket[];
+    done: Ticket[];
+    failed: Ticket[];
+    blocked: Ticket[];
+  };
+  counts: Record<string, number>;
+  total: number;
 }

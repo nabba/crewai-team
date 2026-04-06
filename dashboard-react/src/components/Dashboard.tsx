@@ -62,8 +62,8 @@ export function Dashboard() {
   };
 
   // Budget totals
-  const totalSpent = budgets?.reduce((s, b) => s + b.spent, 0) ?? 0;
-  const totalLimit = budgets?.reduce((s, b) => s + b.limit, 0) ?? 0;
+  const totalSpent = budgets?.reduce((s, b) => s + (b.spent_usd || 0), 0) ?? 0;
+  const totalLimit = budgets?.reduce((s, b) => s + (b.limit_usd || 0), 0) ?? 0;
   const budgetPct = totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) : 0;
 
   return (
@@ -145,21 +145,21 @@ export function Dashboard() {
                     style={{ width: `${Math.min(budgetPct, 100)}%` }}
                   />
                 </div>
-                {budgets.slice(0, 5).map((b) => {
-                  const pct = b.limit > 0 ? Math.min((b.spent / b.limit) * 100, 100) : 0;
+                {budgets.slice(0, 5).map((b, i) => {
+                  const pct = b.limit_usd > 0 ? Math.min(((b.spent_usd || 0) / b.limit_usd) * 100, 100) : 0;
                   return (
-                    <div key={b.id} className="space-y-1">
+                    <div key={b.agent_role || i} className="space-y-1">
                       <div className="flex justify-between text-xs">
                         <span className="text-[#e2e8f0] flex items-center gap-1.5">
-                          {b.paused && (
+                          {b.is_paused && (
                             <span className="px-1.5 py-0.5 rounded bg-[#f87171]/20 text-[#f87171] text-[10px]">
                               PAUSED
                             </span>
                           )}
-                          {b.agent}
+                          {b.agent_role || 'project-wide'}
                         </span>
                         <span className="text-[#7a8599]">
-                          ${b.spent.toFixed(4)} / ${b.limit.toFixed(4)}
+                          ${(b.spent_usd || 0).toFixed(4)} / ${(b.limit_usd || 0).toFixed(4)}
                         </span>
                       </div>
                       <div className="w-full bg-[#1e2738] rounded-full h-1.5">
@@ -265,15 +265,15 @@ export function Dashboard() {
                   {auditEntries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-[#1e2738]/50 transition-colors">
                       <td className="px-4 py-2.5 text-[#7a8599] whitespace-nowrap text-xs">
-                        {new Date(entry.created_at).toLocaleTimeString()}
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '—'}
                       </td>
                       <td className="px-4 py-2.5 text-[#60a5fa] whitespace-nowrap">{entry.actor}</td>
                       <td className="px-4 py-2.5 text-[#e2e8f0] whitespace-nowrap">{entry.action}</td>
                       <td className="px-4 py-2.5 text-[#7a8599] truncate max-w-[200px]">
-                        {entry.resource ?? '—'}
+                        {entry.resource_type ?? '—'}
                       </td>
                       <td className="px-4 py-2.5 text-right text-[#34d399] whitespace-nowrap">
-                        {entry.cost != null ? `$${entry.cost.toFixed(4)}` : '—'}
+                        {entry.cost_usd != null ? `$${entry.cost_usd.toFixed(4)}` : '—'}
                       </td>
                     </tr>
                   ))}

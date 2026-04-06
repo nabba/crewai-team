@@ -62,21 +62,22 @@ export function CostCharts() {
     '/costs/daily?days=30',
     60000
   );
-  const { data: agentCosts, loading: agentLoading, error: agentError } = useApi<AgentCost[]>(
+  const { data: agentCostsRaw, loading: agentLoading, error: agentError } = useApi<{by_actor: AgentCost[], total_cost: number}>(
     '/costs/by-agent',
     60000
   );
+  const agentCosts = agentCostsRaw?.by_actor ?? [];
 
   const dailyChartData = dailyCosts
     ? {
         labels: dailyCosts.map((c) => {
-          const d = new Date(c.date);
+          const d = new Date(c.day);
           return `${d.getMonth() + 1}/${d.getDate()}`;
         }),
         datasets: [
           {
             label: 'Daily Cost ($)',
-            data: dailyCosts.map((c) => c.total),
+            data: dailyCosts.map((c) => c.total_cost ?? 0),
             borderColor: '#60a5fa',
             backgroundColor: 'rgba(96, 165, 250, 0.1)',
             pointBackgroundColor: '#60a5fa',
@@ -90,11 +91,11 @@ export function CostCharts() {
 
   const agentChartData = agentCosts
     ? {
-        labels: agentCosts.map((c) => c.agent),
+        labels: agentCosts.map((c) => c.actor ?? '?'),
         datasets: [
           {
             label: 'Total Cost ($)',
-            data: agentCosts.map((c) => c.total),
+            data: agentCosts.map((c) => c.total_cost ?? 0),
             backgroundColor: [
               'rgba(96, 165, 250, 0.7)',
               'rgba(52, 211, 153, 0.7)',
@@ -123,11 +124,11 @@ export function CostCharts() {
     : null;
 
   // Summary stats from agent costs
-  const totalCost = agentCosts?.reduce((s, c) => s + c.total, 0) ?? 0;
-  const topAgent = agentCosts?.reduce(
-    (top, c) => (c.total > top.total ? c : top),
-    agentCosts[0] ?? { agent: '—', total: 0 }
-  );
+  const totalCost = agentCosts?.reduce((s, c) => s + (c.total_cost ?? 0), 0) ?? 0;
+  const topAgent = agentCosts?.length ? agentCosts.reduce(
+    (top, c) => ((c.total_cost ?? 0) > (top.total_cost ?? 0) ? c : top),
+    agentCosts[0]
+  ) : null;
 
   return (
     <div className="space-y-6">
@@ -152,7 +153,7 @@ export function CostCharts() {
             <Skeleton className="h-7 w-24" />
           ) : (
             <div className="text-xl font-bold text-[#60a5fa]">
-              {topAgent?.agent ?? '—'}
+              {topAgent?.actor ?? '—'}
             </div>
           )}
         </div>

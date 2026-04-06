@@ -31,22 +31,20 @@ function getRoleIcon(role: string): string {
   return ROLE_ICONS.default;
 }
 
-function AgentNode({ agent, depth = 0 }: { agent: OrgChartAgent; depth?: number }) {
-  const statusColor = STATUS_COLORS[agent.status ?? 'offline'] ?? STATUS_COLORS.offline;
-  const icon = getRoleIcon(agent.role);
-  const hasChildren = agent.children && agent.children.length > 0;
+function AgentNode({ agent, depth = 0 }: { agent: OrgChartAgent & {children?: OrgChartAgent[]} ; depth?: number }) {
+  const icon = getRoleIcon(agent.agent_role);
+  const hasChildren = (agent as any).children && (agent as any).children.length > 0;
 
   return (
     <div className="flex flex-col items-center">
       {/* Node */}
       <div className="bg-[#111820] border border-[#1e2738] rounded-lg p-3 w-36 text-center hover:border-[#60a5fa]/40 transition-colors relative">
         <div className="text-2xl mb-1">{icon}</div>
-        <div className="text-xs font-medium text-[#e2e8f0] truncate">{agent.name}</div>
-        <div className="text-xs text-[#7a8599] capitalize mt-0.5 truncate">{agent.role}</div>
-        {agent.status && (
-          <div className="flex items-center justify-center gap-1 mt-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
-            <span className="text-[10px] text-[#7a8599] capitalize">{agent.status}</span>
+        <div className="text-xs font-medium text-[#e2e8f0] truncate">{agent.display_name}</div>
+        <div className="text-xs text-[#7a8599] capitalize mt-0.5 truncate">{agent.agent_role}</div>
+        {agent.job_description && (
+          <div className="text-[10px] text-[#7a8599] mt-1 truncate" title={agent.job_description}>
+            {agent.job_description.slice(0, 30)}
           </div>
         )}
       </div>
@@ -67,8 +65,8 @@ function AgentNode({ agent, depth = 0 }: { agent: OrgChartAgent; depth?: number 
 
           {/* Children row */}
           <div className="flex gap-4 items-start">
-            {agent.children!.map((child) => (
-              <div key={child.id} className="flex flex-col items-center">
+            {(agent as any).children!.map((child: OrgChartAgent) => (
+              <div key={child.agent_role} className="flex flex-col items-center">
                 {agent.children!.length > 1 && <div className="w-px h-6 bg-[#1e2738]" />}
                 <AgentNode agent={child} depth={depth + 1} />
               </div>
@@ -80,24 +78,18 @@ function AgentNode({ agent, depth = 0 }: { agent: OrgChartAgent; depth?: number 
   );
 }
 
-function buildTree(agents: OrgChartAgent[]): OrgChartAgent[] {
-  // If agents already have children populated, return as-is
-  const hasChildren = agents.some((a) => a.children && a.children.length > 0);
-  if (hasChildren) return agents.filter((a) => !a.reports_to);
-
-  // Build tree from flat list
-  const map = new Map<string, OrgChartAgent>();
-  const roots: OrgChartAgent[] = [];
+function buildTree(agents: OrgChartAgent[]): (OrgChartAgent & {children: OrgChartAgent[]})[] {
+  type TreeNode = OrgChartAgent & {children: OrgChartAgent[]};
+  const map = new Map<string, TreeNode>();
+  const roots: TreeNode[] = [];
 
   agents.forEach((a) => {
-    map.set(a.id, { ...a, children: [] });
+    map.set(a.agent_role, { ...a, children: [] });
   });
 
   map.forEach((agent) => {
     if (agent.reports_to && map.has(agent.reports_to)) {
-      const parent = map.get(agent.reports_to)!;
-      parent.children = parent.children ?? [];
-      parent.children.push(agent);
+      map.get(agent.reports_to)!.children.push(agent);
     } else {
       roots.push(agent);
     }
@@ -106,31 +98,12 @@ function buildTree(agents: OrgChartAgent[]): OrgChartAgent[] {
   return roots;
 }
 
-// Fallback static org chart when API has no data
-const FALLBACK_ORG: OrgChartAgent = {
-  id: 'commander',
-  name: 'Commander',
-  role: 'commander',
-  status: 'active',
-  children: [
-    { id: 'researcher', name: 'Researcher', role: 'researcher', status: 'idle', children: [] },
-    { id: 'coder', name: 'Coder', role: 'coder', status: 'active', children: [] },
-    { id: 'writer', name: 'Writer', role: 'writer', status: 'idle', children: [] },
-    { id: 'media', name: 'Media', role: 'media', status: 'offline', children: [] },
-    { id: 'critic', name: 'Critic', role: 'critic', status: 'active', children: [] },
-    { id: 'self-improver', name: 'Self-Improver', role: 'self-improver', status: 'idle', children: [] },
-    { id: 'introspector', name: 'Introspector', role: 'introspector', status: 'idle', children: [] },
-  ],
-};
+// No fallback needed — API always returns org chart from PostgreSQL
 
 export function OrgChart() {
   const { data: agents, loading, error } = useApi<OrgChartAgent[]>('/org-chart', 60000);
 
-  let roots: OrgChartAgent[] = [];
-  if (agents) {
-    roots = buildTree(agents);
-    if (roots.length === 0) roots = [FALLBACK_ORG];
-  }
+  const roots = agents ? buildTree(agents) : [];
 
   return (
     <div className="space-y-4">
@@ -172,7 +145,7 @@ export function OrgChart() {
         ) : (
           <div className="flex flex-col items-center gap-0 min-w-max mx-auto">
             {roots.map((root) => (
-              <AgentNode key={root.id} agent={root} />
+              <AgentNode key={root.agent_role} agent={root} />
             ))}
           </div>
         )}
