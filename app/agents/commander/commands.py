@@ -699,5 +699,61 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
             except Exception as exc:
                 return f"Error: {str(exc)[:200]}"
 
+    # ── Firecrawl web scraping commands ──────────────────────────────────
+    _scrape_match = re.match(r"^scrape\s+(https?://\S+)", lower)
+    if _scrape_match:
+        try:
+            from app.tools.firecrawl_tools import firecrawl_scrape
+            url = _scrape_match.group(1)
+            return firecrawl_scrape(url)
+        except Exception as exc:
+            return f"Scrape error: {str(exc)[:200]}"
+
+    _ingest_match = re.match(r"^ingest\s+(https?://\S+)(?:\s+(\S+))?", lower)
+    if _ingest_match:
+        try:
+            from app.tools.firecrawl_tools import ingest_url_to_chromadb
+            url = _ingest_match.group(1)
+            category = _ingest_match.group(2) or "general"
+            result = ingest_url_to_chromadb(url, tags={"category": category})
+            if result.get("error"):
+                return f"Ingest error: {result['error']}"
+            return (
+                f"✅ Ingested: {result.get('page_title', url)}\n"
+                f"   Chunks: {result.get('chunks_ingested', 0)}\n"
+                f"   Hash: {result.get('content_hash', '?')}\n"
+                f"   Collection: web_knowledge"
+            )
+        except Exception as exc:
+            return f"Ingest error: {str(exc)[:200]}"
+
+    _crawl_match = re.match(r"^crawl\s+(https?://\S+)(?:\s+(\d+))?", lower)
+    if _crawl_match:
+        try:
+            from app.tools.firecrawl_tools import ingest_crawl_to_chromadb
+            url = _crawl_match.group(1)
+            max_pages = int(_crawl_match.group(2) or "20")
+            if max_pages > 50:
+                return "Max pages capped at 50 for safety."
+            result = ingest_crawl_to_chromadb(url, max_pages=max_pages)
+            if result.get("error"):
+                return f"Crawl error: {result['error']}"
+            return (
+                f"✅ Crawled + ingested: {url}\n"
+                f"   Pages: {result.get('pages_ingested', 0)}\n"
+                f"   Total chunks: {result.get('total_chunks', 0)}\n"
+                f"   Collection: web_knowledge"
+            )
+        except Exception as exc:
+            return f"Crawl error: {str(exc)[:200]}"
+
+    _map_match = re.match(r"^map\s+(https?://\S+)", lower)
+    if _map_match:
+        try:
+            from app.tools.firecrawl_tools import firecrawl_map
+            return firecrawl_map(_map_match.group(1))
+        except Exception as exc:
+            return f"Map error: {str(exc)[:200]}"
+
     # No command matched
     return None

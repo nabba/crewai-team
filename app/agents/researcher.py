@@ -50,6 +50,14 @@ def create_researcher(force_tier: str | None = None, light: bool = False) -> Age
         scoped_tools = create_scoped_memory_tools("researcher")
         mem0_tools = create_mem0_tools("researcher")
         tools = [web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools
+        # Firecrawl tools (scrape, extract, search, map) — gracefully empty if unavailable
+        try:
+            from app.tools.firecrawl_tools import create_firecrawl_tools
+            fc_tools = create_firecrawl_tools()
+            if fc_tools:
+                tools.extend(fc_tools[:4])  # scrape, extract, search, map (not crawl)
+        except Exception:
+            pass
         backstory = RESEARCHER_BACKSTORY
 
     return Agent(

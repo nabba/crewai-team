@@ -32,6 +32,8 @@ services:
       # Redirect CrewAI's SQLite long-term memory into the writable workspace
       # volume so it persists across restarts and survives read_only rootfs.
       CREWAI_STORAGE_DIR: /app/workspace/crewai_storage
+      # Firecrawl self-hosted instance (via shared Docker network)
+      FIRECRAWL_API_URL: http://firecrawl-api:3002
       # Git safe.directory for workspace backup (volume has different ownership)
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: safe.directory

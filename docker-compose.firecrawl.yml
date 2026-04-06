@@ -1,0 +1,109 @@
+name: firecrawl
+
+networks:
+  firecrawl-backend:
+    driver: bridge
+  crewai-team_external:
+    external: true  # Shared with crewai-team for agent access
+
+x-common-env: &common-env
+  REDIS_URL: redis://firecrawl-redis:6379
+  REDIS_RATE_LIMIT_URL: redis://firecrawl-redis:6379
+  PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+  USE_DB_AUTHENTICATION: "false"
+  NUM_WORKERS_PER_QUEUE: ${FC_NUM_WORKERS:-4}
+  CRAWL_CONCURRENT_REQUESTS: ${FC_CRAWL_CONCURRENT:-5}
+  MAX_CONCURRENT_JOBS: ${FC_MAX_JOBS:-10}
+  OLLAMA_BASE_URL: http://host.docker.internal:11434/api
+  MODEL_NAME: ${FC_MODEL_NAME:-qwen3:30b-a3b}
+  LOGGING_LEVEL: ${FC_LOG_LEVEL:-info}
+  BULL_AUTH_KEY: ${FC_BULL_AUTH_KEY:-fc-bull-auth-botarmy}
+
+services:
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      <<: *common-env
+      PORT: "3002"
+      HOST: "0.0.0.0"
+    networks:
+      - firecrawl-backend
+      - crewai-team_external
+    ports:
+      - "127.0.0.1:3002:3002"
+    depends_on:
+      firecrawl-redis:
+        condition: service_healthy
+      playwright-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  firecrawl-worker:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      <<: *common-env
+    networks:
+      - firecrawl-backend
+    depends_on:
+      firecrawl-redis:
+        condition: service_healthy
+      playwright-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["node", "dist/src/harness.js", "--start-docker"]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    restart: unless-stopped
+
+  playwright-service:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: "3000"
+      BLOCK_MEDIA: ${FC_BLOCK_MEDIA:-true}
+    networks:
+      - firecrawl-backend
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+    shm_size: "1gb"
+    restart: unless-stopped
+
+  firecrawl-redis:
+    image: redis:alpine
+    networks:
+      - firecrawl-backend
+    command: redis-server --bind 0.0.0.0 --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - firecrawl-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    restart: unless-stopped
+
+volumes:
+  firecrawl-redis-data:
