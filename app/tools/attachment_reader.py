@@ -100,26 +100,38 @@ def extract_xlsx(path: pathlib.Path) -> str:
 
 
 def extract_image(path: pathlib.Path) -> str:
-    """Extract text from an image via OCR, or return metadata if OCR unavailable."""
+    """Extract text from an image via GLM-OCR (Ollama), fallback to pytesseract."""
+    info = ""
     try:
         from PIL import Image
         img = Image.open(str(path))
         info = f"Image: {img.size[0]}x{img.size[1]} {img.mode} ({img.format})"
+    except Exception:
+        info = f"Image: {path.name}"
 
-        # Try OCR if pytesseract is available
-        try:
-            import pytesseract
-            text = pytesseract.image_to_string(img)
-            if text.strip():
-                return f"{info}\n\nExtracted text (OCR):\n{text[:_MAX_EXTRACT_CHARS]}"
-            return f"{info}\nOCR found no text in the image."
-        except ImportError:
-            return f"{info}\nOCR not available (pytesseract not installed). Image received but text extraction requires OCR."
-        except Exception as ocr_exc:
-            return f"{info}\nOCR failed: {str(ocr_exc)[:200]}"
-    except Exception as exc:
-        logger.error(f"Image processing failed: {exc}")
-        return f"Failed to process image: {str(exc)[:200]}"
+    # Try GLM-OCR via Ollama first (best quality, local, fast)
+    try:
+        from app.tools.ocr_tool import ocr_from_file
+        text = ocr_from_file(str(path))
+        if text and not text.startswith("Error") and not text.startswith("OCR failed"):
+            return f"{info}\n\nExtracted text (GLM-OCR):\n{text[:_MAX_EXTRACT_CHARS]}"
+        logger.debug(f"GLM-OCR returned: {text[:100]}")
+    except Exception as e:
+        logger.debug(f"GLM-OCR unavailable: {e}")
+
+    # Fallback: pytesseract (traditional OCR)
+    try:
+        from PIL import Image
+        import pytesseract
+        img = Image.open(str(path))
+        text = pytesseract.image_to_string(img)
+        if text.strip():
+            return f"{info}\n\nExtracted text (Tesseract OCR):\n{text[:_MAX_EXTRACT_CHARS]}"
+        return f"{info}\nOCR found no text in the image."
+    except ImportError:
+        return f"{info}\nOCR: GLM-OCR not responding and pytesseract not installed."
+    except Exception as ocr_exc:
+        return f"{info}\nOCR failed: {str(ocr_exc)[:200]}"
 
 
 # Map MIME types and extensions to extractors
