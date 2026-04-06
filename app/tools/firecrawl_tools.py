@@ -75,17 +75,11 @@ def firecrawl_scrape(url: str, only_main_content: bool = True) -> str:
     if not client:
         return "Firecrawl not available. Use web_search tool instead."
     try:
-        result = client.scrape_url(
-            url,
-            params={
-                "formats": ["markdown"],
-                "onlyMainContent": only_main_content,
-            },
-        )
-        content = result.get("markdown", result.get("html", ""))
-        metadata = result.get("metadata", {})
-        title = metadata.get("title", "Unknown")
-        source = metadata.get("sourceURL", url)
+        result = client.scrape(url, formats=["markdown"], only_main_content=only_main_content)
+        content = getattr(result, "markdown", "") or getattr(result, "html", "") or ""
+        meta = getattr(result, "metadata", None)
+        title = getattr(meta, "title", "Unknown") if meta else "Unknown"
+        source = getattr(meta, "source_url", url) if meta else url
 
         if len(content) > 8000:
             content = content[:8000] + f"\n\n[TRUNCATED — full page is {len(content)} chars]"
@@ -112,15 +106,17 @@ def firecrawl_extract(url: str, prompt: str, schema_json: str = None) -> str:
     if not client:
         return "Firecrawl not available."
     try:
-        extract_params = {"urls": [url], "prompt": prompt}
+        kwargs = {"urls": [url], "prompt": prompt}
         if schema_json:
             try:
-                extract_params["schema"] = json.loads(schema_json)
+                kwargs["schema"] = json.loads(schema_json)
             except json.JSONDecodeError:
                 return "Error: schema_json is not valid JSON"
 
-        result = client.extract(**extract_params)
-        return json.dumps(result.get("data", {}), indent=2, ensure_ascii=False)
+        result = client.extract(**kwargs)
+        # Result is a Pydantic model — convert to dict
+        data = result.model_dump() if hasattr(result, "model_dump") else {"raw": str(result)}
+        return json.dumps(data, indent=2, ensure_ascii=False, default=str)
     except Exception as e:
         logger.error(f"Firecrawl extract failed for {url}: {e}")
         return f"Error extracting from {url}: {str(e)[:200]}"
@@ -159,17 +155,21 @@ def firecrawl_crawl(url: str, max_pages: int = 20,
         if exclude_patterns:
             crawl_params["excludePaths"] = exclude_patterns
 
-        result = client.crawl_url(url, params=crawl_params)
+        result = client.crawl(url, limit=max_pages,
+                              include_paths=include_patterns,
+                              exclude_paths=exclude_patterns,
+                              scrape_options={"formats": ["markdown"], "onlyMainContent": True})
 
-        pages = result.get("data", []) if isinstance(result, dict) else []
+        # CrawlJob has .data (list of Document objects)
+        pages = getattr(result, "data", []) or []
         output_parts = [f"Crawled {len(pages)} pages from {url}\n"]
 
         for i, page in enumerate(pages):
-            if isinstance(page, dict):
-                title = page.get("metadata", {}).get("title", f"Page {i+1}")
-                page_url = page.get("metadata", {}).get("sourceURL", "")
-                content = page.get("markdown", "")[:3000]
-                output_parts.append(f"\n---\n## [{i+1}] {title}\nURL: {page_url}\n\n{content}")
+            meta = getattr(page, "metadata", None)
+            title = getattr(meta, "title", f"Page {i+1}") if meta else f"Page {i+1}"
+            page_url = getattr(meta, "source_url", "") if meta else ""
+            content = (getattr(page, "markdown", "") or "")[:3000]
+            output_parts.append(f"\n---\n## [{i+1}] {title}\nURL: {page_url}\n\n{content}")
 
         return "\n".join(output_parts)
     except Exception as e:
@@ -193,16 +193,16 @@ def firecrawl_search(query: str, limit: int = 5) -> str:
     if not client:
         return "Firecrawl not available. Use web_search tool instead."
     try:
-        results = client.search(query, params={"limit": limit})
-        data = results.get("data", []) if isinstance(results, dict) else results if isinstance(results, list) else []
+        results = client.search(query, limit=limit)
+        data = getattr(results, "data", []) or []
         output_parts = [f"Search results for: '{query}'\n"]
 
-        for i, result in enumerate(data):
-            if isinstance(result, dict):
-                title = result.get("title", f"Result {i+1}")
-                url = result.get("url", "")
-                content = result.get("markdown", "")[:2000]
-                output_parts.append(f"\n---\n### [{i+1}] {title}\nURL: {url}\n\n{content}")
+        for i, item in enumerate(data):
+            meta = getattr(item, "metadata", None)
+            title = getattr(meta, "title", f"Result {i+1}") if meta else getattr(item, "title", f"Result {i+1}")
+            item_url = getattr(meta, "source_url", "") if meta else getattr(item, "url", "")
+            content = (getattr(item, "markdown", "") or "")[:2000]
+            output_parts.append(f"\n---\n### [{i+1}] {title}\nURL: {item_url}\n\n{content}")
 
         return "\n".join(output_parts)
     except Exception as e:
@@ -224,8 +224,8 @@ def firecrawl_map(url: str) -> str:
     if not client:
         return "Firecrawl not available."
     try:
-        result = client.map_url(url)
-        urls = result.get("links", []) if isinstance(result, dict) else result if isinstance(result, list) else []
+        result = client.map(url)
+        urls = getattr(result, "links", []) or []
         return f"Found {len(urls)} URLs on {url}:\n\n" + "\n".join(str(u) for u in urls[:100])
     except Exception as e:
         logger.error(f"Firecrawl map failed for {url}: {e}")
@@ -253,15 +253,12 @@ def ingest_url_to_chromadb(
         return {"chunks_ingested": 0, "error": "Firecrawl not available"}
 
     try:
-        result = client.scrape_url(url, params={
-            "formats": ["markdown"],
-            "onlyMainContent": True,
-        })
+        result = client.scrape(url, formats=["markdown"], only_main_content=True)
     except Exception as e:
         return {"chunks_ingested": 0, "error": str(e)[:200]}
 
-    markdown = result.get("markdown", "")
-    metadata = result.get("metadata", {})
+    markdown = getattr(result, "markdown", "") or ""
+    meta = getattr(result, "metadata", None)
 
     if not markdown:
         return {"chunks_ingested": 0, "error": "No content extracted"}
@@ -281,7 +278,7 @@ def ingest_url_to_chromadb(
     # Build metadata
     base_meta = {
         "source_url": url,
-        "page_title": metadata.get("title", ""),
+        "page_title": getattr(meta, "title", "") if meta else "",
         "scrape_timestamp": datetime.now(timezone.utc).isoformat(),
         "content_hash": content_hash,
         "epistemological_tag": "web_source",
@@ -307,7 +304,7 @@ def ingest_url_to_chromadb(
         "chunks_ingested": len(chunks),
         "source_url": url,
         "content_hash": content_hash,
-        "page_title": metadata.get("title", ""),
+        "page_title": getattr(meta, "title", "") if meta else "",
     }
 
 
@@ -323,13 +320,8 @@ def ingest_crawl_to_chromadb(
         return {"pages_ingested": 0, "error": "Firecrawl not available"}
 
     try:
-        result = client.crawl_url(url, params={
-            "limit": min(max_pages, 50),
-            "scrapeOptions": {
-                "formats": ["markdown"],
-                "onlyMainContent": True,
-            },
-        })
+        result = client.crawl(url, limit=min(max_pages, 50),
+                              scrape_options={"formats": ["markdown"], "onlyMainContent": True})
     except Exception as e:
         return {"pages_ingested": 0, "error": str(e)[:200]}
 
@@ -338,18 +330,15 @@ def ingest_crawl_to_chromadb(
 
     total_chunks = 0
     pages_ingested = 0
-    pages = result.get("data", []) if isinstance(result, dict) else []
+    pages = getattr(result, "data", []) or []
 
     for page in pages:
-        if not isinstance(page, dict):
-            continue
-        page_url = page.get("metadata", {}).get("sourceURL", url)
-        markdown = page.get("markdown", "")
+        page_meta = getattr(page, "metadata", None)
+        page_url = getattr(page_meta, "source_url", url) if page_meta else url
+        markdown = getattr(page, "markdown", "") or ""
         if not markdown:
             continue
 
-        single = ingest_url_to_chromadb.__wrapped__(page_url, collection_name, tags=tags) if hasattr(ingest_url_to_chromadb, '__wrapped__') else None
-        # Simpler: inline ingest
         content_hash = hashlib.sha256(markdown.encode()).hexdigest()[:16]
         chunks = []
         start = 0
@@ -367,7 +356,7 @@ def ingest_crawl_to_chromadb(
             ids = [f"{content_hash}_{i}" for i in range(len(chunks))]
             meta = {
                 "source_url": page_url,
-                "page_title": page.get("metadata", {}).get("title", ""),
+                "page_title": getattr(page_meta, "title", "") if page_meta else "",
                 "scrape_timestamp": datetime.now(timezone.utc).isoformat(),
                 "content_hash": content_hash,
                 "epistemological_tag": "web_source",
