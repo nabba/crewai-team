@@ -58,6 +58,14 @@ def create_researcher(force_tier: str | None = None, light: bool = False) -> Age
                 tools.extend(fc_tools[:4])  # scrape, extract, search, map (not crawl)
         except Exception:
             pass
+        # Composio SaaS tools (Gmail, GitHub, Slack, etc.) — gracefully empty if unavailable
+        try:
+            from app.tools.composio_tool import get_composio_tools
+            composio_tools = get_composio_tools()
+            if composio_tools:
+                tools.extend(composio_tools[:10])  # Cap at 10 to avoid context bloat
+        except Exception:
+            pass
         backstory = RESEARCHER_BACKSTORY
 
     return Agent(

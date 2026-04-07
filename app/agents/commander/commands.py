@@ -755,5 +755,26 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         except Exception as exc:
             return f"Map error: {str(exc)[:200]}"
 
+    # ── Composio SaaS integration commands ──────────────────────────────
+    if lower in ("composio", "composio status", "integrations"):
+        try:
+            from app.tools.composio_tool import format_status
+            return format_status()
+        except Exception as exc:
+            return f"Composio error: {str(exc)[:200]}"
+
+    if lower in ("composio apps", "composio connected"):
+        try:
+            from app.tools.composio_tool import list_connected_apps
+            info = list_connected_apps()
+            if not info.get("connected"):
+                return "No apps connected. Visit https://app.composio.dev/connections"
+            lines = ["🔌 Connected apps:"]
+            for app in info["connected"]:
+                lines.append(f"  {app.get('app', '?')} — {app.get('status', '?')}")
+            return "\n".join(lines)
+        except Exception as exc:
+            return f"Error: {str(exc)[:200]}"
+
     # No command matched
     return None
