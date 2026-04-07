@@ -221,8 +221,10 @@ def install_throttle() -> None:
                                 (prompt / 1_000_000) * cost_info[0]
                                 + (completion / 1_000_000) * cost_info[1]
                             )
-                        from app.llm_benchmarks import record_tokens
+                        from app.llm_benchmarks import record_tokens, record
                         record_tokens(model, prompt, completion, cost_usd)
+                        # Also record in benchmarks table for model scoring
+                        record(model, "general", True, latency_ms=0, tokens=prompt+completion)
                         tracker = _request_cost.get(None)
                         if tracker is not None:
                             tracker.record(model, prompt, completion, cost_usd)

@@ -690,6 +690,7 @@ class Commander:
             return "Sorry, I had trouble understanding that request. Please try again."
 
         crew_names = ", ".join(d.get("crew", "?") for d in decisions)
+        self._last_crew = decisions[0].get("crew", "") if decisions else ""
         crew_completed("commander", task_id, f"Routed to: {crew_names}")
         logger.info(f"Commander dispatching to [{crew_names}]")
 

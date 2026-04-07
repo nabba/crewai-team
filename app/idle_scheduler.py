@@ -445,6 +445,11 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         try:
             from app.training_collector import get_pipeline
             pipeline = get_pipeline()
+            # Run full curation: score quality + export eligible data
+            curation_result = pipeline.run_curation()
+            logger.info(f"idle_scheduler: training curation: {curation_result.get('status', '?')} "
+                        f"scored={curation_result.get('total_scored', 0)} "
+                        f"eligible={curation_result.get('eligible', 0)}")
             stats = pipeline.get_stats()
             if stats.get("total_interactions", 0) > 0:
                 result = pipeline.run_curation()
@@ -454,6 +459,18 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         except Exception:
             logger.debug("idle_scheduler: training curation failed", exc_info=True)
     jobs.append(("training-curate", _training_curate))
+
+    # ── Training pipeline: run MLX LoRA training if enough curated data ──
+    def _training_pipeline():
+        try:
+            from app.training_pipeline import run_training_cycle
+            result = run_training_cycle()
+            if result.get("status") == "insufficient_data":
+                return  # Not enough data yet — normal, skip silently
+            logger.info(f"idle_scheduler: training pipeline: {result.get('status', '?')}")
+        except Exception:
+            logger.debug("idle_scheduler: training pipeline failed", exc_info=True)
+    jobs.append(("training-pipeline", _training_pipeline))
 
     # ── Fiction library: re-ingest new books periodically ───────────────
     def _fiction_ingest():
@@ -626,14 +643,25 @@ def _auto_discover_topics() -> None:
         if not new_topics:
             return
 
-        # Filter out duplicates
+        # Filter out duplicates (exact + fuzzy substring matching)
         existing_lower = {s.lower() for s in existing_skills}
         queue_lower = existing_queue.lower()
-        unique_topics = [
-            t for t in new_topics
-            if t.lower().replace(" ", "_") not in existing_lower
-            and t.lower() not in queue_lower
-        ]
+        all_known = " ".join(existing_lower) + " " + queue_lower
+
+        def _is_duplicate(topic: str) -> bool:
+            t = topic.lower().strip()
+            # Exact match
+            if t.replace(" ", "_") in existing_lower:
+                return True
+            if t in queue_lower:
+                return True
+            # Fuzzy: if 2+ words from the topic appear in existing skills, likely duplicate
+            words = [w for w in t.split() if len(w) > 3]
+            if words and sum(1 for w in words if w in all_known) >= min(2, len(words)):
+                return True
+            return False
+
+        unique_topics = [t for t in new_topics if not _is_duplicate(t)]
 
         if not unique_topics:
             logger.debug("idle_scheduler: all discovered topics already known")

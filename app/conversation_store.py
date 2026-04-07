@@ -186,6 +186,16 @@ def complete_task(task_id: int, success: bool = True, error_type: str = "") -> N
         logger.exception("conversation_store: failed to complete task")
 
 
+def update_task_crew(task_id: int, crew: str) -> None:
+    """Update the crew name on a task (set after Commander routing)."""
+    try:
+        conn = _get_conn()
+        conn.execute("UPDATE tasks SET crew = ? WHERE id = ?", (crew, task_id))
+        conn.commit()
+    except Exception:
+        logger.debug("conversation_store: failed to update task crew", exc_info=True)
+
+
 def count_recent_tasks(hours: int = 24) -> tuple[int, int]:
     """Count (total, successful) tasks in the last N hours."""
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()

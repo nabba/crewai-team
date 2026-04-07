@@ -628,6 +628,15 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         )
         log_response_sent(_redact_number(sender), len(result))
 
+        # Record which crew handled the task (for per-crew analytics)
+        try:
+            from app.conversation_store import update_task_crew
+            crew_used = getattr(commander, '_last_crew', '') or ''
+            if crew_used:
+                update_task_crew(task_row_id, crew_used)
+        except Exception:
+            pass
+
         # Persist the assistant reply (full text for conversation history)
         add_message(sender, "assistant", result)
 

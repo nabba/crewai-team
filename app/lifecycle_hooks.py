@@ -485,4 +485,38 @@ def _register_defaults(registry: HookRegistry) -> None:
         description="Record interaction metrics for health monitoring",
     )
 
+    # Priority 65: Error logging to control plane audit trail
+    def _on_error_hook(ctx: HookContext) -> HookContext:
+        try:
+            from app.control_plane.audit import get_audit
+            get_audit().log(
+                actor=ctx.agent_id or "unknown",
+                action="error.occurred",
+                detail={
+                    "error": ctx.errors[0][:500] if ctx.errors else "unknown",
+                    "task": ctx.task_description[:200] if ctx.task_description else "",
+                },
+            )
+        except Exception:
+            pass
+        return ctx
+    registry.register(
+        "error_audit", HookPoint.ON_ERROR,
+        _on_error_hook,
+        priority=65,
+        description="Log errors to control plane audit trail",
+    )
+
+    # Priority 70: History compression (defined but was never registered)
+    try:
+        if get_settings().history_compression_enabled:
+            registry.register(
+                "history_compress", HookPoint.PRE_LLM_CALL,
+                create_history_compression_hook(),
+                priority=20,
+                description="Compress conversation history before LLM call",
+            )
+    except Exception:
+        logger.debug("lifecycle_hooks: history compression hook not available", exc_info=True)
+
     logger.info(f"lifecycle_hooks: registered {len(registry.list_hooks())} default hooks")

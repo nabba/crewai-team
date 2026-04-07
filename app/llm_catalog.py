@@ -458,14 +458,14 @@ ROLE_DEFAULTS: dict[str, dict[str, str]] = {
         "research":     "deepseek-v3.2",
         "coding":       "minimax-m2.5",
         "writing":      "claude-sonnet-4.6",
-        "media":        "mimo-v2-omni",
+        "media":        "gemma4:26b",         # Vision-capable local model
         "critic":       "gemini-3.1-pro",
-        "introspector": "deepseek-v3.2",
-        "self_improve":  "deepseek-v3.2",
+        "introspector": "gemma4:26b",         # Local — saves API cost for self-reflection
+        "self_improve":  "gemma4:26b",        # Local — background task, no API spend
         "vetting":      "claude-sonnet-4.6",
         "synthesis":    "claude-sonnet-4.6",
-        "planner":      "deepseek-v3.2",
-        "evo_critic":   "deepseek-v3.2",
+        "planner":      "gemma4:26b",         # Local — background task
+        "evo_critic":   "gemma4:26b",         # Local — evolution judging
         "default":      "deepseek-v3.2",
     },
     "quality": {
