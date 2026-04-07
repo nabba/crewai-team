@@ -26,3 +26,5 @@ html2text>=2024.2.0
 psycopg2-binary>=2.9.9
 reportlab>=4.0
 firecrawl-py>=1.0
+neo4j>=5.0
+langchain-neo4j>=0.1

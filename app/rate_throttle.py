@@ -236,6 +236,15 @@ def install_throttle() -> None:
         except Exception:
             logger.debug("rate_throttle: could not patch BaseLLM", exc_info=True)
 
+    # Also register a litellm success callback for direct LLM.call() usage
+    # (the BaseLLM patch only fires during Crew execution, not direct calls)
+    try:
+        import litellm
+        litellm.success_callback = [_record_token_usage]
+        logger.info("rate_throttle: litellm success_callback registered for token tracking")
+    except Exception:
+        logger.debug("rate_throttle: could not register litellm callback", exc_info=True)
+
 
 _cost_lookup: dict[str, tuple[float, float]] | None = None
 
