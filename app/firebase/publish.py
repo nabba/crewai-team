@@ -1050,7 +1050,7 @@ def report_system_monitor() -> None:
             monitor["subsystems"]["amendments"] = {
                 "status": "ok", "label": "Agent Zero Amendments",
                 "modules": ["history_compression", "lifecycle_hooks",
-                             "tool_executor", "project_isolation"],
+                             "project_isolation", "control_plane"],
                 "details": {
                     "hooks_total": len(hooks),
                     "hooks_immutable": immutable_count,

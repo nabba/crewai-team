@@ -151,11 +151,13 @@ PROTECTED_FILES = frozenset({
     "host_bridge/capabilities.json",
     # Fiction inspiration RAG — epistemic boundary enforcement
     "app/fiction_inspiration.py",
-    # Agent Zero amendments — lifecycle hooks, compression, tool execution, isolation
+    # Agent Zero amendments — lifecycle hooks, compression, isolation, control plane
     "app/history_compression.py",
     "app/lifecycle_hooks.py",
-    "app/tool_executor.py",
     "app/project_isolation.py",
+    "app/control_plane/audit.py",
+    "app/control_plane/budgets.py",
+    "app/control_plane/governance.py",
 })
 
 
