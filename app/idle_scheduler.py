@@ -233,6 +233,71 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         RetrospectiveCrew().run()
     jobs.append(("retrospective", _retrospective))
 
+    # ── Embedded personality probes: covert measurement via real-ish tasks ──
+    def _embedded_probe():
+        try:
+            from app.personality.probes import get_probe_engine
+            from app.personality.evaluation import EvaluationEngine
+            from app.personality.state import get_personality, save_personality
+            from app.llm_factory import create_specialist_llm
+            from app.prompt_registry import get_active_prompt
+
+            engine = get_probe_engine()
+            ee = EvaluationEngine()
+
+            # Pick a random agent to probe
+            roles = ["commander", "researcher", "coder", "writer"]
+            role = roles[hash(str(time.monotonic())) % len(roles)]
+
+            # Generate a covert probe
+            probe = engine.generate_probe(role)
+            if not probe:
+                return
+
+            # Get agent response (the agent doesn't know this is a test)
+            llm = create_specialist_llm(max_tokens=1000, role=role)
+            agent_prompt = get_active_prompt(role)
+            response = str(llm.call(
+                f"{(agent_prompt or '')[:2000]}\n\n{probe.task_description}"
+            )).strip()
+
+            if not response or len(response) < 20:
+                return
+
+            # Evaluate response against the hidden test dimension
+            from app.personality.validation import get_bvl
+            bvl = get_bvl()
+            behavioral_history = bvl.get_behavioral_summary(role)
+            state = get_personality(role)
+            personality_summary = state.get_profile_summary()
+
+            result = ee.evaluate(
+                role, probe.target_dimension, probe.task_description,
+                response, behavioral_history, personality_summary,
+            )
+
+            # Update personality state with covert measurement
+            # Covert probes give more weight because the agent wasn't "performing"
+            state.update_trait(
+                "strengths" if probe.target_dimension in state.strengths
+                else "temperament" if probe.target_dimension in state.temperament
+                else "personality_factors",
+                probe.target_dimension,
+                result.composite_score,
+            )
+            state.assessment_count += 1
+            state.last_assessment = datetime.now(timezone.utc).isoformat()
+            save_personality(state)
+
+            logger.info(
+                f"personality: embedded probe completed for {role} "
+                f"(type={probe.probe_type}, dim={probe.target_dimension}, "
+                f"score={result.composite_score:.2f})"
+            )
+        except Exception:
+            logger.debug("idle_scheduler: embedded probe failed", exc_info=True)
+    jobs.append(("embedded-probe", _embedded_probe))
+
     # ── Improvement scan: analyze gaps and propose improvements ────────
     def _improvement_scan():
         from app.crews.self_improvement_crew import SelfImprovementCrew
