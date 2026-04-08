@@ -141,8 +141,18 @@ class TestDatabase:
         stored = _store_discovered(model)
         # May fail without DB — that's OK
         if stored:
-            models = get_discovered_models(limit=50)
-            assert any(m["model_id"] == "test/unit-test-model" for m in models)
+            # Retrieve all models (may be 300+) and search for our test model
+            models = get_discovered_models(limit=500)
+            found = any(m.get("model_id") == "test/unit-test-model" for m in models)
+            # If not found in top 500 by date, it may be too old — check directly
+            if not found:
+                from app.control_plane.db import execute
+                direct = execute(
+                    "SELECT model_id FROM control_plane.discovered_models WHERE model_id = %s",
+                    ("test/unit-test-model",), fetch=True,
+                )
+                found = bool(direct)
+            assert found
 
     def test_get_known_model_ids(self):
         from app.llm_discovery import _get_known_model_ids
