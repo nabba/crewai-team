@@ -466,3 +466,49 @@ def list_documents() -> list[dict]:
                 "type": f.suffix[1:],
             })
     return docs[:50]
+
+
+# ── CrewAI tool wrappers ─────────────────────────────────────────────────────
+
+def create_document_tools() -> list:
+    """Create CrewAI-compatible document generation tools for agents."""
+    try:
+        from crewai.tools import tool
+
+        @tool("generate_pdf")
+        def pdf_tool(title: str, content: str, sections: str = "") -> str:
+            """Generate a formatted PDF document. Provide title, content text,
+            and optionally sections as JSON: [{"heading": "...", "body": "..."}].
+            Returns the file path."""
+            section_list = None
+            if sections:
+                try:
+                    section_list = json.loads(sections)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result = create_pdf(title=title, content=content, sections=section_list)
+            return result.get("path", result.get("error", "PDF generation failed"))
+
+        @tool("generate_docx")
+        def docx_tool(title: str, content: str, sections: str = "") -> str:
+            """Generate a Word document (.docx). Provide title, content,
+            and optionally sections as JSON. Returns the file path."""
+            section_list = None
+            if sections:
+                try:
+                    section_list = json.loads(sections)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result = create_docx(title=title, content=content, sections=section_list)
+            return result.get("path", result.get("error", "DOCX generation failed"))
+
+        @tool("generate_html_page")
+        def html_tool(title: str, content: str, theme: str = "modern-dark") -> str:
+            """Generate a styled HTML page. Themes: modern-dark, clean-light, minimal.
+            Returns the URL where the page is served."""
+            result = create_html_page(title=title, body_html=content, theme=theme)
+            return result.get("url", result.get("path", result.get("error", "HTML generation failed")))
+
+        return [pdf_tool, docx_tool, html_tool]
+    except Exception:
+        return []

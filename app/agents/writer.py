@@ -24,6 +24,14 @@ def create_writer(force_tier: str | None = None) -> Agent:
     mem0_tools = create_mem0_tools("writer")
 
     tools = [file_manager, web_search, read_attachment, KnowledgeSearchTool(), PhilosophyRAGTool()] + memory_tools + scoped_tools + mem0_tools
+    # Document generation tools (PDF, DOCX, HTML)
+    try:
+        from app.tools.document_generator import create_document_tools
+        doc_tools = create_document_tools()
+        if doc_tools:
+            tools.extend(doc_tools)
+    except Exception:
+        pass
     # Host Bridge tools (read/write host files for document output)
     try:
         from app.tools.bridge_tools import create_bridge_tools
