@@ -456,34 +456,92 @@ class IslandEvolution:
 
     # ── Fitness evaluation ────────────────────────────────────────────
 
+    # Role-specific test tasks for fitness evaluation
+    _TEST_TASKS = {
+        "coder": [
+            "Write a Python function to find two numbers in a list that add up to a target sum.",
+            "Implement a simple LRU cache class in Python.",
+            "Write a function that validates an email address using regex.",
+        ],
+        "researcher": [
+            "What are the key differences between TCP and UDP protocols?",
+            "Explain the CAP theorem and its implications for distributed systems.",
+            "Compare PostgreSQL and MongoDB for a real-time chat application.",
+        ],
+        "writer": [
+            "Write a concise bug report for a login page that sometimes shows a blank screen.",
+            "Write a professional email declining a meeting invitation politely.",
+            "Write release notes for a software version that adds dark mode and fixes 3 bugs.",
+        ],
+    }
+
     def _evaluate_fitness(self, prompt_content: str) -> float:
-        """Evaluate a prompt variant's fitness using the eval sandbox."""
+        """Evaluate a prompt variant's fitness using LLM-as-judge.
+
+        Generates responses from the candidate prompt on test tasks,
+        then scores with an external judge (DGM-safe: different LLM).
+
+        Uses local Gemma 4 for generation (free) and DeepSeek for judging.
+        """
+        import re as _re
+
+        test_tasks = self._TEST_TASKS.get(self._role, self._TEST_TASKS["researcher"])
+        # Sample 2 tasks for speed (full eval is expensive)
+        sample = random.sample(test_tasks, min(2, len(test_tasks)))
+
         try:
-            from app.eval_sandbox import EvalSandbox
-            from app.config import get_settings
-            import app.prompt_registry as registry
+            from app.llm_factory import create_specialist_llm, create_cheap_vetting_llm
 
-            s = get_settings()
-            if not s.mem0_postgres_url:
-                return random.uniform(0.3, 0.7)  # Fallback: random fitness
+            # Agent LLM: local model with the CANDIDATE prompt injected
+            agent_llm = create_specialist_llm(max_tokens=512, role=self._role, force_tier="local")
+            judge = create_cheap_vetting_llm()
 
-            sandbox = EvalSandbox(s.mem0_postgres_url, registry)
-            # Create a temporary modification to evaluate
-            result = sandbox.evaluate_modification(
-                role=self._role,
-                proposed_content=prompt_content,
-                modification_type="island_evolution",
-            )
+            scores = []
+            for task in sample:
+                try:
+                    # Generate response using candidate prompt
+                    response = str(agent_llm.call(
+                        f"{prompt_content[:2000]}\n\n{task}"
+                    )).strip()
 
-            if result.get("verdict") == "approve":
-                return result.get("proposed_score", 0.5)
-            elif result.get("verdict") == "reject":
-                return max(0.1, result.get("proposed_score", 0.3))
-            return 0.4
+                    if not response or len(response) < 20:
+                        scores.append(0.2)
+                        continue
+
+                    # Judge the response (different LLM — DGM constraint)
+                    judge_prompt = (
+                        f"Score this AI response 0.0 to 1.0 on accuracy, completeness, clarity.\n"
+                        f"Task: {task}\n"
+                        f"Response: {response[:2000]}\n\n"
+                        f"Reply with ONLY a JSON object: "
+                        '{"score": 0.X, "reason": "brief"}'
+                    )
+                    raw = str(judge.call(judge_prompt)).strip()
+
+                    # Parse score
+                    match = _re.search(r'"score"\s*:\s*([\d.]+)', raw)
+                    if match:
+                        scores.append(min(1.0, max(0.0, float(match.group(1)))))
+                    else:
+                        # Try plain number
+                        match = _re.search(r"(0\.\d+|1\.0)", raw)
+                        if match:
+                            scores.append(float(match.group(1)))
+                        else:
+                            scores.append(0.4)
+                except Exception:
+                    scores.append(0.3)
+
+            if scores:
+                avg = sum(scores) / len(scores)
+                logger.debug(f"island_evolution: fitness={avg:.3f} for {self._role} "
+                             f"(scores={[round(s,2) for s in scores]})")
+                return avg
 
         except Exception as e:
-            logger.debug(f"island_evolution: fitness eval failed: {e}")
-            return random.uniform(0.2, 0.5)
+            logger.warning(f"island_evolution: fitness eval failed: {e}")
+
+        return random.uniform(0.3, 0.5)
 
     # ── Helpers ───────────────────────────────────────────────────────
 
