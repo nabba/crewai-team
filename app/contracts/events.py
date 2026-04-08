@@ -1,5 +1,9 @@
 """
-events.py — Typed system events.
+events.py — Typed system events (ARCHITECTURAL REFERENCE).
+
+NOTE: This file is documentation-as-code. It is not imported at runtime
+by any module. It defines the canonical event types for reference by
+developers and for future typed event bus implementation.
 
 Defines the events that flow between subsystems. Subsystems produce events;
 other subsystems consume them. This replaces ad-hoc dict passing with

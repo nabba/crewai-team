@@ -1,5 +1,9 @@
 """
-firestore_schema.py — Documented Firestore collection contracts.
+firestore_schema.py — Documented Firestore collection contracts (ARCHITECTURAL REFERENCE).
+
+NOTE: This file is documentation-as-code. It is not imported at runtime
+by any module. It serves as the single source of truth for Firestore
+schema documentation, referenced by developers and the dashboard.
 
 This file serves as the single source of truth for all Firestore
 collections, their field types, and which subsystems read/write them.

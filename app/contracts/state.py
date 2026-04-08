@@ -1,5 +1,9 @@
 """
-state.py — Typed state documents.
+state.py — Typed state documents (ARCHITECTURAL REFERENCE).
+
+NOTE: This file is documentation-as-code. It is not imported at runtime
+by any module. It defines the canonical state shapes for reference by
+developers and for future typed state management implementation.
 
 Defines the shape of state that flows between subsystems via Firestore
 or internal APIs. These are the "data contracts" that the dashboard,
