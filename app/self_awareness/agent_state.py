@@ -7,6 +7,14 @@ performance for each crew. Used by:
   - L5 Theory of Mind: which crew has best success rate for a task type
   - L4 Autobiographical Memory: feeds into system chronicle
 
+NOTE ON CONFIDENCE: The `avg_confidence` value here (0.0-1.0) is a PER-AGENT
+rolling average derived from self-report confidence levels after each task
+(low=0.3, medium=0.5, high=0.7). It is DIFFERENT from the system-wide
+confidence in homeostasis.py:
+  - agent_state.avg_confidence: per-agent, tracks individual crew performance
+  - homeostasis.confidence: system-wide proto-emotional signal, affects behavior
+Both are valid metrics at different scopes — they are NOT expected to match.
+
 Storage: Single JSON file at workspace/agent_state.json.
 Writes are atomic (temp file + rename) to prevent corruption.
 Updated by the existing _post_crew_telemetry() hook — no new threads.

@@ -5,6 +5,15 @@ Tracks internal state variables that function as proto-emotions — not
 subjective feelings, but functional signals that influence decision-making.
 Analogous to Damasio's somatic markers.
 
+NOTE ON CONFIDENCE: The `confidence` value here (0.0-1.0) is a SYSTEM-WIDE
+proto-emotional signal reflecting overall operational confidence. It is
+DIFFERENT from the per-agent confidence in agent_state.py:
+  - homeostasis.confidence: system-wide, affects behavior (triggers critic
+    review when >0.9, boosts exploration when <0.3). Updated per task.
+  - agent_state.avg_confidence: per-agent rolling average derived from
+    crew self-report confidence levels (low=0.3, medium=0.5, high=0.7).
+Both are valid metrics at different scopes — they are NOT expected to match.
+
 State variables drift toward immutable set-points after each update
 (exponential decay toward target, like a biological thermostat).
 
