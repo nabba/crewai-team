@@ -265,39 +265,51 @@ class CurationPipeline:
         return stats
 
     def _load_unscored(self) -> list[dict]:
-        """Load interactions that haven't been quality-scored yet."""
+        """Load interactions that haven't been quality-scored yet.
+
+        Merges PostgreSQL + JSONL sources to catch all interactions.
+        PG has structured data from the POST_LLM_CALL hook; JSONL has
+        data from the raw file collector. Deduplicates by ID.
+        """
+        all_records = {}
+
+        # Source 1: PostgreSQL
         try:
             from app.config import get_settings
             import psycopg2
-
             s = get_settings()
-            if not s.mem0_postgres_url:
-                return self._load_from_jsonl()
+            if s.mem0_postgres_url:
+                conn = psycopg2.connect(s.mem0_postgres_url)
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, agent_role, task_description, messages, response,
+                               source_model, source_tier, provenance
+                        FROM training.interactions
+                        WHERE quality_score IS NULL AND training_eligible = TRUE
+                        ORDER BY created_at DESC
+                        LIMIT 500
+                    """)
+                    for r in cur.fetchall():
+                        all_records[r[0]] = {
+                            "id": r[0], "agent_role": r[1], "task_description": r[2],
+                            "messages": r[3] if isinstance(r[3], list) else json.loads(r[3] or "[]"),
+                            "response": r[4], "source_model": r[5],
+                            "source_tier": r[6], "provenance": r[7],
+                        }
+                conn.close()
+        except Exception as e:
+            logger.debug(f"training_collector: PG load failed: {e}")
 
-            conn = psycopg2.connect(s.mem0_postgres_url)
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, agent_role, task_description, messages, response,
-                           source_model, source_tier, provenance
-                    FROM training.interactions
-                    WHERE quality_score IS NULL AND training_eligible = TRUE
-                    ORDER BY created_at DESC
-                    LIMIT 500
-                """)
-                rows = cur.fetchall()
-            conn.close()
+        # Source 2: JSONL files (catches interactions not in PG)
+        jsonl_records = self._load_from_jsonl()
+        for r in jsonl_records:
+            rid = r.get("id", "")
+            if rid and rid not in all_records:
+                all_records[rid] = r
 
-            return [
-                {
-                    "id": r[0], "agent_role": r[1], "task_description": r[2],
-                    "messages": r[3] if isinstance(r[3], list) else json.loads(r[3]),
-                    "response": r[4], "source_model": r[5],
-                    "source_tier": r[6], "provenance": r[7],
-                }
-                for r in rows
-            ]
-        except Exception:
-            return self._load_from_jsonl()
+        logger.info(f"training_collector: loaded {len(all_records)} unscored interactions "
+                     f"(PG + JSONL merged)")
+        return list(all_records.values())[:500]
 
     def _load_from_jsonl(self) -> list[dict]:
         """Fallback: load from JSONL files."""
@@ -317,15 +329,17 @@ class CurationPipeline:
         """Score quality using an external judge LLM."""
         try:
             from app.llm_factory import create_cheap_vetting_llm
-            judge = create_cheap_vetting_llm(max_tokens=200)
-        except Exception:
+            judge = create_cheap_vetting_llm()  # No args — function takes none
+        except Exception as e:
             # No judge available — assign neutral score
+            logger.warning(f"training_collector: judge LLM creation failed: {e}")
             for r in interactions:
                 r["quality_score"] = 0.6
             return interactions
 
         import re as _re
 
+        scored_count = 0
         for record in interactions:
             try:
                 messages_text = "\n".join(
@@ -343,13 +357,19 @@ class CurationPipeline:
                 if match:
                     data = json.loads(match.group())
                     record["quality_score"] = float(data.get("overall", 0.5))
+                    scored_count += 1
+                    logger.debug(f"training_collector: scored {record.get('id','?')}: {record['quality_score']:.2f}")
                 else:
+                    logger.warning(f"training_collector: judge returned no JSON: {raw[:100]}")
                     record["quality_score"] = 0.5
-            except Exception:
+            except Exception as e:
+                logger.warning(f"training_collector: scoring failed for {record.get('id','?')}: {e}")
                 record["quality_score"] = 0.5
 
             # Persist score to PostgreSQL
             self._update_score(record["id"], record["quality_score"])
+
+        logger.info(f"training_collector: scored {scored_count}/{len(interactions)} interactions")
 
         return interactions
 
