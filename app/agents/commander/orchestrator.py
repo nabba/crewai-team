@@ -751,6 +751,25 @@ class Commander:
             difficulty = d.get("difficulty", 5)
             tracker.crew_name = crew_name
 
+            # ATLAS: for hard tasks, check competence and queue learning if needed
+            if difficulty >= 6:
+                try:
+                    from app.atlas.learning_planner import LearningPlanner
+                    from app.atlas.competence_tracker import get_tracker as _get_ct
+                    planner = LearningPlanner()
+                    plan = planner.create_plan(user_input[:500])
+                    if plan.steps:
+                        # Execute learning in background (don't block the user)
+                        def _bg_learn(p=plan):
+                            try:
+                                planner.execute_plan(p)
+                            except Exception:
+                                pass
+                        _ctx_pool.submit(_bg_learn)
+                        logger.info(f"ATLAS: learning plan queued ({len(plan.steps)} steps) for: {user_input[:60]}")
+                except Exception:
+                    pass
+
             # L3: Use reflexion retry for medium+ difficulty tasks
             if difficulty >= 5:
                 final_result, reflexion_exhausted = self._run_with_reflexion(

@@ -624,6 +624,33 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: ATLAS stale check failed", exc_info=True)
     jobs.append(("atlas-stale-check", _atlas_stale_check))
 
+    # ── ATLAS: execute learning plans for capability gaps ─────────────
+    def _atlas_learning():
+        try:
+            from app.atlas.competence_tracker import get_tracker
+            from app.atlas.learning_planner import LearningPlanner
+
+            tracker = get_tracker()
+            # Find gaps: areas with confidence below threshold
+            gap_entries = tracker.get_gaps(min_confidence=0.3)
+            if not gap_entries:
+                return
+            # Convert CompetenceEntry objects to dicts for learning planner
+            gaps = [{"domain": g.domain, "name": g.name} for g in gap_entries[:3]]
+
+            planner = LearningPlanner()
+            plan = planner.create_plan(
+                task_description=f"Learn about: {', '.join(g['name'] for g in gaps)}",
+                requirements=gaps,
+            )
+            if plan.steps:
+                plan = planner.execute_plan(plan)
+                completed = sum(1 for s in plan.steps if s.status == "completed")
+                logger.info(f"idle_scheduler: ATLAS learning plan: {completed}/{len(plan.steps)} steps completed")
+        except Exception:
+            logger.debug("idle_scheduler: ATLAS learning plan failed", exc_info=True)
+    jobs.append(("atlas-learning", _atlas_learning))
+
     # ── System monitor: report all subsystem status to dashboard ────
     def _system_monitor():
         try:
