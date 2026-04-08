@@ -192,6 +192,16 @@ class CodeForge:
                 result.skill_id = skill_id
                 logger.info(f"code_forge: registered skill '{skill_id}' "
                             f"(confidence={manifest.effective_confidence():.2f})")
+                # Audit trail
+                try:
+                    from app.atlas.audit_log import log_external_call
+                    log_external_call(
+                        agent="code_forge", action="build_and_register",
+                        target=skill_id, method="decompose+generate+test+register",
+                        result="success",
+                    )
+                except Exception:
+                    pass
             except Exception as e:
                 logger.warning(f"code_forge: skill registration failed: {e}")
 

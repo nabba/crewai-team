@@ -315,16 +315,35 @@ Generate ONLY Python test code. No markdown fences."""
                 tags=[api_name.lower(), "api", "client", knowledge.auth_type],
             )
 
-            return {
+            result = {
                 "success": True,
                 "skill_id": skill_id,
                 "confidence": manifest.effective_confidence(),
                 "endpoints_count": len(knowledge.endpoints),
                 "auth_type": knowledge.auth_type,
             }
+            # Audit trail
+            try:
+                from app.atlas.audit_log import log_external_call
+                log_external_call(
+                    agent="api_scout", action="build_and_register",
+                    target=api_name, method="discover+generate+register",
+                    result="success",
+                )
+            except Exception:
+                pass
+            return result
 
         except Exception as e:
             logger.error(f"api_scout: build_and_register failed for '{api_name}': {e}")
+            try:
+                from app.atlas.audit_log import log_external_call
+                log_external_call(
+                    agent="api_scout", action="build_and_register",
+                    target=api_name, result="failure",
+                )
+            except Exception:
+                pass
             return {"success": False, "error": str(e)[:500]}
 
     # ── Private helpers ───────────────────────────────────────────────────

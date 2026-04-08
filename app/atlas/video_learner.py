@@ -169,6 +169,8 @@ class VideoLearner:
 
     def learn_from_search(self, query: str, max_videos: int = 3) -> list[ExtractedKnowledge]:
         """Search YouTube and learn from top results."""
+        import time as _time
+        _start = _time.monotonic()
         results = []
         urls = self._search_youtube(query, max_videos)
         for url in urls:
@@ -177,6 +179,17 @@ class VideoLearner:
                 results.append(knowledge)
             except Exception:
                 logger.debug(f"video_learner: failed to learn from {url}", exc_info=True)
+        # Audit trail
+        try:
+            from app.atlas.audit_log import log_external_call
+            log_external_call(
+                agent="video_learner", action="learn_from_search",
+                target=query, method=f"youtube_search({len(urls)} videos)",
+                result="success" if results else "no_results",
+                execution_time_ms=(_time.monotonic() - _start) * 1000,
+            )
+        except Exception:
+            pass
         return results
 
     # ── Extraction ────────────────────────────────────────────────────────
