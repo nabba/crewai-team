@@ -795,5 +795,28 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         except Exception as exc:
             return f"Bridge error: {str(exc)[:200]}"
 
+    # ── LLM Discovery commands ──────────────────────────────────────────
+    if lower in ("discover models", "discover", "model discovery"):
+        try:
+            from app.llm_discovery import run_discovery_cycle
+            result = run_discovery_cycle(max_benchmarks=2)
+            return (
+                f"🔍 LLM Discovery:\n"
+                f"  Scanned: {result.get('scanned', 0)} models\n"
+                f"  New found: {result.get('new_found', 0)}\n"
+                f"  Benchmarked: {result.get('benchmarked', 0)}\n"
+                f"  Promoted: {result.get('promoted', 0)}\n"
+                f"  Pending approval: {result.get('proposals', 0)}"
+            )
+        except Exception as exc:
+            return f"Discovery error: {str(exc)[:200]}"
+
+    if lower in ("discovered", "discovered models", "models discovered"):
+        try:
+            from app.llm_discovery import format_discovery_report
+            return format_discovery_report()
+        except Exception as exc:
+            return f"Error: {str(exc)[:200]}"
+
     # No command matched
     return None

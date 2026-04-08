@@ -651,6 +651,17 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: ATLAS learning plan failed", exc_info=True)
     jobs.append(("atlas-learning", _atlas_learning))
 
+    # ── LLM Discovery: scan for new models, benchmark, promote ────────
+    def _llm_discovery():
+        try:
+            from app.llm_discovery import run_discovery_cycle
+            result = run_discovery_cycle(max_benchmarks=2)
+            if result.get("new_found", 0) > 0 or result.get("promoted", 0) > 0:
+                logger.info(f"idle_scheduler: LLM discovery: {result}")
+        except Exception:
+            logger.debug("idle_scheduler: LLM discovery failed", exc_info=True)
+    jobs.append(("llm-discovery", _llm_discovery))
+
     # ── System monitor: report all subsystem status to dashboard ────
     def _system_monitor():
         try:
