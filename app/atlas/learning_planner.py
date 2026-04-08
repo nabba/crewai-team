@@ -281,7 +281,7 @@ class LearningPlanner:
     def _exec_web_research(self, target: str) -> dict:
         """Execute web research."""
         try:
-            from app.tools.brave_search import search_brave
+            from app.tools.web_search import search_brave
             results = search_brave(f"{target} documentation tutorial", count=3)
             if results:
                 from app.atlas.competence_tracker import get_tracker

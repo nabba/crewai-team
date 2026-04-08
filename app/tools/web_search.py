@@ -12,6 +12,34 @@ _session.headers.update({
 })
 
 
+def search_brave(query: str, count: int = 5) -> list[dict]:
+    """Raw Brave Search — returns list of {title, url, description} dicts.
+
+    Used by ATLAS modules (api_scout, learning_planner) for programmatic
+    search. The @tool version below wraps this for CrewAI agent use.
+    """
+    params = {"q": query, "count": count}
+    try:
+        response = _session.get(
+            BRAVE_SEARCH_URL,
+            headers={"X-Subscription-Token": get_brave_api_key()},
+            params=params,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return [
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "description": item.get("description", ""),
+            }
+            for item in data.get("web", {}).get("results", [])[:count]
+        ]
+    except Exception:
+        return []
+
+
 @tool("web_search")
 def web_search(query: str) -> str:
     """

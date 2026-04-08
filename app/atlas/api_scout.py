@@ -339,7 +339,7 @@ Generate ONLY Python test code. No markdown fences."""
 
         # Search using Brave Search (available in the system)
         try:
-            from app.tools.brave_search import search_brave
+            from app.tools.web_search import search_brave
             for template in SEARCH_PRIORITY[:3]:  # Top 3 search queries
                 query = template.format(api_name=api_name)
                 results = search_brave(query, count=3)
