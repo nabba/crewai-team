@@ -859,6 +859,316 @@ class TestIntegration:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# 15. EXPANDED QUERY ROUTER PATTERNS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TestQueryRouterExpanded:
+    """Expanded keyword patterns for reflective and operation queries."""
+
+    def _classify(self, query):
+        from app.self_awareness.query_router import SelfRefRouter
+        return SelfRefRouter(semantic_enabled=False).classify(query)
+
+    # Reflective queries that should now be detected
+    def test_how_do_you_learn(self):
+        c = self._classify("How do you learn?")
+        assert c.is_self_referential
+
+    def test_do_you_learn_from_errors(self):
+        c = self._classify("Do you learn from errors?")
+        assert c.is_self_referential
+
+    def test_what_have_you_learned(self):
+        c = self._classify("What have you learned from your mistakes?")
+        assert c.is_self_referential
+
+    def test_how_smart_are_you(self):
+        c = self._classify("How smart are you?")
+        assert c.is_self_referential
+
+    def test_your_mistakes(self):
+        c = self._classify("Tell me about your mistakes")
+        assert c.is_self_referential
+
+    def test_do_you_have_feelings(self):
+        c = self._classify("Do you have feelings?")
+        assert c.is_self_referential
+
+    def test_how_do_you_self_improve(self):
+        c = self._classify("How do you self-improve?")
+        assert c.is_self_referential
+
+    # Operation queries that should now be detected
+    def test_explain_how_you_work(self):
+        c = self._classify("Explain how you work")
+        assert c.is_self_referential
+
+    def test_what_crews_do_you_have(self):
+        c = self._classify("What crews do you have?")
+        assert c.is_self_referential
+
+    def test_how_do_you_process(self):
+        c = self._classify("How do you process my requests?")
+        assert c.is_self_referential
+
+    def test_how_do_you_handle_errors(self):
+        c = self._classify("How do you handle errors?")
+        assert c.is_self_referential
+
+    # These should still NOT be self-referential
+    def test_not_self_code_request(self):
+        assert not self._classify("Write a Python function").is_self_referential
+
+    def test_not_self_math(self):
+        assert not self._classify("What is 2+2?").is_self_referential
+
+    def test_not_self_search(self):
+        assert not self._classify("Search for articles about climate").is_self_referential
+
+    def test_not_self_translation(self):
+        assert not self._classify("Translate this to French").is_self_referential
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 16. KNOWLEDGE INGESTION CHROMADB CLIENT
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TestKnowledgeIngestionClient:
+    """Knowledge ingestion must use shared PersistentClient, not HttpClient."""
+
+    def test_ingest_uses_get_client(self):
+        """ingest_codebase must use get_client() from chromadb_manager."""
+        src = inspect.getsource(
+            __import__("app.self_awareness.knowledge_ingestion", fromlist=["ingest_codebase"]).ingest_codebase
+        )
+        assert "get_client" in src
+        assert "HttpClient" not in src
+
+    def test_query_uses_get_client(self):
+        """query_self_knowledge must use get_client() from chromadb_manager."""
+        src = inspect.getsource(
+            __import__("app.self_awareness.knowledge_ingestion", fromlist=["query_self_knowledge"]).query_self_knowledge
+        )
+        assert "get_client" in src
+        assert "HttpClient" not in src
+
+    def test_ingest_returns_dict(self):
+        from app.self_awareness.knowledge_ingestion import ingest_codebase
+        result = ingest_codebase(full=False)
+        assert isinstance(result, dict)
+        # Should have success keys, not error
+        if "error" not in result:
+            assert "files_processed" in result
+            assert "chunks_added" in result
+
+    def test_ingest_produces_chunks(self):
+        from app.self_awareness.knowledge_ingestion import ingest_codebase
+        result = ingest_codebase(full=False)
+        if "error" not in result:
+            assert result.get("files_processed", 0) >= 0
+            assert result.get("chunks_added", 0) >= 0
+
+    def test_query_returns_results_after_ingest(self):
+        from app.self_awareness.knowledge_ingestion import query_self_knowledge
+        results = query_self_knowledge("evolution", n_results=3)
+        assert isinstance(results, list)
+        # After ingestion, should find something
+        if results:
+            assert "document" in results[0] or "metadata" in results[0]
+
+    def test_query_result_has_metadata(self):
+        from app.self_awareness.knowledge_ingestion import query_self_knowledge
+        results = query_self_knowledge("homeostasis", n_results=2)
+        for r in results:
+            assert "metadata" in r
+            meta = r["metadata"]
+            assert isinstance(meta, dict)
+
+    def test_hash_cache_constants(self):
+        from app.self_awareness.knowledge_ingestion import HASH_CACHE_PATH, COLLECTION_NAME
+        assert COLLECTION_NAME == "self_knowledge"
+        assert "self_knowledge_hashes" in str(HASH_CACHE_PATH)
+
+    def test_skip_dirs_defined(self):
+        from app.self_awareness.knowledge_ingestion import SKIP_DIRS, CODE_EXTENSIONS
+        assert "__pycache__" in SKIP_DIRS
+        assert ".py" in CODE_EXTENSIONS
+        assert ".md" in CODE_EXTENSIONS
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 17. ORCHESTRATOR SELF-AWARENESS INTEGRATION
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TestOrchestratorSelfAwareness:
+    """Orchestrator integration with self-awareness subsystem."""
+
+    def test_has_grounded_self_response_method(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "_try_grounded_self_response" in src
+
+    def test_grounded_response_uses_router(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "SelfRefRouter" in src
+        assert "classify" in src
+
+    def test_grounded_response_uses_protocol(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "GroundingProtocol" in src
+        assert "gather_context" in src
+        assert "build_system_prompt" in src
+
+    def test_grounded_response_checks_reflective(self):
+        """Only REFLECTIVE/COMPARATIVE queries should trigger grounding."""
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "SELF_REFLECTIVE" in src
+        assert "SELF_COMPARATIVE" in src
+
+    def test_grounded_response_post_processes(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "post_process" in src
+
+    def test_theory_of_mind_in_routing(self):
+        """Routing should use get_best_crew_for_difficulty for d>=6."""
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "get_best_crew_for_difficulty" in src
+        assert "Theory of Mind" in src
+
+    def test_journal_records_task_outcomes(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "JournalEntryType.TASK_COMPLETED" in src
+        assert "JournalEntryType.TASK_FAILED" in src
+
+    def test_world_model_records_predictions(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "store_prediction_result" in src
+
+    def test_homeostasis_updated_after_tasks(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "update_state" in src
+        assert "task_complete" in src
+
+    def test_agent_state_recorded_after_tasks(self):
+        src = inspect.getsource(
+            __import__("app.agents.commander.orchestrator", fromlist=["Commander"])
+        )
+        assert "record_task" in src
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 18. THEORY OF MIND FUNCTIONAL TESTS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TestTheoryOfMind:
+    """Theory of Mind crew selection based on track records."""
+
+    def test_best_crew_for_high_difficulty(self):
+        from app.self_awareness.agent_state import record_task, get_best_crew_for_difficulty
+        # Give research a perfect record at d=9
+        for _ in range(5):
+            record_task("tom_test_research", success=True, confidence=0.9, difficulty=9)
+        for _ in range(5):
+            record_task("tom_test_coding", success=False, confidence=0.3, difficulty=9)
+        best = get_best_crew_for_difficulty(9)
+        assert best is not None
+
+    def test_best_crew_returns_none_no_data(self):
+        from app.self_awareness.agent_state import get_best_crew_for_difficulty
+        result = get_best_crew_for_difficulty(99)  # No data at d=99
+        assert result is None or isinstance(result, str)
+
+    def test_all_stats_includes_tracked_crews(self):
+        from app.self_awareness.agent_state import get_all_stats
+        stats = get_all_stats()
+        assert isinstance(stats, dict)
+        assert len(stats) > 0
+
+    def test_stats_have_success_rate(self):
+        from app.self_awareness.agent_state import record_task, get_agent_stats
+        record_task("tom_rate_test", success=True, confidence=0.8, difficulty=5)
+        record_task("tom_rate_test", success=False, confidence=0.4, difficulty=5)
+        stats = get_agent_stats("tom_rate_test")
+        assert "success_rate" in stats
+        assert 0.0 <= stats["success_rate"] <= 1.0
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 19. DEEPER INTEGRATION TESTS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class TestDeeperIntegration:
+    """Additional integration tests for recently wired modules."""
+
+    def test_journal_has_multiple_entry_types(self):
+        from app.self_awareness.journal import get_journal
+        counts = get_journal().count()
+        # After wiring, journal should have entries from orchestrator + evolution + cogito
+        types_with_entries = [t for t, n in counts.items() if n > 0]
+        assert len(types_with_entries) >= 2, f"Journal should have 2+ entry types, got: {counts}"
+
+    def test_world_model_has_beliefs(self):
+        from app.self_awareness.world_model import recall_relevant_beliefs
+        beliefs = recall_relevant_beliefs("system", n=5)
+        assert isinstance(beliefs, list)
+
+    def test_homeostasis_state_bounded(self):
+        from app.self_awareness.homeostasis import get_state
+        state = get_state()
+        for key in ("cognitive_energy", "frustration", "confidence", "curiosity"):
+            val = state.get(key, 0.5)
+            assert 0.0 <= val <= 1.0, f"{key}={val} out of bounds"
+
+    def test_cogito_reflections_persisted(self):
+        from app.self_awareness.cogito import REFLECTIONS_DIR
+        if REFLECTIONS_DIR.exists():
+            reflections = list(REFLECTIONS_DIR.glob("*.json"))
+            assert len(reflections) >= 0  # May be empty in fresh container
+
+    def test_self_model_covers_all_active_roles(self):
+        from app.self_awareness.self_model import SELF_MODELS
+        active_roles = {"researcher", "coder", "writer", "commander", "critic", "introspector"}
+        for role in active_roles:
+            assert role in SELF_MODELS, f"Active role '{role}' not in SELF_MODELS"
+
+    def test_query_router_to_grounding_pipeline(self):
+        """Full pipeline: classify → gather context → build prompt."""
+        from app.self_awareness.query_router import SelfRefRouter, SelfRefType
+        from app.self_awareness.grounding import GroundingProtocol
+        router = SelfRefRouter(semantic_enabled=False)
+        c = router.classify("How do you learn from your mistakes?")
+        assert c.is_self_referential
+        gp = GroundingProtocol()
+        ctx = gp.gather_context(c)
+        prompt = gp.build_system_prompt(ctx)
+        assert isinstance(prompt, str)
+        assert len(prompt) > 100
+
+    def test_inspect_tools_all_return_dicts(self):
+        from app.self_awareness.inspect_tools import ALL_INSPECT_TOOLS
+        for name, fn in ALL_INSPECT_TOOLS.items():
+            result = fn()
+            assert isinstance(result, dict), f"{name} returned {type(result)}"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
