@@ -10,10 +10,11 @@ from app.tools.attachment_reader import read_attachment
 from app.souls.loader import compose_backstory
 from app.tools.mem0_tools import create_mem0_tools
 from app.knowledge_base.tools import KnowledgeSearchTool
+from app.fiction_inspiration import get_fiction_tools, FICTION_AWARENESS_PROMPT
 
 settings = get_settings()
 
-CODER_BACKSTORY = compose_backstory("coder")
+CODER_BACKSTORY = compose_backstory("coder") + FICTION_AWARENESS_PROMPT
 
 
 def create_coder(force_tier: str | None = None) -> Agent:
@@ -23,7 +24,7 @@ def create_coder(force_tier: str | None = None) -> Agent:
     scoped_tools = create_scoped_memory_tools("coder")
     mem0_tools = create_mem0_tools("coder")
 
-    tools = [execute_code, file_manager, web_search, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools
+    tools = [execute_code, file_manager, web_search, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + get_fiction_tools()
     # Host Bridge tools (read/write host files, execute commands on Mac)
     try:
         from app.tools.bridge_tools import create_bridge_tools

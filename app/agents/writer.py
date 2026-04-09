@@ -10,10 +10,11 @@ from app.souls.loader import compose_backstory
 from app.tools.mem0_tools import create_mem0_tools
 from app.knowledge_base.tools import KnowledgeSearchTool
 from app.philosophy.rag_tool import PhilosophyRAGTool
+from app.fiction_inspiration import get_fiction_tools, FICTION_AWARENESS_PROMPT
 
 settings = get_settings()
 
-WRITER_BACKSTORY = compose_backstory("writer")
+WRITER_BACKSTORY = compose_backstory("writer") + FICTION_AWARENESS_PROMPT
 
 
 def create_writer(force_tier: str | None = None) -> Agent:
@@ -23,7 +24,7 @@ def create_writer(force_tier: str | None = None) -> Agent:
     scoped_tools = create_scoped_memory_tools("writer")
     mem0_tools = create_mem0_tools("writer")
 
-    tools = [file_manager, web_search, read_attachment, KnowledgeSearchTool(), PhilosophyRAGTool()] + memory_tools + scoped_tools + mem0_tools
+    tools = [file_manager, web_search, read_attachment, KnowledgeSearchTool(), PhilosophyRAGTool()] + memory_tools + scoped_tools + mem0_tools + get_fiction_tools()
     # Document generation tools (PDF, DOCX, HTML)
     try:
         from app.tools.document_generator import create_document_tools
