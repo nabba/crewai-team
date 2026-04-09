@@ -146,10 +146,9 @@ def _extract_frontmatter(text: str) -> tuple[dict, str]:
 def _metadata_from_filename(filepath: Path) -> dict:
     """Fallback metadata from filename patterns."""
     stem = filepath.stem
-    # Pattern: "Title - Author.md" or "Author - Title.md"
+    # Pattern: "Title - Author.md" (space-dash-space)
     if " - " in stem:
         parts = stem.split(" - ", 1)
-        # Heuristic: if second part looks like a name (2-3 words), it's the author
         p1, p2 = parts[0].strip(), parts[1].strip()
         p2_words = p2.replace("_", " ").split()
         if 1 <= len(p2_words) <= 4:
@@ -160,8 +159,21 @@ def _metadata_from_filename(filepath: Path) -> dict:
         parts = stem.split("_-_", 1)
         return {"title": parts[0].replace("_", " ").strip(),
                 "author": parts[1].replace("_", " ").strip()}
+    # Pattern: "Foundation_1_-_Foundation_-_Isaac_Asimov" or "Foundations_Edge_-_Isaac_Asimov"
+    # Split on last "_-_" or last occurrence of known author-like suffix
+    # Try splitting on common "Author_Name" at end after last dash
+    parts = stem.rsplit("-", 1)
+    if len(parts) == 2:
+        title_part = parts[0].rstrip("_ ").replace("_", " ").strip()
+        author_part = parts[1].lstrip("_ ").replace("_", " ").strip()
+        if author_part and len(author_part.split()) >= 2:
+            # Strip leading numbers/underscores from title
+            title_part = re.sub(r'^\d+\s*[-_]\s*', '', title_part).strip()
+            return {"title": title_part, "author": author_part}
     # Generic: replace underscores with spaces
     clean = stem.replace("_", " ").replace("-", " ").strip()
+    # Strip leading numbers like "1  Foundation  Isaac Asimov"
+    clean = re.sub(r'^\d+\s+', '', clean)
     return {"title": clean}
 
 
@@ -177,9 +189,19 @@ def _enrich_metadata(filepath: Path, frontmatter: dict, body: str) -> dict:
     has_genre = bool(result.get("genre"))
     has_themes = bool(result.get("themes"))
 
+    # Strip epub/HTML artifacts from content before analysis
+    clean_body = body
+    clean_body = re.sub(r'```\{=html\}.*?```', '', clean_body, flags=re.DOTALL)  # pandoc HTML blocks
+    clean_body = re.sub(r':::\s*\{[^}]*\}', '', clean_body)  # pandoc div markers
+    clean_body = re.sub(r'!\[.*?\]\([^)]*\)', '', clean_body)  # markdown images
+    clean_body = re.sub(r'\[?\]\{[^}]*\}', '', clean_body)  # epub span markers
+    clean_body = re.sub(r'\{[#.][^}]*\}', '', clean_body)  # epub class/id markers
+    clean_body = re.sub(r'<[^>]+>', '', clean_body)  # HTML tags
+    clean_body = re.sub(r'\n{3,}', '\n\n', clean_body)  # collapse blank lines
+
     # ── Stage 1: Regex extraction from content (free, instant) ──────────
     if not has_author or not has_title:
-        head = body[:2000]
+        head = clean_body[:2000]
 
         # "by Author Name" pattern
         by_match = re.search(r'\bby\s+([A-Z][a-z]+(?: [A-Z]\.?)?(?: [A-Z][a-z]+){1,3})', head)
@@ -218,10 +240,15 @@ def _enrich_metadata(filepath: Path, frontmatter: dict, body: str) -> dict:
             from app.utils import safe_json_parse
 
             llm = create_cheap_vetting_llm()
-            excerpt = body[:3000]
+            excerpt = clean_body[:3000]
             prompt = (
-                "Extract metadata from this book. The filename often contains "
-                "the author and title separated by dashes or underscores.\n"
+                "Extract metadata from this book. IMPORTANT RULES:\n"
+                "- The FILENAME often contains the real author and title "
+                "(separated by dashes or underscores). Use it as primary signal.\n"
+                "- NEVER use HTML tags, markdown images (![...]), or "
+                "epub artifacts ({=html}, :::{.cover}) as the title.\n"
+                "- Author must be a real person's name, not a country or organization.\n"
+                "- Genre should be a standard literary genre (e.g., Science Fiction, Fantasy, Literary Fiction).\n\n"
                 "Return ONLY a JSON object (no markdown):\n"
                 '{"author": "Full Author Name", "title": "Actual Book Title", '
                 '"genre": "Primary Genre", "themes": ["theme1", "theme2", "theme3"]}\n\n'
@@ -231,18 +258,26 @@ def _enrich_metadata(filepath: Path, frontmatter: dict, body: str) -> dict:
             raw = str(llm.call(prompt)).strip()
             parsed, _ = safe_json_parse(raw)
             if parsed:
-                if not has_author and parsed.get("author"):
-                    result["author"] = parsed["author"]
-                    has_author = True
+                if parsed.get("author"):
+                    llm_author = parsed["author"]
+                    # Validate: reject obviously wrong authors (countries, organizations, etc.)
+                    _bad_authors = {"nazi germany", "unknown", "anonymous", "various", "n/a"}
+                    if llm_author.lower().strip() not in _bad_authors:
+                        if not has_author:
+                            result["author"] = llm_author
+                            has_author = True
+                        elif result.get("author", "").lower() in _bad_authors:
+                            result["author"] = llm_author
                 # LLM title overrides bad/suspicious titles
                 if parsed.get("title"):
                     existing_title = result.get("title", "")
+                    _artifact_patterns = ("![", "[", "See what", "```", ":::", "{", "<", "http")
                     is_bad_title = (
                         not has_title
-                        or existing_title.startswith("![")
-                        or existing_title.startswith("[")
-                        or existing_title.startswith("See what")
+                        or any(existing_title.startswith(p) for p in _artifact_patterns)
                         or "\\" in existing_title
+                        or "html" in existing_title.lower()
+                        or "cover" in existing_title.lower()
                         or len(existing_title) < 3
                         or len(existing_title) > 100
                     )
@@ -294,12 +329,32 @@ def _enrich_metadata(filepath: Path, frontmatter: dict, body: str) -> dict:
             logger.debug(f"fiction_enrich: web enrichment failed: {e}")
 
     # ── Write enriched frontmatter back to file ─────────────────────────
-    if result and result != frontmatter:
+    # Only write if we have clean values — skip artifact titles
+    _artifact_check = ("![", "[", "```", "`", ":::", "{", "<", "http", "See what")
+    title_val = result.get("title", "")
+    author_val = result.get("author", "")
+    title_clean = (title_val
+                   and not any(title_val.startswith(p) for p in _artifact_check)
+                   and "\\" not in title_val
+                   and "html" not in title_val.lower()
+                   and "cover" not in title_val.lower()
+                   and len(title_val) >= 3
+                   and len(title_val) <= 100)
+    author_clean = (author_val
+                    and author_val.lower().strip() not in {"nazi germany", "unknown", "anonymous", "n/a", "various"})
+
+    if result and (title_clean or author_clean) and result != frontmatter:
+        # Filter out bad values before writing
+        write_fm = {k: v for k, v in result.items() if v}
+        if not title_clean:
+            write_fm.pop("title", None)
+        if not author_clean:
+            write_fm.pop("author", None)
         try:
             import yaml
             original_text = filepath.read_text(encoding="utf-8")
             _, original_body = _extract_frontmatter(original_text)
-            fm_str = yaml.dump(result, default_flow_style=False, allow_unicode=True)
+            fm_str = yaml.dump(write_fm, default_flow_style=False, allow_unicode=True)
             enriched_text = f"---\n{fm_str}---\n\n{original_body}"
             filepath.write_text(enriched_text, encoding="utf-8")
             logger.info(f"fiction_enrich: wrote enriched frontmatter to {filepath.name}")
@@ -444,6 +499,14 @@ def ingest_book(filepath: Path, extract_concepts: bool = False) -> dict:
     genre = frontmatter.get("genre", "")
     themes = frontmatter.get("themes", [])
     concepts = frontmatter.get("concepts", [])
+
+    # Final safety: reject artifact titles and use filename-derived title instead
+    _artifact_starts = ("![", "[", "```", "`", ":::", "{", "<", "http", "See what")
+    if any(book_title.startswith(p) for p in _artifact_starts) or "\\" in book_title or "html" in book_title.lower() or "cover" in book_title.lower():
+        book_title = fallback.get("title", filepath.stem)
+    # Final safety: reject bad authors
+    if author.lower() in {"nazi germany", "unknown", "anonymous", "n/a", "various", ""}:
+        author = fallback.get("author", "Unknown")
 
     chunks = _chunk_fiction(body)
     if not chunks:
