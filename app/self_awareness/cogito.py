@@ -150,29 +150,76 @@ class CogitoCycle:
         return report
 
     def _apply_proposals(self, report: ReflectionReport) -> None:
-        """Apply safe proposals to sentience config. Bounded, logged, reversible."""
+        """Apply safe proposals to sentience config. Bounded ±20%, logged, reversible.
+
+        M4 fix: covers all 7 configurable parameters, not just 2.
+        """
         try:
             from app.self_awareness.sentience_config import apply_change, load_config
 
             current = load_config()
             applied = 0
 
-            # If health is degraded and escalation rate high → lower certainty_low threshold
-            if report.overall_health == "attention_needed":
-                new_val = current.get("certainty_low_threshold", 0.4) - 0.02
-                if apply_change("certainty_low_threshold", new_val):
+            health = report.overall_health
+            n_disc = len(report.discrepancies)
+            n_fail = len(report.failure_patterns)
+
+            # ── Certainty thresholds ──
+
+            if health == "attention_needed":
+                # System struggling → lower certainty_low (catch more uncertainty)
+                if apply_change("certainty_low_threshold",
+                                current.get("certainty_low_threshold", 0.4) - 0.02):
+                    applied += 1
+                # Also raise certainty_high (require more confidence to proceed)
+                if apply_change("certainty_high_threshold",
+                                current.get("certainty_high_threshold", 0.7) + 0.01):
                     applied += 1
 
-            # If many failure patterns → increase slow_path trigger sensitivity
-            if len(report.failure_patterns) >= 3:
-                new_val = current.get("slow_path_trigger_threshold", 0.4) + 0.02
-                if apply_change("slow_path_trigger_threshold", new_val):
+            elif health == "healthy" and n_disc == 0 and n_fail == 0:
+                # System running well → relax slightly
+                if apply_change("certainty_low_threshold",
+                                current.get("certainty_low_threshold", 0.4) + 0.01):
+                    applied += 1
+                if apply_change("certainty_high_threshold",
+                                current.get("certainty_high_threshold", 0.7) - 0.005):
                     applied += 1
 
-            # If health is healthy and no discrepancies → can relax slightly
-            if report.overall_health == "healthy" and len(report.discrepancies) == 0:
-                new_val = current.get("certainty_low_threshold", 0.4) + 0.01
-                if apply_change("certainty_low_threshold", new_val):
+            # ── Slow path sensitivity ──
+
+            if n_fail >= 3:
+                # Many failures → increase slow path trigger (more deep checking)
+                if apply_change("slow_path_trigger_threshold",
+                                current.get("slow_path_trigger_threshold", 0.4) + 0.02):
+                    applied += 1
+                if apply_change("slow_path_variance_threshold",
+                                current.get("slow_path_variance_threshold", 0.03) - 0.002):
+                    applied += 1
+            elif n_fail == 0 and health == "healthy":
+                # No failures → relax slow path (save compute)
+                if apply_change("slow_path_trigger_threshold",
+                                current.get("slow_path_trigger_threshold", 0.4) - 0.01):
+                    applied += 1
+
+            # ── Valence thresholds ──
+
+            # If somatic markers are rarely triggering caution, lower the negative threshold
+            if n_disc > 0 and any(d.get("severity") == "high" for d in report.discrepancies):
+                if apply_change("valence_negative_threshold",
+                                current.get("valence_negative_threshold", -0.2) + 0.01):
+                    applied += 1  # Move toward 0 = more sensitive to negativity
+
+            # ── Meta-cognitive cooldown ──
+
+            if health == "attention_needed" and n_fail >= 2:
+                # More frequent reassessment when struggling
+                if apply_change("reassessment_cooldown_steps",
+                                max(1, current.get("reassessment_cooldown_steps", 3) - 1)):
+                    applied += 1
+            elif health == "healthy" and n_fail == 0:
+                # Less frequent when healthy (save compute)
+                if apply_change("reassessment_cooldown_steps",
+                                min(10, current.get("reassessment_cooldown_steps", 3) + 1)):
                     applied += 1
 
             if applied > 0:

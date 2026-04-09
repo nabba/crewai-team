@@ -507,16 +507,39 @@ def _register_defaults(registry: HookRegistry) -> None:
         description="Log errors to control plane audit trail",
     )
 
-    # Priority 15: Meta-cognitive layer (sentience: strategy assessment + context modification)
+    # Priority 5: Inject previous internal state into task prompt (C3 fix: recursive self-awareness)
+    def _inject_internal_state_hook(ctx: HookContext) -> HookContext:
+        try:
+            prev_state = ctx.metadata.get("_internal_state")
+            if prev_state and hasattr(prev_state, "to_context_string"):
+                state_str = prev_state.to_context_string()
+                current_desc = ctx.task_description or ""
+                ctx.modified_data["task_description"] = f"{state_str}\n\n{current_desc}"
+        except Exception:
+            pass
+        return ctx
+
+    registry.register(
+        "inject_internal_state", HookPoint.PRE_TASK,
+        _inject_internal_state_hook,
+        priority=5,
+        description="Inject previous internal state into task prompt (recursive self-awareness)",
+    )
+
+    # Priority 15: Meta-cognitive layer (M1 fix: singleton per agent, not per-call)
+    _meta_cognitive_instances: dict[str, "MetaCognitiveLayer"] = {}
+
     def _meta_cognitive_hook(ctx: HookContext) -> HookContext:
         try:
             from app.self_awareness.meta_cognitive import MetaCognitiveLayer
             agent_id = ctx.agent_id or "unknown"
-            mcl = MetaCognitiveLayer(agent_id=agent_id)
+            # M1 fix: reuse instance per agent to preserve strategy history
+            if agent_id not in _meta_cognitive_instances:
+                _meta_cognitive_instances[agent_id] = MetaCognitiveLayer(agent_id=agent_id)
+            mcl = _meta_cognitive_instances[agent_id]
             previous_state = ctx.metadata.get("_internal_state")
             task_ctx = {"description": ctx.task_description or ""}
             modified_ctx, meta_state = mcl.pre_reasoning_hook(task_ctx, previous_state)
-            # Apply context modifications (append-only)
             if meta_state.modification_proposed and modified_ctx.get("description"):
                 ctx.modified_data["task_description"] = modified_ctx["description"]
             ctx.metadata["_meta_cognitive_state"] = meta_state
@@ -532,6 +555,8 @@ def _register_defaults(registry: HookRegistry) -> None:
     )
 
     # Priority 8: Internal state computation (sentience: certainty + somatic + dual-channel)
+    # C1 fix: pass RAG metrics from context metadata
+    # M3 fix: compute embedding once, share between certainty + somatic
     def _internal_state_hook(ctx: HookContext) -> HookContext:
         try:
             from app.self_awareness.certainty_vector import CertaintyVectorComputer
@@ -548,19 +573,51 @@ def _register_defaults(registry: HookRegistry) -> None:
                 decision_context=(ctx.task_description or "")[:500],
             )
 
+            output = ctx.data.get("llm_response", ctx.data.get("result", ""))
+            output_str = str(output)[:1000]
+
+            # M3 fix: compute embedding ONCE, reuse for certainty coherence + somatic
+            shared_embedding = None
+            try:
+                from app.memory.chromadb_manager import embed
+                shared_embedding = embed(output_str[:500]) if len(output_str) > 20 else None
+            except Exception:
+                pass
+
+            # C1 fix: extract RAG metrics from context metadata
+            rag_source_count = ctx.metadata.get("rag_source_count", 0)
+            total_claim_count = ctx.metadata.get("total_claim_count", 0)
+            selected_tool = ctx.metadata.get("selected_tool")
+
+            # If RAG metrics not in metadata, estimate from context
+            if total_claim_count == 0 and output_str:
+                # Heuristic: count sentences as claims, check for citation markers
+                sentences = output_str.count(". ") + output_str.count(".\n") + 1
+                total_claim_count = max(1, sentences)
+                # Check for source markers (URLs, "according to", "source:", citations)
+                import re
+                source_markers = len(re.findall(
+                    r'https?://|according to|source:|cited|reference|\[\d+\]', output_str, re.I
+                ))
+                rag_source_count = min(source_markers, total_claim_count)
+
             # Certainty vector (fast path, ~50ms)
             cv_computer = CertaintyVectorComputer()
-            output = ctx.data.get("llm_response", ctx.data.get("result", ""))
             state.certainty = cv_computer.compute_fast_path(
                 agent_id=state.agent_id,
-                current_output=str(output)[:1000],
+                current_output=output_str,
+                rag_source_count=rag_source_count,
+                total_claim_count=total_claim_count,
+                selected_tool=selected_tool,
+                recent_output_embeddings=None,  # Will fetch from DB
             )
 
-            # Somatic marker (~10ms)
+            # Somatic marker (~10ms) — M3 fix: reuse shared embedding
             sm_computer = SomaticMarkerComputer()
             state.somatic = sm_computer.compute(
                 agent_id=state.agent_id,
                 decision_context=state.decision_context,
+                context_embedding=shared_embedding,
             )
 
             # Dual-channel composition
@@ -574,7 +631,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Log to PostgreSQL (non-fatal)
             sl.log(state)
 
-            # Store in context for next step injection
+            # Store in context for next step injection (C3: used by inject_internal_state hook)
             ctx.metadata["_internal_state"] = state
 
             # GWT: broadcast when disposition is pause or escalate

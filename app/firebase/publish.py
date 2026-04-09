@@ -744,15 +744,18 @@ def report_internal_state() -> None:
 
 
 def report_consciousness_probes(report=None) -> None:
-    """Push consciousness probe results to Firestore for the dashboard."""
+    """Push consciousness probe results to Firestore for the dashboard.
+
+    If report is None, reads last result from DB instead of re-running probes
+    (M2 fix: prevents double-run when called from heartbeat).
+    """
     db = _get_db()
     if not db:
         return
     try:
         if report is None:
-            # Fetch latest from journal
-            from app.self_awareness.consciousness_probe import run_consciousness_probes
-            report = run_consciousness_probes()
+            # Read latest from DB instead of re-running (M2 fix)
+            report = None  # Will just publish history below
 
         # Get history (last 50 probe results)
         history = []
