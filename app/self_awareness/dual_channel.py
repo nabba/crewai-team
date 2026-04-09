@@ -59,8 +59,14 @@ class DualChannelComposer:
         self.valence_negative = cfg.get("valence_negative_threshold", -0.2)
         self.critical_budget = critical_budget_threshold
 
-    def compose(self, state: InternalState) -> InternalState:
-        """Compute action_disposition and risk_tier. Mutates and returns state."""
+    def compose(self, state: InternalState, task_context: dict = None) -> InternalState:
+        """Compute action_disposition and risk_tier. Mutates and returns state.
+
+        Args:
+            state: The InternalState to compose.
+            task_context: Optional task context dict containing pre-reasoning
+                somatic advisories (Phase 3R somatic floor).
+        """
         cert_level = self._discretize_certainty(state)
         val_level = self._discretize_valence(state)
 
@@ -68,6 +74,19 @@ class DualChannelComposer:
             (cert_level, val_level), "cautious"
         )
         risk_tier = DISPOSITION_TO_RISK_TIER[disposition]
+
+        # Phase 3R: Enforce pre-reasoning somatic disposition floor
+        if task_context:
+            try:
+                from app.self_awareness.somatic_bias import SomaticBiasInjector
+                floor = SomaticBiasInjector.get_disposition_floor(task_context)
+                if floor:
+                    floor_tier = DISPOSITION_TO_RISK_TIER.get(floor, 1)
+                    if floor_tier > risk_tier:
+                        risk_tier = floor_tier
+                        disposition = floor
+            except Exception:
+                pass
 
         # Override: critical compute budget → force at least tier 3
         if state.meta.compute_budget_remaining_pct < self.critical_budget:

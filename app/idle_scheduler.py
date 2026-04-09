@@ -575,6 +575,23 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: consciousness probe failed", exc_info=True)
     jobs.append(("consciousness-probe", _consciousness_probe))
 
+    # ── Behavioral assessment: consciousness-like behavioral markers ──
+    def _behavioral_assessment():
+        try:
+            from app.self_awareness.behavioral_assessment import run_behavioral_assessment
+            results = run_behavioral_assessment()
+            for sc in results:
+                logger.info(f"idle_scheduler: behavioral assessment {sc.agent_id}={sc.composite_score:.3f}")
+            # Publish to Firebase
+            try:
+                from app.firebase.publish import report_behavioral_assessment
+                report_behavioral_assessment(results)
+            except Exception:
+                pass
+        except Exception:
+            logger.debug("idle_scheduler: behavioral assessment failed", exc_info=True)
+    jobs.append(("behavioral-assessment", _behavioral_assessment))
+
     # ── MAP-Elites: quality-diversity maintenance + migration ──────────
     def _map_elites_maintain():
         try:

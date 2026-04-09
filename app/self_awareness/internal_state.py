@@ -168,6 +168,14 @@ class InternalState:
     action_disposition: str = "proceed"  # proceed | cautious | pause | escalate
     risk_tier: int = 1                   # 1-4
 
+    # Beautiful Loop (Phase 7)
+    hyper_model_state: Optional[dict] = None       # HyperModelState.to_dict()
+    reality_model_summary: Optional[dict] = None   # RealityModel.to_dict()
+    competition_result: Optional[dict] = None      # Winning plan + all candidates
+    precision_weighted_certainty: float = 0.5
+    free_energy_proxy: float = 0.0
+    free_energy_trend: str = "stable"
+
     # Timestamps
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -185,6 +193,13 @@ class InternalState:
         if sm.intensity > 0.3:
             label = "positive" if sm.valence > 0.2 else ("negative" if sm.valence < -0.2 else "neutral")
             parts.append(f"Somatic={label}({sm.intensity:.1f})")
+        if self.hyper_model_state:
+            hm = self.hyper_model_state
+            parts.append(
+                f"Self-Model: expected={hm.get('predicted_certainty', 0.5):.1f} "
+                f"surprise={hm.get('self_prediction_error', 0):.1f} "
+                f"FE={hm.get('free_energy_trend', 'stable')}"
+            )
         parts.append(f"Disposition={self.action_disposition}")
         return " | ".join(parts)
 

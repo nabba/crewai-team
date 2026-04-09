@@ -796,6 +796,21 @@ def report_consciousness_probes(report=None) -> None:
         logger.debug("firebase.publish: consciousness probes write failed", exc_info=True)
 
 
+def report_behavioral_assessment(results=None) -> None:
+    """Push behavioral assessment scorecards to Firestore."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        payload = {"updated_at": _now_iso(), "scorecards": []}
+        if results:
+            for sc in results:
+                payload["scorecards"].append(sc.to_dict())
+        db.collection("status").document("behavioral_assessment").set(payload)
+    except Exception:
+        logger.debug("firebase.publish: behavioral assessment write failed", exc_info=True)
+
+
 def report_token_stats() -> None:
     """Push aggregated token usage to Firestore for the dashboard."""
     def _write():

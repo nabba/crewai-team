@@ -533,16 +533,32 @@ def _register_defaults(registry: HookRegistry) -> None:
         try:
             from app.self_awareness.meta_cognitive import MetaCognitiveLayer
             agent_id = ctx.agent_id or "unknown"
-            # M1 fix: reuse instance per agent to preserve strategy history
             if agent_id not in _meta_cognitive_instances:
                 _meta_cognitive_instances[agent_id] = MetaCognitiveLayer(agent_id=agent_id)
             mcl = _meta_cognitive_instances[agent_id]
             previous_state = ctx.metadata.get("_internal_state")
             task_ctx = {"description": ctx.task_description or ""}
+
+            # Phase 3R: Pre-reasoning somatic bias (Damasio — emotions bias BEFORE deliberation)
+            try:
+                from app.self_awareness.somatic_marker import SomaticMarkerComputer
+                from app.self_awareness.somatic_bias import SomaticBiasInjector
+                task_desc = task_ctx.get("description", "")
+                if task_desc and len(task_desc) > 10:
+                    smc = SomaticMarkerComputer()
+                    pre_somatic = smc.compute(agent_id=agent_id, decision_context=task_desc[:500])
+                    bias_injector = SomaticBiasInjector()
+                    task_ctx = bias_injector.inject(task_ctx, pre_somatic)
+                    ctx.metadata["_pre_reasoning_somatic"] = pre_somatic.to_dict()
+            except Exception:
+                pass
+
             modified_ctx, meta_state = mcl.pre_reasoning_hook(task_ctx, previous_state)
-            if meta_state.modification_proposed and modified_ctx.get("description"):
+            if modified_ctx.get("description"):
                 ctx.modified_data["task_description"] = modified_ctx["description"]
             ctx.metadata["_meta_cognitive_state"] = meta_state
+            # Store task_ctx for somatic floor enforcement in POST_LLM_CALL
+            ctx.metadata["_task_context"] = task_ctx
         except Exception as e:
             logger.debug(f"lifecycle_hooks: meta-cognitive hook failed: {e}")
         return ctx
@@ -622,11 +638,32 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             # Dual-channel composition
             composer = DualChannelComposer()
-            state = composer.compose(state)
+            task_ctx_for_floor = ctx.metadata.get("_task_context")
+            state = composer.compose(state, task_context=task_ctx_for_floor)
 
             # Trend
             sl = get_state_logger()
             state.certainty_trend = sl.compute_trend(state.agent_id)
+
+            # Phase 7: Beautiful Loop — hyper-model (predict → compare → error)
+            try:
+                from app.self_awareness.hyper_model import HyperModel
+                hm = HyperModel.get_instance(state.agent_id)
+                hm_state = hm.update(state.certainty.adjusted_certainty)
+                state.hyper_model_state = hm_state.to_dict()
+                state.free_energy_proxy = hm_state.free_energy_proxy
+                state.free_energy_trend = hm_state.free_energy_trend
+            except Exception:
+                pass
+
+            # Phase 7: Precision-weighted certainty
+            try:
+                from app.self_awareness.precision_weighting import PrecisionWeighting
+                pw = PrecisionWeighting()
+                task_type = ctx.metadata.get("crew", "default")
+                state.precision_weighted_certainty = pw.apply_weights(state.certainty, task_type)
+            except Exception:
+                pass
 
             # Log to PostgreSQL (non-fatal)
             sl.log(state)
