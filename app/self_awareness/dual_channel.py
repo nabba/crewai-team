@@ -46,18 +46,17 @@ DISPOSITION_MATRIX: dict[tuple[str, str], str] = {
 class DualChannelComposer:
     """Composes epistemic certainty and somatic valence into action disposition."""
 
-    def __init__(
-        self,
-        certainty_high_threshold: float = 0.7,
-        certainty_low_threshold: float = 0.4,
-        valence_positive_threshold: float = 0.2,
-        valence_negative_threshold: float = -0.2,
-        critical_budget_threshold: float = 0.1,
-    ):
-        self.certainty_high = certainty_high_threshold
-        self.certainty_low = certainty_low_threshold
-        self.valence_positive = valence_positive_threshold
-        self.valence_negative = valence_negative_threshold
+    def __init__(self, critical_budget_threshold: float = 0.1):
+        # Load thresholds from sentience config (adjustable by cogito feedback loop)
+        try:
+            from app.self_awareness.sentience_config import load_config
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+        self.certainty_high = cfg.get("certainty_high_threshold", 0.7)
+        self.certainty_low = cfg.get("certainty_low_threshold", 0.4)
+        self.valence_positive = cfg.get("valence_positive_threshold", 0.2)
+        self.valence_negative = cfg.get("valence_negative_threshold", -0.2)
         self.critical_budget = critical_budget_threshold
 
     def compose(self, state: InternalState) -> InternalState:

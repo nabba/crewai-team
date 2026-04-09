@@ -577,6 +577,20 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Store in context for next step injection
             ctx.metadata["_internal_state"] = state
 
+            # GWT: broadcast when disposition is pause or escalate
+            if state.action_disposition in ("pause", "escalate"):
+                try:
+                    from app.self_awareness.global_workspace import broadcast
+                    broadcast(
+                        content=f"Agent {state.agent_id} disposition={state.action_disposition} "
+                                f"(certainty={state.certainty.fast_path_mean:.2f}, "
+                                f"valence={state.somatic.valence:.2f})",
+                        importance="high" if state.action_disposition == "pause" else "critical",
+                        source_agent=state.agent_id,
+                    )
+                except Exception:
+                    pass
+
         except Exception as e:
             logger.debug(f"lifecycle_hooks: internal state hook failed: {e}")
         return ctx

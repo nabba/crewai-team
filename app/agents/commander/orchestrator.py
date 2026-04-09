@@ -23,6 +23,7 @@ from app.agents.commander.context import (
     _load_relevant_skills, _load_relevant_team_memory,
     _load_world_model_context, _load_policies_for_crew,
     _load_knowledge_base_context, _load_homeostatic_context,
+    _load_global_workspace_broadcasts,
     _CONTEXT_BUDGET, _prune_context,
 )
 from app.agents.commander.execution import (
@@ -312,6 +313,14 @@ class Commander:
 
         # E5: Save context for reflexion reuse (avoids 5 vector DB queries on retry)
         self._last_context = context
+
+        # Inject GWT broadcasts (sentience: global workspace cross-agent coordination)
+        try:
+            broadcasts = _load_global_workspace_broadcasts(crew_name)
+            if broadcasts:
+                context += broadcasts
+        except Exception:
+            pass
 
         # Inject internal state context (sentience: agent sees its own certainty/disposition)
         try:

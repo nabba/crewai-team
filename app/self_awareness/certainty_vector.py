@@ -172,7 +172,16 @@ class CertaintyVectorComputer:
             selected_tool=selected_tool,
         )
 
-        if cv.should_trigger_slow_path():
+        # Read thresholds from sentience config (adjustable by cogito feedback loop)
+        try:
+            from app.self_awareness.sentience_config import load_config
+            cfg = load_config()
+            threshold = cfg.get("slow_path_trigger_threshold", 0.4)
+            var_threshold = cfg.get("slow_path_variance_threshold", 0.03)
+        except Exception:
+            threshold, var_threshold = 0.4, 0.03
+
+        if cv.should_trigger_slow_path(threshold=threshold, variance_threshold=var_threshold):
             cv = self.compute_slow_path(agent_id, task_description, current_output, cv)
         else:
             cv.meta_certainty = max(0.0, 1.0 - (cv.variance * 5.0))

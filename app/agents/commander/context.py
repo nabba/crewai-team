@@ -135,6 +135,15 @@ def _load_homeostatic_context() -> str:
         return ""
 
 
+def _load_global_workspace_broadcasts(crew_name: str) -> str:
+    """Load unread GWT broadcasts for this crew (high/critical only)."""
+    try:
+        from app.self_awareness.global_workspace import get_workspace
+        return get_workspace().format_broadcasts(crew_name)
+    except Exception:
+        return ""
+
+
 # ── Context Pruning ──────────────────────────────────────────────────────────
 
 # Token budget per difficulty tier (approximate chars, ~4 chars/token)

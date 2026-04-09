@@ -105,6 +105,56 @@ class SomaticMarkerComputer:
             return SomaticMarker()
 
 
+    def forecast(
+        self,
+        agent_id: str,
+        proposed_action: str,
+        context_embedding: Optional[list[float]] = None,
+    ) -> SomaticMarker:
+        """Predict emotional impact of a future action (affective forecasting).
+
+        Combines:
+          1. Past experience similarity (backward-looking somatic)
+          2. Causal beliefs from world model (forward-looking)
+
+        Returns SomaticMarker with source="forecast:..."
+        """
+        # 1. Get backward somatic (what happened before when we did similar things)
+        backward = self.compute(agent_id, proposed_action, context_embedding)
+
+        # 2. Get causal beliefs about this type of action
+        try:
+            from app.self_awareness.world_model import recall_relevant_beliefs
+            beliefs = recall_relevant_beliefs(proposed_action, n=3)
+            if beliefs:
+                # Parse belief sentiment: count positive/negative indicators
+                positive_words = {"success", "improved", "reliable", "fast", "good", "effective"}
+                negative_words = {"fail", "error", "slow", "crash", "timeout", "struggle", "bug"}
+                belief_text = " ".join(beliefs).lower()
+                pos = sum(1 for w in positive_words if w in belief_text)
+                neg = sum(1 for w in negative_words if w in belief_text)
+                belief_valence = (pos - neg) / max(pos + neg, 1) * 0.5  # [-0.5, 0.5]
+
+                # Combine backward + forward
+                combined_valence = backward.valence * 0.6 + belief_valence * 0.4
+                return SomaticMarker(
+                    valence=round(combined_valence, 3),
+                    intensity=max(backward.intensity, 0.3),  # At least 0.3 if we have beliefs
+                    source=f"forecast: {backward.source[:100]} + {len(beliefs)} beliefs",
+                    match_count=backward.match_count + len(beliefs),
+                )
+        except Exception:
+            pass
+
+        # Fallback: just return backward somatic with forecast label
+        return SomaticMarker(
+            valence=backward.valence,
+            intensity=backward.intensity,
+            source=f"forecast: {backward.source}",
+            match_count=backward.match_count,
+        )
+
+
 def record_experience_sync(
     agent_id: str,
     context_summary: str,

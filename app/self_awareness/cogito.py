@@ -144,7 +144,41 @@ class CogitoCycle:
         except Exception:
             pass
 
+        # Apply safe threshold proposals to sentience config (feedback loop)
+        self._apply_proposals(report)
+
         return report
+
+    def _apply_proposals(self, report: ReflectionReport) -> None:
+        """Apply safe proposals to sentience config. Bounded, logged, reversible."""
+        try:
+            from app.self_awareness.sentience_config import apply_change, load_config
+
+            current = load_config()
+            applied = 0
+
+            # If health is degraded and escalation rate high → lower certainty_low threshold
+            if report.overall_health == "attention_needed":
+                new_val = current.get("certainty_low_threshold", 0.4) - 0.02
+                if apply_change("certainty_low_threshold", new_val):
+                    applied += 1
+
+            # If many failure patterns → increase slow_path trigger sensitivity
+            if len(report.failure_patterns) >= 3:
+                new_val = current.get("slow_path_trigger_threshold", 0.4) + 0.02
+                if apply_change("slow_path_trigger_threshold", new_val):
+                    applied += 1
+
+            # If health is healthy and no discrepancies → can relax slightly
+            if report.overall_health == "healthy" and len(report.discrepancies) == 0:
+                new_val = current.get("certainty_low_threshold", 0.4) + 0.01
+                if apply_change("certainty_low_threshold", new_val):
+                    applied += 1
+
+            if applied > 0:
+                logger.info(f"cogito: applied {applied} sentience config changes")
+        except Exception as e:
+            logger.debug(f"cogito: proposal application failed: {e}")
 
     def _gather_state(self) -> dict:
         """Run all inspection tools."""

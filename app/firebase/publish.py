@@ -151,6 +151,12 @@ def heartbeat() -> None:
             report_skills()
         except Exception:
             pass
+
+        # Push sentience internal state stats
+        try:
+            report_internal_state()
+        except Exception:
+            pass
     _fire(_write)
 
 
@@ -655,6 +661,87 @@ def report_ecological_stats() -> None:
 
 
 # ── Token usage stats ────────────────────────────────────────────────────────
+
+def report_internal_state() -> None:
+    """Push sentience internal state stats to Firestore for the dashboard."""
+    db = _get_db()
+    if not db:
+        return
+    try:
+        from app.control_plane.db import execute
+
+        # Aggregate recent internal states
+        rows = execute(
+            """
+            SELECT
+                agent_id,
+                AVG(certainty_factual_grounding) AS avg_factual,
+                AVG(certainty_tool_confidence) AS avg_tools,
+                AVG(certainty_coherence) AS avg_coherence,
+                AVG(certainty_meta) AS avg_meta,
+                AVG(somatic_valence) AS avg_valence,
+                COUNT(*) FILTER (WHERE action_disposition = 'proceed') AS proceed_count,
+                COUNT(*) FILTER (WHERE action_disposition = 'cautious') AS cautious_count,
+                COUNT(*) FILTER (WHERE action_disposition = 'pause') AS pause_count,
+                COUNT(*) FILTER (WHERE action_disposition = 'escalate') AS escalate_count,
+                COUNT(*) AS total_steps
+            FROM internal_states
+            WHERE created_at > NOW() - INTERVAL '1 hour'
+            GROUP BY agent_id
+            """,
+            fetch=True,
+        )
+
+        per_agent = {}
+        total_steps = 0
+        disposition_totals = {"proceed": 0, "cautious": 0, "pause": 0, "escalate": 0}
+
+        for row in (rows or []):
+            agent = row.get("agent_id", "unknown") if isinstance(row, dict) else row[0]
+            r = row if isinstance(row, dict) else dict(zip(
+                ["agent_id", "avg_factual", "avg_tools", "avg_coherence", "avg_meta",
+                 "avg_valence", "proceed_count", "cautious_count", "pause_count",
+                 "escalate_count", "total_steps"], row))
+            per_agent[agent] = {
+                "certainty": {
+                    "factual": round(float(r.get("avg_factual", 0.5)), 2),
+                    "tools": round(float(r.get("avg_tools", 0.5)), 2),
+                    "coherence": round(float(r.get("avg_coherence", 0.5)), 2),
+                    "meta": round(float(r.get("avg_meta", 0.5)), 2),
+                },
+                "avg_valence": round(float(r.get("avg_valence", 0.0)), 2),
+                "steps": int(r.get("total_steps", 0)),
+            }
+            total_steps += int(r.get("total_steps", 0))
+            disposition_totals["proceed"] += int(r.get("proceed_count", 0))
+            disposition_totals["cautious"] += int(r.get("cautious_count", 0))
+            disposition_totals["pause"] += int(r.get("pause_count", 0))
+            disposition_totals["escalate"] += int(r.get("escalate_count", 0))
+
+        # Homeostatic state
+        homeostasis_data = {}
+        try:
+            from app.self_awareness.homeostasis import get_state
+            hs = get_state()
+            homeostasis_data = {
+                "cognitive_energy": round(hs.get("cognitive_energy", 0.7), 2),
+                "frustration": round(hs.get("frustration", 0.1), 2),
+                "confidence": round(hs.get("confidence", 0.65), 2),
+                "curiosity": round(hs.get("curiosity", 0.5), 2),
+            }
+        except Exception:
+            pass
+
+        db.collection("status").document("internal_state").set({
+            "per_agent": per_agent,
+            "disposition_totals": disposition_totals,
+            "total_steps_1h": total_steps,
+            "homeostasis": homeostasis_data,
+            "updated_at": _now_iso(),
+        })
+    except Exception:
+        logger.debug("firebase.publish: internal_state write failed", exc_info=True)
+
 
 def report_token_stats() -> None:
     """Push aggregated token usage to Firestore for the dashboard."""

@@ -26,6 +26,8 @@ def update_belief(
     confidence: str = "medium",
     observations: list[str] = None,
     needs: list[str] = None,
+    projected_next_task: str = "",
+    intention_confidence: float = 0.0,
 ) -> None:
     """Store or update a belief about an agent's current state.
 
@@ -36,6 +38,8 @@ def update_belief(
         confidence: The agent's self-reported confidence level
         observations: Recent observations about this agent
         needs: What this agent needs from teammates
+        projected_next_task: Predicted next task (Theory of Mind)
+        intention_confidence: Confidence in the prediction (0.0-1.0)
     """
     belief = {
         "agent": agent_name,
@@ -44,6 +48,8 @@ def update_belief(
         "confidence": confidence,
         "observations": (observations or [])[-5:],  # Keep last 5
         "needs": (needs or [])[-5:],
+        "projected_next_task": projected_next_task[:200],
+        "intention_confidence": round(intention_confidence, 2),
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -116,11 +122,49 @@ def get_team_state_summary() -> str:
             line += f" | task: {task[:60]}"
         if confidence:
             line += f" | confidence: {confidence}"
+        projected = b.get("projected_next_task", "")
+        if projected:
+            int_conf = b.get("intention_confidence", 0)
+            line += f" | next: {projected[:40]} ({int_conf:.0%})"
         if needs:
             line += f" | needs: {', '.join(needs[:3])}"
         lines.append(line)
 
     return "\n".join(lines)
+
+
+def infer_intentions(agent_name: str) -> dict:
+    """Infer what an agent will likely do next based on task history patterns.
+
+    Simple bigram model: common task transitions (research→coding, coding→writing).
+    Returns {projected_next_task, intention_confidence}.
+    """
+    # Common task transition patterns (based on typical multi-agent workflows)
+    TRANSITION_PATTERNS = {
+        "research": {"coding": 0.4, "writing": 0.35, "research": 0.25},
+        "coding": {"writing": 0.3, "research": 0.2, "coding": 0.5},
+        "writing": {"research": 0.3, "writing": 0.5, "coding": 0.2},
+        "media": {"writing": 0.4, "research": 0.3, "media": 0.3},
+    }
+
+    transitions = TRANSITION_PATTERNS.get(agent_name, {})
+    if not transitions:
+        return {"projected_next_task": "", "intention_confidence": 0.0}
+
+    # Pick the most likely next task
+    best_task = max(transitions, key=transitions.get)
+    confidence = transitions[best_task]
+
+    # Boost confidence if we have actual history
+    try:
+        from app.self_awareness.agent_state import get_agent_stats
+        stats = get_agent_stats(agent_name)
+        if stats.get("tasks_completed", 0) > 10:
+            confidence = min(1.0, confidence + 0.1)  # More data = more confident
+    except Exception:
+        pass
+
+    return {"projected_next_task": best_task, "intention_confidence": confidence}
 
 
 def revise_beliefs(observation: str, agent_name: str) -> None:
