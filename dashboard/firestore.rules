@@ -38,6 +38,13 @@ service cloud.firestore {
       allow update: if true;  // backend (admin SDK) updates status to done/error
     }
 
+    // Fiction inspiration upload queue — dashboard creates pending docs, backend processes.
+    match /fiction_queue/{doc} {
+      allow read: if true;
+      allow create: if request.resource.data.status == 'pending';
+      allow update: if true;  // backend (admin SDK) updates status to done/error
+    }
+
     // Proposal actions — dashboard creates approve/reject/rollback actions.
     // Strict field validation: must have proposal_id, action (enum), status='pending'.
     match /proposal_actions/{doc} {
