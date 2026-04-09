@@ -1620,13 +1620,13 @@ kbZone.addEventListener("drop", e => {
 kbFile.addEventListener("change", () => { if (kbFile.files.length) uploadKBFiles(kbFile.files); });
 
 async function uploadKBFiles(files) {
-  const MAX_SIZE = 2 * 1024 * 1024;
+  const MAX_SIZE = 20 * 1024 * 1024; // 20MB
   const category = document.getElementById("kb-category").value;
   kbStatus.innerHTML = `<span style="color:var(--blue)">Uploading ${files.length} file(s)…</span>`;
   let success = 0, failed = 0, lastErr = "";
   for (const file of files) {
     try {
-      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 2MB limit`; failed++; continue; }
+      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 20MB limit`; failed++; continue; }
       const b64 = await new Promise((res, rej) => {
         const r = new FileReader();
         r.onload = () => res(r.result.split(",")[1]);
@@ -1711,7 +1711,7 @@ philZone.addEventListener("drop", e => {
 philFile.addEventListener("change", () => { if (philFile.files.length) uploadPhilFiles(philFile.files); });
 
 async function uploadPhilFiles(files) {
-  const MAX_SIZE = 2 * 1024 * 1024;
+  const MAX_SIZE = 20 * 1024 * 1024; // 20MB
   const author = document.getElementById("phil-author").value.trim();
   const tradition = document.getElementById("phil-tradition").value;
   const era = document.getElementById("phil-era").value;
@@ -1720,7 +1720,7 @@ async function uploadPhilFiles(files) {
   let success = 0, failed = 0, lastErr = "";
   for (const file of files) {
     try {
-      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 2MB limit`; failed++; continue; }
+      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 20MB limit`; failed++; continue; }
       const text = await new Promise((res, rej) => {
         const r = new FileReader();
         r.onload = () => res(r.result);
@@ -1791,7 +1791,7 @@ fictionZone.addEventListener("drop", e => {
 fictionFile.addEventListener("change", () => { if (fictionFile.files.length) uploadFictionFiles(fictionFile.files); });
 
 async function uploadFictionFiles(files) {
-  const MAX_SIZE = 2 * 1024 * 1024;
+  const MAX_SIZE = 20 * 1024 * 1024; // 20MB — direct upload to gateway
   const author = document.getElementById("fiction-author").value.trim();
   const title = document.getElementById("fiction-title").value.trim();
   const theme = document.getElementById("fiction-themes").value;
@@ -1799,22 +1799,18 @@ async function uploadFictionFiles(files) {
   let success = 0, failed = 0, lastErr = "";
   for (const file of files) {
     try {
-      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 2MB limit`; failed++; continue; }
-      const text = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
-        r.readAsText(file);
-      });
-      await addDoc(collection(db, "fiction_queue"), {
-        filename: file.name,
-        content: text,
-        author: author || "",
-        title: title || "",
-        themes: theme ? [theme] : [],
-        status: "pending",
-        created_at: serverTimestamp(),
-      });
+      if (file.size > MAX_SIZE) { lastErr = `${file.name} exceeds 20MB limit`; failed++; continue; }
+      // Upload directly to gateway API (supports large files, bypasses Firestore 1MB doc limit)
+      const form = new FormData();
+      form.append("file", file);
+      if (author) form.append("author", author);
+      if (title) form.append("title", title);
+      if (theme) form.append("theme", theme);
+      const resp = await fetch("/fiction/upload", { method: "POST", body: form });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
       success++;
     } catch (e) {
       lastErr = e.message || "Upload error";
@@ -1822,11 +1818,11 @@ async function uploadFictionFiles(files) {
     }
   }
   const msg = [];
-  if (success) msg.push(`<span style="color:var(--green)">${success} queued for ingestion</span>`);
+  if (success) msg.push(`<span style="color:var(--green)">${success} ingested successfully</span>`);
   if (failed) msg.push(`<span style="color:var(--red)">${failed} failed: ${esc(lastErr.slice(0,80))}</span>`);
   fictionStatus.innerHTML = msg.join(" · ");
   fictionFile.value = "";
-  if (success) setTimeout(() => { fictionStatus.innerHTML = ""; }, 8000);
+  if (success) setTimeout(() => { fictionStatus.innerHTML = ""; loadFictionStatus(); }, 5000);
 }
 
 window.deleteFictionBook = function(filename) {

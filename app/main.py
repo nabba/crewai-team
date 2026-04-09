@@ -433,6 +433,10 @@ app.add_middleware(
 from app.philosophy.api import philosophy_router
 app.include_router(philosophy_router)
 
+# Mount fiction inspiration API routes
+from app.api.fiction import fiction_router
+app.include_router(fiction_router)
+
 # ── Middleware (extracted to app/middleware.py) ────────────────────────────────
 from app.middleware import add_middleware
 add_middleware(app, settings)
