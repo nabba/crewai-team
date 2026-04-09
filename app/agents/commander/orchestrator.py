@@ -453,6 +453,23 @@ class Commander:
                 except Exception:
                     pass
 
+                # L9: Record experience for somatic marker system (sentience)
+                try:
+                    from app.self_awareness.somatic_marker import record_experience_sync
+                    outcome = 1.0 if result_ok else -0.5
+                    if is_failure_pattern:
+                        outcome = -1.0
+                    record_experience_sync(
+                        agent_id=crew_name,
+                        context_summary=f"{crew_name} task (d={difficulty}): {str(result)[:200]}",
+                        outcome_score=outcome,
+                        outcome_description=f"{'success' if result_ok else 'failure'} in {duration_s:.0f}s",
+                        task_type=crew_name,
+                        venture="system",
+                    )
+                except Exception:
+                    pass
+
             except Exception:
                 logger.debug("Post-crew telemetry failed", exc_info=True)
         _ctx_pool.submit(_post_crew_telemetry)

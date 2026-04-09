@@ -507,6 +507,63 @@ def _register_defaults(registry: HookRegistry) -> None:
         description="Log errors to control plane audit trail",
     )
 
+    # Priority 8: Internal state computation (sentience: certainty + somatic + dual-channel)
+    def _internal_state_hook(ctx: HookContext) -> HookContext:
+        try:
+            from app.self_awareness.certainty_vector import CertaintyVectorComputer
+            from app.self_awareness.somatic_marker import SomaticMarkerComputer
+            from app.self_awareness.dual_channel import DualChannelComposer
+            from app.self_awareness.state_logger import get_state_logger
+            from app.self_awareness.internal_state import InternalState
+
+            state = InternalState(
+                agent_id=ctx.agent_id or "unknown",
+                crew_id=ctx.metadata.get("crew", ""),
+                venture=ctx.metadata.get("venture", "system"),
+                step_number=ctx.metadata.get("step", 0),
+                decision_context=(ctx.task_description or "")[:500],
+            )
+
+            # Certainty vector (fast path, ~50ms)
+            cv_computer = CertaintyVectorComputer()
+            output = ctx.data.get("llm_response", ctx.data.get("result", ""))
+            state.certainty = cv_computer.compute_fast_path(
+                agent_id=state.agent_id,
+                current_output=str(output)[:1000],
+            )
+
+            # Somatic marker (~10ms)
+            sm_computer = SomaticMarkerComputer()
+            state.somatic = sm_computer.compute(
+                agent_id=state.agent_id,
+                decision_context=state.decision_context,
+            )
+
+            # Dual-channel composition
+            composer = DualChannelComposer()
+            state = composer.compose(state)
+
+            # Trend
+            sl = get_state_logger()
+            state.certainty_trend = sl.compute_trend(state.agent_id)
+
+            # Log to PostgreSQL (non-fatal)
+            sl.log(state)
+
+            # Store in context for next step injection
+            ctx.metadata["_internal_state"] = state
+
+        except Exception as e:
+            logger.debug(f"lifecycle_hooks: internal state hook failed: {e}")
+        return ctx
+
+    registry.register(
+        "internal_state", HookPoint.POST_LLM_CALL,
+        _internal_state_hook,
+        priority=8,
+        description="Compute and log internal state (certainty + somatic + disposition)",
+    )
+
     # Priority 20: History compression (was never registered due to NameError)
     try:
         from app.config import get_settings as _get_settings
