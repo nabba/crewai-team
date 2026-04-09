@@ -592,6 +592,16 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: behavioral assessment failed", exc_info=True)
     jobs.append(("behavioral-assessment", _behavioral_assessment))
 
+    # ── Prosocial preference learning: coordination games ────────────
+    def _prosocial_learning():
+        try:
+            from app.self_awareness.prosocial_learning import run_prosocial_session
+            profiles = run_prosocial_session()
+            logger.info(f"idle_scheduler: prosocial session complete, {len(profiles)} profiles updated")
+        except Exception:
+            logger.debug("idle_scheduler: prosocial learning failed", exc_info=True)
+    jobs.append(("prosocial-learning", _prosocial_learning))
+
     # ── MAP-Elites: quality-diversity maintenance + migration ──────────
     def _map_elites_maintain():
         try:

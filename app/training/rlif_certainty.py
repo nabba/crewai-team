@@ -142,3 +142,74 @@ class EntropyCollapseMonitor:
 
     def reset(self) -> None:
         self.sc_history.clear()
+
+
+class TrajectoryEntropyScorer:
+    """Complementary RLIF signal: trajectory-level entropy (Zhang et al. 2025).
+
+    While self-certainty measures per-token confidence, trajectory-level entropy
+    measures diversity of complete response trajectories. Low trajectory entropy =
+    model consistently produces similar responses = high confidence.
+
+    Combining both signals is more robust than either alone.
+    """
+
+    @staticmethod
+    def compute_trajectory_entropy_from_embeddings(
+        response_embeddings: list[list[float]],
+    ) -> float:
+        """Compute trajectory entropy from pre-computed response embeddings.
+
+        Low average similarity = high entropy (diverse/uncertain).
+        High average similarity = low entropy (consistent/confident).
+
+        Returns float trajectory entropy in [0.0, 1.0].
+        """
+        if len(response_embeddings) < 2:
+            return 0.5
+
+        import math
+        similarities = []
+        for i in range(len(response_embeddings)):
+            for j in range(i + 1, len(response_embeddings)):
+                a, b = response_embeddings[i], response_embeddings[j]
+                dot = sum(x * y for x, y in zip(a, b))
+                norm_a = math.sqrt(sum(x * x for x in a))
+                norm_b = math.sqrt(sum(x * x for x in b))
+                if norm_a > 0 and norm_b > 0:
+                    sim = (dot / (norm_a * norm_b) + 1.0) / 2.0
+                    similarities.append(sim)
+
+        if not similarities:
+            return 0.5
+
+        mean_sim = sum(similarities) / len(similarities)
+        return 1.0 - mean_sim  # High similarity = low entropy
+
+    @staticmethod
+    def combine_signals(
+        self_certainty: float,
+        trajectory_entropy: float,
+        sc_weight: float = 0.6,
+        te_weight: float = 0.4,
+    ) -> float:
+        """Combine self-certainty and trajectory entropy.
+
+        Self-certainty: higher = more certain.
+        Trajectory entropy: higher = less certain.
+        Combined: higher = better training candidate.
+        """
+        te_signal = 1.0 - trajectory_entropy
+        return sc_weight * self_certainty + te_weight * te_signal
+
+    @staticmethod
+    def compute_curation_weight_combined(
+        quality_score: float,
+        self_certainty: float,
+        trajectory_entropy: float,
+    ) -> float:
+        """Combined curation weight with both RLIF signals."""
+        combined = TrajectoryEntropyScorer.combine_signals(self_certainty, trajectory_entropy)
+        return max(0.0, min(1.0,
+            quality_score * 0.5 + combined * 0.25 + (quality_score * combined) * 0.25
+        ))
