@@ -30,11 +30,15 @@ def difficulty_to_tier(difficulty: int, mode: str) -> str | None:
 
     Returns None for medium difficulty (4-7) to let the default
     catalog/cost_mode logic decide.
+
+    NOTE: "local" tier is ONLY for sentience hooks and background tasks.
+    User-facing crews always use at least "budget" tier because small
+    local models (llama3.1:8b) don't handle tool calls properly.
     """
     if mode == "insane":
-        return "premium"  # insane mode: always premium regardless of difficulty
+        return "premium"
     if difficulty <= 3:
-        return "local" if mode != "cloud" else "budget"
+        return "budget"  # Even easy tasks need a competent model for tool use
     elif difficulty >= 8:
         return "premium"
     return None  # medium → use default catalog logic
