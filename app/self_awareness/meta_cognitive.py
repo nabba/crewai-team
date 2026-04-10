@@ -118,7 +118,7 @@ class MetaCognitiveLayer:
             from app.llm_factory import create_specialist_llm
             from app.utils import safe_json_parse
 
-            llm = create_specialist_llm(max_tokens=100, role="self_improve")
+            llm = create_specialist_llm(max_tokens=100, role="self_improve", force_tier="local")
 
             state_summary = previous_state.to_context_string() if previous_state else "No prior state"
             recent_history = list(self.strategy_history)[-5:]
@@ -149,7 +149,7 @@ class MetaCognitiveLayer:
             from app.llm_factory import create_specialist_llm
             from app.utils import safe_json_parse
 
-            llm = create_specialist_llm(max_tokens=200, role="self_improve")
+            llm = create_specialist_llm(max_tokens=200, role="self_improve", force_tier="local")
             prompt = (
                 f"Current strategy assessed as: {assessment.get('assessment')}\n"
                 f"Reason: {assessment.get('reason', 'unknown')}\n\n"

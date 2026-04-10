@@ -131,7 +131,7 @@ class CertaintyVectorComputer:
             from app.llm_factory import create_specialist_llm
             from app.utils import safe_json_parse
 
-            llm = create_specialist_llm(max_tokens=100, role="self_improve")
+            llm = create_specialist_llm(max_tokens=100, role="self_improve", force_tier="local")
             prompt = (
                 "Rate the following on a scale of 0.0 to 1.0:\n\n"
                 f"1. task_understanding: How well does this output address the task?\n"

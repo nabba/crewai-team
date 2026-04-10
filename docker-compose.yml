@@ -29,6 +29,8 @@ services:
       - '127.0.0.1:${GATEWAY_PORT}:${GATEWAY_PORT}'
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
+      # Sentience: use gemma4:26b (not 31b) for self-improve to fit alongside embeddings
+      ROLE_MODEL_SELF_IMPROVE: gemma4:26b
       # Redirect CrewAI's SQLite long-term memory into the writable workspace
       # volume so it persists across restarts and survives read_only rootfs.
       CREWAI_STORAGE_DIR: /app/workspace/crewai_storage

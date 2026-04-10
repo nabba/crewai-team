@@ -123,7 +123,7 @@ class InferentialCompetition:
             from app.llm_factory import create_specialist_llm
             from app.utils import safe_json_parse
 
-            llm = create_specialist_llm(max_tokens=400, role="self_improve")
+            llm = create_specialist_llm(max_tokens=400, role="self_improve", force_tier="local")
 
             model_context = ""
             if reality_model:
