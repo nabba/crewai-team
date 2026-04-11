@@ -598,7 +598,8 @@ def _log_deploy(status: str, reason: str, files: list, error: str = "") -> None:
             "files": files,
             "error": error[:200],
         })
-        DEPLOY_LOG.write_text(json.dumps(log[-100:], indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(DEPLOY_LOG, log[-100:])
     except (OSError, json.JSONDecodeError):
         pass
 

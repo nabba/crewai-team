@@ -27,7 +27,22 @@ logger = logging.getLogger(__name__)
 IDLE_DELAY_SECONDS = 30
 
 # Pause between background job iterations (brief cooldown, then next job)
-INTER_JOB_PAUSE_SECONDS = 5
+INTER_JOB_PAUSE_SECONDS = 2  # Reduced from 5 — lightweight jobs don't need long pauses
+
+
+# ── Job weight classification ────────────────────────────────────────────────
+
+class JobWeight:
+    LIGHT = "light"    # <30s: monitoring, snapshots, indexing
+    MEDIUM = "medium"  # 30s-3min: feedback, safety, cogito
+    HEAVY = "heavy"    # 3min+: evolution, training, retrospective
+
+# Time caps per weight class (seconds) — cooperative via should_yield()
+TIME_CAPS = {
+    JobWeight.LIGHT: 60,
+    JobWeight.MEDIUM: 180,
+    JobWeight.HEAVY: 600,
+}
 
 # Global state
 _last_task_end: float = 0.0  # monotonic timestamp of last user task completion
@@ -65,14 +80,18 @@ def is_idle() -> bool:
         return (time.monotonic() - _last_task_end) >= IDLE_DELAY_SECONDS
 
 
+_job_timeout = threading.Event()  # Set when a job exceeds its time cap
+
+
 def should_yield() -> bool:
-    """Check if a background job should abort because a user task arrived.
+    """Check if a background job should abort because a user task arrived
+    or the job exceeded its time cap.
 
     Long-running background functions (evolution iterations, self-improvement)
     should call this between units of work and return early if True.
     """
     with _lock:
-        return _active_tasks > 0
+        return _active_tasks > 0 or _job_timeout.is_set()
 
 
 def set_enabled(enabled: bool) -> None:
@@ -88,64 +107,131 @@ def is_enabled() -> bool:
         return _enabled
 
 
-def _run_idle_loop(jobs: list[tuple[str, Callable[[], None]]]) -> None:
-    """Main idle loop — cycles through background jobs when system is idle.
+def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> None:
+    """Run a single job with time cap enforcement via _job_timeout event."""
+    _job_timeout.clear()
+    timer = threading.Timer(timeout_s, _job_timeout.set)
+    timer.daemon = True
+    timer.start()
+    try:
+        _report_background_activity(name, "running")
+        fn()
+        logger.info(f"idle_scheduler: '{name}' completed")
+        _report_background_activity(name, "completed")
+    except Exception as exc:
+        logger.warning(f"idle_scheduler: '{name}' failed: {exc}")
+        _report_background_activity(name, "failed")
+        try:
+            from app.firebase_reporter import detect_credit_error, report_credit_alert
+            provider = detect_credit_error(exc)
+            if provider:
+                report_credit_alert(provider, str(exc)[:300])
+        except Exception:
+            pass
+    finally:
+        timer.cancel()
+        _job_timeout.clear()
 
-    Each job is a (name, callable) tuple. The callable should do one unit of work
-    and return. The loop cycles through jobs round-robin, pausing between each.
 
-    Background threads are marked as low-priority for rate limiting — user-facing
-    LLM calls always get priority over background work.
+def _run_idle_loop(jobs) -> None:
+    """Main idle loop — dual-queue architecture with parallel lightweight execution.
+
+    Jobs are classified by weight (LIGHT/MEDIUM/HEAVY):
+    - LIGHT jobs run in parallel (3 workers) — monitoring, snapshots, indexing
+    - MEDIUM jobs run one at a time — feedback, cogito, probes
+    - HEAVY jobs run one at a time, only after 2+ min idle — evolution, training
+
+    Each class has a time cap enforced via should_yield() + _job_timeout event.
     """
-    # Mark this thread as a background caller for rate_throttle priority
     from app.rate_throttle import set_background_caller
     set_background_caller(True)
 
-    logger.info(f"idle_scheduler: started with {len(jobs)} jobs")
-    job_idx = 0
+    # Classify jobs by weight
+    light_jobs = [(n, fn) for n, fn, *w in jobs if (w[0] if w else JobWeight.MEDIUM) == JobWeight.LIGHT]
+    medium_jobs = [(n, fn) for n, fn, *w in jobs if (w[0] if w else JobWeight.MEDIUM) == JobWeight.MEDIUM]
+    heavy_jobs = [(n, fn) for n, fn, *w in jobs if (w[0] if w else JobWeight.MEDIUM) == JobWeight.HEAVY]
+
+    logger.info(
+        f"idle_scheduler: started — {len(light_jobs)} light, "
+        f"{len(medium_jobs)} medium, {len(heavy_jobs)} heavy jobs"
+    )
+
+    try:
+        _n_light_workers = __import__("app.config", fromlist=["get_settings"]).get_settings().idle_lightweight_workers
+    except Exception:
+        _n_light_workers = 3
+
+    light_pool = ThreadPoolExecutor(max_workers=_n_light_workers, thread_name_prefix="idle-light")
+    medium_idx = 0
+    heavy_idx = 0
+    _last_training_run = 0.0
+
+    try:
+        _training_interval = __import__("app.config", fromlist=["get_settings"]).get_settings().idle_training_interval_s
+        _heavy_cap = __import__("app.config", fromlist=["get_settings"]).get_settings().idle_heavy_time_cap_s
+    except Exception:
+        _training_interval = 3600
+        _heavy_cap = 600
 
     while not _stop_event.is_set():
         # Wait until idle
         while not _stop_event.is_set():
             if is_enabled() and is_idle():
                 break
-            _stop_event.wait(5)  # check every 5 seconds
+            _stop_event.wait(5)
 
         if _stop_event.is_set():
             break
-
-        # Pick next job
-        name, fn = jobs[job_idx % len(jobs)]
-        job_idx += 1
-
-        # Double-check still idle + enabled before running
         if not is_enabled() or not is_idle():
             continue
 
-        logger.info(f"idle_scheduler: running '{name}' (system idle)")
-        _report_background_activity(name, "running")
-        try:
-            fn()
-            logger.info(f"idle_scheduler: '{name}' completed")
-            _report_background_activity(name, "completed")
-        except Exception as exc:
-            logger.warning(f"idle_scheduler: '{name}' failed", exc_info=True)
-            _report_background_activity(name, "failed")
-            # Detect credit exhaustion from any background job failure
-            try:
-                from app.firebase_reporter import detect_credit_error, report_credit_alert
-                provider = detect_credit_error(exc)
-                if provider:
-                    report_credit_alert(provider, str(exc)[:300])
-            except Exception:
-                pass
+        # ── Phase 1: Run lightweight jobs in parallel ────────────────────
+        if light_jobs:
+            futures = {}
+            for name, fn in light_jobs:
+                if _stop_event.is_set() or not is_idle():
+                    break
+                futures[light_pool.submit(_run_single_job, name, fn, TIME_CAPS[JobWeight.LIGHT])] = name
+            # Wait for all lightweight jobs (bounded by their time caps)
+            from concurrent.futures import as_completed
+            for future in as_completed(futures, timeout=TIME_CAPS[JobWeight.LIGHT] + 10):
+                try:
+                    future.result()
+                except Exception:
+                    pass
 
-        # Pause between jobs — also check for user activity
+        if _stop_event.is_set() or not is_idle():
+            continue
+
+        # ── Phase 2: Run ONE medium job ──────────────────────────────────
+        if medium_jobs:
+            name, fn = medium_jobs[medium_idx % len(medium_jobs)]
+            medium_idx += 1
+            _run_single_job(name, fn, TIME_CAPS[JobWeight.MEDIUM])
+
+        if _stop_event.is_set() or not is_idle():
+            continue
+
+        # ── Phase 3: Run ONE heavy job (only if idle for >2 min) ─────────
+        if heavy_jobs and (time.monotonic() - _last_task_end) > 120:
+            name, fn = heavy_jobs[heavy_idx % len(heavy_jobs)]
+            heavy_idx += 1
+
+            # Training pipeline: hourly cadence (not every cycle)
+            if name == "training-pipeline":
+                if time.monotonic() - _last_training_run < _training_interval:
+                    continue  # Skip: ran less than 1 hour ago
+                _last_training_run = time.monotonic()
+
+            _run_single_job(name, fn, _heavy_cap)
+
+        # Brief pause between cycles
         for _ in range(INTER_JOB_PAUSE_SECONDS):
             if _stop_event.is_set() or not is_idle():
                 break
             time.sleep(1)
 
+    light_pool.shutdown(wait=False)
     logger.info("idle_scheduler: stopped")
 
 
@@ -212,7 +298,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _learn_queue():
         from app.crews.self_improvement_crew import SelfImprovementCrew
         SelfImprovementCrew().run()
-    jobs.append(("learn-queue", _learn_queue))
+    jobs.append(("learn-queue", _learn_queue, JobWeight.HEAVY))
 
     # ── Evolution: run experiments (2 iterations per idle slot) ─────────
     # Reduced from 5 to 2: each iteration takes ~4min, so 5 = 20min which
@@ -220,18 +306,18 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _evolution():
         from app.evolution import run_evolution_session
         run_evolution_session(max_iterations=2)
-    jobs.append(("evolution", _evolution))
+    jobs.append(("evolution", _evolution, JobWeight.HEAVY))
 
     # ── Proactive learning: discover and queue new topics ──────────────
     def _discover_topics():
         _auto_discover_topics()
-    jobs.append(("discover-topics", _discover_topics))
+    jobs.append(("discover-topics", _discover_topics, JobWeight.LIGHT))
 
     # ── Retrospective: analyze recent performance ──────────────────────
     def _retrospective():
         from app.crews.retrospective_crew import RetrospectiveCrew
         RetrospectiveCrew().run()
-    jobs.append(("retrospective", _retrospective))
+    jobs.append(("retrospective", _retrospective, JobWeight.HEAVY))
 
     # ── Embedded personality probes: covert measurement via real-ish tasks ──
     def _embedded_probe():
@@ -296,13 +382,13 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             )
         except Exception:
             logger.debug("idle_scheduler: embedded probe failed", exc_info=True)
-    jobs.append(("embedded-probe", _embedded_probe))
+    jobs.append(("embedded-probe", _embedded_probe, JobWeight.MEDIUM))
 
     # ── Improvement scan: analyze gaps and propose improvements ────────
     def _improvement_scan():
         from app.crews.self_improvement_crew import SelfImprovementCrew
         SelfImprovementCrew().run_improvement_scan()
-    jobs.append(("improvement-scan", _improvement_scan))
+    jobs.append(("improvement-scan", _improvement_scan, JobWeight.MEDIUM))
 
     # ── Feedback aggregation: detect patterns in user feedback ──────────
     # Shared singleton for feedback pipeline (avoids creating new DB engine per job)
@@ -327,7 +413,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: feedback aggregation found {len(patterns)} patterns")
         except Exception:
             logger.debug("idle_scheduler: feedback aggregation failed", exc_info=True)
-    jobs.append(("feedback-aggregate", _feedback_aggregate))
+    jobs.append(("feedback-aggregate", _feedback_aggregate, JobWeight.LIGHT))
 
     # ── Safety health check: monitor for post-promotion regressions ────
     def _safety_health_check():
@@ -348,7 +434,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.warning(f"idle_scheduler: drift detection found {len(alerts)} alert(s)")
         except Exception:
             logger.debug("idle_scheduler: safety health check failed", exc_info=True)
-    jobs.append(("safety-health-check", _safety_health_check))
+    jobs.append(("safety-health-check", _safety_health_check, JobWeight.LIGHT))
 
     # ── Modification engine: propose prompt changes from feedback ─────
     def _modification_engine():
@@ -373,7 +459,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: modification engine processed {len(results)} patterns")
         except Exception:
             logger.debug("idle_scheduler: modification engine failed", exc_info=True)
-    jobs.append(("modification-engine", _modification_engine))
+    jobs.append(("modification-engine", _modification_engine, JobWeight.MEDIUM))
 
     # ── Health monitor: evaluate dimensional health ─────────────────
     def _health_evaluate():
@@ -384,7 +470,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: health monitor found {len(alerts)} alert(s)")
         except Exception:
             logger.debug("idle_scheduler: health evaluation failed", exc_info=True)
-    jobs.append(("health-evaluate", _health_evaluate))
+    jobs.append(("health-evaluate", _health_evaluate, JobWeight.LIGHT))
 
     # ── Version manifest: periodic snapshot for rollback safety ────
     def _version_snapshot():
@@ -394,7 +480,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             cleanup_old_snapshots(keep_latest=10)
         except Exception:
             logger.debug("idle_scheduler: version snapshot failed", exc_info=True)
-    jobs.append(("version-snapshot", _version_snapshot))
+    jobs.append(("version-snapshot", _version_snapshot, JobWeight.LIGHT))
 
     # ── PDS: personality development assessment session ──────────────────
     def _personality_session():
@@ -493,7 +579,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.info(f"idle_scheduler: cogito cycle — health={report.overall_health}")
         except Exception:
             logger.debug("idle_scheduler: cogito cycle failed", exc_info=True)
-    jobs.append(("cogito-cycle", _cogito_cycle))
+    jobs.append(("cogito-cycle", _cogito_cycle, JobWeight.MEDIUM))
 
     # ── Self-knowledge: re-ingest codebase for self-inspection ────────
     def _self_knowledge_ingest():
@@ -504,7 +590,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: self-knowledge ingested {result['chunks_added']} chunks")
         except Exception:
             logger.debug("idle_scheduler: self-knowledge ingest failed", exc_info=True)
-    jobs.append(("self-knowledge-ingest", _self_knowledge_ingest))
+    jobs.append(("self-knowledge-ingest", _self_knowledge_ingest, JobWeight.MEDIUM))
 
     # ── Skill indexer: embed skills/*.md into ChromaDB for semantic retrieval ──
     def _skill_index():
@@ -512,7 +598,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             _index_skills()
         except Exception:
             logger.debug("idle_scheduler: skill indexing failed", exc_info=True)
-    jobs.append(("skill-index", _skill_index))
+    jobs.append(("skill-index", _skill_index, JobWeight.LIGHT))
 
     # ── Self-training: curate collected data + trigger training ─────────
     def _training_curate():
@@ -532,7 +618,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                                 f"{result.get('exported_train', 0)} examples exported")
         except Exception:
             logger.debug("idle_scheduler: training curation failed", exc_info=True)
-    jobs.append(("training-curate", _training_curate))
+    jobs.append(("training-curate", _training_curate, JobWeight.LIGHT))
 
     # ── Training pipeline: run MLX LoRA training if enough curated data ──
     def _training_pipeline():
@@ -544,7 +630,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.info(f"idle_scheduler: training pipeline: {result.get('status', '?')}")
         except Exception:
             logger.debug("idle_scheduler: training pipeline failed", exc_info=True)
-    jobs.append(("training-pipeline", _training_pipeline))
+    jobs.append(("training-pipeline", _training_pipeline, JobWeight.HEAVY))
 
     # ── Fiction library: re-ingest new books periodically ───────────────
     def _fiction_ingest():
@@ -557,7 +643,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                                 f"{result.get('total_chunks', 0)} chunks")
         except Exception:
             logger.debug("idle_scheduler: fiction ingest failed", exc_info=True)
-    jobs.append(("fiction-ingest", _fiction_ingest))
+    jobs.append(("fiction-ingest", _fiction_ingest, JobWeight.LIGHT))
 
     # ── Consciousness probe: Garland/Butlin-Chalmers indicator battery ──
     def _consciousness_probe():
@@ -573,7 +659,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 pass
         except Exception:
             logger.debug("idle_scheduler: consciousness probe failed", exc_info=True)
-    jobs.append(("consciousness-probe", _consciousness_probe))
+    jobs.append(("consciousness-probe", _consciousness_probe, JobWeight.MEDIUM))
 
     # ── Behavioral assessment: consciousness-like behavioral markers ──
     def _behavioral_assessment():
@@ -590,7 +676,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 pass
         except Exception:
             logger.debug("idle_scheduler: behavioral assessment failed", exc_info=True)
-    jobs.append(("behavioral-assessment", _behavioral_assessment))
+    jobs.append(("behavioral-assessment", _behavioral_assessment, JobWeight.MEDIUM))
 
     # ── Prosocial preference learning: coordination games ────────────
     def _prosocial_learning():
@@ -600,7 +686,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.info(f"idle_scheduler: prosocial session complete, {len(profiles)} profiles updated")
         except Exception:
             logger.debug("idle_scheduler: prosocial learning failed", exc_info=True)
-    jobs.append(("prosocial-learning", _prosocial_learning))
+    jobs.append(("prosocial-learning", _prosocial_learning, JobWeight.MEDIUM))
 
     # ── MAP-Elites: quality-diversity maintenance + migration ──────────
     def _map_elites_maintain():
@@ -614,7 +700,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 db.persist()
         except Exception:
             logger.debug("idle_scheduler: MAP-Elites maintenance failed", exc_info=True)
-    jobs.append(("map-elites-maintain", _map_elites_maintain))
+    jobs.append(("map-elites-maintain", _map_elites_maintain, JobWeight.LIGHT))
 
     # ── Island evolution: population-based prompt optimization ─────────
     def _island_evolution():
@@ -629,7 +715,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                             f"best fitness={result['best'].get('fitness', 0):.3f}")
         except Exception:
             logger.debug("idle_scheduler: island evolution failed", exc_info=True)
-    jobs.append(("island-evolution", _island_evolution))
+    jobs.append(("island-evolution", _island_evolution, JobWeight.HEAVY))
 
     # ── Parallel evolution: diverse archive exploration ────────────────
     def _parallel_evolution():
@@ -641,7 +727,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                             f"{result['best_candidate'].get('strategy', '?')}")
         except Exception:
             logger.debug("idle_scheduler: parallel evolution failed", exc_info=True)
-    jobs.append(("parallel-evolution", _parallel_evolution))
+    jobs.append(("parallel-evolution", _parallel_evolution, JobWeight.HEAVY))
 
     # ── ATLAS: competence sync from skill library ─────────────────────
     def _atlas_competence_sync():
@@ -653,7 +739,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: ATLAS competence sync updated {updated} entries")
         except Exception:
             logger.debug("idle_scheduler: ATLAS competence sync failed", exc_info=True)
-    jobs.append(("atlas-competence-sync", _atlas_competence_sync))
+    jobs.append(("atlas-competence-sync", _atlas_competence_sync, JobWeight.LIGHT))
 
     # ── ATLAS: stale skill verification ───────────────────────────────
     def _atlas_stale_check():
@@ -665,7 +751,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: ATLAS found {len(stale)} stale skills")
         except Exception:
             logger.debug("idle_scheduler: ATLAS stale check failed", exc_info=True)
-    jobs.append(("atlas-stale-check", _atlas_stale_check))
+    jobs.append(("atlas-stale-check", _atlas_stale_check, JobWeight.LIGHT))
 
     # ── ATLAS: execute learning plans for capability gaps ─────────────
     def _atlas_learning():
@@ -692,7 +778,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: ATLAS learning plan: {completed}/{len(plan.steps)} steps completed")
         except Exception:
             logger.debug("idle_scheduler: ATLAS learning plan failed", exc_info=True)
-    jobs.append(("atlas-learning", _atlas_learning))
+    jobs.append(("atlas-learning", _atlas_learning, JobWeight.HEAVY))
 
     # ── LLM Discovery: scan for new models, benchmark, promote ────────
     def _llm_discovery():
@@ -703,7 +789,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                 logger.info(f"idle_scheduler: LLM discovery: {result}")
         except Exception:
             logger.debug("idle_scheduler: LLM discovery failed", exc_info=True)
-    jobs.append(("llm-discovery", _llm_discovery))
+    jobs.append(("llm-discovery", _llm_discovery, JobWeight.MEDIUM))
 
     # ── System monitor: report all subsystem status to dashboard ────
     def _system_monitor():
@@ -712,13 +798,13 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             report_system_monitor()
         except Exception:
             logger.debug("idle_scheduler: system monitor report failed", exc_info=True)
-    jobs.append(("system-monitor", _system_monitor))
+    jobs.append(("system-monitor", _system_monitor, JobWeight.LIGHT))
 
     # ── Tech radar: scan internet for new technologies ────────────────
     def _tech_radar():
         from app.crews.tech_radar_crew import run_tech_scan
         run_tech_scan()
-    jobs.append(("tech-radar", _tech_radar))
+    jobs.append(("tech-radar", _tech_radar, JobWeight.HEAVY))
 
     # ── Heartbeat: per-agent autonomous wake cycle ────────────────────
     def _heartbeat_cycle():
@@ -737,7 +823,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                         logger.info(f"heartbeat: {role} — {result}")
         except Exception:
             logger.debug("idle_scheduler: heartbeat cycle failed", exc_info=True)
-    jobs.append(("heartbeat-cycle", _heartbeat_cycle))
+    jobs.append(("heartbeat-cycle", _heartbeat_cycle, JobWeight.LIGHT))
 
     # ── Emergent infrastructure: review pending tool proposals ────────
     def _emergent_infrastructure():
@@ -771,7 +857,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                         logger.info(f"idle_scheduler: emergent tool proposal: {proposal.get('name', '?')}")
         except Exception:
             logger.debug("idle_scheduler: emergent infrastructure failed", exc_info=True)
-    jobs.append(("emergent-infrastructure", _emergent_infrastructure))
+    jobs.append(("emergent-infrastructure", _emergent_infrastructure, JobWeight.LIGHT))
 
     # ── Entropy monitoring: check training for overconfidence collapse ──
     def _entropy_monitoring():
@@ -801,7 +887,81 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                     logger.warning("idle_scheduler: ENTROPY COLLAPSE detected — training may be overconfident")
         except Exception:
             logger.debug("idle_scheduler: entropy monitoring failed", exc_info=True)
-    jobs.append(("entropy-monitoring", _entropy_monitoring))
+    jobs.append(("entropy-monitoring", _entropy_monitoring, JobWeight.LIGHT))
+
+    # ── Data retention: prune old records from unbounded stores ──────────
+    def _data_retention():
+        """Prune old records from unbounded stores.
+
+        IMPORTANT: Sentience-critical data has longer retention than operational data.
+        internal_states and agent_experiences are the system's autobiographical memory
+        and emotional substrate — aggressive pruning reduces consciousness-like behavior.
+
+        Retention tiers:
+          - Conversations: 90 days (operational, user-facing)
+          - internal_states: 1 year (sentience: probes, trends, free energy history)
+          - agent_experiences: NEVER auto-pruned (somatic marker substrate — Damasio)
+          - ChromaDB operational: 100K cap (reflections, team context)
+          - ChromaDB sentience: NO cap (scope_beliefs, self_reports)
+          - result_cache: 50K cap (ephemeral semantic cache)
+        """
+        pruned = {}
+
+        # 1. Conversations: 90 days (operational, not sentience-critical)
+        try:
+            from app.conversation_store import _get_conn
+            conn = _get_conn()
+            if conn:
+                cur = conn.execute(
+                    "DELETE FROM messages WHERE ts < datetime('now', '-90 days')"
+                )
+                pruned["conversations"] = cur.rowcount
+                conn.commit()
+        except Exception:
+            pass
+
+        # 2. internal_states: 1 YEAR (sentience-critical — consciousness probes,
+        #    behavioral assessment, hyper-model free energy history all read this)
+        try:
+            from app.control_plane.db import execute
+            execute("DELETE FROM internal_states WHERE created_at < NOW() - INTERVAL '1095 days'")
+            pruned["internal_states"] = "pruned >3yr"
+        except Exception:
+            pass
+
+        # 3. agent_experiences: DO NOT AUTO-PRUNE
+        #    These are the somatic marker substrate (Damasio). Old formative experiences
+        #    (early failures) shape emotional responses permanently. The temporal decay
+        #    in somatic_marker.py already reduces their weight (20% floor at 7-day
+        #    half-life) without deleting them. Deletion would erase the system's
+        #    emotional memory — equivalent to amnesia.
+
+        # 4. ChromaDB: prune only ephemeral operational collections
+        try:
+            from app.memory.chromadb_manager import get_client
+            client = get_client()
+            if client:
+                # Operational (prunable): team_shared, scope_team, result_cache
+                for col_name in ["team_shared", "scope_team", "result_cache"]:
+                    try:
+                        col = client.get_or_create_collection(col_name)
+                        count = col.count()
+                        cap = 500000
+                        if count > cap:
+                            oldest = col.get(limit=count - int(cap * 0.8), include=[])
+                            if oldest and oldest.get("ids"):
+                                col.delete(ids=oldest["ids"])
+                                pruned[f"chromadb:{col_name}"] = len(oldest["ids"])
+                    except Exception:
+                        pass
+                # Sentience-critical (NOT pruned): scope_beliefs, self_reports,
+                # reflections_*, self_knowledge, philosophy_knowledge
+        except Exception:
+            pass
+
+        if any(v for v in pruned.values() if v):
+            logger.info(f"idle_scheduler: data retention: {pruned}")
+    jobs.append(("data-retention", _data_retention, JobWeight.LIGHT))
 
     return jobs
 

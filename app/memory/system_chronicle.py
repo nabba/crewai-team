@@ -344,7 +344,8 @@ def generate_and_save() -> str:
         ]
 
         chronicle = "\n\n---\n\n".join(sections)
-        _CHRONICLE_PATH.write_text(chronicle, encoding="utf-8")
+        from app.safe_io import safe_write
+        safe_write(_CHRONICLE_PATH, chronicle)
         logger.info(f"system_chronicle: generated ({len(chronicle)} chars, {skill_count} skills)")
         return str(_CHRONICLE_PATH)
 
@@ -367,7 +368,8 @@ def _write_fallback() -> None:
             f"{skill_count} learned skill files, error/audit journals, and an evolution "
             "loop that continuously tests improvements. All data persists across restarts.\n"
         )
-        _CHRONICLE_PATH.write_text(fallback, encoding="utf-8")
+        from app.safe_io import safe_write
+        safe_write(_CHRONICLE_PATH, fallback)
     except Exception:
         pass
 

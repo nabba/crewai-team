@@ -35,6 +35,7 @@ class CompetingPlan:
     alignment_score: float = 0.0
     novelty_score: float = 0.0
     affective_score: float = 0.5    # Somatic forecast valence (0=negative, 1=positive)
+    free_energy_score: float = 0.5  # Active inference: expected FE reduction (0=increases, 1=reduces)
     composite_score: float = 0.0
 
     def to_dict(self) -> dict:
@@ -46,6 +47,7 @@ class CompetingPlan:
             "alignment_score": round(self.alignment_score, 3),
             "novelty_score": round(self.novelty_score, 3),
             "affective_score": round(self.affective_score, 3),
+            "free_energy_score": round(self.free_energy_score, 3),
             "composite_score": round(self.composite_score, 3),
         }
 
@@ -68,16 +70,18 @@ class InferentialCompetition:
     def __init__(
         self,
         n_candidates: int = 3,
-        precision_weight: float = 0.3,
-        alignment_weight: float = 0.3,
-        novelty_weight: float = 0.15,
-        affective_weight: float = 0.25,
+        precision_weight: float = 0.25,
+        alignment_weight: float = 0.25,
+        novelty_weight: float = 0.10,
+        affective_weight: float = 0.20,
+        free_energy_weight: float = 0.20,
     ):
         self.n_candidates = n_candidates
         self.precision_weight = precision_weight
         self.alignment_weight = alignment_weight
         self.novelty_weight = novelty_weight
         self.affective_weight = affective_weight
+        self.free_energy_weight = free_energy_weight
 
     def should_compete(
         self,
@@ -100,6 +104,7 @@ class InferentialCompetition:
         reality_model=None,
         available_tools: list[str] = None,
         agent_id: str = "",
+        free_energy_pressure: float = 0.0,
     ) -> tuple[CompetingPlan, list[CompetingPlan]]:
         """Generate N plans and select winner. Returns (winner, all)."""
         candidates = self._generate_candidates(task_description, reality_model, available_tools)
@@ -112,8 +117,8 @@ class InferentialCompetition:
             )
             return default, [default]
 
-        # Score each candidate (includes affective forecasting)
-        scored = [self._score_plan(c, reality_model, candidates, agent_id) for c in candidates]
+        # Score each candidate (includes affective forecasting + free energy)
+        scored = [self._score_plan(c, reality_model, candidates, agent_id, free_energy_pressure) for c in candidates]
         scored.sort(key=lambda p: p.composite_score, reverse=True)
 
         logger.info(
@@ -186,8 +191,9 @@ class InferentialCompetition:
             logger.debug(f"Plan generation failed: {e}")
             return []
 
-    def _score_plan(self, plan, reality_model, all_plans, agent_id: str = "") -> CompetingPlan:
-        """Score a plan using precision-weighting + affective forecasting."""
+    def _score_plan(self, plan, reality_model, all_plans, agent_id: str = "",
+                    free_energy_pressure: float = 0.0) -> CompetingPlan:
+        """Score a plan using precision-weighting + affective forecasting + free energy."""
         try:
             from app.memory.chromadb_manager import embed
             plan_emb = embed(plan.approach[:200])
@@ -244,10 +250,19 @@ class InferentialCompetition:
             plan.novelty_score = 0.5
             plan.affective_score = 0.5
 
+        # 5. Free energy minimization (active inference explore/exploit)
+        # High pressure + novel plan = good (explore to reduce surprise)
+        # Low pressure + precise plan = good (exploit working model)
+        if free_energy_pressure > 0.5:
+            plan.free_energy_score = plan.novelty_score * 0.6 + (1.0 - plan.precision_score) * 0.4
+        else:
+            plan.free_energy_score = plan.precision_score * 0.6 + plan.alignment_score * 0.4
+
         plan.composite_score = (
             self.precision_weight * plan.precision_score
             + self.alignment_weight * plan.alignment_score
             + self.novelty_weight * plan.novelty_score
             + self.affective_weight * plan.affective_score
+            + self.free_energy_weight * plan.free_energy_score
         )
         return plan

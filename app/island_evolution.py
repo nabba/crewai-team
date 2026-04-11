@@ -606,7 +606,8 @@ class IslandEvolution:
                 "population": [ind.to_dict() for ind in island.population],
             })
         path = self._dir / "state.json"
-        path.write_text(json.dumps(state, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, state)
 
     def _load(self) -> bool:
         """Load island state from disk. Returns True if loaded."""
@@ -708,17 +709,23 @@ def run_island_evolution_cycle(target_role: str = "coder") -> dict:
 
         results = engine.run_session(max_epochs=MAX_EPOCHS_PER_SESSION)
 
-        # Promote best if significantly better
+        # Promote best if significantly better (with workspace lock for safety)
         if results.get("best") and results["best"]["fitness"] > 0.7:
             try:
+                from app.workspace_versioning import WorkspaceLock, workspace_commit
                 from app.prompt_registry import propose_version, promote_version
-                new_version = propose_version(
-                    target_role,
-                    results["best"]["prompt_content"],
-                    f"Island evolution: fitness={results['best']['fitness']:.3f}, "
-                    f"strategy={results['best']['mutation_type']}",
-                )
-                promote_version(target_role, new_version)
+                with WorkspaceLock():
+                    new_version = propose_version(
+                        target_role,
+                        results["best"]["prompt_content"],
+                        f"Island evolution: fitness={results['best']['fitness']:.3f}, "
+                        f"strategy={results['best']['mutation_type']}",
+                    )
+                    promote_version(target_role, new_version)
+                    workspace_commit(
+                        f"island-evolution: {target_role} v{new_version:03d} "
+                        f"fitness={results['best']['fitness']:.3f}"
+                    )
                 logger.info(f"island_evolution: promoted v{new_version:03d} for {target_role} "
                             f"(fitness={results['best']['fitness']:.3f})")
             except Exception:

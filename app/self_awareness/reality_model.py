@@ -111,6 +111,40 @@ class RealityModel:
         }
 
 
+    def update_precision_from_outcome(
+        self,
+        hyper_prediction_error: float,
+        certainty_delta: float,
+        learning_rate: float = 0.15,
+    ) -> None:
+        """Bayesian-inspired precision updating from prediction error.
+
+        Closes the active inference loop: if the system was surprised
+        (high prediction error), overconfident elements get penalized.
+        If prediction was accurate, existing precision is reinforced.
+
+        Args:
+            hyper_prediction_error: |predicted - actual| certainty from HyperModel
+            certainty_delta: actual - predicted (negative = things got worse)
+            learning_rate: how fast precision adapts (default 0.15)
+        """
+        for elem in self.elements:
+            # High-precision elements get larger corrections (penalize overconfidence)
+            correction = learning_rate * hyper_prediction_error * elem.precision
+            if certainty_delta < 0:
+                # Certainty dropped: reduce precision (something was wrong)
+                elem.precision = max(0.1, elem.precision - correction)
+            else:
+                # Certainty held/rose: reinforce precision (asymmetric: harder to gain)
+                elem.precision = min(0.99, elem.precision + correction * 0.5)
+            # Track per-element contribution to total error
+            elem.prediction_error = hyper_prediction_error * elem.precision
+        # Recompute coherence after precision updates
+        if self.elements:
+            high = sum(1 for e in self.elements if e.precision > 0.6)
+            self.global_coherence = high / len(self.elements)
+
+
 class RealityModelBuilder:
     """Builds a RealityModel from available context sources."""
 

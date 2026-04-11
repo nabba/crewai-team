@@ -734,12 +734,23 @@ def run_evolution_session(max_iterations: int = 5) -> str:
 
             # 4. The agent already saved the skill file via file_manager.
             # For skills, we measure the impact by checking metrics before/after.
-            # We need to temporarily remove the file, measure baseline, put it back,
-            # then measure again.
-            if mutation.change_type == "skill":
-                result = _measure_skill_impact(runner, mutation)
-            else:
-                result = runner.run_experiment(mutation)
+            # Acquire workspace lock to prevent concurrent evolution conflicts.
+            try:
+                from app.workspace_versioning import WorkspaceLock, workspace_commit
+                with WorkspaceLock():
+                    if mutation.change_type == "skill":
+                        result = _measure_skill_impact(runner, mutation)
+                    else:
+                        result = runner.run_experiment(mutation)
+                    # Git-commit promoted mutations for rollback safety
+                    if result.status == "keep":
+                        workspace_commit(f"evolution: {mutation.hypothesis[:80]}")
+            except (ImportError, TimeoutError) as _lock_err:
+                logger.warning(f"Evolution: workspace lock unavailable ({_lock_err}), running unlocked")
+                if mutation.change_type == "skill":
+                    result = _measure_skill_impact(runner, mutation)
+                else:
+                    result = runner.run_experiment(mutation)
 
             # 5. Track results + store in variant archive (DGM genealogy)
             if result.status == "keep":

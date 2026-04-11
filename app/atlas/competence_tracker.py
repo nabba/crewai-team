@@ -114,7 +114,8 @@ class CompetenceTracker:
         """Persist competence map to disk."""
         path = self._dir / "competence_map.json"
         data = [e.to_dict() for e in self._entries.values()]
-        path.write_text(json.dumps(data, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, data)
 
     def register(
         self,

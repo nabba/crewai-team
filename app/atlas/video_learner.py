@@ -362,7 +362,8 @@ class VideoLearner:
         """Persist extracted knowledge to disk."""
         safe_title = re.sub(r'[^\w\s-]', '', knowledge.source_title)[:50].strip().replace(' ', '_')
         path = LEARNING_DIR / f"{safe_title}.json"
-        path.write_text(json.dumps(knowledge.to_dict(), indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, knowledge.to_dict())
 
         # Store in ChromaDB for semantic search
         try:

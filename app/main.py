@@ -10,6 +10,13 @@ from datetime import datetime, timezone, timedelta
 # Ensure all loggers output to stdout so docker logs captures tracebacks
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
+# Structured error logging (JSON file for aggregation/debugging)
+try:
+    from app.error_handler import setup_structured_logging
+    setup_structured_logging()
+except Exception:
+    pass  # Non-fatal — structured logging is additive
+
 # Install API rate throttle BEFORE any litellm/crewai imports to monkey-patch early
 from app.rate_throttle import install_throttle
 install_throttle()

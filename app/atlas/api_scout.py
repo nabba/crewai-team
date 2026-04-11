@@ -563,7 +563,8 @@ Generate ONLY Python test code. No markdown fences."""
         """Save API knowledge to disk."""
         filename = knowledge.name.lower().replace(" ", "_")
         path = self._knowledge_dir / f"{filename}.json"
-        path.write_text(json.dumps(knowledge.to_dict(), indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, knowledge.to_dict())
 
     def _primary_source_type(self, sources: list[dict]) -> str:
         """Determine the primary source type from doc sources."""

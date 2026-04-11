@@ -553,7 +553,8 @@ class MAPElitesDB:
             "islands": [isl.to_dict() for isl in self._islands],
         }
         path = self._dir / "state.json"
-        path.write_text(json.dumps(state, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, state)
 
     @classmethod
     def load(cls, role: str) -> "MAPElitesDB":

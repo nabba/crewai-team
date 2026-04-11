@@ -120,7 +120,8 @@ class EvolutionArchive:
         """Persist archive to disk."""
         archive_file = self._dir / "archive.json"
         data = [e.to_dict() for e in self._entries]
-        archive_file.write_text(json.dumps(data, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(archive_file, data)
 
     def add(self, entry: ArchiveEntry) -> None:
         """Add a successful variant to the archive."""
@@ -645,8 +646,15 @@ def run_parallel_evolution_cycle() -> dict:
     }
 
     if best:
-        # Archive the winner
-        runner.archive.add(ArchiveEntry(
+        # Archive the winner (with workspace lock for safety)
+        try:
+            from app.workspace_versioning import WorkspaceLock, workspace_commit
+            _ws_lock = WorkspaceLock()
+            _ws_lock.acquire()
+        except Exception:
+            _ws_lock = None
+        try:
+            runner.archive.add(ArchiveEntry(
             version_tag=f"v-parallel-{int(time.time())}",
             metrics=best.metrics,
             change_description=best.description,
@@ -661,6 +669,14 @@ def run_parallel_evolution_cycle() -> dict:
             "metrics": best.metrics,
             "description": best.description,
         }
+        try:
+            from app.workspace_versioning import workspace_commit
+            workspace_commit(f"parallel-evolution: {best.mutation_strategy} — {best.description[:60]}")
+        except Exception:
+            pass
+        finally:
+            if _ws_lock:
+                _ws_lock.release()
 
     return result
 

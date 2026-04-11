@@ -648,7 +648,8 @@ class TrainingOrchestrator:
         """Save adapter registry to disk."""
         path = ADAPTERS_DIR / "registry.json"
         data = {name: info.to_dict() for name, info in _adapters.items()}
-        path.write_text(json.dumps(data, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, data)
 
     def get_stats(self) -> dict:
         """Get training pipeline stats."""

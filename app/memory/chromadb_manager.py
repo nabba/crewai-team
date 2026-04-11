@@ -37,9 +37,14 @@ _OLLAMA_URL = os.environ.get(
     os.environ.get("LOCAL_LLM_BASE_URL", "http://host.docker.internal:11434"),
 )
 _OLLAMA_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-_EMBED_DIM = 0  # auto-detected on first call
+_EMBED_DIM = 768  # Pinned to Ollama nomic-embed-text dimension
 _embed_backend = "unknown"  # "ollama" or "cpu"
 _backend_lock = threading.Lock()
+
+
+class EmbeddingUnavailableError(RuntimeError):
+    """Raised when embedding backend is unavailable and fallback is refused."""
+    pass
 
 # Lazy-loaded CPU fallback
 _cpu_model = None
@@ -77,10 +82,19 @@ def _cpu_embed(text: str) -> list[float]:
     return _get_cpu_model().encode(text).tolist()
 
 
+def _should_refuse_fallback() -> bool:
+    """Check if CPU fallback is refused (to prevent 384-dim data corruption)."""
+    try:
+        from app.config import get_settings
+        return getattr(get_settings(), "embedding_refuse_fallback", True)
+    except Exception:
+        return True  # Default: refuse fallback (protect data)
+
+
 def _detect_backend() -> tuple[str, int]:
     """Detect which embedding backend to use. Returns (backend, dim)."""
     global _embed_backend, _EMBED_DIM
-    # Try Ollama first
+    # Try Ollama first (produces 768-dim, matches pinned _EMBED_DIM)
     emb = _ollama_embed("test")
     if emb:
         _embed_backend = "ollama"
@@ -90,7 +104,16 @@ def _detect_backend() -> tuple[str, int]:
             f"{_EMBED_DIM}-dim, ~15ms/call)"
         )
         return _embed_backend, _EMBED_DIM
-    # Fallback to CPU
+    # Ollama unavailable
+    if _should_refuse_fallback():
+        _embed_backend = "unavailable"
+        logger.warning(
+            f"Embedding backend: UNAVAILABLE — Ollama not reachable at {_OLLAMA_URL}, "
+            f"CPU fallback refused (embedding_refuse_fallback=True). "
+            f"Store/retrieve operations will skip until Ollama is available."
+        )
+        return _embed_backend, _EMBED_DIM
+    # Fallback to CPU (384-dim — only when explicitly allowed)
     emb = _cpu_embed("test")
     _embed_backend = "cpu"
     _EMBED_DIM = len(emb)
@@ -102,17 +125,36 @@ def _detect_backend() -> tuple[str, int]:
 
 
 def _raw_embed(text: str) -> list[float]:
-    """Get embedding using the detected backend."""
+    """Get embedding using the detected backend.
+
+    Raises EmbeddingUnavailableError if Ollama is down and fallback is refused.
+    """
     global _embed_backend, _EMBED_DIM
     if _embed_backend == "unknown":
         with _backend_lock:
             if _embed_backend == "unknown":
                 _detect_backend()
+    if _embed_backend == "unavailable":
+        # Retry Ollama — it may have come back
+        emb = _ollama_embed(text)
+        if emb:
+            with _backend_lock:
+                _embed_backend = "ollama"
+                _EMBED_DIM = len(emb)
+            logger.info("Embedding backend recovered: Ollama available again")
+            return emb
+        raise EmbeddingUnavailableError(
+            "Ollama embedding unavailable and CPU fallback refused "
+            "(set EMBEDDING_REFUSE_FALLBACK=false to allow 384-dim fallback)"
+        )
     if _embed_backend == "ollama":
         emb = _ollama_embed(text)
         if emb:
             return emb
-        # Ollama went down — fall back to CPU for this call
+        # Ollama went down mid-session
+        if _should_refuse_fallback():
+            logger.warning("Ollama embedding failed — refusing CPU fallback to protect 768-dim collections")
+            raise EmbeddingUnavailableError("Ollama embedding failed, fallback refused")
         logger.warning("Ollama embedding failed, falling back to CPU for this call")
         return _cpu_embed(text)
     return _cpu_embed(text)
@@ -134,10 +176,7 @@ def embed(text: str) -> list[float]:
 
 
 def get_embed_dim() -> int:
-    """Return the dimension of the current embedding model."""
-    global _EMBED_DIM
-    if _EMBED_DIM == 0:
-        embed("dimension probe")
+    """Return the pinned embedding dimension (768 for Ollama nomic-embed-text)."""
     return _EMBED_DIM
 
 

@@ -605,6 +605,7 @@ class Commander:
                     "lesson": f"{crew_name} d={difficulty} → {confidence} in {duration_s:.0f}s",
                     "would_change": "",
                 })
+                # Store 1: Per-crew collection (read by retrospective crew + ReflectionTool)
                 from app.memory.chromadb_manager import store_team
                 mem_store(f"reflections_{crew_name}", reflection, {
                     "role": crew_name, "type": "reflection",
@@ -612,6 +613,7 @@ class Commander:
                         __import__("datetime").timezone.utc
                     ).isoformat(),
                 })
+                # Store 2: Cross-crew shared (read by _load_relevant_skills fallback + trigger_scanner)
                 store_team(reflection, {"role": crew_name, "type": "reflection"})
 
                 # Revise beliefs about crew performance (inter-agent awareness)

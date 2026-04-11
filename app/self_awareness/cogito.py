@@ -372,7 +372,8 @@ class CogitoCycle:
     def _persist(self, report: ReflectionReport):
         """Save reflection to disk."""
         path = REFLECTIONS_DIR / f"{report.reflection_id}.json"
-        path.write_text(json.dumps(report.to_dict(), indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, report.to_dict())
 
 
 def run_cogito() -> ReflectionReport:

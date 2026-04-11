@@ -307,8 +307,8 @@ class SafetyGuardian:
         # First run — save checksums
         if not _INTEGRITY_FILE.exists():
             _INTEGRITY_CHECKSUMS = current
-            _INTEGRITY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _INTEGRITY_FILE.write_text(json.dumps(current, indent=2))
+            from app.safe_io import safe_write_json
+            safe_write_json(_INTEGRITY_FILE, current)
             logger.info(f"safety_guardian: integrity baseline saved ({len(current)} files)")
             return True
 
@@ -347,5 +347,6 @@ class SafetyGuardian:
 
         # Update checksums (in case new files were added to TIER3_FILES)
         _INTEGRITY_CHECKSUMS = current
-        _INTEGRITY_FILE.write_text(json.dumps(current, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(_INTEGRITY_FILE, current)
         return True

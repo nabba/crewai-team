@@ -213,7 +213,7 @@ class SkillLibrary:
 
         # Write files
         (skill_dir / "code.py").write_text(code)
-        (skill_dir / "manifest.json").write_text(json.dumps(manifest.to_dict(), indent=2))
+        from app.safe_io import safe_write_json; safe_write_json(skill_dir / "manifest.json", manifest.to_dict())
 
         if test_code:
             (skill_dir / "test_code.py").write_text(test_code)
@@ -297,7 +297,7 @@ class SkillLibrary:
         # Persist
         manifest_path = self._dir / skill_id / "manifest.json"
         if manifest_path.exists():
-            manifest_path.write_text(json.dumps(manifest.to_dict(), indent=2))
+            from app.safe_io import safe_write_json; safe_write_json(manifest_path, manifest.to_dict())
 
     def record_test_results(
         self, skill_id: str, total: int, passing: int, failing: int
@@ -317,7 +317,7 @@ class SkillLibrary:
         # Persist
         manifest_path = self._dir / skill_id / "manifest.json"
         if manifest_path.exists():
-            manifest_path.write_text(json.dumps(manifest.to_dict(), indent=2))
+            from app.safe_io import safe_write_json; safe_write_json(manifest_path, manifest.to_dict())
 
     def find_api_skill(self, api_name: str) -> Optional[SkillManifest]:
         """Find a tested API client skill by API name."""

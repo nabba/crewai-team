@@ -78,10 +78,11 @@ def create_manifest(
 
     # Write manifest
     manifest_path = MANIFESTS_DIR / f"{manifest['version']}.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    from app.safe_io import safe_write_json, safe_write
+    safe_write_json(manifest_path, manifest)
 
     # Update current pointer
-    (MANIFESTS_DIR / "current.txt").write_text(manifest["version"])
+    safe_write(MANIFESTS_DIR / "current.txt", manifest["version"])
 
     logger.info(f"version_manifest: created {manifest['version']} ({reason})")
     return manifest
@@ -178,7 +179,8 @@ def restore_from_manifest(version: str) -> dict:
         )
 
     # 8. Update current pointer
-    (MANIFESTS_DIR / "current.txt").write_text(version)
+    from app.safe_io import safe_write
+    safe_write(MANIFESTS_DIR / "current.txt", version)
 
     duration = time.monotonic() - start
     logger.info(f"version_manifest: restored to {version} in {duration:.1f}s "

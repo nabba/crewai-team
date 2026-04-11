@@ -36,7 +36,8 @@ def _load_journal() -> list[dict]:
 def _save_journal(entries: list[dict]) -> None:
     try:
         BENCHMARK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BENCHMARK_PATH.write_text(json.dumps(entries[-MAX_ENTRIES:], indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(BENCHMARK_PATH, entries[-MAX_ENTRIES:])
     except OSError:
         logger.warning("Failed to write benchmark journal", exc_info=True)
 

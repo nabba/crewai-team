@@ -147,7 +147,8 @@ class Journal:
             return 0
 
         trimmed = len(lines) - keep_latest
-        JOURNAL_FILE.write_text("\n".join(lines[-keep_latest:]) + "\n")
+        from app.safe_io import safe_write
+        safe_write(JOURNAL_FILE, "\n".join(lines[-keep_latest:]) + "\n")
         return trimmed
 
     def format_recent(self, n: int = 10) -> str:

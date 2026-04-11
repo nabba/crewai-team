@@ -62,8 +62,8 @@ def _load_audit_journal() -> list[dict]:
 
 def _save_audit_journal(entries: list[dict]) -> None:
     try:
-        AUDIT_JOURNAL.parent.mkdir(parents=True, exist_ok=True)
-        AUDIT_JOURNAL.write_text(json.dumps(entries[-200:], indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(AUDIT_JOURNAL, entries[-200:])
     except OSError:
         logger.warning("Failed to write audit journal", exc_info=True)
 
@@ -96,8 +96,8 @@ def _load_tracker() -> dict:
 
 def _save_tracker(tracker: dict) -> None:
     try:
-        ERROR_TRACKER.parent.mkdir(parents=True, exist_ok=True)
-        ERROR_TRACKER.write_text(json.dumps(tracker, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(ERROR_TRACKER, tracker)
     except OSError:
         pass
 

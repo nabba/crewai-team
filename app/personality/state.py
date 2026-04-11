@@ -217,9 +217,9 @@ def get_personality(agent_id: str) -> PersonalityState:
 
 def save_personality(state: PersonalityState) -> None:
     """Persist personality state to disk."""
-    PERSONALITY_DIR.mkdir(parents=True, exist_ok=True)
     path = PERSONALITY_DIR / f"{state.agent_id}.json"
-    path.write_text(json.dumps(state.to_dict(), indent=2))
+    from app.safe_io import safe_write_json
+    safe_write_json(path, state.to_dict())
 
 
 def list_personalities() -> list[str]:

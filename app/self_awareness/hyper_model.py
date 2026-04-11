@@ -34,6 +34,8 @@ class HyperModelState:
     free_energy_proxy: float = 0.0
     free_energy_trend: str = "stable"  # decreasing (good) | stable | increasing (bad)
     self_model_confidence: float = 0.5
+    trajectory_prediction: list = field(default_factory=list)  # next N step predictions
+    trajectory_free_energy: float = 0.0  # expected surprise across trajectory
 
     def to_dict(self) -> dict:
         return {
@@ -43,14 +45,19 @@ class HyperModelState:
             "free_energy_proxy": round(self.free_energy_proxy, 3),
             "free_energy_trend": self.free_energy_trend,
             "self_model_confidence": round(self.self_model_confidence, 3),
+            "trajectory_prediction": self.trajectory_prediction,
+            "trajectory_free_energy": round(self.trajectory_free_energy, 3),
         }
 
     def to_context_string(self) -> str:
+        traj_str = ""
+        if self.trajectory_prediction:
+            traj_str = f" Trajectory={self.trajectory_prediction[:3]} TrajFE={self.trajectory_free_energy:.2f}"
         return (
             f"[Self-Model] Expected-cert={self.predicted_certainty:.2f} "
             f"Actual-cert={self.actual_certainty:.2f} "
             f"Surprise={self.self_prediction_error:.2f} "
-            f"FE-trend={self.free_energy_trend}"
+            f"FE-trend={self.free_energy_trend}{traj_str}"
         )
 
 
@@ -88,7 +95,7 @@ class HyperModel:
         return self._predicted_next
 
     def update(self, actual_certainty: float) -> HyperModelState:
-        """Update after reasoning step. Compute prediction error and free energy."""
+        """Update after reasoning step. Compute prediction error, free energy, and trajectory."""
         prediction_error = abs(self._predicted_next - actual_certainty)
         self._prediction_errors.append(prediction_error)
 
@@ -107,6 +114,10 @@ class HyperModel:
         else:
             self_model_confidence = 0.5
 
+        # Multi-step temporal prediction (active inference hierarchy)
+        trajectory = self.predict_trajectory(horizon=5)
+        traj_fe = self.trajectory_free_energy(trajectory)
+
         state = HyperModelState(
             predicted_certainty=self._predicted_next,
             actual_certainty=actual_certainty,
@@ -114,6 +125,8 @@ class HyperModel:
             free_energy_proxy=free_energy,
             free_energy_trend=fe_trend,
             self_model_confidence=self_model_confidence,
+            trajectory_prediction=trajectory,
+            trajectory_free_energy=traj_fe,
         )
         self.history.append(state)
         return state
@@ -143,8 +156,68 @@ class HyperModel:
         if not self.history:
             return f"[Self-Model] Expected certainty: {predicted:.2f}"
         last = self.history[-1]
+        traj_str = ""
+        if last.trajectory_prediction:
+            traj_str = f" | Trajectory: {last.trajectory_prediction[:3]}"
         return (
             f"[Self-Model] Expected certainty: {predicted:.2f} | "
             f"Last surprise: {last.self_prediction_error:.2f} | "
-            f"FE-trend: {last.free_energy_trend}"
+            f"FE-trend: {last.free_energy_trend}{traj_str}"
         )
+
+    def predict_trajectory(self, horizon: int = 5) -> list[float]:
+        """Predict certainty for next N steps using damped trend extrapolation.
+
+        Uses the slope of recent certainties to project forward, with exponential
+        damping toward the mean (mean-reverting). This is the temporal depth
+        missing from single-step prediction — enables anticipatory adaptation.
+
+        Bounded [0.1, 0.95] — can't predict perfect certainty or total failure.
+        """
+        if len(self.history) < 3:
+            return [round(self._predicted_next, 3)] * horizon
+
+        recent = [h.actual_certainty for h in list(self.history)[-5:]]
+        n = len(recent)
+        slope = (recent[-1] - recent[0]) / max(n - 1, 1)
+
+        trajectory = []
+        last = self._predicted_next
+        for i in range(horizon):
+            damped_slope = slope * (0.7 ** i)  # Slope decays toward 0
+            last = max(0.1, min(0.95, last + damped_slope))
+            trajectory.append(round(last, 3))
+        return trajectory
+
+    def trajectory_free_energy(self, trajectory: list[float]) -> float:
+        """Expected total surprise across a predicted trajectory.
+
+        High value = expecting sustained uncertainty ahead. This is the
+        hierarchical temporal signal from active inference — enables the
+        system to act NOW to prevent a predicted decline.
+        """
+        if not trajectory:
+            return 0.0
+        current_mean = self._predicted_next
+        total_fe = 0.0
+        for i, predicted in enumerate(trajectory):
+            step_surprise = abs(predicted - current_mean)
+            discount = 0.85 ** i  # Nearer future weighted more
+            total_fe += step_surprise * discount
+        return round(total_fe / len(trajectory), 3)
+
+    def get_free_energy_pressure(self) -> float:
+        """[0, 1] pressure signal for active inference plan selection.
+
+        Incorporates current free energy (50%), trajectory free energy (30%),
+        and trend direction (20%). High pressure = current approach failing,
+        prefer exploratory plans. Low pressure = model is accurate, exploit.
+        """
+        if not self.history:
+            return 0.0
+        last = self.history[-1]
+        level = min(1.0, last.free_energy_proxy * 3.0)
+        traj = min(1.0, last.trajectory_free_energy * 4.0) if last.trajectory_free_energy else 0.0
+        trend_adj = {"decreasing": -0.2, "stable": 0.0, "increasing": 0.2}
+        pressure = level * 0.5 + traj * 0.3 + trend_adj.get(last.free_energy_trend, 0.0)
+        return max(0.0, min(1.0, pressure))

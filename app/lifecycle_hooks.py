@@ -613,6 +613,13 @@ def _register_defaults(registry: HookRegistry) -> None:
                     cert_mean = previous_state.certainty.fast_path_mean
                     som_intensity = previous_state.somatic.intensity
                     step_num = ctx.metadata.get("step", 0)
+                    # Get free energy pressure for active inference explore/exploit
+                    _fe_pressure = 0.0
+                    try:
+                        from app.self_awareness.hyper_model import HyperModel
+                        _fe_pressure = HyperModel.get_instance(agent_id).get_free_energy_pressure()
+                    except Exception:
+                        pass
                     if ic.should_compete(cert_mean, som_intensity, step_num):
                         # Time-boxed: max 5 seconds, abort if slower
                         def _run_competition():
@@ -620,6 +627,7 @@ def _register_defaults(registry: HookRegistry) -> None:
                                 task_description=task_ctx.get("description", ""),
                                 reality_model=reality_model,
                                 agent_id=agent_id,
+                                free_energy_pressure=_fe_pressure,
                             )
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                             future = pool.submit(_run_competition)
@@ -752,7 +760,8 @@ def _register_defaults(registry: HookRegistry) -> None:
             if comp:
                 state.competition_result = comp
 
-            # Phase 7: Beautiful Loop — hyper-model (predict → compare → error)
+            # Phase 7: Beautiful Loop — hyper-model (predict → compare → error → trajectory)
+            hm_state = None
             try:
                 from app.self_awareness.hyper_model import HyperModel
                 hm = HyperModel.get_instance(state.agent_id)
@@ -762,6 +771,19 @@ def _register_defaults(registry: HookRegistry) -> None:
                 state.free_energy_trend = hm_state.free_energy_trend
             except Exception:
                 pass
+
+            # Phase 8: Reality model precision updating (active inference: Bayesian updating)
+            # Closes the prediction loop — elements that contributed to surprise get reduced precision
+            rm = ctx.metadata.get("_reality_model")
+            if rm and hm_state:
+                try:
+                    rm.update_precision_from_outcome(
+                        hyper_prediction_error=hm_state.self_prediction_error,
+                        certainty_delta=(hm_state.actual_certainty or 0) - (hm_state.predicted_certainty or 0),
+                    )
+                    state.reality_model_summary = rm.to_dict()  # Re-serialize with updated precision
+                except Exception:
+                    pass
 
             # Phase 7: Precision-weighted certainty
             try:
@@ -778,19 +800,70 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Store in context for next step injection (C3: used by inject_internal_state hook)
             ctx.metadata["_internal_state"] = state
 
-            # GWT: broadcast when disposition is pause or escalate
-            if state.action_disposition in ("pause", "escalate"):
-                try:
-                    from app.self_awareness.global_workspace import broadcast
-                    broadcast(
+            # GWT: workspace competition — 5 signal types compete for broadcast access
+            # Replaces simple disposition-only broadcast with true workspace bottleneck
+            try:
+                from app.self_awareness.global_workspace import get_workspace, WorkspaceCandidate
+                candidates = []
+
+                # Candidate 1: disposition signal
+                _disp_salience = {"proceed": 0.0, "cautious": 0.3, "pause": 0.6, "escalate": 0.9}
+                if state.action_disposition != "proceed":
+                    candidates.append(WorkspaceCandidate(
                         content=f"Agent {state.agent_id} disposition={state.action_disposition} "
-                                f"(certainty={state.certainty.fast_path_mean:.2f}, "
-                                f"valence={state.somatic.valence:.2f})",
-                        importance="high" if state.action_disposition == "pause" else "critical",
+                                f"(certainty={state.certainty.fast_path_mean:.2f})",
+                        salience=_disp_salience.get(state.action_disposition, 0.0),
+                        signal_type="disposition",
                         source_agent=state.agent_id,
-                    )
-                except Exception:
-                    pass
+                    ))
+
+                # Candidate 2: certainty shift (> 0.15 delta from previous step)
+                _prev = ctx.metadata.get("_internal_state")
+                if _prev and hasattr(_prev, "certainty"):
+                    _delta = abs(state.certainty.adjusted_certainty - _prev.certainty.adjusted_certainty)
+                    if _delta > 0.15:
+                        candidates.append(WorkspaceCandidate(
+                            content=f"Agent {state.agent_id} certainty shift {_delta:+.2f}",
+                            salience=min(1.0, _delta * 2.5),
+                            signal_type="certainty_shift",
+                            source_agent=state.agent_id,
+                        ))
+
+                # Candidate 3: somatic flip (valence sign change)
+                if _prev and hasattr(_prev, "somatic"):
+                    _pv = _prev.somatic.valence
+                    _cv = state.somatic.valence
+                    if _pv * _cv < 0 and abs(_cv) > 0.15:
+                        candidates.append(WorkspaceCandidate(
+                            content=f"Agent {state.agent_id} somatic flip: {_pv:.2f}->{_cv:.2f}",
+                            salience=0.8,
+                            signal_type="somatic_flip",
+                            source_agent=state.agent_id,
+                        ))
+
+                # Candidate 4: free energy spike
+                if hm_state and hm_state.free_energy_trend == "increasing":
+                    candidates.append(WorkspaceCandidate(
+                        content=f"Agent {state.agent_id} free energy rising (FE={hm_state.free_energy_proxy:.2f})",
+                        salience=min(1.0, hm_state.free_energy_proxy * 2.5),
+                        signal_type="free_energy_spike",
+                        source_agent=state.agent_id,
+                    ))
+
+                # Candidate 5: trend reversal (certainty trend changed to "falling")
+                if _prev and hasattr(_prev, "certainty_trend"):
+                    if _prev.certainty_trend != state.certainty_trend and state.certainty_trend == "falling":
+                        candidates.append(WorkspaceCandidate(
+                            content=f"Agent {state.agent_id} certainty trend -> {state.certainty_trend}",
+                            salience=0.65,
+                            signal_type="trend_reversal",
+                            source_agent=state.agent_id,
+                        ))
+
+                if candidates:
+                    get_workspace().compete_for_broadcast(candidates)
+            except Exception:
+                pass
 
         except Exception as e:
             logger.debug(f"lifecycle_hooks: internal state hook failed: {e}")

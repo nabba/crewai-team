@@ -430,7 +430,8 @@ footer {{ margin-top: 40px; padding-top: 16px; border-top: 1px solid {t['border'
 </body>
 </html>"""
 
-    Path(filepath).write_text(html, encoding="utf-8")
+    from app.safe_io import safe_write
+    safe_write(Path(filepath), html)
 
     # Generate URL (served via gateway if accessible)
     from app.config import get_settings

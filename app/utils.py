@@ -52,10 +52,10 @@ def save_json_file(path: Path, data, max_entries: int = 0) -> bool:
     Replaces the identical save pattern in self_heal.py, benchmarks.py, etc.
     """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
         if max_entries > 0 and isinstance(data, list):
             data = data[-max_entries:]
-        path.write_text(json.dumps(data, indent=2))
+        from app.safe_io import safe_write_json
+        safe_write_json(path, data)
         return True
     except OSError:
         logger.debug(f"Failed to write {path}", exc_info=True)

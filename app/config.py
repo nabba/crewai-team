@@ -198,6 +198,22 @@ class Settings(BaseSettings):
     default_longitude: float = 24.94
     default_timezone: str = "Europe/Helsinki"
 
+    # Embedding — pinned dimension (768 = Ollama nomic-embed-text)
+    embedding_dimension: int = 768
+    embedding_refuse_fallback: bool = True  # Refuse 384-dim CPU fallback
+
+    # Structured logging
+    structured_log_path: str = "/app/workspace/logs/errors.jsonl"
+    structured_log_max_mb: int = 50
+
+    # Workspace versioning
+    workspace_lock_timeout_s: int = 30
+
+    # Idle scheduler tuning
+    idle_lightweight_workers: int = 3
+    idle_heavy_time_cap_s: int = 600
+    idle_training_interval_s: int = 3600
+
     model_config = ConfigDict(env_file=".env")
 
     @field_validator("sandbox_memory_limit")

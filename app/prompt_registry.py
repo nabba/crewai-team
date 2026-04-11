@@ -236,7 +236,8 @@ def propose_version(role: str, content: str, reason: str) -> int:
 
     fname = _version_filename(new_num, role)
     filepath = d / fname
-    filepath.write_text(content)
+    from app.safe_io import safe_write
+    safe_write(filepath, content)
 
     # Write a changelog entry
     changelog = d / "changelog.jsonl"
@@ -264,7 +265,8 @@ def promote_version(role: str, version: int) -> None:
         raise FileNotFoundError(f"{role}/v{version:03d} does not exist")
 
     old_version = get_active_version(role)
-    (d / "active.txt").write_text(str(version))
+    from app.safe_io import safe_write
+    safe_write(d / "active.txt", str(version))
 
     # Update changelog
     changelog = d / "changelog.jsonl"

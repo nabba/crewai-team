@@ -45,7 +45,8 @@ def _load_hash_cache() -> dict:
 
 
 def _save_hash_cache(cache: dict) -> None:
-    HASH_CACHE_PATH.write_text(json.dumps(cache))
+    from app.safe_io import safe_write_json
+    safe_write_json(HASH_CACHE_PATH, cache)
 
 
 # ── Python AST chunking ──────────────────────────────────────────────────────

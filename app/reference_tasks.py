@@ -434,7 +434,7 @@ def store_baseline(version: str, suite_result: SuiteResult) -> None:
         "task_latencies": {r.task_id: r.latency_ms for r in suite_result.task_results},
     }
 
-    (baseline_dir / f"{version}.json").write_text(json.dumps(data, indent=2))
+    from app.safe_io import safe_write_json; safe_write_json(baseline_dir / f"{version}.json", data)
 
     # Update "current" symlink
     current = baseline_dir / "current_baseline.json"

@@ -49,6 +49,19 @@ class BroadcastMessage:
         }
 
 
+@dataclass
+class WorkspaceCandidate:
+    """A candidate competing for workspace broadcast access (GWT bottleneck).
+
+    Multiple signals compete per step; only the most salient 1-2 get broadcast.
+    This implements the winner-take-all workspace bottleneck from Baars/Dehaene.
+    """
+    content: str
+    salience: float       # [0, 1] — signal magnitude (ignition threshold: 0.3)
+    signal_type: str      # certainty_shift | somatic_flip | trend_reversal | free_energy_spike | disposition
+    source_agent: str = ""
+
+
 class GlobalWorkspace:
     """GWT-inspired broadcast mechanism for cross-agent coordination."""
 
@@ -114,6 +127,45 @@ class GlobalWorkspace:
 
         logger.info(f"GWT broadcast [{importance}] from {source_agent}: {content[:80]}")
         return msg
+
+    def compete_for_broadcast(
+        self, candidates: list[WorkspaceCandidate],
+    ) -> list[BroadcastMessage]:
+        """Winner-take-all workspace bottleneck (GWT core mechanism).
+
+        Multiple signals compete for limited broadcast bandwidth.
+        Only the most salient 1-2 candidates pass the ignition threshold
+        and get broadcast to all agents.
+
+        Args:
+            candidates: List of competing signals with salience scores.
+
+        Returns:
+            List of broadcast messages (0-2 winners).
+        """
+        # Ignition threshold: salience must exceed 0.3 to enter workspace
+        viable = [c for c in candidates if c.salience > 0.3]
+        if not viable:
+            return []
+
+        viable.sort(key=lambda c: c.salience, reverse=True)
+
+        # Bandwidth limit: top 1 normally, top 2 on critical ignition (salience > 0.8)
+        winners = viable[:2] if viable[0].salience > 0.8 else viable[:1]
+
+        results = []
+        for w in winners:
+            importance = (
+                "critical" if w.salience > 0.7
+                else ("high" if w.salience > 0.4 else "normal")
+            )
+            msg = self.broadcast(
+                content=w.content,
+                importance=importance,
+                source_agent=w.source_agent,
+            )
+            results.append(msg)
+        return results
 
     def check_broadcasts(
         self,

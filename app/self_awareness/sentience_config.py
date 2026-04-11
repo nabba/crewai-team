@@ -75,12 +75,8 @@ def save_config(config: dict) -> None:
             validated[key] = value
 
     try:
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", dir=CONFIG_PATH.parent, suffix=".tmp", delete=False
-        )
-        tmp.write(json.dumps(validated, indent=2))
-        tmp.close()
-        os.replace(tmp.name, str(CONFIG_PATH))
+        from app.safe_io import safe_write_json
+        safe_write_json(CONFIG_PATH, validated)
     except Exception as e:
         logger.warning(f"sentience_config: failed to save: {e}")
 

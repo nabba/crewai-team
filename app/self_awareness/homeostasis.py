@@ -80,22 +80,10 @@ def _load() -> dict:
 
 
 def _save(state: dict) -> None:
-    """Atomic write."""
+    """Atomic write via shared safe_io utility."""
     try:
-        _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(_STATE_PATH.parent), suffix=".tmp")
-        try:
-            os.write(fd, json.dumps(state, indent=2).encode())
-            os.close(fd)
-            os.replace(tmp, str(_STATE_PATH))
-        except Exception:
-            try:
-                os.close(fd)
-            except Exception:
-                pass
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+        from app.safe_io import safe_write_json
+        safe_write_json(_STATE_PATH, state)
     except Exception:
         logger.debug("homeostasis: save failed", exc_info=True)
 

@@ -155,10 +155,10 @@ def _store_record(record: dict) -> None:
     # 1. Append to daily JSONL (crash-safe, always works)
     try:
         RAW_DIR.mkdir(parents=True, exist_ok=True)
+        from app.safe_io import safe_append
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log_file = RAW_DIR / f"interactions_{date_str}.jsonl"
-        with open(log_file, "a") as f:
-            f.write(json.dumps(record) + "\n")
+        safe_append(log_file, json.dumps(record))
     except Exception:
         logger.debug("training_collector: JSONL write failed", exc_info=True)
 
@@ -503,10 +503,9 @@ class CurationPipeline:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         for path, dataset in [(out_dir / "train.jsonl", train), (out_dir / "valid.jsonl", valid)]:
-            with open(path, "w") as f:
-                for r in dataset:
-                    mlx_record = self._to_mlx_format(r)
-                    f.write(json.dumps(mlx_record) + "\n")
+            from app.safe_io import safe_write
+            content = "\n".join(json.dumps(self._to_mlx_format(r)) for r in dataset) + "\n"
+            safe_write(path, content)
 
         logger.info(f"training_collector: exported {len(train)} train, {len(valid)} valid to {out_dir}")
         return len(train), len(valid)

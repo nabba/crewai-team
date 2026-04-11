@@ -29,7 +29,8 @@ def _ensure_ledger() -> None:
     """Create the ledger file with header if it doesn't exist."""
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not LEDGER_PATH.exists():
-        LEDGER_PATH.write_text(_HEADER)
+        from app.safe_io import safe_write
+        safe_write(LEDGER_PATH, _HEADER)
 
 
 def record_experiment(
