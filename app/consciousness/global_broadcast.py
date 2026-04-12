@@ -289,13 +289,25 @@ class GlobalBroadcastEngine:
 
 # ── Module-level singleton ──────────────────────────────────────────────────
 
-_engine: GlobalBroadcastEngine | None = None
+# ── Per-project broadcast engines ────────────────────────────────────────────
 
-def get_broadcast_engine() -> GlobalBroadcastEngine:
-    global _engine
-    if _engine is None:
-        _engine = GlobalBroadcastEngine()
-        # Register default agent listeners
-        for role in ("researcher", "coder", "writer", "media_analyst"):
-            _engine.register_listener(role, role)
-    return _engine
+_engines: dict[str, GlobalBroadcastEngine] = {}
+_engines_lock = __import__("threading").Lock()
+
+_DEFAULT_ROLES = ("researcher", "coder", "writer", "media_analyst")
+
+
+def get_broadcast_engine(project_id: str | None = None) -> GlobalBroadcastEngine:
+    """Get or create broadcast engine for a project.
+
+    project_id=None or "generic" → default engine.
+    Named project → project-scoped engine.
+    """
+    pid = project_id or "generic"
+    with _engines_lock:
+        if pid not in _engines:
+            engine = GlobalBroadcastEngine()
+            for role in _DEFAULT_ROLES:
+                engine.register_listener(role, role)
+            _engines[pid] = engine
+        return _engines[pid]

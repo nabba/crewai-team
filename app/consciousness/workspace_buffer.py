@@ -256,22 +256,72 @@ class CompetitiveGate:
         except Exception:
             pass
 
-# ── Module-level singleton ──────────────────────────────────────────────────
+# ── Per-project workspace gates ──────────────────────────────────────────────
+# Each project gets its own CompetitiveGate (capacity=3 by default).
+# "generic" = default for non-project tasks (capacity=5).
+# "__meta__" = global meta-workspace (capacity=7, fed by promotion).
 
-_gate: CompetitiveGate | None = None
+GENERIC_WORKSPACE = "generic"
+META_WORKSPACE = "__meta__"
+_DEFAULT_PROJECT_CAPACITY = 3
+_GENERIC_CAPACITY = 5
+_META_CAPACITY = 7
+
+_gates: dict[str, CompetitiveGate] = {}
+_gates_lock = threading.Lock()
 _scorer: SalienceScorer | None = None
 
-def get_workspace_gate() -> CompetitiveGate:
-    global _gate
-    if _gate is None:
+
+def get_workspace_gate(project_id: str | None = None) -> CompetitiveGate:
+    """Get or create workspace gate for a project.
+
+    project_id=None or "generic" → default workspace (capacity=5)
+    project_id="__meta__" → global meta-workspace (capacity=7)
+    project_id="plg"|"archibal"|etc → project workspace (capacity=3)
+    """
+    if not project_id:
+        project_id = GENERIC_WORKSPACE
+
+    with _gates_lock:
+        if project_id not in _gates:
+            from app.consciousness.config import load_config
+            cfg = load_config()
+            if project_id == META_WORKSPACE:
+                cap = _META_CAPACITY
+            elif project_id == GENERIC_WORKSPACE:
+                cap = cfg.workspace_capacity  # Config default (usually 5)
+            else:
+                cap = _DEFAULT_PROJECT_CAPACITY
+            _gates[project_id] = CompetitiveGate(
+                capacity=cap,
+                novelty_floor_pct=cfg.novelty_floor_pct,
+                consumption_decay=cfg.consumption_decay,
+            )
+        return _gates[project_id]
+
+
+def create_workspace(project_id: str, capacity: int = 3) -> CompetitiveGate:
+    """Create a new project workspace (called from API/dashboard)."""
+    with _gates_lock:
+        if project_id in _gates:
+            return _gates[project_id]
         from app.consciousness.config import load_config
         cfg = load_config()
-        _gate = CompetitiveGate(
-            capacity=cfg.workspace_capacity,
+        gate = CompetitiveGate(
+            capacity=max(2, min(9, capacity)),
             novelty_floor_pct=cfg.novelty_floor_pct,
             consumption_decay=cfg.consumption_decay,
         )
-    return _gate
+        _gates[project_id] = gate
+        logger.info(f"workspace: created workspace '{project_id}' capacity={gate.capacity}")
+        return gate
+
+
+def list_workspaces() -> dict[str, dict]:
+    """List all workspace gates with their snapshots."""
+    with _gates_lock:
+        return {pid: gate.get_snapshot() for pid, gate in _gates.items()}
+
 
 def get_salience_scorer() -> SalienceScorer:
     global _scorer

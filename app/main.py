@@ -900,6 +900,13 @@ app.include_router(kb_router, prefix="/kb")
 from app.api.health import router as health_router
 app.include_router(health_router)
 
+# ── Workspace API (consciousness workspaces for React dashboard) ──────────────
+try:
+    from app.api.workspace_api import router as workspace_router
+    app.include_router(workspace_router, prefix="/api")
+except Exception:
+    logger.debug("Workspace API not available", exc_info=True)
+
 # ── Control Plane API routes ─────────────────────────────────────────────
 try:
     from app.control_plane.dashboard_api import router as cp_router

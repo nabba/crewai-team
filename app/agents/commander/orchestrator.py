@@ -445,11 +445,21 @@ class Commander:
                 )
                 from app.consciousness.global_broadcast import get_broadcast_engine
 
+                # Determine project context for workspace isolation
+                _project_id = "generic"
+                try:
+                    from app.control_plane.projects import get_projects
+                    _active = get_projects().get_active_project_id()
+                    if _active and _active != "default":
+                        _project_id = _active
+                except Exception:
+                    pass
+
                 # PDS integration: personality-driven workspace capacity
                 try:
                     from app.consciousness.personality_workspace import compute_workspace_profile
                     _ws_profile = compute_workspace_profile(crew_name)
-                    _gate_for_profile = get_workspace_gate()
+                    _gate_for_profile = get_workspace_gate(_project_id)
                     _gate_for_profile.set_dynamic_capacity(
                         _ws_profile.capacity,
                         _ws_profile.novelty_floor_pct,
@@ -508,12 +518,19 @@ class Commander:
 
                 # Score salience (now includes PP-1 surprise signal)
                 _scorer = get_salience_scorer()
-                _scorer.score(_ws_item, goal_embeddings=[], recent_items=get_workspace_gate().active_items)
+                _scorer.score(_ws_item, goal_embeddings=[], recent_items=get_workspace_gate(_project_id).active_items)
 
-                # Compete for workspace
-                _gate = get_workspace_gate()
+                # Compete for workspace (project-scoped)
+                _gate = get_workspace_gate(_project_id)
                 _gate_result = _gate.evaluate(_ws_item)
                 _gate.persist_transition(_gate_result, _ws_item)
+
+                # Promote top item to global meta-workspace
+                try:
+                    from app.consciousness.meta_workspace import get_meta_workspace
+                    get_meta_workspace().promote_from_project(_project_id)
+                except Exception:
+                    pass
 
                 # AST-1: Monitor workspace state (parallel with gating, per spec)
                 _ast_intervention = None
@@ -535,7 +552,7 @@ class Commander:
 
                 # If admitted, broadcast to all agents
                 if _gate_result.admitted:
-                    _engine = get_broadcast_engine()
+                    _engine = get_broadcast_engine(_project_id)
                     _engine.update_listener_context(crew_name, _task_emb)
                     _broadcast_event = _engine.broadcast(_ws_item)
                     # Inject integration info into context

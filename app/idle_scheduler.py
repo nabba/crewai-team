@@ -1165,6 +1165,18 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: adversarial probes failed", exc_info=True)
     jobs.append(("adversarial-probes", _adversarial_probes, JobWeight.HEAVY))
 
+    # ── Meta-workspace promotion: aggregate top items from all projects ──
+    def _meta_workspace_promotion():
+        try:
+            from app.consciousness.meta_workspace import get_meta_workspace
+            results = get_meta_workspace().promote_all()
+            promoted = sum(1 for v in results.values() if v)
+            if promoted:
+                logger.info(f"idle_scheduler: meta-workspace promoted {promoted}/{len(results)} items")
+        except Exception:
+            logger.debug("idle_scheduler: meta-workspace promotion failed", exc_info=True)
+    jobs.append(("meta-workspace-promotion", _meta_workspace_promotion, JobWeight.LIGHT))
+
     return jobs
 
 
