@@ -21,6 +21,11 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ app/
 
+# Copy LLM Wiki subsystem (Karpathy pattern)
+COPY wiki/ wiki/
+COPY raw/ raw/
+COPY wiki_schema/ wiki_schema/
+
 # Copy dashboards: Firebase (legacy) + React control plane
 COPY dashboard/public/index.html dashboard/index.html
 COPY dashboard/build/ dashboard/build/
