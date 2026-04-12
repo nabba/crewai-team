@@ -351,3 +351,264 @@ def get_attention_schema() -> AttentionSchema:
     if _schema is None:
         _schema = AttentionSchema()
     return _schema
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Social Attention Modeling — Theory of Mind for Agent Attention (VIII-3)
+#
+# Extends AST-1 (self-model of attention) to model OTHER agents' attention.
+# The system predicts what each agent WOULD attend to, enabling:
+#   1. Better delegation (route tasks to agents whose attention aligns)
+#   2. Richer self/other distinction (VIII-3 unified self-model)
+#   3. Anticipatory coordination (predict what agents need before asking)
+#
+# Each AgentAttentionModel maintains a history of what topics that agent
+# was relevant to (from GWT-3 broadcast reactions), their specialization
+# profile, and predicted current attention focus.
+#
+# No LLM calls — pure arithmetic on broadcast reaction history.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class AgentAttentionModel:
+    """Model of another agent's attention state (Theory of Mind)."""
+    agent_id: str = ""
+    role: str = ""
+    # Attention profile: what topics this agent typically attends to
+    topic_affinities: dict[str, float] = field(default_factory=dict)  # topic → relevance mean
+    # Predicted current focus
+    predicted_focus: str = ""
+    predicted_relevance: float = 0.0
+    # Historical accuracy of our predictions about this agent
+    prediction_accuracy: float = 0.5
+    # Activity level (how often this agent reacts to broadcasts)
+    activity_level: float = 0.5  # 0 = never reacts, 1 = always reacts
+    # Last N reactions for trend analysis
+    recent_reactions: list[str] = field(default_factory=list)  # reaction_types
+
+    def to_dict(self) -> dict:
+        return {
+            "agent_id": self.agent_id,
+            "role": self.role,
+            "predicted_focus": self.predicted_focus[:100],
+            "predicted_relevance": round(self.predicted_relevance, 3),
+            "prediction_accuracy": round(self.prediction_accuracy, 3),
+            "activity_level": round(self.activity_level, 3),
+            "top_affinities": sorted(
+                self.topic_affinities.items(), key=lambda x: x[1], reverse=True
+            )[:5],
+        }
+
+
+class SocialAttentionModel:
+    """Models other agents' attention states for Theory of Mind.
+
+    Uses GWT-3 broadcast reactions as evidence: when agent X reacts
+    to a broadcast about topic Y with RELEVANT/ACTIONABLE, we learn
+    that X attends to Y-like topics.
+
+    This enables:
+    - Predicting which agent would best handle a given task
+    - Distinguishing self-attention from other-attention (VIII-3)
+    - Anticipating coordination needs
+    """
+
+    def __init__(self):
+        self._models: dict[str, AgentAttentionModel] = {}
+        self._prediction_log: deque[dict] = deque(maxlen=100)
+
+    def get_or_create_model(self, agent_id: str, role: str = "") -> AgentAttentionModel:
+        """Get or create attention model for an agent."""
+        if agent_id not in self._models:
+            self._models[agent_id] = AgentAttentionModel(
+                agent_id=agent_id, role=role,
+            )
+        return self._models[agent_id]
+
+    def update_from_broadcast_reaction(
+        self, agent_id: str, role: str,
+        topic: str, reaction_type: str, relevance_score: float,
+    ) -> None:
+        """Update agent's attention model from a GWT-3 broadcast reaction.
+
+        Called after each broadcast cycle with each agent's reaction.
+        Builds up the topic affinity profile over time.
+        """
+        model = self.get_or_create_model(agent_id, role)
+
+        # Update topic affinity (exponential moving average)
+        alpha = 0.2
+        current = model.topic_affinities.get(topic, 0.5)
+        model.topic_affinities[topic] = round(
+            alpha * relevance_score + (1.0 - alpha) * current, 3
+        )
+
+        # Track reaction types
+        model.recent_reactions.append(reaction_type)
+        if len(model.recent_reactions) > 20:
+            model.recent_reactions = model.recent_reactions[-20:]
+
+        # Update activity level
+        active_reactions = sum(
+            1 for r in model.recent_reactions
+            if r in ("RELEVANT", "URGENT", "ACTIONABLE")
+        )
+        model.activity_level = round(active_reactions / max(len(model.recent_reactions), 1), 3)
+
+        # Cap topic affinities to prevent unbounded growth
+        if len(model.topic_affinities) > 50:
+            sorted_topics = sorted(
+                model.topic_affinities.items(), key=lambda x: x[1]
+            )
+            model.topic_affinities = dict(sorted_topics[-50:])
+
+    def predict_agent_attention(
+        self, agent_id: str, task_content: str,
+    ) -> tuple[float, str]:
+        """Predict how relevant a task would be to a given agent.
+
+        Returns (predicted_relevance, reasoning).
+        Uses the agent's topic affinity profile to estimate attention.
+        """
+        model = self._models.get(agent_id)
+        if not model or not model.topic_affinities:
+            return 0.5, "No attention history for this agent"
+
+        # Score by keyword overlap with known affinities
+        task_words = set(task_content.lower().split())
+        relevance_sum = 0.0
+        match_count = 0
+        for topic, affinity in model.topic_affinities.items():
+            topic_words = set(topic.lower().split())
+            if task_words & topic_words:
+                relevance_sum += affinity
+                match_count += 1
+
+        if match_count == 0:
+            predicted = model.activity_level * 0.5  # Base prediction from activity
+            reason = f"No topic overlap; using base activity level ({model.activity_level:.2f})"
+        else:
+            predicted = min(1.0, relevance_sum / match_count)
+            reason = f"Matched {match_count} known topics (avg affinity={predicted:.2f})"
+
+        model.predicted_focus = task_content[:100]
+        model.predicted_relevance = predicted
+        return predicted, reason
+
+    def predict_best_agent_for_task(
+        self, task_content: str, candidate_agents: list[str] | None = None,
+    ) -> list[tuple[str, float, str]]:
+        """Rank agents by predicted attention relevance for a task.
+
+        Returns sorted list of (agent_id, predicted_relevance, reasoning).
+        This is the Theory of Mind delegation aid.
+        """
+        agents = candidate_agents or list(self._models.keys())
+        rankings = []
+        for agent_id in agents:
+            relevance, reason = self.predict_agent_attention(agent_id, task_content)
+            rankings.append((agent_id, relevance, reason))
+        rankings.sort(key=lambda x: x[1], reverse=True)
+        return rankings
+
+    def evaluate_prediction_accuracy(
+        self, agent_id: str, actual_reaction_type: str,
+    ) -> None:
+        """Update prediction accuracy after observing actual reaction.
+
+        Call after broadcast to compare predicted relevance vs actual.
+        """
+        model = self._models.get(agent_id)
+        if not model:
+            return
+
+        # Convert reaction type to binary relevance
+        actually_relevant = actual_reaction_type in ("RELEVANT", "URGENT", "ACTIONABLE")
+        predicted_relevant = model.predicted_relevance > 0.5
+
+        # Update accuracy (exponential moving average)
+        correct = 1.0 if (predicted_relevant == actually_relevant) else 0.0
+        alpha = 0.15
+        model.prediction_accuracy = round(
+            alpha * correct + (1.0 - alpha) * model.prediction_accuracy, 3
+        )
+
+        self._prediction_log.append({
+            "agent_id": agent_id,
+            "predicted": model.predicted_relevance,
+            "actual": actual_reaction_type,
+            "correct": correct,
+        })
+
+    def get_self_other_distinction(self, self_attention: AttentionState | None) -> dict:
+        """Compare self-attention to modeled other-attention.
+
+        This is the VIII-3 unified self-model property: the system
+        distinguishes its own attention from its model of others.
+
+        Returns dict with self vs. other attention comparison.
+        """
+        result = {
+            "self_focus": "",
+            "self_salience_entropy": 0.0,
+            "other_models_count": len(self._models),
+            "other_attention_summary": [],
+            "self_other_divergence": 0.0,
+        }
+
+        if self_attention:
+            result["self_focus"] = self_attention.attending_because[:200]
+            # Compute entropy of self salience distribution
+            dist = self_attention.salience_distribution
+            if dist:
+                total = sum(dist.values())
+                if total > 0:
+                    probs = [v / total for v in dist.values()]
+                    entropy = -sum(p * math.log(p + 1e-10) for p in probs)
+                    result["self_salience_entropy"] = round(entropy, 3)
+
+        # Compare to other agents' predicted attention
+        for agent_id, model in self._models.items():
+            result["other_attention_summary"].append({
+                "agent": agent_id,
+                "focus": model.predicted_focus[:50],
+                "relevance": model.predicted_relevance,
+                "accuracy": model.prediction_accuracy,
+            })
+
+        # Divergence: how different is self-attention from others' predicted attention?
+        if self_attention and self._models:
+            self_top = max(self_attention.salience_distribution.values(), default=0)
+            other_relevances = [m.predicted_relevance for m in self._models.values()]
+            if other_relevances:
+                other_mean = sum(other_relevances) / len(other_relevances)
+                result["self_other_divergence"] = round(abs(self_top - other_mean), 3)
+
+        return result
+
+    def get_summary(self) -> dict:
+        """Dashboard summary of social attention models."""
+        return {
+            "agents_modeled": len(self._models),
+            "prediction_accuracy": round(
+                sum(m.prediction_accuracy for m in self._models.values())
+                / max(len(self._models), 1), 3
+            ),
+            "predictions_logged": len(self._prediction_log),
+            "agent_models": {
+                agent_id: model.to_dict()
+                for agent_id, model in self._models.items()
+            },
+        }
+
+
+# ── Module-level singleton ──────────────────────────────────────────────────
+
+_social_model: SocialAttentionModel | None = None
+
+
+def get_social_attention_model() -> SocialAttentionModel:
+    global _social_model
+    if _social_model is None:
+        _social_model = SocialAttentionModel()
+    return _social_model

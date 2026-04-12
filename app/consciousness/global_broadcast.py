@@ -170,6 +170,24 @@ class GlobalBroadcastEngine:
         event.compute_integration_score()
         self._log.append(event)
 
+        # Update social attention model (Theory of Mind for other agents)
+        try:
+            from app.consciousness.attention_schema import get_social_attention_model
+            social = get_social_attention_model()
+            for agent_id, reaction in event.reactions.items():
+                listener = self._listeners.get(agent_id)
+                role = listener.role if listener else ""
+                social.update_from_broadcast_reaction(
+                    agent_id=agent_id,
+                    role=role,
+                    topic=item.content[:100],
+                    reaction_type=reaction.reaction_type,
+                    relevance_score=reaction.relevance_score,
+                )
+                social.evaluate_prediction_accuracy(agent_id, reaction.reaction_type)
+        except Exception:
+            pass
+
         # Persist to PostgreSQL
         self._persist_event(event)
 
