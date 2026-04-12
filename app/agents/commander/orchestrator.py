@@ -134,6 +134,32 @@ class Commander:
                 + "\n</persistent_memory>\n\n"
             )
 
+        # Wiki context: Commander reads wiki index to identify relevant knowledge pages
+        wiki_block = ""
+        try:
+            from app.tools.wiki_tools import WIKI_ROOT
+            import os
+            wiki_index = os.path.join(WIKI_ROOT, "index.md")
+            if os.path.isfile(wiki_index):
+                with open(wiki_index, "r", encoding="utf-8") as f:
+                    wiki_content = f.read()
+                # Only include if wiki has actual pages (not empty)
+                if "total_pages: 0" not in wiki_content:
+                    # Extract just the page listings (skip frontmatter)
+                    if "---" in wiki_content:
+                        wiki_body = wiki_content.split("---", 2)[-1].strip()
+                    else:
+                        wiki_body = wiki_content
+                    if wiki_body and "(No pages yet.)" not in wiki_body[:200]:
+                        wiki_block = (
+                            "<wiki_knowledge>\n"
+                            "Available knowledge wiki pages (consult relevant ones before delegating):\n"
+                            + wiki_body[:1500]
+                            + "\n</wiki_knowledge>\n\n"
+                        )
+        except Exception:
+            pass
+
         # Temporal + spatial context: agents know current date/time/season + location
         try:
             from app.temporal_context import format_temporal_block
@@ -156,6 +182,7 @@ class Commander:
             f"{attachment_context}"
             f"User request:\n\n{wrap_user_input(user_input)}\n\n"
             f"{mem0_block}"
+            f"{wiki_block}"
             f"<reference_context>\n{temporal_block}{spatial_block}</reference_context>\n"
         )
 

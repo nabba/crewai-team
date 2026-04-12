@@ -1186,6 +1186,19 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: meta-workspace promotion failed", exc_info=True)
     jobs.append(("meta-workspace-promotion", _meta_workspace_promotion, JobWeight.LIGHT))
 
+    # ── Wiki lint: periodic health check of knowledge wiki ────────────
+    def _wiki_lint():
+        try:
+            from app.tools.wiki_tools import WikiLintTool
+            linter = WikiLintTool()
+            report = linter._run()
+            # Only log if issues found
+            if "Issues found: 0" not in report:
+                logger.info(f"idle_scheduler: wiki lint found issues:\n{report[:500]}")
+        except Exception:
+            logger.debug("idle_scheduler: wiki lint failed", exc_info=True)
+    jobs.append(("wiki-lint", _wiki_lint, JobWeight.MEDIUM))
+
     return jobs
 
 

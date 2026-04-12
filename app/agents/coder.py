@@ -33,6 +33,12 @@ def create_coder(force_tier: str | None = None) -> Agent:
             tools.extend(bridge_tools)
     except Exception:
         pass
+    # Wiki tools (read, write — coder updates technical architecture pages)
+    try:
+        from app.tools.wiki_tool_registry import create_wiki_tools
+        tools.extend(create_wiki_tools("read", "write"))
+    except Exception:
+        pass
 
     return Agent(
         role="Coder",

@@ -80,6 +80,7 @@ def _render_frontmatter(fm: dict) -> str:
 def _acquire_lock(slug: str, timeout: int = 10) -> Optional[object]:
     """Acquire a file lock for a wiki page slug. Returns file handle or None."""
     os.makedirs(LOCKS_DIR, exist_ok=True)
+    _cleanup_stale_locks()  # Remove any stale lock files from crashed processes
     lock_path = os.path.join(LOCKS_DIR, f"{slug}.lock")
     fh = open(lock_path, "w")
     start = time.time()
@@ -102,6 +103,24 @@ def _release_lock(fh):
             fh.close()
         except Exception:
             pass
+
+
+def _cleanup_stale_locks(max_age_s: int = 300):
+    """Remove lock files older than max_age_s (default 5 min). fcntl releases
+    the OS lock on process death, but the file persists — clean it up."""
+    try:
+        for fname in os.listdir(LOCKS_DIR):
+            if not fname.endswith(".lock"):
+                continue
+            fpath = os.path.join(LOCKS_DIR, fname)
+            age = time.time() - os.path.getmtime(fpath)
+            if age > max_age_s:
+                try:
+                    os.remove(fpath)
+                except OSError:
+                    pass
+    except Exception:
+        pass
 
 
 def _append_log(agent: str, action: str, path: str, summary: str):
@@ -330,6 +349,20 @@ class WikiWriteTool(BaseTool):
         file_path = _safe_path(os.path.join(section, slug + ".md"))
         page_ref = f"{section}/{slug}"
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # ── DGM Epistemic Boundary Enforcement (write-time, not just lint) ──
+        # factual/verified pages MUST have a concrete source (not just "synthesis")
+        if confidence in ("high", "verified") and source in ("synthesis", ""):
+            return (
+                f"Error: DGM epistemic violation — confidence='{confidence}' requires "
+                f"a concrete source (not '{source}'). Provide a raw/ path or specific reference."
+            )
+        # Creative content cannot be filed in venture sections
+        if source == "creative" and section in ("plg", "archibal", "kaicart"):
+            return (
+                "Error: DGM epistemic boundary — creative-tagged content cannot be filed "
+                "in venture sections. Use section='philosophy' or 'meta' instead."
+            )
 
         # Acquire lock
         lock_key = f"{section}_{slug}"

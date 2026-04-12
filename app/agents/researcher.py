@@ -74,6 +74,14 @@ def create_researcher(force_tier: str | None = None, light: bool = False) -> Age
                 tools.extend(bridge_tools)
         except Exception:
             pass
+        # Wiki tools (read, write, search — researcher is primary wiki contributor)
+        try:
+            from app.tools.wiki_tool_registry import create_wiki_tools
+            wiki_tools = create_wiki_tools("read", "write", "search")
+            if wiki_tools:
+                tools.extend(wiki_tools)
+        except Exception:
+            pass
         backstory = RESEARCHER_BACKSTORY
 
     return Agent(

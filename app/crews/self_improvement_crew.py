@@ -77,6 +77,12 @@ class SelfImprovementCrew:
                 learner.tools.extend(bt)
         except Exception:
             pass
+        # Wiki tools (all 4 — self-improver owns self/ section + runs lint)
+        try:
+            from app.tools.wiki_tool_registry import create_wiki_tools
+            learner.tools.extend(create_wiki_tools())  # All 4 tools
+        except Exception:
+            pass
 
         for topic in topics[:3]:
             # Cooperative yield: abort if a user task arrived
