@@ -532,21 +532,19 @@ class Commander:
                 except Exception:
                     pass
 
-                # AST-1: Monitor workspace state (parallel with gating, per spec)
-                _ast_intervention = None
+                # AST-1: Monitor workspace state with TRUE DIRECT AUTHORITY
+                # AST-1 has direct modification rights over the workspace gate
+                # (DGM-bounded: max ±50% salience, min floor 0.05, max boost 2x)
                 try:
                     from app.consciousness.attention_schema import get_attention_schema
                     _ast = get_attention_schema()
                     _ast.update(_gate.active_items, cycle=_gate._cycle)
-                    _ast_intervention = _ast.recommend_intervention()
-                    if _ast_intervention:
-                        # Apply attention schema intervention to workspace
-                        if _ast_intervention.get("action") == "suppress" and _ast_intervention.get("target_item_id"):
-                            for _active_item in _gate.active_items:
-                                if _active_item.item_id == _ast_intervention["target_item_id"]:
-                                    _active_item.salience_score *= (1.0 - _ast_intervention.get("salience_reduction", 0.3))
-                                    logger.info(f"AST-1: suppressed capturing item {_active_item.item_id[:8]}")
-                                    break
+                    _ast_result = _ast.apply_direct_intervention(_gate)
+                    if _ast_result.get("applied"):
+                        logger.info(
+                            f"AST-1 direct authority: {_ast_result['reason']} "
+                            f"({len(_ast_result.get('actions', []))} actions)"
+                        )
                 except Exception:
                     pass
 

@@ -256,6 +256,7 @@ class AttentionSchema:
         """If stuck or captured, recommend intervention for workspace gate.
 
         Returns dict with suppression/boost directives, or None.
+        LEGACY: use apply_direct_intervention() for true direct authority.
         """
         if not self._current:
             return None
@@ -282,6 +283,151 @@ class AttentionSchema:
             }
 
         return None
+
+    # ── True Direct Authority (DGM-bounded) ──────────────────────────────
+
+    # DGM Safety Bounds — immutable, infrastructure-level
+    MAX_SALIENCE_CHANGE = 0.50   # Max ±50% salience modification per item
+    MIN_SALIENCE_FLOOR = 0.05    # Items can never be suppressed below this
+    MAX_BOOST = 2.0              # Max 2x boost factor
+
+    def apply_direct_intervention(self, gate) -> dict:
+        """Directly modify workspace gate items when stuck or captured.
+
+        Unlike recommend_intervention() (advisory), this method has true
+        direct authority over the workspace — it modifies salience scores
+        and can force displacements within DGM safety bounds.
+
+        DGM Safety Bounds:
+          - Max ±50% salience change per item per intervention
+          - Items never suppressed below MIN_SALIENCE_FLOOR (0.05)
+          - Boost factor capped at 2.0x
+          - Cannot remove items entirely (only suppress salience)
+          - Cannot exceed workspace capacity
+          - Interventions logged for audit trail
+
+        Args:
+            gate: CompetitiveGate instance to modify directly
+
+        Returns:
+            dict with intervention details (for logging/dashboard)
+        """
+        result = {"applied": False, "actions": [], "reason": ""}
+
+        if not self._current:
+            return result
+
+        if not self.controller.can_recommend_shift(self._cycle):
+            result["reason"] = "shift cooldown active"
+            return result
+
+        # ── Capture intervention: suppress dominant item ──────────────
+        if self._current.is_captured and self._current.capturing_item_id:
+            target_id = self._current.capturing_item_id
+            with gate._lock:
+                for item in gate._active:
+                    if item.item_id == target_id:
+                        old_salience = item.salience_score
+                        # Apply suppression (clamped to DGM bounds)
+                        reduction = min(self.MAX_SALIENCE_CHANGE, 0.40)
+                        new_salience = max(
+                            self.MIN_SALIENCE_FLOOR,
+                            old_salience * (1.0 - reduction),
+                        )
+                        item.salience_score = new_salience
+
+                        # Also boost the lowest-salience non-capturing item
+                        others = [i for i in gate._active if i.item_id != target_id]
+                        if others:
+                            weakest = min(others, key=lambda x: x.salience_score)
+                            old_weak = weakest.salience_score
+                            boost = min(self.MAX_BOOST, 1.0 + self.MAX_SALIENCE_CHANGE)
+                            weakest.salience_score = min(1.0, old_weak * boost)
+
+                            result["actions"].append({
+                                "type": "boost",
+                                "item_id": weakest.item_id[:12],
+                                "old_salience": round(old_weak, 3),
+                                "new_salience": round(weakest.salience_score, 3),
+                            })
+
+                        shift = self.controller.record_shift(self._cycle)
+                        self._shifts.append(shift)
+                        result["applied"] = True
+                        result["reason"] = (
+                            f"Capture: suppressed {target_id[:12]} "
+                            f"({old_salience:.2f}→{new_salience:.2f})"
+                        )
+                        result["actions"].append({
+                            "type": "suppress",
+                            "item_id": target_id[:12],
+                            "old_salience": round(old_salience, 3),
+                            "new_salience": round(new_salience, 3),
+                        })
+                        logger.info(f"AST-1 DIRECT: {result['reason']}")
+                        break
+
+        # ── Stuck intervention: boost peripheral + suppress stale ─────
+        elif self._current.is_stuck:
+            with gate._lock:
+                # Suppress oldest active items (they're stale)
+                if gate._active:
+                    stale = max(gate._active, key=lambda x: x.cycles_in_workspace)
+                    old_salience = stale.salience_score
+                    reduction = min(self.MAX_SALIENCE_CHANGE, 0.35)
+                    stale.salience_score = max(
+                        self.MIN_SALIENCE_FLOOR,
+                        old_salience * (1.0 - reduction),
+                    )
+                    result["actions"].append({
+                        "type": "suppress_stale",
+                        "item_id": stale.item_id[:12],
+                        "old_salience": round(old_salience, 3),
+                        "new_salience": round(stale.salience_score, 3),
+                        "cycles": stale.cycles_in_workspace,
+                    })
+
+                # If peripheral has items, boost best one and force-admit it
+                if gate._peripheral:
+                    best_peripheral = max(gate._peripheral, key=lambda x: x.salience_score)
+                    old_p_salience = best_peripheral.salience_score
+                    boost = min(self.MAX_BOOST, 1.5)
+                    best_peripheral.salience_score = min(1.0, old_p_salience * boost)
+                    result["actions"].append({
+                        "type": "boost_peripheral",
+                        "item_id": best_peripheral.item_id[:12],
+                        "old_salience": round(old_p_salience, 3),
+                        "new_salience": round(best_peripheral.salience_score, 3),
+                    })
+                    # Direct admission: if boosted peripheral beats lowest active, swap
+                    # (No gate.evaluate() call — we're inside the lock, do it manually)
+                    if gate._active:
+                        lowest_active = min(gate._active, key=lambda x: x.salience_score)
+                        if best_peripheral.salience_score > lowest_active.salience_score and len(gate._active) >= gate.capacity:
+                            gate._active.remove(lowest_active)
+                            gate._peripheral.append(lowest_active)
+                            gate._active.append(best_peripheral)
+                            gate._peripheral.remove(best_peripheral)
+                            result["actions"].append({
+                                "type": "forced_admission",
+                                "item_id": best_peripheral.item_id[:12],
+                                "displaced": lowest_active.item_id[:12],
+                            })
+                        elif len(gate._active) < gate.capacity:
+                            gate._active.append(best_peripheral)
+                            gate._peripheral.remove(best_peripheral)
+                            result["actions"].append({
+                                "type": "forced_admission",
+                                "item_id": best_peripheral.item_id[:12],
+                            })
+
+                shift = self.controller.record_shift(self._cycle)
+                self._shifts.append(shift)
+                result["applied"] = True
+                result["reason"] = f"Stuck: suppressed stale + boosted peripheral"
+                logger.info(f"AST-1 DIRECT: {result['reason']}")
+
+        return result
 
     def get_state_summary(self) -> dict:
         """Dashboard/introspection summary."""
