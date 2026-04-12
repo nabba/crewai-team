@@ -126,3 +126,19 @@ class PrecisionWeighting:
     def get_profile_summary(self, task_type: str) -> dict[str, float]:
         """For dashboard display."""
         return self._get_profile(task_type)
+
+    def get_prior_profile(self, task_type: str) -> list[float]:
+        """Return the 6-dim prior certainty expectations as a list.
+
+        Used by HyperModel for variational free energy KL divergence computation.
+        Order: factual, tool, coherence, task, value, meta.
+        """
+        profile = self._get_profile(task_type)
+        return [
+            profile.get("factual_grounding", 0.7),
+            profile.get("tool_confidence", 0.7),
+            profile.get("coherence", 0.7),
+            profile.get("task_understanding", 0.7),
+            profile.get("value_alignment", 0.7),
+            profile.get("meta_certainty", 0.7),
+        ]

@@ -765,7 +765,11 @@ def _register_defaults(registry: HookRegistry) -> None:
             try:
                 from app.self_awareness.hyper_model import HyperModel
                 hm = HyperModel.get_instance(state.agent_id)
-                hm_state = hm.update(state.certainty.adjusted_certainty)
+                hm_state = hm.update(
+                    state.certainty.adjusted_certainty,
+                    certainty_vector=state.certainty,
+                    task_type=ctx.metadata.get("crew", "default"),
+                )
                 state.hyper_model_state = hm_state.to_dict()
                 state.free_energy_proxy = hm_state.free_energy_proxy
                 state.free_energy_trend = hm_state.free_energy_trend

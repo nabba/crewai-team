@@ -14,12 +14,40 @@ IMMUTABLE — infrastructure-level module.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from app.self_awareness.internal_state import (
     InternalState,
     DISPOSITION_TO_RISK_TIER,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AttentionSchema:
+    """Continuous attention modulation model (Graziano 2013).
+
+    The system maintains an internal model of its own attention allocation —
+    not just what it decides, but a continuous representation of HOW it's
+    attending. This is the attention schema that AST identifies as a
+    prerequisite for consciousness.
+
+    5 continuous dimensions replace the 4 discrete disposition bins:
+    """
+    focus_intensity: float = 0.5      # [0,1] — diffuse to laser-focused
+    caution_level: float = 0.25       # [0,1] — continuous caution (0=proceed, 1=escalate)
+    exploration_drive: float = 0.5    # [0,1] — exploit to explore (from free energy)
+    metacognitive_load: float = 0.3   # [0,1] — monitoring overhead
+    somatic_salience: float = 0.0     # [0,1] — emotional influence strength
+
+    def to_dict(self) -> dict:
+        return {
+            "focus_intensity": round(self.focus_intensity, 3),
+            "caution_level": round(self.caution_level, 3),
+            "exploration_drive": round(self.exploration_drive, 3),
+            "metacognitive_load": round(self.metacognitive_load, 3),
+            "somatic_salience": round(self.somatic_salience, 3),
+        }
 
 
 # Disposition matrix
@@ -97,6 +125,13 @@ class DualChannelComposer:
         state.action_disposition = disposition
         state.risk_tier = risk_tier
 
+        # Continuous attention schema (Graziano AST)
+        try:
+            schema = self._compute_attention_schema(state)
+            state.attention_schema = schema.to_dict()
+        except Exception:
+            pass
+
         return state
 
     def _discretize_certainty(self, state: InternalState) -> str:
@@ -114,3 +149,46 @@ class DualChannelComposer:
         if v > self.valence_negative:
             return "neutral"
         return "negative"
+
+    def _compute_attention_schema(self, state: InternalState) -> AttentionSchema:
+        """Compute continuous attention model from internal state signals.
+
+        Replaces the coarse 4-bin disposition with a nuanced 5D representation
+        of how the system is allocating its attentional resources.
+        """
+        cert = state.certainty.adjusted_certainty
+        val = state.somatic.valence
+        intensity = state.somatic.intensity
+        variance = state.certainty.variance
+
+        # Focus intensity: high certainty + low variance = sharply focused
+        focus = cert * (1.0 - min(1.0, variance * 5.0))
+        focus = max(0.0, min(1.0, focus))
+
+        # Caution level: continuous version of disposition
+        # Low certainty → more caution, negative valence → more caution
+        caution = (1.0 - cert) * 0.5 + max(0.0, -val) * 0.3 + (1.0 - focus) * 0.2
+        caution = max(0.0, min(1.0, caution))
+
+        # Exploration drive: from free energy (if available in hyper_model_state)
+        exploration = 0.5
+        hm = state.hyper_model_state
+        if hm and isinstance(hm, dict):
+            fe = hm.get("variational_fe") or hm.get("free_energy_proxy") or 0
+            exploration = min(1.0, float(fe) * 1.5)
+
+        # Metacognitive load: high variance = more monitoring needed
+        meta_load = min(1.0, variance * 3.0)
+        if state.meta.reassessment_triggered:
+            meta_load = min(1.0, meta_load + 0.3)
+
+        # Somatic salience: how strongly emotions influence this step
+        somatic_sal = intensity * abs(val)
+
+        return AttentionSchema(
+            focus_intensity=round(focus, 3),
+            caution_level=round(caution, 3),
+            exploration_drive=round(exploration, 3),
+            metacognitive_load=round(meta_load, 3),
+            somatic_salience=round(somatic_sal, 3),
+        )

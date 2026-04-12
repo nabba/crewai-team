@@ -176,6 +176,9 @@ class InternalState:
     free_energy_proxy: float = 0.0
     free_energy_trend: str = "stable"
 
+    # Attention Schema (Graziano AST — continuous attention modulation)
+    attention_schema: Optional[dict] = None  # AttentionSchema.to_dict()
+
     # Timestamps
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -201,6 +204,13 @@ class InternalState:
                 f"FE={hm.get('free_energy_trend', 'stable')}"
             )
         parts.append(f"Disposition={self.action_disposition}")
+        if self.attention_schema:
+            a = self.attention_schema
+            parts.append(
+                f"Attention: focus={a.get('focus_intensity', 0.5):.1f} "
+                f"caution={a.get('caution_level', 0.25):.1f} "
+                f"explore={a.get('exploration_drive', 0.5):.1f}"
+            )
         return " | ".join(parts)
 
     def to_json(self) -> str:
@@ -225,6 +235,7 @@ class InternalState:
             "precision_weighted_certainty": self.precision_weighted_certainty,
             "free_energy_proxy": self.free_energy_proxy,
             "free_energy_trend": self.free_energy_trend,
+            "attention_schema": self.attention_schema,
             "created_at": self.created_at.isoformat(),
         }, default=str)
 
