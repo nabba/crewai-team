@@ -48,6 +48,10 @@ class HyperModelState:
     # Beautiful Loop closure (self-referential fixed point)
     loop_closure_error: float = 0.0       # How well system predicted its own processing
     loop_closure_convergence: float = 0.5 # How close to fixed point (1.0 = perfect)
+    # Epistemic horizon: where does self-knowledge run out?
+    epistemic_depth: int = 0              # Effective depth (how many levels are informative)
+    epistemic_convergent: bool = True     # True = errors decrease with depth (healthy)
+    epistemic_horizon_signal: str = ""    # "converged" | "divergent" | "shallow"
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +72,9 @@ class HyperModelState:
             "trajectory_trustworthy": self.trajectory_trustworthy,
             "loop_closure_error": round(self.loop_closure_error, 3),
             "loop_closure_convergence": round(self.loop_closure_convergence, 3),
+            "epistemic_depth": self.epistemic_depth,
+            "epistemic_convergent": self.epistemic_convergent,
+            "epistemic_horizon_signal": self.epistemic_horizon_signal,
         }
 
     def to_context_string(self) -> str:
@@ -79,6 +86,10 @@ class HyperModelState:
             meta_str = " | Meta: low self-model trust"
         if not self.trajectory_trustworthy:
             meta_str += " | Trajectory: unreliable"
+        if self.epistemic_horizon_signal == "divergent":
+            meta_str += " | EPISTEMIC DIVERGENCE: self-model breaking down"
+        elif self.epistemic_horizon_signal == "shallow":
+            meta_str += " | Epistemic: shallow self-knowledge"
         return (
             f"[Self-Model] Expected-cert={self.predicted_certainty:.2f} "
             f"Actual-cert={self.actual_certainty:.2f} "
@@ -249,6 +260,36 @@ class HyperModel:
             certainty_vector, task_type, prediction_error
         )
 
+        # ── Epistemic Horizon Detection ─────────────────────────────
+        # Determine where self-knowledge runs out by checking whether
+        # errors DECREASE with depth (converging = healthy) or
+        # INCREASE with depth (diverging = self-model is broken).
+        #
+        # This is the meta-cognitive insight: the system knows WHERE
+        # its recursion converges. The brain converges after ~3-5 levels;
+        # our 3 levels + LoopClosure capture the same computational content.
+        level_errors = [prediction_error, meta_pe, trajectory_uncertainty]
+        epistemic_depth = 0
+        epistemic_convergent = True
+        for i, err in enumerate(level_errors):
+            if err < 0.3:  # Level is informative (error below noise threshold)
+                epistemic_depth = i + 1
+            else:
+                break  # Higher levels not informative
+        # Check convergence: are errors decreasing with depth?
+        if len(level_errors) >= 2:
+            if level_errors[1] > level_errors[0] + 0.1:
+                epistemic_convergent = False  # Diverging: deeper = worse
+            if len(level_errors) >= 3 and level_errors[2] > level_errors[1] + 0.1:
+                epistemic_convergent = False
+        # Signal for context injection
+        if not epistemic_convergent:
+            horizon_signal = "divergent"
+        elif epistemic_depth <= 1:
+            horizon_signal = "shallow"
+        else:
+            horizon_signal = "converged"
+
         state = HyperModelState(
             predicted_certainty=self._predicted_next,
             actual_certainty=actual_certainty,
@@ -265,6 +306,9 @@ class HyperModel:
             meta_confidence=meta_confidence,
             trajectory_uncertainty=trajectory_uncertainty,
             trajectory_trustworthy=trajectory_trustworthy,
+            epistemic_depth=epistemic_depth,
+            epistemic_convergent=epistemic_convergent,
+            epistemic_horizon_signal=horizon_signal,
         )
         self.history.append(state)
         return state
@@ -440,6 +484,9 @@ class HyperModel:
         # Beautiful Loop: low loop convergence → bias toward exploration
         if last.loop_closure_convergence < 0.3:
             pressure += 0.1
+        # Epistemic horizon: divergent self-model → strong exploration bias
+        if not last.epistemic_convergent:
+            pressure += 0.15
         return max(0.0, min(1.0, pressure))
 
     def record_loop_closure(self, error: float, convergence: float) -> None:
