@@ -1,6 +1,6 @@
 # Pinned digest prevents silent base image substitution (supply-chain attack)
-# To update: docker pull python:3.11-slim && docker inspect --format '{{index .RepoDigests 0}}'
-FROM python:3.11-slim@sha256:6d98ca198cea726f2c86da2699594339a7b7ff08e49728797b4ed6e3b5c3b62a
+# To update: docker pull python:3.12-slim && docker inspect --format '{{index .RepoDigests 0}}'
+FROM python:3.12-slim@sha256:804ddf3251a60bbf9c92e73b7566c40428d54d0e79d3428194edf40da6521286
 
 WORKDIR /app
 
