@@ -648,6 +648,15 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                         f"composite={result.composite_score:.2f}, "
                         f"say-do gap={result.say_do_gap:.2f}, "
                         f"stage={state.developmental_stage}")
+
+            # Proto-sentience integration: evaluate co-occurrence + apply effects
+            try:
+                from app.personality.validation import evaluate_proto_sentience, apply_proto_sentience_effects
+                ps_score = evaluate_proto_sentience(role)
+                if ps_score.individual_markers > 0 or ps_score.regression_indicated:
+                    apply_proto_sentience_effects(role, ps_score)
+            except Exception:
+                pass
         except Exception:
             logger.debug("idle_scheduler: PDS session failed", exc_info=True)
     # PDS placed after retrospective (job #5) to ensure it gets reached

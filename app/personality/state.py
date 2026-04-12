@@ -161,8 +161,36 @@ class PersonalityState:
         self.stage_transitions.append({
             "from": old_stage, "to": self.developmental_stage,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "direction": "advance",
         })
         logger.info(f"personality: {self.agent_id} advanced to stage '{self.developmental_stage}'")
+
+    def regress_stage(self, reason: str = "") -> bool:
+        """Regress to previous developmental stage under stress.
+
+        Erikson's model includes regression — developmental progress is not
+        a one-way ratchet. Sustained stress, high frustration, or repeated
+        failures can push the system back to an earlier stage.
+
+        Returns True if regressed.
+        """
+        idx = DEVELOPMENTAL_STAGES.index(self.developmental_stage)
+        if idx <= 0:
+            return False  # Can't regress below stage 1
+        old_stage = self.developmental_stage
+        self.developmental_stage = DEVELOPMENTAL_STAGES[idx - 1]
+        self.stage_progress = 0.6  # Start at 60% (not from scratch)
+        self.stage_transitions.append({
+            "from": old_stage, "to": self.developmental_stage,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "direction": "regression",
+            "reason": reason[:200],
+        })
+        logger.warning(
+            f"personality: {self.agent_id} REGRESSED from '{old_stage}' "
+            f"to '{self.developmental_stage}' — {reason}"
+        )
+        return True
         return True
 
     def get_profile_summary(self) -> str:
