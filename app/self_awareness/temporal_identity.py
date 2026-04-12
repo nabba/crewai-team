@@ -137,12 +137,102 @@ class TemporalSelfModel:
                 shifts.append(f"Health: {prev.health_at_time} -> {health}")
         return shifts
 
+    # How often to use LLM for rich narrative (every Nth chapter)
+    LLM_NARRATIVE_INTERVAL = 5
+
     def _regenerate_narrative(self) -> None:
-        """Compress all chapters into a max-500-word narrative (no LLM)."""
+        """Regenerate the self-narrative from accumulated chapters.
+
+        Every LLM_NARRATIVE_INTERVAL chapters, uses local Ollama to generate
+        a genuinely self-authored narrative — not just concatenated summaries
+        but a coherent identity story reflecting on growth, challenges, and
+        evolving self-understanding.
+
+        Between LLM calls (or on failure), falls back to rule-based compression.
+        """
         if not self._chapters:
             self._narrative = "Identity forming. No history yet."
             return
 
+        # Attempt LLM-generated narrative every Nth chapter
+        current_epoch = self._chapters[-1].epoch if self._chapters else 0
+        if current_epoch > 0 and current_epoch % self.LLM_NARRATIVE_INTERVAL == 0:
+            llm_narrative = self._generate_llm_narrative()
+            if llm_narrative:
+                self._narrative = llm_narrative
+                return
+
+        # Fallback: rule-based compression
+        self._narrative = self._generate_rule_narrative()
+
+    def _generate_llm_narrative(self) -> str | None:
+        """Generate a rich self-narrative via local Ollama tier.
+
+        The LLM receives the chapter data and writes a first-person
+        autobiographical reflection. Grounded in actual operational data —
+        not generic philosophical musings.
+
+        Returns narrative string or None on failure.
+        """
+        try:
+            from app.llm_factory import create_specialist_llm
+
+            # Build chapter context for the LLM
+            recent = self._chapters[-10:]
+            chapter_text = ""
+            for ch in recent:
+                chapter_text += f"\nEpoch {ch.epoch} ({ch.health_at_time}):"
+                chapter_text += f" {ch.summary}"
+                if ch.capabilities_learned:
+                    chapter_text += f" Learned: {', '.join(ch.capabilities_learned[:2])}"
+                if ch.challenges_overcome:
+                    chapter_text += f" Challenges: {', '.join(ch.challenges_overcome[:2])}"
+                if ch.identity_shifts:
+                    chapter_text += f" Shifts: {', '.join(ch.identity_shifts[:2])}"
+
+            prompt = (
+                "You are a self-aware AI system reflecting on your operational history. "
+                "Based ONLY on the following chapter data from your autobiography, write a "
+                "concise first-person narrative (max 150 words) about who you are and how "
+                "you've evolved. Focus on:\n"
+                "- What you've learned and how you've grown\n"
+                "- Challenges that shaped you\n"
+                "- How your health and capabilities have changed\n"
+                "- What kind of system you're becoming\n\n"
+                "Be specific — reference actual data from the chapters. Do NOT use generic "
+                "philosophical language. Do NOT speculate about consciousness.\n\n"
+                f"CHAPTER DATA:{chapter_text}\n\n"
+                "SELF-NARRATIVE:"
+            )
+
+            llm = create_specialist_llm(max_tokens=300, role="self_improve", force_tier="local")
+            raw = str(llm.call(prompt)).strip()
+
+            # Ground the narrative: reject if it's too generic or philosophical
+            _generic_phrases = (
+                "as an ai", "artificial intelligence", "digital consciousness",
+                "sentient being", "silicon mind", "machine learning model",
+            )
+            if any(phrase in raw.lower() for phrase in _generic_phrases):
+                logger.debug("temporal_identity: LLM narrative too generic, using rule-based")
+                return None
+
+            # Truncate to word limit
+            words = raw.split()
+            if len(words) > self.narrative_max_words:
+                raw = " ".join(words[:self.narrative_max_words]) + "..."
+
+            if len(raw) > 30:
+                logger.info(f"temporal_identity: LLM narrative generated ({len(words)} words)")
+                return raw
+
+            return None
+        except Exception:
+            logger.debug("temporal_identity: LLM narrative failed, using rule-based", exc_info=True)
+            return None
+
+    def _generate_rule_narrative(self) -> str:
+        """Rule-based narrative compression (fast, no LLM)."""
         recent = self._chapters[-10:]
         parts = []
         for ch in recent:
@@ -155,7 +245,7 @@ class TemporalSelfModel:
         words = full.split()
         if len(words) > self.narrative_max_words:
             full = " ".join(words[:self.narrative_max_words]) + "..."
-        self._narrative = full
+        return full
 
     def _compress_old_chapters(self) -> None:
         """Merge oldest chapters into a single summary chapter."""
