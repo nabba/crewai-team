@@ -122,3 +122,43 @@ export interface KanbanBoard {
   counts: Record<string, number>;
   total: number;
 }
+
+// ── Consciousness Workspaces ──────────────────────────────────────────────
+
+export interface WorkspaceItem {
+  item_id: string;
+  content: string;
+  salience: number;
+  source_agent: string;
+  source_channel: string;
+  cycles: number;
+  consumed: boolean;
+}
+
+export interface WorkspaceSnapshot {
+  project_id: string;
+  cycle: number;
+  capacity: number;
+  active_count: number;
+  peripheral_count: number;
+  active_items: WorkspaceItem[];
+}
+
+export interface WorkspaceList {
+  workspaces: WorkspaceSnapshot[];
+  count: number;
+}
+
+export interface WorkspaceItems {
+  project_id: string;
+  active: WorkspaceItem[];
+  peripheral: WorkspaceItem[];
+  capacity: number;
+  cycle: number;
+}
+
+export interface MetaWorkspace {
+  meta_workspace: Record<string, unknown>;
+  by_project: Record<string, { content: string; salience: number }[]>;
+  project_count: number;
+}

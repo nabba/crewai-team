@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/governance', label: 'Governance', icon: '⚖️', exact: false },
   { to: '/org-chart', label: 'Org Chart', icon: '🏢', exact: false },
   { to: '/costs', label: 'Costs', icon: '📈', exact: false },
+  { to: '/workspaces', label: 'Workspaces', icon: '🧠', exact: false },
 ];
 
 export function Layout() {
