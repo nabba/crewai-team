@@ -27,3 +27,4 @@ host_bridge/capabilities.json
 wiki/.locks/*.lock
 # Compiled CoreLocation helper binary
 signal/location-helper
+wiki/.slides/

@@ -44,7 +44,7 @@ def create_writer(force_tier: str | None = None) -> Agent:
     # Wiki tools (read, write, search — writer consumes wiki + files valuable outputs back)
     try:
         from app.tools.wiki_tool_registry import create_wiki_tools
-        tools.extend(create_wiki_tools("read", "write", "search"))
+        tools.extend(create_wiki_tools("read", "write", "search", "slides"))
     except Exception:
         pass
 

@@ -368,7 +368,8 @@ class WikiWriteTool(BaseTool):
         "tags (str) — comma-separated tags; "
         "related (str) — comma-separated related page slugs; "
         "source (str) — raw path, URL, or 'synthesis'; "
-        "deprecated_by (str, optional) — slug of replacement page (for deprecate)."
+        "deprecated_by (str, optional) — slug of replacement page (for deprecate); "
+        "relationships (str, optional) — typed links, format: 'supports:page-slug,contradicts:other-slug'."
     )
 
     def _run(
@@ -384,6 +385,7 @@ class WikiWriteTool(BaseTool):
         related: str = "",
         source: str = "synthesis",
         deprecated_by: str = "",
+        relationships: str = "",
     ) -> str:
         # Validate inputs
         action = (action or "").strip().lower()
@@ -407,6 +409,18 @@ class WikiWriteTool(BaseTool):
 
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         related_list = [r.strip() for r in related.split(",") if r.strip()] if related else []
+
+        # Parse typed relationships: "supports:page-slug,contradicts:other-slug"
+        rel_list = []
+        if relationships:
+            for rel in relationships.split(","):
+                rel = rel.strip()
+                if ":" in rel:
+                    rtype, rtarget = rel.split(":", 1)
+                    rtype = rtype.strip().lower()
+                    rtarget = rtarget.strip()
+                    if rtype in VALID_RELATIONSHIP_TYPES and rtarget:
+                        rel_list.append({"type": rtype, "target": rtarget})
 
         file_path = _safe_path(os.path.join(section, slug + ".md"))
         page_ref = f"{section}/{slug}"
@@ -458,6 +472,7 @@ class WikiWriteTool(BaseTool):
                     "tags": tag_list,
                     "aliases": [slug.replace("-", " ")],  # Dataview: alternative names
                     "related": related_list,
+                    "relationships": rel_list,  # Typed: [{type, target}]
                     "source": source,
                     "version": 1,
                 }
@@ -506,6 +521,9 @@ class WikiWriteTool(BaseTool):
                 _append_log(author, "UPDATE", page_ref, f"Updated to v{version}")
                 _rebuild_section_index(section)
                 _rebuild_master_index()
+                # ChromaDB: re-embed updated page for semantic search
+                _embed_wiki_page(section, slug, fm.get("title", slug), content,
+                                 fm.get("tags", []), fm.get("confidence", "medium"))
                 return f"Updated {page_ref} (v{version})."
 
             elif action == "deprecate":
@@ -806,11 +824,38 @@ class WikiLintTool(BaseTool):
                 key = f"{section}:{tag}"
                 tag_groups.setdefault(key, []).append(page_ref)
 
+        # Also check explicit typed relationships for contradictions
+        for page_ref, data in pages_to_check.items():
+            fm = data["fm"]
+            for rel in fm.get("relationships", []):
+                if isinstance(rel, dict) and rel.get("type") == "contradicts":
+                    target = rel.get("target", "")
+                    issues["contradictions"].append(
+                        f"EXPLICIT: {page_ref} contradicts {target}"
+                    )
+
         for key, refs in tag_groups.items():
             if len(refs) > 1:
+                # Resolution heuristic: score by recency × confidence
+                confidence_map = {"verified": 4, "high": 3, "medium": 2, "low": 1}
+                scored = []
+                for ref in refs:
+                    fm = pages_to_check[ref]["fm"]
+                    conf_score = confidence_map.get(fm.get("confidence", "medium"), 2)
+                    # Recency: newer = higher score
+                    try:
+                        updated = fm.get("updated_at", "2020-01-01")
+                        dt = datetime.fromisoformat(str(updated).replace("Z", "+00:00"))
+                        days_old = (datetime.now(timezone.utc) - dt).days
+                        recency = max(0.1, 1.0 - days_old / 365)
+                    except (ValueError, TypeError):
+                        recency = 0.5
+                    scored.append((ref, conf_score * recency, conf_score, recency))
+                scored.sort(key=lambda x: x[1], reverse=True)
+                best = scored[0]
+                recommendation = f" RECOMMENDATION: {best[0]} is most authoritative (score={best[1]:.1f})"
                 issues["contradictions"].append(
-                    f"Potential overlap on '{key}': {', '.join(refs)} — "
-                    f"review for contradictions"
+                    f"Overlap '{key}': {', '.join(refs)}.{recommendation}"
                 )
 
         # 6. Index consistency
