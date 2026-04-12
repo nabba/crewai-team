@@ -513,6 +513,8 @@ class WikiWriteTool(BaseTool):
                     fm["related"] = related_list
                 if source:
                     fm["source"] = source
+                if rel_list:
+                    fm["relationships"] = rel_list
 
                 full_content = _render_frontmatter(fm) + "\n" + content.strip() + "\n"
                 with open(file_path, "w", encoding="utf-8") as f:
