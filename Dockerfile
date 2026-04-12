@@ -1,6 +1,7 @@
 # Pinned digest prevents silent base image substitution (supply-chain attack)
-# To update: docker pull python:3.12-slim && docker inspect --format '{{index .RepoDigests 0}}'
-FROM python:3.12-slim@sha256:804ddf3251a60bbf9c92e73b7566c40428d54d0e79d3428194edf40da6521286
+# To update: docker pull python:3.13-slim && docker inspect --format '{{index .RepoDigests 0}}'
+# Note: Python 3.14 blocked by crewai's Requires-Python >=3.10,<3.14 pin.
+FROM python:3.13-slim@sha256:d168b8d9eb761f4d3fe305ebd04aeb7e7f2de0297cec5fb2f8f6403244621664
 
 WORKDIR /app
 
