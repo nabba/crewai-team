@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.companion import idea_store as _idea_store
+from app.companion import reflexion as _reflexion
 from app.companion import scoring as _scoring
 from app.companion import surfacing as _surfacing
 from app.companion import workspace_kb
@@ -82,7 +83,7 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
         query=seed,
         top_k=workspace_kb.DEFAULT_KB_TOP_K,
     )
-    prompt = _compose_prompt(seed, snippets)
+    prompt = _compose_prompt(seed, snippets, workspace_id=workspace_id)
 
     try:
         result: "CreativeRunResult" = _invoke_creative_crew(prompt)
@@ -257,7 +258,8 @@ def _invoke_creative_crew(task_description: str):
     return run_creative_crew(task_description=task_description, creativity="high")
 
 
-def _compose_prompt(seed: str, snippets: list[workspace_kb.KBSnippet]) -> str:
+def _compose_prompt(seed: str, snippets: list[workspace_kb.KBSnippet],
+                    *, workspace_id: str | None = None) -> str:
     """Assemble the prompt fed to Creative MAS phase 1."""
     lines: list[str] = [
         "You are exploring an open-ended idea space for a workspace.",
@@ -271,6 +273,15 @@ def _compose_prompt(seed: str, snippets: list[workspace_kb.KBSnippet]) -> str:
         for s in body_snippets:
             lines.append(s.to_prompt_line())
         lines.append("")
+    if workspace_id:
+        try:
+            block = _reflexion.build_block(workspace_id)
+        except Exception as exc:
+            logger.debug("companion.cycle: reflexion.build_block raised: %s",
+                         exc)
+            block = ""
+        if block:
+            lines.append(block)
     lines.append(
         "## Task\n"
         "Generate fresh, surprising ideas that bear on the workspace seed. "

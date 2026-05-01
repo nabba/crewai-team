@@ -53,27 +53,35 @@ def for_idea(workspace_id: str, idea_id: str) -> list[_events.Event]:
 def summary(workspace_id: str) -> dict:
     """Aggregate counts across all feedback for a workspace.
 
-    Output: {up: int, down: int, with_comment: int, recent_negative: list[str]}.
-    The recent_negative list is the last 5 idea_ids that received a
-    thumbs-down — Phase 5 feeds these into the next cycle's prompt.
+    Output keys:
+      up, down, with_comment              — int counts
+      recent_negative_idea_ids            — last 5 thumbs-down idea_ids
+      recent_positive_idea_ids            — last 5 thumbs-up idea_ids
+
+    Both recent_* lists are sorted newest-first. Phase 5's Reflexion module
+    consumes these to seed the next cycle's prompt with past lessons.
     """
     up = down = with_comment = 0
-    recent_negative: list[tuple[float, str]] = []
+    neg: list[tuple[float, str]] = []
+    pos: list[tuple[float, str]] = []
     for ev in _events.read_all(workspace_id):
         if ev.type != _events.EventType.FEEDBACK:
             continue
         pol = (ev.payload or {}).get("polarity")
         if pol == Polarity.UP.value:
             up += 1
+            pos.append((ev.ts, ev.idea_id))
         elif pol == Polarity.DOWN.value:
             down += 1
-            recent_negative.append((ev.ts, ev.idea_id))
+            neg.append((ev.ts, ev.idea_id))
         if (ev.payload or {}).get("comment"):
             with_comment += 1
-    recent_negative.sort(reverse=True)
+    neg.sort(reverse=True)
+    pos.sort(reverse=True)
     return {
         "up": up,
         "down": down,
         "with_comment": with_comment,
-        "recent_negative_idea_ids": [iid for _, iid in recent_negative[:5]],
+        "recent_negative_idea_ids": [iid for _, iid in neg[:5]],
+        "recent_positive_idea_ids": [iid for _, iid in pos[:5]],
     }

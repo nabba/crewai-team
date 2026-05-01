@@ -140,6 +140,40 @@ def test_compose_prompt_drops_empty_text_snippets():
     assert prompt.count("[temporal_context") == 0
 
 
+# ── Phase 5: Reflexion ─────────────────────────────────────────────────────
+
+def test_compose_prompt_includes_reflexion_block_when_workspace_given():
+    with patch("app.companion.reflexion.build_block",
+               lambda ws, **kw: "## Lessons from past feedback\n- bad idea\n"):
+        prompt = _cycle._compose_prompt("seed", [], workspace_id="ws-1")
+    assert "Lessons from past feedback" in prompt
+    assert "bad idea" in prompt
+    assert prompt.index("Lessons") < prompt.index("## Task")
+
+
+def test_compose_prompt_no_reflexion_without_workspace_id():
+    prompt = _cycle._compose_prompt("seed", [])
+    assert "Lessons from past feedback" not in prompt
+
+
+def test_compose_prompt_handles_empty_reflexion():
+    with patch("app.companion.reflexion.build_block", lambda ws, **kw: ""):
+        prompt = _cycle._compose_prompt("seed", [], workspace_id="ws-1")
+    assert "Lessons from past feedback" not in prompt
+
+
+def test_compose_prompt_absorbs_reflexion_failure():
+    def _broken(ws, **kw):
+        raise RuntimeError("reflexion broke")
+
+    with patch("app.companion.reflexion.build_block", _broken):
+        prompt = _cycle._compose_prompt("seed", [], workspace_id="ws-1")
+    # Absorbs the failure; prompt still produced without lessons section.
+    assert "## Workspace seed\nseed" in prompt
+    assert "## Task" in prompt
+    assert "Lessons from past feedback" not in prompt
+
+
 # ── Phase 3: persistence + scoring ─────────────────────────────────────────
 
 def test_run_cycle_persists_converged_idea_with_scores():

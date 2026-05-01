@@ -71,5 +71,8 @@ def test_summary_recent_negative_caps_at_5(tmp_events_dir):
 
 def test_summary_empty_workspace(tmp_events_dir):
     s = _fb.summary("ws-empty")
-    assert s == {"up": 0, "down": 0, "with_comment": 0,
-                  "recent_negative_idea_ids": []}
+    assert s == {
+        "up": 0, "down": 0, "with_comment": 0,
+        "recent_negative_idea_ids": [],
+        "recent_positive_idea_ids": [],
+    }
