@@ -136,12 +136,12 @@ _seed_gcp_tfvars() {
     fi
 
     {
-        printf 'project_id        = %q\n'     "$project"
-        printf 'region            = %q\n'     "$region"
-        printf 'zone              = %q\n'     "${region}-a"
-        printf 'cluster_name      = %q\n'     "$cluster_name"
-        printf 'tier              = %q\n'     "$tier"
-        printf 'enable_monitoring = %s\n'     "$enable_monitoring"
+        printf 'project_id        = %s\n' "$(hcl_quote "$project")"
+        printf 'region            = %s\n' "$(hcl_quote "$region")"
+        printf 'zone              = %s\n' "$(hcl_quote "${region}-a")"
+        printf 'cluster_name      = %s\n' "$(hcl_quote "$cluster_name")"
+        printf 'tier              = %s\n' "$(hcl_quote "$tier")"
+        printf 'enable_monitoring = %s\n' "$enable_monitoring"   # HCL bool, no quotes
         printf 'extra_env = {\n'
         if [[ -r "$env_file" ]]; then
             local k v
@@ -151,7 +151,7 @@ _seed_gcp_tfvars() {
                      LLM_MODE COST_MODE VETTING_MODEL; do
                 v="$(env_get "$env_file" "$k")"
                 if [[ -n "$v" && ! "$v" =~ ^(your_.*_here|generate_a_.*_here|\+1XXXXXXXXXX)$ ]]; then
-                    printf '  %-20s = %q\n' "$k" "$v"
+                    printf '  %-20s = %s\n' "$k" "$(hcl_quote "$v")"
                 fi
             done
         fi

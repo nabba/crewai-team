@@ -138,9 +138,9 @@ _seed_tfvars_from_env() {
     fi
 
     {
-        printf 'region       = %q\n' "$region"
-        printf 'cluster_name = %q\n' "$cluster_name"
-        printf 'tier         = %q\n' "$tier"
+        printf 'region       = %s\n' "$(hcl_quote "$region")"
+        printf 'cluster_name = %s\n' "$(hcl_quote "$cluster_name")"
+        printf 'tier         = %s\n' "$(hcl_quote "$tier")"
         printf 'extra_env = {\n'
         if [[ -r "$env_file" ]]; then
             local k v
@@ -150,7 +150,7 @@ _seed_tfvars_from_env() {
                      LLM_MODE COST_MODE VETTING_MODEL; do
                 v="$(env_get "$env_file" "$k")"
                 if [[ -n "$v" && ! "$v" =~ ^(your_.*_here|generate_a_.*_here|\+1XXXXXXXXXX)$ ]]; then
-                    printf '  %-20s = %q\n' "$k" "$v"
+                    printf '  %-20s = %s\n' "$k" "$(hcl_quote "$v")"
                 fi
             done
         fi

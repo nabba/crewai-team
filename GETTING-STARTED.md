@@ -111,7 +111,7 @@ Open Terminal and run:
 
 ```bash
 git clone https://github.com/nabba/AndrusAI.git
-cd AndrusAI/crewai-team
+cd AndrusAI
 ```
 
 If `git` isn't installed, the system will offer to install it. Say yes.

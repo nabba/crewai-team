@@ -183,6 +183,17 @@ gen_password() {
     fi
 }
 
+# ─── HCL string quoting ────────────────────────────────────────
+# bash printf %q produces shell-safe quotes (single quotes), but Terraform
+# requires HCL string literals (double quotes). Use this when synthesising
+# tfvars files in install/{gcp,aws}.sh.
+hcl_quote() {
+    local s="$1"
+    s="${s//\\/\\\\}"   # escape backslash first
+    s="${s//\"/\\\"}"   # then double-quote
+    printf '"%s"' "$s"
+}
+
 # ─── .env file editing (idempotent) ─────────────────────────────
 env_get() {
     # env_get <file> <key> — print value (without surrounding quotes), or empty.

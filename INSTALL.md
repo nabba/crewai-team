@@ -26,8 +26,9 @@ Details on each phase below.
 
 ### One-shot install
 
+From the repository root:
+
 ```bash
-cd crewai-team
 ./install.sh
 ```
 
