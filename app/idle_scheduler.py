@@ -551,6 +551,72 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             )
     jobs.append(("transfer-promotion", _transfer_promotion, JobWeight.MEDIUM))
 
+    # ── Belief outbox reconciler (Phase F1) ─────────────────────────────
+    # Reads beliefs from Postgres and ensures every belief_id has a
+    # matching :Belief node in Neo4j. Closes the cross-area gap where
+    # store.py's fire-and-forget mirror call could leave Neo4j stale
+    # if the graph was briefly unavailable. LIGHT — pure SQL + Cypher,
+    # no LLM calls; the typical drift is single-digit beliefs.
+    def _belief_outbox_neo4j():
+        try:
+            from app.memory.belief_outbox import reconcile_belief_outbox
+            reconcile_belief_outbox()
+        except Exception:
+            logger.debug(
+                "idle_scheduler: belief-outbox-neo4j failed", exc_info=True,
+            )
+    jobs.append(("belief-outbox-neo4j", _belief_outbox_neo4j, JobWeight.LIGHT))
+
+    # ── ChromaDB belief sync (Phase F2) ──────────────────────────────────
+    # Mirrors the F1 idea but for the third store: indexes new/updated
+    # beliefs into ChromaDB's "beliefs" collection so semantic retrieval
+    # sees freshly-formed beliefs without waiting for a manual reindex.
+    # LIGHT — incremental via watermark; embedding work is per-belief
+    # and modest (Postgres typically holds < 1k active beliefs).
+    def _belief_outbox_chroma():
+        try:
+            from app.memory.belief_outbox import sync_new_beliefs_to_chromadb
+            sync_new_beliefs_to_chromadb()
+        except Exception:
+            logger.debug(
+                "idle_scheduler: belief-outbox-chroma failed", exc_info=True,
+            )
+    jobs.append(("belief-outbox-chroma", _belief_outbox_chroma, JobWeight.LIGHT))
+
+    # ── Inbound DLQ drain (Phase F3) ──────────────────────────────────────
+    # When load-shedding rejected a message, it was buffered in the
+    # in-process DLQ. This job pulls a few messages back into handle_task
+    # whenever capacity exists. Bounded per-pass; expired messages
+    # (> 30 min) are dropped rather than replayed. LIGHT — fires every
+    # idle slot; the queue is typically empty.
+    def _drain_inbound_dlq():
+        try:
+            from app.dead_letter_inbound import drain, queue_depth
+            from app.config import get_settings
+            from app import main as _main_mod  # for handle_task + _inflight_tasks
+            depth = queue_depth()
+            if depth == 0:
+                return
+            settings = get_settings()
+            threshold = (
+                settings.load_shed_threshold
+                or (settings.max_parallel_crews + 1)
+            )
+            inflight = getattr(_main_mod, "_inflight_tasks", 0)
+            handle_task = getattr(_main_mod, "handle_task", None)
+            if handle_task is None:
+                logger.debug("dlq-drain: handle_task not available")
+                return
+            drain(
+                handle_task,
+                inflight_count=inflight,
+                shed_threshold=threshold,
+                max_to_drain=3,  # bounded per pass — keep idle slot cheap
+            )
+        except Exception:
+            logger.debug("idle_scheduler: dlq-drain failed", exc_info=True)
+    jobs.append(("dlq-drain", _drain_inbound_dlq, JobWeight.LIGHT))
+
     # ── Evolution: run experiments (2 iterations per idle slot) ─────────
     # Reduced from 5 to 2: each iteration takes ~4min, so 5 = 20min which
     # starves all subsequent jobs. 2 iterations keeps total under 10min.

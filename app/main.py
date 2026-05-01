@@ -1222,12 +1222,26 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         currently_running = _inflight_tasks
         if currently_running >= _shed_threshold:
             logger.warning(f"Load shedding: rejecting request ({currently_running} inflight, threshold={_shed_threshold})")
+            # Phase F3: instead of dropping, buffer to the in-process DLQ
+            # so a follow-up idle scheduler pass can replay when capacity
+            # returns. The user is still informed; the difference is the
+            # message is no longer lost on rejection.
+            from app.dead_letter_inbound import enqueue as _dlq_enqueue, queue_depth as _dlq_depth
+            buffered = _dlq_enqueue(sender, text, attachments)
             try:
-                await signal_client.send(
-                    sender,
-                    f"I'm currently handling {currently_running} tasks and at capacity. "
-                    f"Please try again in a minute or two."
-                )
+                if buffered:
+                    await signal_client.send(
+                        sender,
+                        f"I'm currently handling {currently_running} tasks and at capacity. "
+                        f"Your message has been queued (depth {_dlq_depth()}); "
+                        f"I'll process it when capacity returns.",
+                    )
+                else:
+                    await signal_client.send(
+                        sender,
+                        f"I'm currently handling {currently_running} tasks and the retry "
+                        f"queue is also full. Please try again in a few minutes.",
+                    )
             except Exception:
                 pass
             return
