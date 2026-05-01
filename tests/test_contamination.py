@@ -28,37 +28,76 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Module-level mocks for Docker-only deps
+# Capture which sys.modules entries we're about to mock so teardown_module
+# below can clean up after this file's tests run. Without that cleanup,
+# the mocks bleed into every test that runs later in the suite (turned 29
+# tests in test_commander_file_shortcut.py into ERRORs).
+_MOCK_KEYS_INSERTED: list[str] = []
+_PARENT_ATTRS_OVERRIDDEN: list[tuple[object, str, object]] = []
+
+
+def _mock_module(name: str, factory=MagicMock) -> MagicMock:
+    mock = factory()
+    if name not in sys.modules:
+        _MOCK_KEYS_INSERTED.append(name)
+    sys.modules[name] = mock
+    return mock
+
+
+def _override_attr(parent, attr, value):
+    sentinel = object()
+    original = getattr(parent, attr, sentinel)
+    _PARENT_ATTRS_OVERRIDDEN.append((parent, attr, original))
+    setattr(parent, attr, value)
+
+
+# psycopg2 IS installed in the venv but we don't want any test in this
+# file accidentally opening a real connection. chromadb is also
+# installed; we mock it here only because context.py's lazy imports
+# would otherwise pull in the real (heavy) module.
 for mod_name in ("chromadb", "psycopg2", "psycopg2.extras", "psycopg2.pool"):
     if mod_name not in sys.modules:
+        _MOCK_KEYS_INSERTED.append(mod_name)
         sys.modules[mod_name] = MagicMock()
 
-# ── Pre-inject mock deps for Docker-only modules ──
-for _dep in ("chromadb", "psycopg2", "psycopg2.extras", "psycopg2.pool"):
-    if _dep not in sys.modules:
-        sys.modules[_dep] = MagicMock()
-
-# Mock modules that context.py imports lazily at call-time
 import app
 import app.memory
 
-_mock_scoped = MagicMock()
+_mock_scoped = _mock_module("app.memory.scoped_memory")
 _mock_scoped.retrieve_operational = MagicMock(return_value=[])
-sys.modules["app.memory.scoped_memory"] = _mock_scoped
-app.memory.scoped_memory = _mock_scoped
+_override_attr(app.memory, "scoped_memory", _mock_scoped)
 
-_mock_cm = MagicMock()
+_mock_cm = _mock_module("app.memory.chromadb_manager")
 _mock_cm.embed = MagicMock(return_value=[0.1] * 768)
 _mock_cm.retrieve = MagicMock(return_value=[])
-sys.modules["app.memory.chromadb_manager"] = _mock_cm
-app.memory.chromadb_manager = _mock_cm
+_override_attr(app.memory, "chromadb_manager", _mock_cm)
 
 import app.self_awareness
-_mock_wm = MagicMock()
+_mock_wm = _mock_module("app.self_awareness.world_model")
 _mock_wm.recall_relevant_beliefs = MagicMock(return_value=[])
 _mock_wm.recall_relevant_predictions = MagicMock(return_value=[])
-sys.modules["app.self_awareness.world_model"] = _mock_wm
-app.self_awareness.world_model = _mock_wm
+_override_attr(app.self_awareness, "world_model", _mock_wm)
+
+
+def teardown_module(module):
+    """Restore the modules we mocked at import time so the rest of the
+    test suite doesn't see our MagicMocks. Without this, every test that
+    runs after this file gets corrupted imports of chromadb_manager,
+    scoped_memory, world_model, etc."""
+    sentinel = object()
+    for parent, attr, original in _PARENT_ATTRS_OVERRIDDEN:
+        if original is sentinel:
+            try:
+                delattr(parent, attr)
+            except AttributeError:
+                pass
+        else:
+            setattr(parent, attr, original)
+    for name in _MOCK_KEYS_INSERTED:
+        sys.modules.pop(name, None)
+    # Also drop the manually-loaded context module — subsequent tests
+    # should import the real one.
+    sys.modules.pop("app.agents.commander.context", None)
 
 # Import context.py directly (bypass __init__ which triggers crewai chain)
 import importlib.util

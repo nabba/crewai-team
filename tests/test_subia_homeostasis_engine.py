@@ -230,10 +230,10 @@ class TestLoopIntegration:
         import sys
         from unittest.mock import MagicMock
 
-        for _mod in ["chromadb", "chromadb.config", "chromadb.utils",
-                     "app.memory.chromadb_manager"]:
-            if _mod not in sys.modules:
-                sys.modules[_mod] = MagicMock()
+        # Only mock chromadb_manager (its embed() hits Ollama). The chromadb
+        # library itself is installed and safe to import.
+        if "app.memory.chromadb_manager" not in sys.modules:
+            sys.modules["app.memory.chromadb_manager"] = MagicMock()
 
         from app.subia.kernel import Prediction
         from app.subia.loop import SubIALoop
@@ -268,10 +268,10 @@ class TestLoopIntegration:
     def test_success_outcome_raises_progress(self):
         import sys
         from unittest.mock import MagicMock
-        for _mod in ["chromadb", "chromadb.config", "chromadb.utils",
-                     "app.memory.chromadb_manager"]:
-            if _mod not in sys.modules:
-                sys.modules[_mod] = MagicMock()
+        # Only mock chromadb_manager (its embed() hits Ollama). The chromadb
+        # library itself is installed and safe to import.
+        if "app.memory.chromadb_manager" not in sys.modules:
+            sys.modules["app.memory.chromadb_manager"] = MagicMock()
 
         from app.subia.loop import SubIALoop
         from app.subia.scene.buffer import CompetitiveGate

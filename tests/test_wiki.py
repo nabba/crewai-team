@@ -34,7 +34,6 @@ from unittest.mock import MagicMock, patch
 #   - mocking `pydantic` breaks `app.config` (BaseSettings) and any test
 #     that imports it afterward
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()

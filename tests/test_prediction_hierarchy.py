@@ -17,7 +17,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
@@ -31,7 +30,6 @@ def _mock_embed(text):
     return [base + i * 0.001 for i in range(768)]
 
 sys.modules["app.memory.chromadb_manager"].embed = _mock_embed
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 import pytest
 

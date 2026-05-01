@@ -32,12 +32,10 @@ from unittest.mock import MagicMock
 # Stub out chromadb / pgvector / control_plane deps that buffer.py
 # and layer.py transitively import but don't need for these tests.
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 from app.subia.prediction.layer import PredictionError
 from app.subia.prediction.surprise_routing import (

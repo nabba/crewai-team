@@ -22,26 +22,31 @@ from unittest.mock import patch, MagicMock
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
-# Mock host-unavailable backends. We mock SUBMODULES, never package roots
-# like `app.memory`, because mocking a package as MagicMock breaks
-# `from app.memory.X import Y` in subsequent tests (Python needs the
-# parent to be a real package).
+# Mock only what's not safely importable on a clean dev host. We never
+# mock package ROOTS (`app.memory`, `app.control_plane`) — that breaks
+# `from app.X.Y import Z` in any test that runs after this file because
+# the parent stops being a package.
 #
-# The chromadb library itself is NOT mocked — it's installed in the venv,
-# and consciousness modules go through app.memory.chromadb_manager anyway.
+# What's safe to import for real:
+#   - chromadb (1.5.x in the venv) — the module itself
+#   - app.control_plane / app.control_plane.db — execute() returns None
+#     gracefully when no pool is configured
+#
+# What we still mock (avoids real I/O without breaking siblings):
+#   - psycopg2 driver internals (the package is installed but we don't
+#     want any test accidentally opening a real connection)
+#   - app.memory.chromadb_manager — its embed() hits Ollama, so we
+#     replace it with a deterministic stub
 _MOCK_MODULES = [
     "psycopg2", "psycopg2.pool", "psycopg2.extras",
-    "app.control_plane", "app.control_plane.db",
     "app.memory.chromadb_manager",
 ]
 for _mod_name in _MOCK_MODULES:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock()
 
-# Ensure embed() returns a proper list (avoids hitting Ollama in tests).
+# Deterministic embedding (avoids hitting Ollama in tests).
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
-# Ensure execute() returns empty list (avoids real Postgres connection).
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 import pytest
 

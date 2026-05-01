@@ -17,12 +17,10 @@ from unittest.mock import MagicMock
 
 # Stub the heavy dependencies so tests run offline.
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 import pytest
 
