@@ -1,8 +1,18 @@
 # Epistemic Integrity Layer
 
-> Status: **All phases shipped + autotuner.** 310/310 Python tests + 12/12 reference panel scenarios + TS build clean. Last revised 2026-05-01.
+> Status: **All phases shipped + autotuner; live in observe-mode.**
+> 310/310 Python tests + 12/12 reference panel scenarios + TS build
+> clean. Last revised 2026-05-01.
 >
-> User-facing companion: [`SELF_REFLECTION.md`](./SELF_REFLECTION.md).
+> Part of a three-document set:
+> * **[`EPISTEMIC.md`](./EPISTEMIC.md)** — operator's comprehensive
+>   guide (runbook, configuration, API, schema, FAQ). **Start here**
+>   if you're operating the system.
+> * **[`SELF_REFLECTION.md`](./SELF_REFLECTION.md)** — narrative
+>   companion (story, walkthroughs, philosophical framing).
+> * **This doc** — engineering reference. Phase-by-phase shipping
+>   notes, schemas, code excerpts, the test count breakdown. Read
+>   when you're maintaining the code.
 
 ## Phase 0 implementation notes
 

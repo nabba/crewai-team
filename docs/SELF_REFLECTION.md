@@ -3,9 +3,14 @@
 > A reader's guide to how AndrusAI catches itself in cognitive failure modes,
 > learns from them, and weaves them into its own narrative continuity.
 >
-> Companion to [`EPISTEMIC_INTEGRITY.md`](./EPISTEMIC_INTEGRITY.md) (the
-> technical reference). This doc is for the operator and the curious — to
-> understand the system from the outside, not to maintain it from the inside.
+> Part of a three-document set:
+> * **[`EPISTEMIC.md`](./EPISTEMIC.md)** — operator's comprehensive
+>   guide (runbook, configuration, API, schema, FAQ).
+> * **[`EPISTEMIC_INTEGRITY.md`](./EPISTEMIC_INTEGRITY.md)** —
+>   engineering deep-dive (phase-by-phase shipping notes, schemas,
+>   code excerpts, test counts).
+> * **This doc** — narrative companion. The story, walkthroughs,
+>   philosophical framing, glossary.
 
 ## 1. The story this exists to tell
 
