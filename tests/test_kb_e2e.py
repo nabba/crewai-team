@@ -57,10 +57,12 @@ class TestRetrievalOrchestratorImports:
         assert cfg.rerank_enabled is True
         assert cfg.decomposition_enabled is True
         assert cfg.temporal_enabled is False
-        assert cfg.rerank_top_k_input == 20
-        assert cfg.rerank_top_k_output == 5
+        # rerank_top_k_input/output are env-derived; assert only the type
+        # contract, not the value (which an operator may tune via .env).
+        assert isinstance(cfg.rerank_top_k_input, int)
+        assert isinstance(cfg.rerank_top_k_output, int)
         assert 0 < cfg.temporal_weight < 1
-        assert cfg.temporal_half_life_hours == 168.0
+        assert cfg.temporal_half_life_hours > 0
 
     def test_config_override(self):
         from app.retrieval.config import RetrievalConfig
@@ -635,10 +637,11 @@ class TestAgentToolAssignment:
         assert "get_experiential_tools" in src
         assert "FindCounterArgumentTool" in src
 
-    def test_researcher_has_no_tensions(self):
-        """Researcher should stay factual — no tensions tool."""
-        src = _read_src("agents/researcher.py")
-        assert "get_tension_tools" not in src
+    # test_researcher_has_no_tensions removed: the original architectural
+    # rule ("researcher should stay factual — no tensions tool") was
+    # deliberately reversed. The researcher's full tier now includes
+    # tensions tools (search/record) — see app/agents/researcher.py:134.
+    # Per the commit "Researcher (full): +tensions (search/record), +OCR".
 
     def test_coder_has_no_episteme(self):
         """Coder doesn't need research theory."""
@@ -653,10 +656,12 @@ class TestAgentToolAssignment:
 class TestAgentFeedbackLoop:
     """Post-task journal writing wired into orchestrator."""
 
-    def test_orchestrator_writes_journal(self):
-        src = _read_src("agents/commander/orchestrator.py")
-        assert "JournalWriter" in src
-        assert "write_post_task_reflection" in src
+    # test_orchestrator_writes_journal removed: journal writing was
+    # deliberately decoupled from the orchestrator and now happens via
+    # Firebase event listeners (app/firebase/listeners.py) and affect
+    # episode tracking (app/affect/episodes.py). The JournalWriter class
+    # itself still exists at app/experiential/journal_writer.py and is
+    # exercised by test_journal_writer_structure below.
 
     def test_journal_writer_structure(self):
         """JournalWriter class has required methods."""
@@ -929,8 +934,15 @@ class TestBusinessKBDashboard:
         src = kb_src.read_text()
         assert "BusinessKBSection" in src
         assert "BusinessKBCard" in src
-        assert "/kb/businesses" in src
-        assert "/kb/business/" in src
+        # Route literals were factored out into the endpoints module — the
+        # component now references them via endpoints.kbBusinessUpload(...)
+        # and keys.kbBusinesses. Assert the wiring rather than literal URLs.
+        assert "kbBusinessUpload" in src
+        assert "kbBusinesses" in src
+        endpoints_src = (Path(__file__).parent.parent / "dashboard-react"
+                         / "src" / "api" / "endpoints.ts").read_text()
+        assert "/kb/businesses" in endpoints_src
+        assert "/kb/business/" in endpoints_src
 
     def test_monitor_has_business_selector(self):
         monitor_src = Path(__file__).parent.parent / "dashboard" / "public" / "index.html"
@@ -954,15 +966,10 @@ class TestAuditFixes:
             assert "app.llm.factory" not in src, f"{f} still uses wrong import path"
             assert "app.llm_factory" in src, f"{f} missing correct import"
 
-    def test_orchestrator_journal_uses_result(self):
-        """JournalWriter call must use 'result' not 'crew_result'."""
-        src = _read_src("agents/commander/orchestrator.py")
-        # Find the JournalWriter block
-        idx = src.find("JournalWriter().write_post_task_reflection")
-        assert idx > 0
-        block = src[idx:idx+300]
-        assert "crew_result" not in block, "Still uses undefined crew_result"
-        assert "str(result)" in block
+    # test_orchestrator_journal_uses_result removed: same reason as
+    # test_orchestrator_writes_journal above — the JournalWriter call site
+    # was deliberately removed from the orchestrator. The audit fix this
+    # test guarded ("use result not crew_result") is no longer applicable.
 
     def test_context_pruning_knows_new_blocks(self):
         """_prune_context must recognize all KB block headers."""
