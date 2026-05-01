@@ -5,9 +5,9 @@ the workspace with the lowest ``vruntime / weight`` is chosen next. A 12 h
 temporal floor guarantees no active workspace is starved over a day,
 regardless of weight.
 
-Phase 2+ wires affect-bridge curiosity into the weight; for Phase 1 the
-weight is constant 1.0 so vruntime + temporal floor alone deliver the
-"every workspace gets a chance" requirement.
+Phase 2 wires the affect-bridge factual_grounding signal:
+  - below the grounding floor → ALL cycles paused (system in adverse state)
+  - otherwise → grounding ∈ [0,1] maps to weight ∈ [WEIGHT_FLOOR, WEIGHT_CEIL]
 """
 
 from __future__ import annotations
@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 TEMPORAL_FLOOR_S = 12 * 3600
 WEIGHT_FLOOR = 0.5
 WEIGHT_CEIL = 2.0
+
+# Below this affect-bridge factual_grounding score, cycles are paused.
+# 0.3 mirrors the existing convention for adverse epistemic coupling
+# (distress / frozen / depleted / overwhelm attractors).
+AFFECT_GROUNDING_FLOOR = 0.3
 
 
 @dataclass(frozen=True)
@@ -137,10 +142,37 @@ def _local_hour() -> int:
 
 
 def _affect_blocks_cycles() -> str | None:
-    """Phase 2+: read affect-bridge attractor. Phase 1: never blocks."""
+    """If the affect bridge reports adverse epistemic coupling, return reason.
+
+    Reads ``live_factual_grounding()`` ∈ [0.0, 1.0]. Below the floor, the
+    system is signalling distress / frozen / depletion; the Companion stays
+    quiet rather than burning cycles in adverse states. None on missing
+    signal (treat as neutral, do not block).
+    """
+    grounding = _live_grounding()
+    if grounding is None:
+        return None
+    if grounding < AFFECT_GROUNDING_FLOOR:
+        return f"low_grounding({grounding:.2f})"
     return None
 
 
 def _affect_weight() -> float:
-    """Phase 2+: map curiosity → [WEIGHT_FLOOR, WEIGHT_CEIL]. Phase 1: 1.0."""
-    return 1.0
+    """Map factual_grounding ∈ [0,1] → CFS weight in [WEIGHT_FLOOR, WEIGHT_CEIL].
+
+    Higher grounding → higher weight → the workspace gets more cycles per
+    unit vruntime. Falls back to 1.0 (neutral) on missing signal.
+    """
+    grounding = _live_grounding()
+    if grounding is None:
+        return 1.0
+    return max(WEIGHT_FLOOR, min(WEIGHT_CEIL, 0.5 + float(grounding)))
+
+
+def _live_grounding() -> float | None:
+    """Indirection over the affect-bridge import for testability."""
+    try:
+        from app.epistemic.affect_bridge import live_factual_grounding
+        return live_factual_grounding()
+    except Exception:
+        return None

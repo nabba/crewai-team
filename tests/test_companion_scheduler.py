@@ -140,3 +140,52 @@ def test_record_tick_clears_skip_reason(tmp_state_dir):
     _state.save(s)
     _scheduler.record_tick("a", cycle_cost_s=1.0, weight=1.0)
     assert _state.load("a").last_skip_reason is None
+
+
+# ── Affect bridge wiring (Phase 2) ─────────────────────────────────────────
+
+def test_affect_blocks_when_grounding_below_floor(tmp_state_dir):
+    rows = [_row("a")]
+    with patch("app.companion.scheduler._live_grounding", lambda: 0.1), \
+         _stub_projects(rows):
+        cand = _scheduler.select_next(now_local_hour=12)
+    assert cand is None
+    s = _state.load("a")
+    assert "low_grounding" in (s.last_skip_reason or "")
+
+
+def test_affect_does_not_block_above_floor(tmp_state_dir):
+    rows = [_row("a")]
+    with patch("app.companion.scheduler._live_grounding",
+               lambda: _scheduler.AFFECT_GROUNDING_FLOOR + 0.01), \
+         _stub_projects(rows):
+        cand = _scheduler.select_next(now_local_hour=12)
+    assert cand is not None
+
+
+def test_affect_weight_scales_with_grounding(tmp_state_dir):
+    rows = [_row("a")]
+    with patch("app.companion.scheduler._live_grounding", lambda: 0.8), \
+         _stub_projects(rows):
+        cand = _scheduler.select_next(now_local_hour=12)
+    assert cand is not None
+    # weight = 0.5 + 0.8 = 1.3 (within bounds)
+    assert cand.weight == pytest.approx(1.3)
+
+
+def test_affect_weight_clamped_at_ceiling(tmp_state_dir):
+    rows = [_row("a")]
+    with patch("app.companion.scheduler._live_grounding", lambda: 5.0), \
+         _stub_projects(rows):
+        cand = _scheduler.select_next(now_local_hour=12)
+    assert cand is not None
+    assert cand.weight == _scheduler.WEIGHT_CEIL
+
+
+def test_affect_silent_signal_yields_neutral_weight(tmp_state_dir):
+    rows = [_row("a")]
+    with patch("app.companion.scheduler._live_grounding", lambda: None), \
+         _stub_projects(rows):
+        cand = _scheduler.select_next(now_local_hour=12)
+    assert cand is not None
+    assert cand.weight == 1.0

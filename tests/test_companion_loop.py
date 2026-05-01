@@ -1,10 +1,11 @@
-"""Smoke tests for app.companion.loop — idle-job registration shape + tick safety."""
+"""Tests for app.companion.loop — idle-job registration + tick orchestration."""
 
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from app.companion import cycle as _cycle
 from app.companion import loop as _loop
 from app.companion import state as _state
 
@@ -43,7 +44,8 @@ def test_tick_with_no_workspaces_is_noop(tmp_state_dir):
     assert list(tmp_state_dir.iterdir()) == []
 
 
-def test_tick_records_state_for_selected_workspace(tmp_state_dir):
+def test_tick_records_state_when_no_seed(tmp_state_dir):
+    """Workspace with no seed → cycle returns aborted; tick still recorded."""
     rows = [{
         "id": "a",
         "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0}},
@@ -54,6 +56,64 @@ def test_tick_records_state_for_selected_workspace(tmp_state_dir):
     s = _state.load("a")
     assert s.cycles_total == 1
     assert s.last_tick_at > 0
+    assert s.daily_cost_usd == 0.0
+
+
+def test_tick_charges_budget_on_real_cycle(tmp_state_dir):
+    rows = [{
+        "id": "a",
+        "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "seed_prompt": "forests"}},
+    }]
+    fake_result = _cycle.CycleResult(
+        workspace_id="a", phase_1_count=3, phase_2_count=2,
+        final_output="idea", final_output_chars=4, cost_usd=0.07,
+        duration_s=1.0,
+    )
+
+    with patch("app.companion.scheduler._list_projects", lambda: rows), \
+         patch("app.companion.cycle.run_cycle", lambda *a, **k: fake_result):
+        _loop.companion_tick()
+
+    s = _state.load("a")
+    assert s.cycles_total == 1
+    assert s.daily_cost_usd == pytest.approx(0.07)
+
+
+def test_tick_records_state_when_cycle_raises(tmp_state_dir):
+    rows = [{
+        "id": "a",
+        "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "seed_prompt": "forests"}},
+    }]
+
+    def _broken(*a, **k):
+        raise RuntimeError("cycle exploded")
+
+    with patch("app.companion.scheduler._list_projects", lambda: rows), \
+         patch("app.companion.cycle.run_cycle", _broken):
+        _loop.companion_tick()  # must not raise
+
+    s = _state.load("a")
+    assert s.cycles_total == 1
+
+
+def test_tick_skips_charge_when_cost_zero(tmp_state_dir):
+    rows = [{
+        "id": "a",
+        "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "seed_prompt": "x"}},
+    }]
+    fake_result = _cycle.CycleResult(
+        workspace_id="a", aborted_reason="no_output", cost_usd=0.0,
+    )
+
+    with patch("app.companion.scheduler._list_projects", lambda: rows), \
+         patch("app.companion.cycle.run_cycle", lambda *a, **k: fake_result):
+        _loop.companion_tick()
+
+    s = _state.load("a")
+    assert s.daily_cost_usd == 0.0
 
 
 def test_tick_select_next_failure_does_not_raise(tmp_state_dir):
