@@ -14,6 +14,12 @@ class ProjectManager:
     """Multi-project CRUD and scoping."""
 
     _active_project_id: str | None = None
+    # Source of the current `_active_project_id` value:
+    #   "user"   → explicit user action (Signal command, dashboard click)
+    #   "auto"   → keyword-detection in main.py (low-trust)
+    #   None     → no explicit choice yet (falls back to "default")
+    # The keyword-detection layer must NEVER overwrite a "user" pick.
+    _active_project_source: str | None = None
     _lock = threading.Lock()
 
     def create(self, name: str, mission: str = "", description: str = "",
@@ -77,8 +83,14 @@ class ProjectManager:
                 return self._active_project_id
         return str(self.get_default_project_id() or "")
 
-    def switch(self, project_name: str) -> dict | None:
+    def switch(self, project_name: str, *, source: str = "user") -> dict | None:
         """Switch active project context.
+
+        ``source`` records who initiated the switch:
+          * ``"user"`` (default) — Signal command, dashboard click, API call.
+            Once a user pick is recorded, ``switch(..., source="auto")``
+            is ignored — keyword-detection cannot overwrite explicit intent.
+          * ``"auto"`` — keyword-detection in ``main.py`` (low trust).
 
         Name matching is case-insensitive (see get_by_name). Passes the
         canonical DB name to project_isolation.activate() to avoid
@@ -89,7 +101,30 @@ class ProjectManager:
             return None
         canonical_name = project.get("name") or project_name
         with self._lock:
+            # Sticky-user-pick guard. If the user has already chosen a
+            # project this session, only another user action can change
+            # it. The auto-detector keeps suggesting based on keywords,
+            # but those suggestions stop overriding the explicit pick.
+            #
+            # Bug fix 2026-05-02: previously the auto-detector ran on
+            # every Signal message and silently re-routed the user to
+            # PLG / Archibal / KaiCart based on keywords like "estonia"
+            # or "event". Users who had explicitly switched (e.g.
+            # ``switch workspace to eesti mets``) saw their tickets
+            # land under PLG instead, with no log line explaining why.
+            if (
+                source == "auto"
+                and self._active_project_source == "user"
+                and self._active_project_id
+            ):
+                logger.debug(
+                    "control_plane: ignoring auto-detect switch to '%s' — "
+                    "explicit user pick is sticky (current=%s)",
+                    canonical_name, self._active_project_id,
+                )
+                return project  # return the row but don't change state
             self._active_project_id = str(project["id"])
+            self._active_project_source = source
         # Also activate in the existing project_isolation system using the
         # canonical name (not the user-supplied casing).
         try:
@@ -101,7 +136,9 @@ class ProjectManager:
                 f"control_plane: project_isolation activate failed for "
                 f"'{canonical_name}'", exc_info=True,
             )
-        logger.info(f"control_plane: switched to project '{canonical_name}'")
+        logger.info(
+            f"control_plane: switched to project '{canonical_name}' (source={source})",
+        )
         return project
 
     def get_status(self, project_id: str) -> dict:

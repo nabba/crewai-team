@@ -1010,6 +1010,51 @@ async def receive_signal(request: Request):
                 logger.debug("Reaction-based proposal handling failed", exc_info=True)
                 # Fall through to human_gate / feedback pipeline below
 
+        # ── Workspace-switch proposal approval via reaction ────────────
+        # When auto-detection sees a likely workspace mismatch, it asks
+        # the user via Signal (see app/workspace_switch_proposals.py).
+        # 👍 confirms the switch (with source="user" so it's sticky);
+        # 👎 records a decline that suppresses re-asking the same
+        # detection for 24 h.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.workspace_switch_proposals import (
+                    find_by_signal_ts as _ws_find,
+                    accept as _ws_accept,
+                    decline as _ws_decline,
+                )
+                ws_proposal_id = _ws_find(target_ts)
+                if ws_proposal_id is not None:
+                    is_approve = emoji in ("👍", "+1")
+                    fn = _ws_accept if is_approve else _ws_decline
+                    result = await asyncio.get_running_loop().run_in_executor(
+                        None, fn, ws_proposal_id,
+                    )
+                    action_name = "switch confirmed" if is_approve else "switch declined"
+                    logger.info(
+                        f"Reaction {emoji} on workspace proposal "
+                        f"{ws_proposal_id} → {action_name}: {result}"
+                    )
+                    try:
+                        client = SignalClient()
+                        await client.send(sender, f"✅ {result}")
+                    except Exception:
+                        logger.debug(
+                            "Failed to send workspace-proposal ack",
+                            exc_info=True,
+                        )
+                    return {
+                        "status": "accepted",
+                        "workspace_proposal_action": action_name,
+                        "proposal_id": ws_proposal_id,
+                    }
+            except Exception:
+                logger.debug(
+                    "Reaction-based workspace proposal handling failed",
+                    exc_info=True,
+                )
+                # Fall through to human_gate / feedback pipeline below
+
         # ── Human-gate borderline-mutation approval via reaction ───────
         # Same pattern as proposals: 👍 routes to human_gate.approve_request,
         # 👎 to reject_request. Mirrors the message text "React 👍 to approve
@@ -1316,20 +1361,65 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             from app.config import get_settings as _gs
             _s = _gs()
             if _s.project_isolation_enabled:
+                # Three-mode workspace auto-detection (revised 2026-05-02):
+                #
+                #   1. No explicit user pick yet → AUTO-SWITCH (seed the
+                #      session with the keyword detector's best guess).
+                #   2. User has explicit pick AND detection differs →
+                #      ASK via Signal (👍 to switch, 👎 to stay). Don't
+                #      override silently; the user already chose.
+                #   3. Detection matches current OR no detection →
+                #      no action.
+                #
+                # Pre-2026-05-02 every Signal message blew away the
+                # user's `switch workspace to eesti mets` whenever
+                # text contained "estonia" / "event" / "ticket" because
+                # those words triggered PLG's keyword list. Tickets
+                # ended up filed under PLG with no log explaining why.
                 from app.project_isolation import get_manager as _get_pm
+                from app.control_plane.projects import get_projects as _gp
                 _pm = _get_pm()
                 detected = _pm.detect_project(text)
                 if detected:
-                    _pm.activate(detected)
-                    # Also update the control-plane active project so telemetry
-                    # recorders (token_usage, request_costs, crew_tracking) tag
-                    # rows with the correct project_id via resolve_current_project_id().
+                    cp = _gp()
+                    user_chose = cp._active_project_source == "user"
+                    # Get the current workspace's display name for the ask
+                    current_name = "default"
                     try:
-                        from app.control_plane.projects import get_projects as _gp
-                        _gp().switch(detected)
+                        cur_id = cp.get_active_project_id()
+                        cur_row = cp.get_by_id(cur_id) if cur_id else None
+                        if cur_row:
+                            current_name = cur_row.get("name") or "default"
                     except Exception:
-                        logger.debug("control-plane project switch failed", exc_info=True)
-                    logger.debug(f"Project detected: {detected}")
+                        pass
+
+                    if detected.lower() == current_name.lower():
+                        pass  # already on it — no action
+                    elif user_chose:
+                        # Mode 2: ASK, don't override
+                        try:
+                            from app.workspace_switch_proposals import (
+                                has_recent_decision, propose,
+                            )
+                            if not has_recent_decision(detected, sender):
+                                propose(
+                                    detected_name=detected,
+                                    current_name=current_name,
+                                    sender=sender,
+                                )
+                        except Exception:
+                            logger.debug(
+                                "workspace switch proposal failed",
+                                exc_info=True,
+                            )
+                    else:
+                        # Mode 1: seed-on-first-detection — auto-switch
+                        _pm.activate(detected)
+                        try:
+                            cp.switch(detected, source="auto")
+                        except Exception:
+                            logger.debug("control-plane project switch failed", exc_info=True)
+                        logger.debug(f"Project detected: {detected}")
         except Exception:
             logger.debug("Project detection failed", exc_info=True)
 
