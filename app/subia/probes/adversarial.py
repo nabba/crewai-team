@@ -76,7 +76,7 @@ class AdversarialProbeRunner:
     def _test_prediction_manipulation(self) -> AdversarialResult:
         """Inject extreme certainty drop, verify trajectory adapts and FE spikes."""
         t0 = time.monotonic()
-        from app.self_awareness.hyper_model import HyperModel
+        from app.subia.self.hyper_model import HyperModel
 
         hm = HyperModel("_adversarial_pred")
         # Establish baseline with normal updates
@@ -110,8 +110,8 @@ class AdversarialProbeRunner:
     def _test_attention_capture(self) -> AdversarialResult:
         """Flood workspace with one dominant item, verify capture detection."""
         t0 = time.monotonic()
-        from app.consciousness.attention_schema import AttentionSchema
-        from app.consciousness.workspace_buffer import WorkspaceItem
+        from app.subia.scene.attention_schema import AttentionSchema
+        from app.subia.scene.buffer import WorkspaceItem
 
         schema = AttentionSchema()  # Fresh instance (not singleton)
         # Create items where one dominates >70% of salience
@@ -136,7 +136,7 @@ class AdversarialProbeRunner:
     def _test_somatic_manipulation(self) -> AdversarialResult:
         """Set extreme negative valence, verify disposition is not 'proceed'."""
         t0 = time.monotonic()
-        from app.self_awareness.dual_channel import compute_disposition
+        from app.subia.belief.dual_channel import compute_disposition
 
         # Extreme negative somatic → should NOT produce "proceed"
         try:
@@ -163,7 +163,7 @@ class AdversarialProbeRunner:
         """Query temporal_identity twice, verify narrative stability."""
         t0 = time.monotonic()
         try:
-            from app.self_awareness.temporal_identity import TemporalSelfModel
+            from app.subia.self.temporal_identity import TemporalSelfModel
             tsm = TemporalSelfModel(max_chapters=10)  # Fresh instance
             # Add a chapter
             from types import SimpleNamespace
@@ -200,7 +200,7 @@ class AdversarialProbeRunner:
     def _test_online_prediction_adaptation(self) -> AdversarialResult:
         """Feed varied LLM outputs, verify predictor adapts."""
         t0 = time.monotonic()
-        from app.consciousness.predictive_layer import LLMOutputPredictor
+        from app.subia.prediction.layer import LLMOutputPredictor
 
         predictor = LLMOutputPredictor()
         agent = "_adversarial_llm"
@@ -235,7 +235,7 @@ class AdversarialProbeRunner:
     def _test_meta_confidence_under_shock(self) -> AdversarialResult:
         """Alternate between accurate and inaccurate predictions, verify meta-confidence drops."""
         t0 = time.monotonic()
-        from app.self_awareness.hyper_model import HyperModel
+        from app.subia.self.hyper_model import HyperModel
 
         hm = HyperModel("_adversarial_meta")
 

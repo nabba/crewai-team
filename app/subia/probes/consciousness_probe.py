@@ -217,13 +217,13 @@ class ConsciousnessProbeRunner:
         Checks: are broadcasts being sent and received by agents?
         """
         try:
-            from app.self_awareness.global_workspace import get_workspace
+            from app.subia.scene.global_workspace import get_workspace
             ws = get_workspace()
             recent = ws.get_recent(20)
 
             if not recent:
                 # No broadcasts yet — send a test broadcast
-                from app.self_awareness.global_workspace import broadcast
+                from app.subia.scene.global_workspace import broadcast
                 broadcast("Consciousness probe: GWT test broadcast",
                           importance="normal", source_agent="consciousness_probe")
                 return ProbeResult("GWT", "Global Workspace Theory", 0.4,
@@ -254,8 +254,8 @@ class ConsciousnessProbeRunner:
         Compares: declared capabilities/limitations vs actual success rates.
         """
         try:
-            from app.self_awareness.self_model import SELF_MODELS
-            from app.self_awareness.agent_state import get_all_stats
+            from app.subia.self.model import SELF_MODELS
+            from app.subia.self.agent_state import get_all_stats
 
             stats = get_all_stats()
             if not stats:
@@ -323,7 +323,7 @@ class ConsciousnessProbeRunner:
         Checks: do stored predictions correlate with actual results?
         """
         try:
-            from app.self_awareness.world_model import recall_relevant_predictions
+            from app.subia.belief.world_model import recall_relevant_predictions
             predictions = recall_relevant_predictions("task outcome", n=10)
 
             if not predictions or len(predictions) < 3:

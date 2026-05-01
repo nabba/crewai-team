@@ -131,7 +131,7 @@ class BeliefStore:
                 existing = self.query_relevant(content[:500], domain=domain, n=1,
                                                min_confidence=0.0)
                 if existing:
-                    from app.consciousness.workspace_buffer import _cosine_sim
+                    from app.subia.scene.buffer import _cosine_sim
                     sim = _cosine_sim(embedding, existing[0].content_embedding)
                     if sim >= dedup_threshold:
                         # Merge: update existing belief instead of creating new

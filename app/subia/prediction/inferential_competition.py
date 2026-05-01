@@ -226,7 +226,7 @@ class InferentialCompetition:
             # Uses somatic marker forecast (backward experience + forward causal beliefs)
             if agent_id:
                 try:
-                    from app.self_awareness.somatic_marker import SomaticMarkerComputer
+                    from app.subia.homeostasis.somatic_marker import SomaticMarkerComputer
                     smc = SomaticMarkerComputer()
                     forecast = smc.forecast(
                         agent_id=agent_id,

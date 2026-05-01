@@ -817,7 +817,7 @@ def report_internal_state() -> None:
         # Homeostatic state
         homeostasis_data = {}
         try:
-            from app.self_awareness.homeostasis import get_state
+            from app.subia.homeostasis.state import get_state
             hs = get_state()
             homeostasis_data = {
                 "cognitive_energy": round(hs.get("cognitive_energy", 0.7), 2),
@@ -1190,7 +1190,7 @@ def report_system_monitor() -> None:
 
         # ── 2. Self-Awareness ───────────────────────────────────────
         try:
-            from app.self_awareness.inspect_tools import inspect_self_model, inspect_runtime
+            from app.subia.tsal.inspect_tools import inspect_self_model, inspect_runtime
             sm = inspect_self_model()
             rt = inspect_runtime(section="process")
             from app.self_awareness.journal import get_journal

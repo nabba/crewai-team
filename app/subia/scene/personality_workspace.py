@@ -108,7 +108,7 @@ def compute_workspace_profile(agent_id: str = "commander") -> WorkspaceProfile:
 
     # ── Step 4: Homeostasis override ─────────────────────────────────────
     try:
-        from app.self_awareness.homeostasis import get_state
+        from app.subia.homeostasis.state import get_state
         homeo = get_state()
         frustration = homeo.get("frustration", 0.1)
         energy = homeo.get("cognitive_energy", 0.7)

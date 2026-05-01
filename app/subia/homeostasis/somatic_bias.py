@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from app.self_awareness.internal_state import SomaticMarker, DISPOSITION_TO_RISK_TIER
+from app.subia.belief.internal_state import SomaticMarker, DISPOSITION_TO_RISK_TIER
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ not static declaration. Five guarantees:
   4. SubIA-wired (feeds self_state, homeostasis.overload, predictor)
   5. Actionable (Self-Improver consults it for evolution feasibility)
 
-The package builds on the EXISTING `app.self_awareness.inspect_tools`
+The package builds on the EXISTING `app.subia.tsal.inspect_tools`
 six-tool inspection layer. TSAL adds what was missing:
   - Host hardware probing (HostProfile)
   - Resource monitoring with derived pressures

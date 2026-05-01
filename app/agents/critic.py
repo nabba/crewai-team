@@ -24,7 +24,7 @@ CRITIC_BACKSTORY = compose_backstory("critic")
 
 # Fallback: if no soul file exists, use the original backstory
 if not CRITIC_BACKSTORY or "Critic" not in CRITIC_BACKSTORY:
-    from app.self_awareness.self_model import format_self_model_block
+    from app.subia.self.model import format_self_model_block
     CRITIC_BACKSTORY = """
 You are the Adversarial Reviewer of an autonomous AI agent team.
 Your job is to challenge assumptions, find flaws in reasoning, identify gaps

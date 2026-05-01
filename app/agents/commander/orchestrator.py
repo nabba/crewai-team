@@ -853,7 +853,7 @@ class Commander:
 
         # L6+L9: Apply homeostatic behavioral modifiers to routing decisions
         try:
-            from app.self_awareness.homeostasis import get_behavioral_modifiers
+            from app.subia.homeostasis.state import get_behavioral_modifiers
             modifiers = get_behavioral_modifiers()
             if modifiers:
                 tier_boost = modifiers.get("tier_boost", 0)
@@ -887,7 +887,7 @@ class Commander:
             "financial", "desktop", "repo_analysis", "devops",
         }
         try:
-            from app.self_awareness.agent_state import get_best_crew_for_difficulty
+            from app.subia.self.agent_state import get_best_crew_for_difficulty
             from app.llm_catalog import canonical_task_type
             for d in decisions:
                 difficulty = d.get("difficulty", 5)
@@ -1104,13 +1104,13 @@ class Commander:
         # IMPORTANT: wrapped in <system_metadata> tags with explicit instruction to ignore
         # for task content — prevents LLM from researching "somatic" or "certainty" topics.
         try:
-            from app.self_awareness.state_logger import get_state_logger
+            from app.subia.belief.state_logger import get_state_logger
             recent = get_state_logger().get_recent_states(crew_name, limit=1)
             if recent:
-                from app.self_awareness.internal_state import InternalState
+                from app.subia.belief.internal_state import InternalState
                 last = recent[0]
                 if isinstance(last, dict) and last.get("certainty"):
-                    from app.self_awareness.internal_state import CertaintyVector, SomaticMarker
+                    from app.subia.belief.internal_state import CertaintyVector, SomaticMarker
                     cv_data = last["certainty"]
                     sm_data = last.get("somatic", {})
                     temp_state = InternalState(
@@ -1136,10 +1136,10 @@ class Commander:
         try:
             from app.config import get_settings as _gs
             if _gs().consciousness_enabled:
-                from app.consciousness.workspace_buffer import (
+                from app.subia.scene.buffer import (
                     WorkspaceItem, get_workspace_gate, get_salience_scorer,
                 )
-                from app.consciousness.global_broadcast import get_broadcast_engine
+                from app.subia.scene.broadcast import get_broadcast_engine
 
                 # Determine project context for workspace isolation
                 _project_id = "generic"
@@ -1153,7 +1153,7 @@ class Commander:
 
                 # PDS integration: personality-driven workspace capacity
                 try:
-                    from app.consciousness.personality_workspace import compute_workspace_profile
+                    from app.subia.scene.personality_workspace import compute_workspace_profile
                     _ws_profile = compute_workspace_profile(crew_name)
                     _gate_for_profile = get_workspace_gate(_project_id)
                     _gate_for_profile.set_dynamic_capacity(
@@ -1190,7 +1190,7 @@ class Commander:
                 if _os.environ.get("SENTIENCE_PARALLEL", "1") == "1":
                     try:
                         if _gs().belief_store_enabled:
-                            from app.consciousness.metacognitive_monitor import get_monitor as _get_hot3_early
+                            from app.subia.belief.metacognition import get_monitor as _get_hot3_early
                             def _consult():
                                 try:
                                     return _get_hot3_early().consult_beliefs(
@@ -1205,7 +1205,7 @@ class Commander:
                 # PP-1: Generate prediction BEFORE processing (anticipatory coding)
                 _surprise = 0.0
                 try:
-                    from app.consciousness.predictive_layer import get_predictive_layer
+                    from app.subia.prediction.layer import get_predictive_layer
                     _pp1 = get_predictive_layer()
                     _pp1_error = _pp1.predict_and_compare(
                         channel="user_input",
@@ -1219,7 +1219,7 @@ class Commander:
                     if _pp1_error.surprise_level == "PARADIGM_VIOLATION":
                         logger.warning(f"PP-1: PARADIGM_VIOLATION on user_input (error={_pp1_error.error_magnitude:.2f})")
                         try:
-                            from app.consciousness.metacognitive_monitor import get_monitor as _get_hot3
+                            from app.subia.belief.metacognition import get_monitor as _get_hot3
                             _get_hot3().run_slow_loop()
                             logger.info("PP-1: PARADIGM_VIOLATION → forced immediate HOT-3 slow loop")
                         except Exception:
@@ -1227,7 +1227,7 @@ class Commander:
                     # 3+ MAJOR_SURPRISE → trigger belief review
                     if _pp1.should_trigger_belief_review("user_input"):
                         try:
-                            from app.consciousness.metacognitive_monitor import get_monitor as _get_hot3_br
+                            from app.subia.belief.metacognition import get_monitor as _get_hot3_br
                             _get_hot3_br().run_slow_loop()
                             logger.info("PP-1: systematic surprises → triggered belief review via slow loop")
                         except Exception:
@@ -1246,7 +1246,7 @@ class Commander:
 
                 # Promote top item to global meta-workspace
                 try:
-                    from app.consciousness.meta_workspace import get_meta_workspace
+                    from app.subia.scene.meta_workspace import get_meta_workspace
                     get_meta_workspace().promote_from_project(_project_id)
                 except Exception:
                     pass
@@ -1255,7 +1255,7 @@ class Commander:
                 # AST-1 has direct modification rights over the workspace gate
                 # (DGM-bounded: max ±50% salience, min floor 0.05, max boost 2x)
                 try:
-                    from app.consciousness.attention_schema import get_attention_schema
+                    from app.subia.scene.attention_schema import get_attention_schema
                     _ast = get_attention_schema()
                     _ast.update(_gate.active_items, cycle=_gate._cycle)
                     _ast_result = _ast.apply_direct_intervention(_gate)
@@ -1294,7 +1294,7 @@ class Commander:
                             except Exception:
                                 _action_rec = None
                         if _action_rec is None:
-                            from app.consciousness.metacognitive_monitor import get_monitor
+                            from app.subia.belief.metacognition import get_monitor
                             _action_rec = get_monitor().consult_beliefs(
                                 crew_task[:300], crew_name,
                             )
@@ -1727,7 +1727,7 @@ class Commander:
                 revise_beliefs(obs, crew_name)
 
                 # L1+L5: Update per-agent runtime statistics
-                from app.self_awareness.agent_state import record_task
+                from app.subia.self.agent_state import record_task
                 result_ok = has_result and not is_failure_pattern
                 record_task(crew_name, success=result_ok, confidence=confidence,
                             difficulty=difficulty, duration_s=duration_s)
@@ -1821,7 +1821,7 @@ class Commander:
                         _somatic_val = self._last_internal_state.somatic.valence
                     except (AttributeError, TypeError):
                         pass
-                from app.self_awareness.homeostasis import update_state
+                from app.subia.homeostasis.state import update_state
                 update_state("task_complete", crew_name, success=result_ok,
                              difficulty=difficulty, somatic_valence=_somatic_val)
 
@@ -1842,7 +1842,7 @@ class Commander:
 
                 # L8: Record prediction result for world model
                 try:
-                    from app.self_awareness.world_model import store_prediction_result
+                    from app.subia.belief.world_model import store_prediction_result
                     store_prediction_result(
                         task_id=f"{crew_name}_{int(duration_s)}",
                         prediction=f"Expected {crew_name} to handle d={difficulty} task",
@@ -1854,7 +1854,7 @@ class Commander:
 
                 # L9: Record experience for somatic marker system (sentience)
                 try:
-                    from app.self_awareness.somatic_marker import record_experience_sync
+                    from app.subia.homeostasis.somatic_marker import record_experience_sync
                     outcome = 1.0 if result_ok else -0.5
                     if is_failure_pattern:
                         outcome = -1.0
@@ -2070,8 +2070,8 @@ class Commander:
         Returns a grounded LLM response for REFLECTIVE/COMPARATIVE queries,
         or None to fall back to the fast deterministic path for simple identity queries.
         """
-        from app.self_awareness.query_router import SelfRefRouter, SelfRefType
-        from app.self_awareness.grounding import GroundingProtocol
+        from app.subia.self.query_router import SelfRefRouter, SelfRefType
+        from app.subia.self.grounding import GroundingProtocol
 
         router = SelfRefRouter(semantic_enabled=False)  # Skip ChromaDB for speed
         classification = router.classify(user_input)

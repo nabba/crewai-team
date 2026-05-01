@@ -236,7 +236,7 @@ class SelfHealer:
         LLM-based certainty assessment triggers less often.
         """
         try:
-            from app.self_awareness.sentience_config import load_config, apply_change
+            from app.subia.sentience_config import load_config, apply_change
             config = load_config()
             current = config.get("slow_path_trigger_threshold", 0.4)
             # Higher threshold = fewer slow-path triggers = lower latency
@@ -298,7 +298,7 @@ class SelfHealer:
         stay on budget tier instead of escalating to premium.
         """
         try:
-            from app.self_awareness.sentience_config import load_config, apply_change
+            from app.subia.sentience_config import load_config, apply_change
             config = load_config()
             current = config.get("certainty_low_threshold", 0.4)
             # Lower threshold = more tasks classified as "mid certainty" = fewer escalations

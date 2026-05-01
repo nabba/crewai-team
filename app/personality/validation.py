@@ -398,7 +398,7 @@ def evaluate_proto_sentience(agent_id: str) -> ProtoSentienceScore:
 
         # ── Regression check: sustained stress + low performance ──────
         try:
-            from app.self_awareness.homeostasis import get_state
+            from app.subia.homeostasis.state import get_state
             homeo = get_state()
             frustration = homeo.get("frustration", 0.1)
             consecutive_failures = homeo.get("consecutive_failures", 0)
@@ -439,7 +439,7 @@ def apply_proto_sentience_effects(agent_id: str, score: ProtoSentienceScore) -> 
         # ── Consciousness integration: boost belief self-model confidence ─
         if score.consciousness_boost > 0.05:
             try:
-                from app.consciousness.belief_store import get_belief_store
+                from app.subia.belief.store import get_belief_store
                 store = get_belief_store()
                 self_beliefs = store.query_relevant(
                     "self model capability", domain="self_model", n=3, min_confidence=0.3

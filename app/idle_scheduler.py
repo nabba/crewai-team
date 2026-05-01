@@ -883,7 +883,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Cogito: metacognitive self-reflection cycle ─────────────────────
     def _cogito_cycle():
         try:
-            from app.self_awareness.cogito import run_cogito
+            from app.subia.belief.cogito import run_cogito
             report = run_cogito()
             logger.info(f"idle_scheduler: cogito cycle — health={report.overall_health}")
         except Exception:
@@ -957,7 +957,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Consciousness probe: Garland/Butlin-Chalmers indicator battery ──
     def _consciousness_probe():
         try:
-            from app.self_awareness.consciousness_probe import run_consciousness_probes
+            from app.subia.probes.consciousness_probe import run_consciousness_probes
             report = run_consciousness_probes()
             logger.info(f"idle_scheduler: consciousness probe score={report.composite_score:.3f}")
             # Publish to Firebase for dashboard
@@ -973,7 +973,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Behavioral assessment: consciousness-like behavioral markers ──
     def _behavioral_assessment():
         try:
-            from app.self_awareness.behavioral_assessment import run_behavioral_assessment
+            from app.subia.probes.behavioral_assessment import run_behavioral_assessment
             results = run_behavioral_assessment()
             for sc in results:
                 logger.info(f"idle_scheduler: behavioral assessment {sc.agent_id}={sc.composite_score:.3f}")
@@ -1453,7 +1453,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
                 return
-            from app.consciousness.metacognitive_monitor import get_monitor
+            from app.subia.belief.metacognition import get_monitor
             monitor = get_monitor()
             result = monitor.run_slow_loop()
             if any(v for v in result.values() if v):
@@ -1468,7 +1468,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
                 return
-            from app.consciousness.attention_schema import get_attention_schema
+            from app.subia.scene.attention_schema import get_attention_schema
             result = get_attention_schema().run_slow_loop()
             if result.get("is_stuck") or result.get("is_captured"):
                 logger.warning(f"idle_scheduler: AST-1 attention alert: {result}")
@@ -1482,7 +1482,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
                 return
-            from app.consciousness.predictive_layer import get_predictive_layer
+            from app.subia.prediction.layer import get_predictive_layer
             result = get_predictive_layer().run_slow_loop()
             if result.get("recent_major_surprises", 0) > 3:
                 logger.warning(f"idle_scheduler: PP-1 systematic surprises: {result}")
@@ -1525,7 +1525,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Adversarial probes: stress-test consciousness infrastructure ──
     def _adversarial_probes():
         try:
-            from app.consciousness.adversarial_probes import run_adversarial_probes
+            from app.subia.probes.adversarial import run_adversarial_probes
             results = run_adversarial_probes()
             if results:
                 passed = sum(1 for r in results if r.passed)
@@ -1537,7 +1537,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Meta-workspace promotion: aggregate top items from all projects ──
     def _meta_workspace_promotion():
         try:
-            from app.consciousness.meta_workspace import get_meta_workspace
+            from app.subia.scene.meta_workspace import get_meta_workspace
             results = get_meta_workspace().promote_all()
             promoted = sum(1 for v in results.values() if v)
             if promoted:

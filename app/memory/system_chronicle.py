@@ -127,7 +127,7 @@ def _section_capabilities(skill_count: int, topic_counts: dict) -> str:
     # L1: Aggregate agent performance stats
     perf_line = ""
     try:
-        from app.self_awareness.agent_state import get_all_stats
+        from app.subia.self.agent_state import get_all_stats
         all_stats = get_all_stats()
         total_done = sum(s.get("tasks_completed", 0) for s in all_stats.values())
         total_fail = sum(s.get("tasks_failed", 0) for s in all_stats.values())
@@ -140,7 +140,7 @@ def _section_capabilities(skill_count: int, topic_counts: dict) -> str:
     # L6: Homeostatic state summary
     homeo_line = ""
     try:
-        from app.self_awareness.homeostasis import get_state
+        from app.subia.homeostasis.state import get_state
         hs = get_state()
         if hs.get("last_updated"):
             homeo_line = (
@@ -288,7 +288,7 @@ def _section_personality(topic_counts: dict, errors: list, variants: list) -> st
 
     # L6: Homeostatic personality traits derived from current state
     try:
-        from app.self_awareness.homeostasis import get_state
+        from app.subia.homeostasis.state import get_state
         hs = get_state()
         if hs.get("frustration", 0) < 0.2:
             traits.append("Calm and steady: low frustration indicates resilient problem-solving")

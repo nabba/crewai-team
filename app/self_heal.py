@@ -372,7 +372,7 @@ def _diagnose_background(entry: dict) -> None:
         # Store causal belief in world model for future context
         if fix and isinstance(fix, dict) and fix.get("diagnosis"):
             try:
-                from app.self_awareness.world_model import store_causal_belief
+                from app.subia.belief.world_model import store_causal_belief
                 store_causal_belief(
                     cause=f"{entry.get('crew', 'unknown')}:{entry.get('error_type', 'unknown')}",
                     effect=fix.get("diagnosis", "")[:200],

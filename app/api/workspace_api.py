@@ -61,7 +61,7 @@ def list_workspaces():
     wipe on restart, whereas CP projects live in PostgreSQL).
     """
     try:
-        from app.consciousness.workspace_buffer import (
+        from app.subia.scene.buffer import (
             list_workspaces as _list_ws,
             get_workspace_gate,
         )
@@ -145,7 +145,7 @@ def create_workspace(req: CreateWorkspaceRequest):
     #    attribute telemetry to the same project_id. Preserve the legacy
     #    lowercase-name key as a fallback so pre-existing gates still work.
     try:
-        from app.consciousness.workspace_buffer import create_workspace as _create_ws
+        from app.subia.scene.buffer import create_workspace as _create_ws
         gate = _create_ws(project_key, capacity=req.capacity)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"consciousness gate create failed: {exc}")
@@ -166,7 +166,7 @@ def create_workspace(req: CreateWorkspaceRequest):
 def get_workspace_items(project_id: str):
     """Get active and peripheral items for a workspace."""
     try:
-        from app.consciousness.workspace_buffer import get_workspace_gate
+        from app.subia.scene.buffer import get_workspace_gate
         gate = get_workspace_gate(project_id)
         return {
             "project_id": project_id,
@@ -204,7 +204,7 @@ def get_workspace_items(project_id: str):
 def get_meta_workspace():
     """Get global meta-workspace snapshot (cross-project view)."""
     try:
-        from app.consciousness.meta_workspace import get_meta_workspace as _get_meta
+        from app.subia.scene.meta_workspace import get_meta_workspace as _get_meta
         return _get_meta().get_cross_project_snapshot()
     except Exception as e:
         logger.warning(f"workspace_api: meta snapshot failed: {e}")

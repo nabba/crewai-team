@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import math
 
-from app.self_awareness.internal_state import CertaintyVector
+from app.subia.belief.internal_state import CertaintyVector
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class CertaintyVectorComputer:
             return self._tool_success_cache[cache_key]
 
         try:
-            from app.self_awareness.agent_state import get_agent_stats
+            from app.subia.self.agent_state import get_agent_stats
             stats = get_agent_stats(agent_id)
             success_rate = stats.get("success_rate", 0.5)
             self._tool_success_cache[cache_key] = success_rate
@@ -172,7 +172,7 @@ class CertaintyVectorComputer:
 
         # Read thresholds from sentience config (adjustable by cogito feedback loop)
         try:
-            from app.self_awareness.sentience_config import load_config
+            from app.subia.sentience_config import load_config
             cfg = load_config()
             threshold = cfg.get("slow_path_trigger_threshold", 0.4)
             var_threshold = cfg.get("slow_path_variance_threshold", 0.03)

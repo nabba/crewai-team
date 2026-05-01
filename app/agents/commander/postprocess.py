@@ -200,7 +200,7 @@ def _store_world_model_prediction(
     Only called for difficulty >= 6 tasks. Builds causal knowledge
     about which crew/difficulty combos succeed or fail.
     """
-    from app.self_awareness.world_model import store_prediction_result
+    from app.subia.belief.world_model import store_prediction_result
     import hashlib
     task_id = f"{crew_name}_{hashlib.md5(result[:100].encode()).hexdigest()[:8]}"
 

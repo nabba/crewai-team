@@ -113,7 +113,7 @@ def _load_world_model_context(task: str, n: int = 3) -> str:
     Agents see past cause→effect patterns relevant to their current task.
     """
     try:
-        from app.self_awareness.world_model import recall_relevant_beliefs, recall_relevant_predictions
+        from app.subia.belief.world_model import recall_relevant_beliefs, recall_relevant_predictions
         beliefs = recall_relevant_beliefs(task, n=n * 2)
         predictions = recall_relevant_predictions(task, n=4)
         items = beliefs + predictions
@@ -463,7 +463,7 @@ def _load_homeostatic_context() -> str:
     a local JSON file. Negligible cost.
     """
     try:
-        from app.self_awareness.homeostasis import get_state_summary
+        from app.subia.homeostasis.state import get_state_summary
         return get_state_summary()
     except Exception:
         return ""
@@ -472,7 +472,7 @@ def _load_homeostatic_context() -> str:
 def _load_global_workspace_broadcasts(crew_name: str) -> str:
     """Load unread GWT broadcasts for this crew (high/critical only)."""
     try:
-        from app.self_awareness.global_workspace import get_workspace
+        from app.subia.scene.global_workspace import get_workspace
         return get_workspace().format_broadcasts(crew_name)
     except Exception:
         return ""

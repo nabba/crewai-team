@@ -133,7 +133,7 @@ class GlobalBroadcastEngine:
 
         Returns BroadcastEvent with all reactions.
         """
-        from app.consciousness.workspace_buffer import _cosine_sim
+        from app.subia.scene.buffer import _cosine_sim
 
         event = BroadcastEvent(
             workspace_item_id=item.item_id,
@@ -172,7 +172,7 @@ class GlobalBroadcastEngine:
 
         # Update social attention model (Theory of Mind for other agents)
         try:
-            from app.consciousness.attention_schema import get_social_attention_model
+            from app.subia.scene.attention_schema import get_social_attention_model
             social = get_social_attention_model()
             for agent_id, reaction in event.reactions.items():
                 listener = self._listeners.get(agent_id)

@@ -373,7 +373,7 @@ class HyperModel:
 
         # Get prior profile (expected certainty per dimension for this task type)
         try:
-            from app.self_awareness.precision_weighting import PrecisionWeighting
+            from app.subia.prediction.precision_weighting import PrecisionWeighting
             priors = PrecisionWeighting().get_prior_profile(task_type)
         except Exception:
             priors = [0.7] * 6  # Default uniform prior

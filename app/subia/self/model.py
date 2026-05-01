@@ -380,7 +380,7 @@ def format_self_model_block(role: str) -> str:
         "introspector": "introspector",
     }
     try:
-        from app.self_awareness.agent_state import get_agent_stats
+        from app.subia.self.agent_state import get_agent_stats
         crew_key = _role_to_crew.get(role, role)
         stats = get_agent_stats(crew_key)
         if stats and stats.get("tasks_completed", 0) > 0:

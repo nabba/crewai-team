@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 
-from app.self_awareness.internal_state import InternalState
+from app.subia.belief.internal_state import InternalState
 
 logger = logging.getLogger(__name__)
 

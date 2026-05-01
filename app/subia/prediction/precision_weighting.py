@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from app.self_awareness.internal_state import CertaintyVector
+from app.subia.belief.internal_state import CertaintyVector
 
 logger = logging.getLogger(__name__)
 

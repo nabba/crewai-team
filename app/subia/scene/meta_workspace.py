@@ -29,7 +29,7 @@ class MetaWorkspace:
         Returns True if an item was promoted.
         """
         try:
-            from app.consciousness.workspace_buffer import (
+            from app.subia.scene.buffer import (
                 get_workspace_gate, META_WORKSPACE,
             )
             project_gate = get_workspace_gate(project_id)
@@ -41,7 +41,7 @@ class MetaWorkspace:
 
             top_item = max(items, key=lambda x: x.salience_score)
             # Create a copy for meta-workspace (don't remove from project)
-            from app.consciousness.workspace_buffer import WorkspaceItem
+            from app.subia.scene.buffer import WorkspaceItem
             meta_item = WorkspaceItem(
                 content=f"[{project_id}] {top_item.content}",
                 content_embedding=top_item.content_embedding,
@@ -72,7 +72,7 @@ class MetaWorkspace:
 
         Returns dict of {project_id: promoted (bool)}.
         """
-        from app.consciousness.workspace_buffer import (
+        from app.subia.scene.buffer import (
             list_workspaces, GENERIC_WORKSPACE, META_WORKSPACE,
         )
         results = {}
@@ -85,7 +85,7 @@ class MetaWorkspace:
 
     def get_cross_project_snapshot(self) -> dict:
         """Dashboard: what's in the meta-workspace from which projects."""
-        from app.consciousness.workspace_buffer import (
+        from app.subia.scene.buffer import (
             get_workspace_gate, list_workspaces, META_WORKSPACE,
         )
         meta_gate = get_workspace_gate(META_WORKSPACE)

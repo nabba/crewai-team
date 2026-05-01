@@ -133,7 +133,7 @@ class CogitoCycle:
 
         # Store causal observations in world model
         try:
-            from app.self_awareness.world_model import store_causal_belief
+            from app.subia.belief.world_model import store_causal_belief
             for pattern in report.failure_patterns[:3]:
                 store_causal_belief(
                     cause=pattern.get("pattern", "unknown"),
@@ -155,7 +155,7 @@ class CogitoCycle:
         M4 fix: covers all 7 configurable parameters, not just 2.
         """
         try:
-            from app.self_awareness.sentience_config import apply_change, load_config
+            from app.subia.sentience_config import apply_change, load_config
 
             current = load_config()
             applied = 0
@@ -229,7 +229,7 @@ class CogitoCycle:
 
     def _gather_state(self) -> dict:
         """Run all inspection tools + self-knowledge query."""
-        from app.self_awareness.inspect_tools import run_all_inspections
+        from app.subia.tsal.inspect_tools import run_all_inspections
         state = run_all_inspections()
         # Enrich with self-knowledge about recent system changes
         try:
@@ -325,7 +325,7 @@ class CogitoCycle:
 
             # Use the grounding system prompt for self-referential accuracy
             try:
-                from app.self_awareness.grounding import GroundingProtocol, GroundedContext
+                from app.subia.self.grounding import GroundingProtocol, GroundedContext
                 gp = GroundingProtocol()
 
                 # Build a minimal grounded context from state data

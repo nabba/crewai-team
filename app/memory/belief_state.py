@@ -157,7 +157,7 @@ def infer_intentions(agent_name: str) -> dict:
 
     # Boost confidence if we have actual history
     try:
-        from app.self_awareness.agent_state import get_agent_stats
+        from app.subia.self.agent_state import get_agent_stats
         stats = get_agent_stats(agent_name)
         if stats.get("tasks_completed", 0) > 10:
             confidence = min(1.0, confidence + 0.1)  # More data = more confident

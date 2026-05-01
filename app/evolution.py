@@ -1210,7 +1210,7 @@ def run_evolution_session(max_iterations: int = 5) -> str:
 
         # Store causal belief about evolution effectiveness
         try:
-            from app.self_awareness.world_model import store_causal_belief
+            from app.subia.belief.world_model import store_causal_belief
             if kept > 0:
                 store_causal_belief(
                     cause=f"Evolution session with {max_iterations} iterations",

@@ -17,7 +17,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from app.self_awareness.query_router import SelfRefClassification, SelfRefType
+from app.subia.self.query_router import SelfRefClassification, SelfRefType
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class GroundingProtocol:
 
     def gather_context(self, classification: SelfRefClassification) -> GroundedContext:
         """Run relevant inspection tools based on query type."""
-        from app.self_awareness.inspect_tools import ALL_INSPECT_TOOLS
+        from app.subia.tsal.inspect_tools import ALL_INSPECT_TOOLS
 
         ctx = GroundedContext(classification=classification)
 

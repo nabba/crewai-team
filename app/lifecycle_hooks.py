@@ -629,7 +629,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             prediction = ctx.metadata.get("_loop_prediction")
             if not prediction:
                 return ctx
-            from app.self_awareness.loop_closure import get_loop_closure
+            from app.subia.self.loop_closure import get_loop_closure
             agent_id = ctx.agent_id or "default"
             lc = get_loop_closure(agent_id)
 
@@ -650,7 +650,7 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             actual_fe = "stable"
             try:
-                from app.self_awareness.hyper_model import HyperModel
+                from app.subia.self.hyper_model import HyperModel
                 hm = HyperModel.get_instance(agent_id)
                 if hm.history:
                     actual_fe = hm.history[-1].free_energy_trend
@@ -666,7 +666,7 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             # Feed back into HyperModel
             try:
-                from app.self_awareness.hyper_model import HyperModel
+                from app.subia.self.hyper_model import HyperModel
                 hm = HyperModel.get_instance(agent_id)
                 hm.record_loop_closure(state.composite_error, state.loop_coherence)
             except Exception:
@@ -729,7 +729,7 @@ def _register_defaults(registry: HookRegistry) -> None:
     # Priority 6: Hierarchical prediction — PRE_LLM_CALL (generate predictions at Level 0+1)
     def _hierarchy_predict_hook(ctx: HookContext) -> HookContext:
         try:
-            from app.consciousness.prediction_hierarchy import get_prediction_hierarchy
+            from app.subia.prediction.hierarchy import get_prediction_hierarchy
             agent_id = ctx.agent_id or "default"
             prompt = ctx.task_description or ""
             if len(prompt) > 20:
@@ -752,7 +752,7 @@ def _register_defaults(registry: HookRegistry) -> None:
         try:
             if not ctx.metadata.get("_hierarchy_predicted"):
                 return ctx  # No prediction was generated
-            from app.consciousness.prediction_hierarchy import get_prediction_hierarchy
+            from app.subia.prediction.hierarchy import get_prediction_hierarchy
             agent_id = ctx.agent_id or "default"
             response = ctx.data.get("llm_response", "") or ctx.data.get("result", "")
             if not response or len(str(response)) < 10:
@@ -766,7 +766,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Get Level 3 error from HyperModel online buffer (if available)
             level3_err = 0.0
             try:
-                from app.self_awareness.hyper_model import HyperModel
+                from app.subia.self.hyper_model import HyperModel
                 hm = HyperModel.get_instance(agent_id)
                 if hm._online_buffer:
                     level3_err = hm._online_buffer[-1].get("error", 0.0)
@@ -782,7 +782,7 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             # Feed composite surprise into HyperModel for recurrence integration
             try:
-                from app.self_awareness.hyper_model import HyperModel
+                from app.subia.self.hyper_model import HyperModel
                 hm = HyperModel.get_instance(agent_id)
                 # Use 1 - composite_surprise as certainty proxy
                 hm.update_online(max(0.0, 1.0 - state.composite_surprise))
@@ -802,8 +802,8 @@ def _register_defaults(registry: HookRegistry) -> None:
     # Priority 13: Beautiful Loop closure — predict processing path BEFORE execution
     def _loop_closure_predict_hook(ctx: HookContext) -> HookContext:
         try:
-            from app.self_awareness.loop_closure import get_loop_closure
-            from app.self_awareness.hyper_model import HyperModel
+            from app.subia.self.loop_closure import get_loop_closure
+            from app.subia.self.hyper_model import HyperModel
             agent_id = ctx.agent_id or "default"
             hm = HyperModel.get_instance(agent_id)
             lc = get_loop_closure(agent_id)
@@ -844,7 +844,7 @@ def _register_defaults(registry: HookRegistry) -> None:
 
     def _meta_cognitive_hook(ctx: HookContext) -> HookContext:
         try:
-            from app.self_awareness.meta_cognitive import MetaCognitiveLayer
+            from app.subia.belief.meta_cognitive_layer import MetaCognitiveLayer
             agent_id = ctx.agent_id or "unknown"
 
             if agent_id not in _meta_cognitive_instances:
@@ -855,8 +855,8 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             # Phase 3R: Pre-reasoning somatic bias (Damasio — emotions bias BEFORE deliberation)
             try:
-                from app.self_awareness.somatic_marker import SomaticMarkerComputer
-                from app.self_awareness.somatic_bias import SomaticBiasInjector
+                from app.subia.homeostasis.somatic_marker import SomaticMarkerComputer
+                from app.subia.homeostasis.somatic_bias import SomaticBiasInjector
                 task_desc = task_ctx.get("description", "")
                 if task_desc and len(task_desc) > 10:
                     smc = SomaticMarkerComputer()
@@ -870,7 +870,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Phase 7: Build reality model (lightweight, no LLM) + inferential competition (LLM, expensive)
             # Reality model: always build (no LLM needed, just structured data)
             try:
-                from app.self_awareness.reality_model import RealityModelBuilder
+                from app.subia.prediction.reality_model import RealityModelBuilder
                 rm_builder = RealityModelBuilder()
                 reality_model = rm_builder.build(
                     agent_id=agent_id,
@@ -886,7 +886,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             if previous_state:
                 try:
                     import concurrent.futures
-                    from app.self_awareness.inferential_competition import InferentialCompetition
+                    from app.subia.prediction.inferential_competition import InferentialCompetition
                     ic = InferentialCompetition()
                     cert_mean = previous_state.certainty.fast_path_mean
                     som_intensity = previous_state.somatic.intensity
@@ -894,7 +894,7 @@ def _register_defaults(registry: HookRegistry) -> None:
                     # Get free energy pressure for active inference explore/exploit
                     _fe_pressure = 0.0
                     try:
-                        from app.self_awareness.hyper_model import HyperModel
+                        from app.subia.self.hyper_model import HyperModel
                         _fe_pressure = HyperModel.get_instance(agent_id).get_free_energy_pressure()
                     except Exception:
                         pass
@@ -938,10 +938,10 @@ def _register_defaults(registry: HookRegistry) -> None:
                         ctx.metadata["_meta_cognitive_state"] = meta_state
                     except concurrent.futures.TimeoutError:
                         logger.debug("lifecycle_hooks: meta-cognitive assessment timed out (3s)")
-                        from app.self_awareness.internal_state import MetaCognitiveState
+                        from app.subia.belief.internal_state import MetaCognitiveState
                         ctx.metadata["_meta_cognitive_state"] = MetaCognitiveState()
             except Exception:
-                from app.self_awareness.internal_state import MetaCognitiveState
+                from app.subia.belief.internal_state import MetaCognitiveState
                 ctx.metadata["_meta_cognitive_state"] = MetaCognitiveState()
             ctx.metadata["_task_context"] = task_ctx
         except Exception as e:
@@ -960,11 +960,11 @@ def _register_defaults(registry: HookRegistry) -> None:
     # M3 fix: compute embedding once, share between certainty + somatic
     def _internal_state_hook(ctx: HookContext) -> HookContext:
         try:
-            from app.self_awareness.certainty_vector import CertaintyVectorComputer
-            from app.self_awareness.somatic_marker import SomaticMarkerComputer
-            from app.self_awareness.dual_channel import DualChannelComposer
-            from app.self_awareness.state_logger import get_state_logger
-            from app.self_awareness.internal_state import InternalState
+            from app.subia.belief.certainty import CertaintyVectorComputer
+            from app.subia.homeostasis.somatic_marker import SomaticMarkerComputer
+            from app.subia.belief.dual_channel import DualChannelComposer
+            from app.subia.belief.state_logger import get_state_logger
+            from app.subia.belief.internal_state import InternalState
 
             state = InternalState(
                 agent_id=ctx.agent_id or "unknown",
@@ -1068,7 +1068,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             # Phase 7: Beautiful Loop — hyper-model (predict → compare → error → trajectory)
             hm_state = None
             try:
-                from app.self_awareness.hyper_model import HyperModel
+                from app.subia.self.hyper_model import HyperModel
                 hm = HyperModel.get_instance(state.agent_id)
                 hm_state = hm.update(
                     state.certainty.adjusted_certainty,
@@ -1096,7 +1096,7 @@ def _register_defaults(registry: HookRegistry) -> None:
 
             # Phase 7: Precision-weighted certainty
             try:
-                from app.self_awareness.precision_weighting import PrecisionWeighting
+                from app.subia.prediction.precision_weighting import PrecisionWeighting
                 pw = PrecisionWeighting()
                 task_type = ctx.metadata.get("crew", "default")
                 state.precision_weighted_certainty = pw.apply_weights(state.certainty, task_type)
@@ -1112,7 +1112,7 @@ def _register_defaults(registry: HookRegistry) -> None:
             # GWT: workspace competition — 5 signal types compete for broadcast access
             # Replaces simple disposition-only broadcast with true workspace bottleneck
             try:
-                from app.self_awareness.global_workspace import get_workspace, WorkspaceCandidate
+                from app.subia.scene.global_workspace import get_workspace, WorkspaceCandidate
                 candidates = []
 
                 # Candidate 1: disposition signal

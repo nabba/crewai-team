@@ -20,7 +20,7 @@ import logging
 from collections import deque
 from datetime import datetime, timezone
 
-from app.self_awareness.internal_state import InternalState, MetaCognitiveState
+from app.subia.belief.internal_state import InternalState, MetaCognitiveState
 
 logger = logging.getLogger(__name__)
 

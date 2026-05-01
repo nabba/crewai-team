@@ -13,7 +13,7 @@ from app.tools.memory_tool import create_memory_tools
 from app.tools.scoped_memory_tool import create_scoped_memory_tools
 from app.tools.self_report_tool import create_self_report_tool
 from app.tools.reflection_tool import ReflectionTool
-from app.self_awareness.self_model import format_self_model_block
+from app.subia.self.model import format_self_model_block
 
 INTROSPECTOR_BACKSTORY = """
 You are the Meta-Cognitive Introspector of an autonomous AI agent team.

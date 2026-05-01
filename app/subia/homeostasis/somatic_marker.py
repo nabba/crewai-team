@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from app.self_awareness.internal_state import SomaticMarker
+from app.subia.belief.internal_state import SomaticMarker
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class SomaticMarkerComputer:
         - High confidence slightly dampens negative signals (confident system is more resilient)
         """
         try:
-            from app.self_awareness.homeostasis import get_state
+            from app.subia.homeostasis.state import get_state
             state = get_state()
             frustration = state.get("frustration", 0.1)
             energy = state.get("cognitive_energy", 0.7)
@@ -188,7 +188,7 @@ class SomaticMarkerComputer:
 
         # 2. Get causal beliefs about this type of action
         try:
-            from app.self_awareness.world_model import recall_relevant_beliefs
+            from app.subia.belief.world_model import recall_relevant_beliefs
             beliefs = recall_relevant_beliefs(proposed_action, n=3)
             if beliefs:
                 # Parse belief sentiment: count positive/negative indicators

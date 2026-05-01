@@ -755,7 +755,7 @@ async def lifespan(app: FastAPI):
     # with a planted 5/0 record, ToM picked it, Commander dispatched
     # to that phantom crew, execution silently fell through.
     try:
-        from app.self_awareness.agent_state import prune_phantom_crews
+        from app.subia.self.agent_state import prune_phantom_crews
         phantom = await asyncio.to_thread(prune_phantom_crews)
         if phantom:
             logger.warning(

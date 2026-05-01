@@ -64,7 +64,7 @@ class MetacognitiveMonitor:
         Returns an ActionSelectionRecord linking selected action to consulted beliefs.
         Called from PRE_TASK hook during crew dispatch.
         """
-        from app.consciousness.belief_store import get_belief_store
+        from app.subia.belief.store import get_belief_store
         store = get_belief_store()
 
         # Query relevant beliefs for this task
@@ -106,7 +106,7 @@ class MetacognitiveMonitor:
         Called by idle scheduler periodically (every 5-10 fast cycles).
         Returns summary of updates made.
         """
-        from app.consciousness.belief_store import get_belief_store
+        from app.subia.belief.store import get_belief_store
         from app.consciousness.config import load_config
 
         store = get_belief_store()

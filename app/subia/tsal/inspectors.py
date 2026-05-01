@@ -1,7 +1,7 @@
 """CodeAnalyst + ComponentDiscovery — adapters over existing inspect_tools.
 
 Both are THIN WRAPPERS: they consume the mature six-tool layer at
-`app.self_awareness.inspect_tools` and add only the missing TSAL
+`app.subia.tsal.inspect_tools` and add only the missing TSAL
 contributions (architectural-pattern detection, dependency graph,
 Ollama probe, Wiki probe, Cascade profile builder).
 

@@ -23,7 +23,7 @@ on the next compose_backstory() call.
 import json
 import logging
 from pathlib import Path
-from app.self_awareness.self_model import format_self_model_block
+from app.subia.self.model import format_self_model_block
 
 logger = logging.getLogger(__name__)
 

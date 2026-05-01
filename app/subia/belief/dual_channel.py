@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from app.self_awareness.internal_state import (
+from app.subia.belief.internal_state import (
     InternalState,
     DISPOSITION_TO_RISK_TIER,
 )
@@ -77,7 +77,7 @@ class DualChannelComposer:
     def __init__(self, critical_budget_threshold: float = 0.1):
         # Load thresholds from sentience config (adjustable by cogito feedback loop)
         try:
-            from app.self_awareness.sentience_config import load_config
+            from app.subia.sentience_config import load_config
             cfg = load_config()
         except Exception:
             cfg = {}
@@ -106,7 +106,7 @@ class DualChannelComposer:
         # Phase 3R: Enforce pre-reasoning somatic disposition floor
         if task_context:
             try:
-                from app.self_awareness.somatic_bias import SomaticBiasInjector
+                from app.subia.homeostasis.somatic_bias import SomaticBiasInjector
                 floor = SomaticBiasInjector.get_disposition_floor(task_context)
                 if floor:
                     floor_tier = DISPOSITION_TO_RISK_TIER.get(floor, 1)

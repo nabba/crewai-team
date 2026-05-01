@@ -250,7 +250,7 @@ class ProsocialSimulator:
     def _update_somatic_markers(self, outcomes: list[GameOutcome]) -> None:
         """Feed prosocial game outcomes into somatic marker system."""
         try:
-            from app.self_awareness.somatic_marker import record_experience_sync
+            from app.subia.homeostasis.somatic_marker import record_experience_sync
             for outcome in outcomes:
                 for agent_id in outcome.agent_ids:
                     ps = outcome.prosocial_scores.get(agent_id, 0.5)

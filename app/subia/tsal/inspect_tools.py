@@ -2,7 +2,7 @@
 subia.tsal.inspect_tools — eight read-only self-inspection tools.
 
 Canonical home (Phase 13). The previous location
-`app.self_awareness.inspect_tools` is preserved as a graceful shim that
+`app.subia.tsal.inspect_tools` is preserved as a graceful shim that
 re-exports from this module via sys.modules aliasing (same pattern
 Phase 1 used for the consciousness/ and self_awareness/ migrations).
 
@@ -142,7 +142,7 @@ def inspect_agents() -> dict:
 
     # From self-model definitions
     try:
-        from app.self_awareness.self_model import SELF_MODELS
+        from app.subia.self.model import SELF_MODELS
         for role, model in SELF_MODELS.items():
             existing = next((a for a in agents if a["name"] == role), None)
             if existing:
@@ -365,14 +365,14 @@ def inspect_self_model() -> dict:
 
     # Also include homeostatic state
     try:
-        from app.self_awareness.homeostasis import get_state
+        from app.subia.homeostasis.state import get_state
         result["homeostasis"] = get_state()
     except Exception:
         pass
 
     # Agent count from self-model
     try:
-        from app.self_awareness.self_model import SELF_MODELS
+        from app.subia.self.model import SELF_MODELS
         result["agents_modeled"] = len(SELF_MODELS)
     except Exception:
         pass
@@ -397,7 +397,7 @@ def inspect_beliefs(domain: str | None = None, min_confidence: float = 0.0,
     """
     result = {"beliefs": [], "total": 0, "domains": {}}
     try:
-        from app.consciousness.belief_store import get_belief_store
+        from app.subia.belief.store import get_belief_store
         store = get_belief_store()
         beliefs = store.query_relevant(
             query="",  # Empty query returns all
@@ -445,7 +445,7 @@ def inspect_attention_state() -> dict:
         "social_attention": {},
     }
     try:
-        from app.consciousness.attention_schema import get_attention_schema
+        from app.subia.scene.attention_schema import get_attention_schema
         schema = get_attention_schema()
         summary = schema.get_state_summary()
         result.update({
@@ -463,7 +463,7 @@ def inspect_attention_state() -> dict:
 
     # Social attention (Theory of Mind)
     try:
-        from app.consciousness.attention_schema import get_social_attention_model
+        from app.subia.scene.attention_schema import get_social_attention_model
         social = get_social_attention_model()
         result["social_attention"] = social.get_summary()
     except Exception:
