@@ -21,6 +21,7 @@ from app import llm_registry_scanner as scanner
 from app.llm_registry_scanner import (
     HostCapacity,
     RegistryCandidate,
+    _family_base_and_version,
     _parse_model_id,
     _quant_rank,
     diff_against_local,
@@ -455,12 +456,96 @@ class TestFilterDominatedByInstalled:
         kept = filter_dominated_by_installed(cands, [])
         assert {c.full_name for c in kept} == {"qwen3.5:4b-q8_0"}
 
-    def test_size_unknown_candidate_passes(self):
-        """No size token in candidate → can't prove dominance → KEEP."""
-        cands = [self._mk("qwen3.5:latest")]
+    def test_size_unknown_candidate_passes_when_family_not_installed(self):
+        """Sizeless candidate from a family with no installed member
+        passes through — we can't prove dominance against a vacuum."""
+        cands = [self._mk("phi3:latest")]  # phi family not installed
         local = ["qwen3.5:35b-a3b-q4_K_M"]
         kept = filter_dominated_by_installed(cands, local)
-        assert {c.full_name for c in kept} == {"qwen3.5:latest"}
+        assert {c.full_name for c in kept} == {"phi3:latest"}
+
+    # ── Rule 2: sizeless candidate of an already-installed family ────
+
+    def test_skips_latest_alias_of_pinned_family(self):
+        """Reproducer for the 2026-04-30 second-wave rejection: when
+        the user has already pinned a specific qwen3.5 variant, a
+        proposal for qwen3.5:latest must be suppressed — the alias is
+        almost always the smallest default variant and not what was
+        chosen."""
+        cands = [self._mk("qwen3.5:latest", 6.6)]
+        local = ["qwen3.5:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert kept == []
+
+    def test_skips_instruct_alias_of_pinned_family(self):
+        cands = [self._mk("qwen3.5:instruct")]  # sizeless, same family
+        local = ["qwen3.5:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert kept == []
+
+    # ── Rule 3: cross-version-within-base dominance ────────────────────
+
+    def test_skips_older_lineage_qwen3_when_qwen35_installed(self):
+        """Reproducer for the 2026-04-30 second-wave rejection: qwen3
+        (parent lineage) dominated by qwen3.5 (newer minor)."""
+        cands = [
+            self._mk("qwen3:14b-q4_K_M", 9.3),
+            self._mk("qwen3:8b-q4_K_M", 5.2),
+        ]
+        local = ["qwen3.5:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert kept == []
+
+    def test_skips_older_lineage_llama3_when_llama4_installed(self):
+        cands = [self._mk("llama3.1:8b-instruct")]
+        local = ["llama4:70b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert kept == []
+
+    def test_keeps_newer_lineage_than_installed(self):
+        """A newer qwen4 should NOT be dominated by an installed qwen3.5."""
+        cands = [self._mk("qwen4:14b-q4_K_M", 9.0)]
+        local = ["qwen3.5:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert {c.full_name for c in kept} == {"qwen4:14b-q4_K_M"}
+
+    def test_keeps_unrelated_base_lineage(self):
+        """Different base lineage → no cross-version effect."""
+        cands = [self._mk("gemma3:27b-q4_K_M", 17.0)]
+        local = ["qwen3.5:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        assert {c.full_name for c in kept} == {"gemma3:27b-q4_K_M"}
+
+    def test_keeps_same_lineage_higher_version(self):
+        """If candidate version > installed version, NOT dominated."""
+        cands = [self._mk("qwen3.5:14b-q4_K_M", 9.0)]
+        local = ["qwen3:35b-a3b-q4_K_M"]
+        kept = filter_dominated_by_installed(cands, local)
+        # candidate is qwen3.5 (newer), installed is qwen3 (older)
+        # → KEEP (cross-version is forward-only)
+        assert {c.full_name for c in kept} == {"qwen3.5:14b-q4_K_M"}
+
+
+class TestFamilyBaseAndVersion:
+    """Direct tests for the lineage parser used by Rule 3."""
+
+    def test_simple_versioned_families(self):
+        assert _family_base_and_version("qwen3") == ("qwen", 3.0)
+        assert _family_base_and_version("qwen3.5") == ("qwen", 3.5)
+        assert _family_base_and_version("llama3.1") == ("llama", 3.1)
+        assert _family_base_and_version("llama4") == ("llama", 4.0)
+        assert _family_base_and_version("gemma4") == ("gemma", 4.0)
+        assert _family_base_and_version("phi3.5") == ("phi", 3.5)
+
+    def test_dashed_base_with_version(self):
+        assert _family_base_and_version("deepseek-r1") == ("deepseek-r", 1.0)
+
+    def test_no_version_digits(self):
+        assert _family_base_and_version("codestral") == ("codestral", None)
+        assert _family_base_and_version("glm-ocr") == ("glm-ocr", None)
+
+    def test_empty_input(self):
+        assert _family_base_and_version("") == ("", None)
 
 
 # ══════════════════════════════════════════════════════════════════════

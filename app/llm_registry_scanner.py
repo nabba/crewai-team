@@ -746,54 +746,138 @@ def _quant_rank(label: str | None) -> int:
     return _QUANT_RANK.get(label.lower(), 0)
 
 
+# Family lineage — split a family name like "qwen3.5" into a base
+# ("qwen") and a version (3.5). This is what lets the dominance
+# filter recognise that "qwen3" is dominated by "qwen3.5" (same
+# lineage, lower major.minor) without conflating unrelated families
+# that happen to share a prefix.
+#
+# Examples:
+#   qwen3.5     → ("qwen", 3.5)
+#   qwen3       → ("qwen", 3.0)
+#   llama3.1    → ("llama", 3.1)
+#   llama4      → ("llama", 4.0)
+#   gemma4      → ("gemma", 4.0)
+#   deepseek-r1 → ("deepseek-r", 1.0)
+#   codestral   → ("codestral", None)  — no version digits
+#   glm-ocr     → ("glm-ocr", None)
+_FAMILY_VERSION_RE = re.compile(r"^(.+?)([0-9]+(?:\.[0-9]+)?)$")
+
+
+def _family_base_and_version(family: str) -> tuple[str, float | None]:
+    """Split a family name into (base, version). Returns (family, None)
+    when no trailing version digits are present."""
+    if not family:
+        return ("", None)
+    m = _FAMILY_VERSION_RE.match(family)
+    if not m:
+        return (family, None)
+    try:
+        ver = float(m.group(2))
+    except ValueError:
+        return (family, None)
+    base = m.group(1).rstrip("-_.")
+    if not base:
+        return (family, None)
+    return (base, ver)
+
+
 # ── Filter 1: same-family dominance ───────────────────────────────────────
 
 def filter_dominated_by_installed(
     candidates: list[RegistryCandidate],
     local_tags: list[str],
 ) -> list[RegistryCandidate]:
-    """Skip candidates whose family already has a strictly larger sibling
-    locally installed.
+    """Skip candidates dominated by something already installed locally.
 
-    Example dropped:
-      installed: qwen3.5:35b-a3b-q4_K_M (35B)
-      proposed:  qwen3.5:4b-q8_0         (4B)  → SKIP — strict downgrade
-      proposed:  qwen3.5:4b-instruct-q8_0 (4B) → SKIP — same reason
+    Three layered dominance rules. Rules 2 + 3 added 2026-04-30 after
+    the user surfaced a second wave of governance rejections:
+    qwen3.5:latest, qwen3:14b-q4_K_M, qwen3:8b-q4_K_M — all proposed
+    while qwen3.5:35b-a3b-q4_K_M was already installed.
 
-    Example kept:
-      installed: qwen3.5:35b-a3b-q4_K_M
-      proposed:  llama3.1:70b              → KEEP — different family
-      proposed:  qwen3.5:122b-a10b         → KEEP — larger, not dominated
+      Rule 1 — same family + smaller size:
+        installed: qwen3.5:35b-a3b-q4_K_M
+        proposed:  qwen3.5:4b-q8_0       → SKIP (strict downgrade)
 
-    When a proposed candidate has no size token (e.g. ``:latest``), we
-    default to allowing it — we can't prove it's smaller.
+      Rule 2 — same family + sizeless tag (`:latest`, `:instruct`):
+        installed: qwen3.5:35b-a3b-q4_K_M
+        proposed:  qwen3.5:latest        → SKIP (user pinned a specific
+                                           variant; the generic alias is
+                                           almost always the smallest
+                                           default and not what they want)
+
+      Rule 3 — cross-version-within-base:
+        installed: qwen3.5:35b-a3b-q4_K_M  (base=qwen, ver=3.5)
+        proposed:  qwen3:14b-q4_K_M        (base=qwen, ver=3.0) → SKIP
+        proposed:  qwen3:8b-q4_K_M         (base=qwen, ver=3.0) → SKIP
+        Newer model lineage always wins — if you've installed any
+        qwen3.5 variant, you don't want qwen3 proposals.
+
+    Kept regardless:
+        installed: qwen3.5:35b-a3b-q4_K_M
+        proposed:  llama3.1:70b           → different base
+        proposed:  qwen3.5:122b-a10b      → larger same-family
+        proposed:  qwen4:14b              → newer-version-than-installed
     """
     if not candidates:
         return candidates
-    installed_by_family: dict[str, float] = {}
+
+    # Map: family → max installed size_b (Rule 1)
+    installed_max_size_by_family: dict[str, float] = {}
+    # Set of families that have ANY installed member (Rule 2)
+    installed_families: set[str] = set()
+    # Map: lineage base → max installed version (Rule 3)
+    installed_max_version_by_base: dict[str, float] = {}
+
     for tag in local_tags:
         parsed = _parse_model_id(tag)
-        if parsed.size_b is None:
+        if not parsed.family:
             continue
-        prev = installed_by_family.get(parsed.family, 0.0)
-        if parsed.size_b > prev:
-            installed_by_family[parsed.family] = parsed.size_b
+        installed_families.add(parsed.family)
+        if parsed.size_b is not None:
+            prev = installed_max_size_by_family.get(parsed.family, 0.0)
+            if parsed.size_b > prev:
+                installed_max_size_by_family[parsed.family] = parsed.size_b
+        base, ver = _family_base_and_version(parsed.family)
+        if ver is not None:
+            prev_ver = installed_max_version_by_base.get(base, -1.0)
+            if ver > prev_ver:
+                installed_max_version_by_base[base] = ver
 
     out: list[RegistryCandidate] = []
     for c in candidates:
         parsed = _parse_model_id(c.full_name)
-        installed_max = installed_by_family.get(parsed.family)
-        if installed_max is None or parsed.size_b is None:
-            out.append(c)
-            continue
-        # Strict-dominance: candidate is strictly smaller than the
-        # largest already-installed same-family member.
-        if parsed.size_b < installed_max:
+
+        # Rule 1: same family + strictly smaller explicit size
+        installed_max = installed_max_size_by_family.get(parsed.family)
+        if (installed_max is not None
+                and parsed.size_b is not None
+                and parsed.size_b < installed_max):
             logger.debug(
-                "registry_scan: skipping %s — %s:%sB already installed (%s:%sB strictly dominated)",
-                c.full_name, parsed.family, installed_max, parsed.family, parsed.size_b,
+                "registry_scan: skip %s — %s:%sB already installed (rule 1: smaller sibling)",
+                c.full_name, parsed.family, installed_max,
             )
             continue
+
+        # Rule 2: candidate is sizeless AND family already has a member
+        if parsed.size_b is None and parsed.family in installed_families:
+            logger.debug(
+                "registry_scan: skip %s — already-installed family with sizeless candidate (rule 2: :latest of pinned family)",
+                c.full_name,
+            )
+            continue
+
+        # Rule 3: cross-version within the same lineage base
+        c_base, c_ver = _family_base_and_version(parsed.family)
+        if c_ver is not None:
+            installed_ver = installed_max_version_by_base.get(c_base)
+            if installed_ver is not None and c_ver < installed_ver:
+                logger.debug(
+                    "registry_scan: skip %s — newer lineage installed (%s%s, rule 3: cross-version dominance)",
+                    c.full_name, c_base, installed_ver,
+                )
+                continue
+
         out.append(c)
     return out
 
