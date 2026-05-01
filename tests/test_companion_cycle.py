@@ -293,8 +293,10 @@ def test_run_cycle_emits_cycle_id_even_on_abort():
 def test_run_cycle_surfaces_when_eligible():
     cfg = CompanionConfig(seed_prompt="forests",
                            novelty_threshold=0.5,
-                           surface_threshold=0.5).clamp()
+                           surface_threshold=0.5,
+                           panel_threshold=0.4).clamp()
     fake = _make_creative_result(p1=2, p2=1, final="A solid idea body")
+    from app.companion.critique import PanelReport
 
     surface_calls: list = []
 
@@ -312,6 +314,9 @@ def test_run_cycle_surfaces_when_eligible():
          patch("app.companion.scoring.compute_quality", lambda t: 0.9), \
          patch("app.companion.scoring.compute_transferability",
                lambda t: 0.5), \
+         patch("app.companion.critique.run_panel",
+               lambda *a, **kw: PanelReport(scores=[], aggregate=0.9,
+                                             passed=True)), \
          patch("app.companion.surfacing.surface", _surface):
         result = _cycle.run_cycle("ws-1", cfg)
 
@@ -372,8 +377,10 @@ def test_run_cycle_skips_surfacing_when_aborted():
 def test_run_cycle_handles_surfacing_exception():
     cfg = CompanionConfig(seed_prompt="x",
                            novelty_threshold=0.0,
-                           surface_threshold=0.0).clamp()
+                           surface_threshold=0.5,
+                           panel_threshold=0.4).clamp()
     fake = _make_creative_result(p1=1, p2=1, final="ok body")
+    from app.companion.critique import PanelReport
 
     def _broken(idea, config):
         raise RuntimeError("send blew up")
@@ -388,6 +395,9 @@ def test_run_cycle_handles_surfacing_exception():
          patch("app.companion.scoring.compute_quality", lambda t: 0.9), \
          patch("app.companion.scoring.compute_transferability",
                lambda t: 0.5), \
+         patch("app.companion.critique.run_panel",
+               lambda *a, **kw: PanelReport(scores=[], aggregate=0.9,
+                                             passed=True)), \
          patch("app.companion.surfacing.surface", _broken):
         result = _cycle.run_cycle("ws-1", cfg)
 

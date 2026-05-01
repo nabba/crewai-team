@@ -32,6 +32,11 @@ MIN_TRANSFERABILITY_THRESHOLD = 0.5
 MAX_TRANSFERABILITY_THRESHOLD = 0.95
 DEFAULT_TRANSFERABILITY_THRESHOLD = 0.7
 
+# Phase 7: critic-panel aggregate must clear this for surfacing.
+MIN_PANEL_THRESHOLD = 0.4
+MAX_PANEL_THRESHOLD = 0.9
+DEFAULT_PANEL_THRESHOLD = 0.6
+
 DEFAULT_QUIET_HOURS_START = 2
 DEFAULT_QUIET_HOURS_END = 6
 
@@ -46,6 +51,7 @@ class CompanionConfig:
     surface_threshold: float = DEFAULT_SURFACE_THRESHOLD
     novelty_threshold: float = DEFAULT_NOVELTY_THRESHOLD
     transferability_threshold: float = DEFAULT_TRANSFERABILITY_THRESHOLD
+    panel_threshold: float = DEFAULT_PANEL_THRESHOLD
     quiet_hours_start: int = DEFAULT_QUIET_HOURS_START
     quiet_hours_end: int = DEFAULT_QUIET_HOURS_END
     sources: list[dict] = field(default_factory=list)
@@ -65,6 +71,9 @@ class CompanionConfig:
             MIN_TRANSFERABILITY_THRESHOLD,
             MAX_TRANSFERABILITY_THRESHOLD,
         )
+        self.panel_threshold = _clamp(self.panel_threshold,
+                                       MIN_PANEL_THRESHOLD,
+                                       MAX_PANEL_THRESHOLD)
         self.quiet_hours_start = max(0, min(23, int(self.quiet_hours_start)))
         self.quiet_hours_end = max(0, min(23, int(self.quiet_hours_end)))
         return self

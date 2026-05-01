@@ -63,6 +63,7 @@ class IdeaRecord:
     novelty: float = 0.0
     quality: float = 0.0
     transferability: float = 0.0
+    panel_score: float = 0.0  # Phase 7 — aggregate critic-panel score [0,1]
     created_at: float = field(default_factory=time.time)
 
 
@@ -228,6 +229,7 @@ def _index_chromadb(record: IdeaRecord) -> None:
                 "novelty": float(record.novelty),
                 "quality": float(record.quality),
                 "transferability": float(record.transferability),
+                "panel_score": float(record.panel_score),
                 "created_at": float(record.created_at),
             }],
         )

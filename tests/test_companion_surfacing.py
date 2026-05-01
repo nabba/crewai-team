@@ -18,19 +18,22 @@ def tmp_events_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return tmp_path
 
 
-def _idea(*, novelty=0.9, quality=0.9, text="A solid idea text body."):
+def _idea(*, novelty=0.9, quality=0.9, panel_score=0.9,
+            text="A solid idea text body."):
     return IdeaRecord(
         idea_id="i_test", workspace_id="ws-1",
         text=text, state=IdeaState.CONVERGED,
         novelty=novelty, quality=quality, transferability=0.5,
+        panel_score=panel_score,
     )
 
 
-def _cfg(*, novelty_t=0.7, surface_t=0.7, seed="forests"):
+def _cfg(*, novelty_t=0.7, surface_t=0.7, panel_t=0.6, seed="forests"):
     return CompanionConfig(
         seed_prompt=seed,
         novelty_threshold=novelty_t,
         surface_threshold=surface_t,
+        panel_threshold=panel_t,
     ).clamp()
 
 

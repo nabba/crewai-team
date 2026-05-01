@@ -186,6 +186,7 @@ class UpdateConfigRequest(BaseModel):
     surface_threshold: float | None = None
     novelty_threshold: float | None = None
     transferability_threshold: float | None = None
+    panel_threshold: float | None = None
     quiet_hours_start: int | None = None
     quiet_hours_end: int | None = None
 

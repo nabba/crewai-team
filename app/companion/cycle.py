@@ -20,6 +20,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.companion import critique as _critique
 from app.companion import idea_store as _idea_store
 from app.companion import reflexion as _reflexion
 from app.companion import scoring as _scoring
@@ -56,6 +57,9 @@ class CycleResult:
     # Phase 4 surfacing
     surfaced: bool = False
     surface_reason: str = ""
+    # Phase 7 critic panel
+    panel_score: float = 0.0
+    panel_breakdown: list[dict] = field(default_factory=list)
 
 
 def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
@@ -110,11 +114,20 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
 
     surfaced = False
     surface_reason = "not_attempted"
+    panel_score = 0.0
+    panel_breakdown: list[dict] = []
 
     if aborted is None and final.strip():
         novelty = _scoring.compute_novelty(final, workspace_id)
         quality = _scoring.compute_quality(final)
         transferability = _scoring.compute_transferability(final)
+        try:
+            panel = _critique.run_panel(
+                final, seed, threshold=config.panel_threshold)
+            panel_score = panel.aggregate
+            panel_breakdown = panel.to_dict_list()
+        except Exception as exc:
+            logger.debug("companion.cycle: critique panel raised: %s", exc)
         fragment_ids, developed_ids, converged_id = _persist_lineage(
             workspace_id=workspace_id,
             cycle_id=cycle_id,
@@ -124,6 +137,7 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
             novelty=novelty,
             quality=quality,
             transferability=transferability,
+            panel_score=panel_score,
         )
         if converged_id:
             surfaced, surface_reason = _maybe_surface(
@@ -133,6 +147,7 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
                 novelty=novelty,
                 quality=quality,
                 transferability=transferability,
+                panel_score=panel_score,
                 config=config,
             )
 
@@ -155,11 +170,14 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
         transferability=transferability,
         surfaced=surfaced,
         surface_reason=surface_reason,
+        panel_score=panel_score,
+        panel_breakdown=panel_breakdown,
     )
 
 
 def _maybe_surface(*, workspace_id: str, idea_id: str, final: str,
                     novelty: float, quality: float, transferability: float,
+                    panel_score: float,
                     config: CompanionConfig) -> tuple[bool, str]:
     """Build a transient IdeaRecord and run the surfacing pipeline."""
     rec = _idea_store.IdeaRecord(
@@ -170,6 +188,7 @@ def _maybe_surface(*, workspace_id: str, idea_id: str, final: str,
         novelty=novelty,
         quality=quality,
         transferability=transferability,
+        panel_score=panel_score,
     )
     try:
         decision = _surfacing.should_surface(rec, config)
@@ -190,6 +209,7 @@ def _persist_lineage(
     *, workspace_id: str, cycle_id: str,
     phase_1, phase_2, final: str,
     novelty: float, quality: float, transferability: float,
+    panel_score: float = 0.0,
 ) -> tuple[list[str], list[str], str | None]:
     """Persist fragments → developed → converged with parent edges.
 
@@ -239,6 +259,7 @@ def _persist_lineage(
         state=_idea_store.IdeaState.CONVERGED,
         lineage_parents=list(developed_ids) or list(fragment_ids),
         novelty=novelty, quality=quality, transferability=transferability,
+        panel_score=panel_score,
     )
     try:
         converged_id = _idea_store.persist(converged)

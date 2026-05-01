@@ -3,6 +3,7 @@
 A converged idea is eligible for surfacing when:
   - novelty ≥ config.novelty_threshold
   - quality ≥ config.surface_threshold
+  - panel_score ≥ config.panel_threshold (Phase 7 critic panel)
   - the workspace hasn't surfaced anything in the last SURFACE_COOLDOWN_HOURS
     (prevents flooding the user with too many cards)
 
@@ -37,18 +38,22 @@ SURFACE_COOLDOWN_S = SURFACE_COOLDOWN_HOURS * 3600
 class SurfaceDecision:
     """Outcome of a surfacing check."""
     eligible: bool
-    reason: str  # "ok" | "below_novelty" | "below_quality" | "cooldown" | "no_text"
+    # "ok" | "below_novelty" | "below_quality" | "below_panel" |
+    # "cooldown" | "no_text"
+    reason: str
 
 
 def should_surface(idea: IdeaRecord, config: CompanionConfig, *,
                    now: float | None = None) -> SurfaceDecision:
-    """Threshold + cooldown check. Pure — does not write any state."""
+    """Threshold + panel + cooldown check. Pure — does not write any state."""
     if not (idea.text or "").strip():
         return SurfaceDecision(False, "no_text")
     if idea.novelty < config.novelty_threshold:
         return SurfaceDecision(False, "below_novelty")
     if idea.quality < config.surface_threshold:
         return SurfaceDecision(False, "below_quality")
+    if idea.panel_score < config.panel_threshold:
+        return SurfaceDecision(False, "below_panel")
     if _recently_surfaced(idea.workspace_id, now=now):
         return SurfaceDecision(False, "cooldown")
     return SurfaceDecision(True, "ok")
@@ -74,6 +79,7 @@ def surface(idea: IdeaRecord, config: CompanionConfig) -> bool:
         "novelty": idea.novelty,
         "quality": idea.quality,
         "transferability": idea.transferability,
+        "panel_score": idea.panel_score,
         "signal_sent": sent,
     }
     if error:
@@ -96,7 +102,8 @@ def compose_card(idea: IdeaRecord, config: CompanionConfig) -> str:
         head = head[:1497] + "..."
     return (
         f"[Companion · {seed[:60]}]\n"
-        f"New idea (novelty {idea.novelty:.2f}, quality {idea.quality:.2f}):\n\n"
+        f"New idea (novelty {idea.novelty:.2f}, quality {idea.quality:.2f}, "
+        f"panel {idea.panel_score:.2f}):\n\n"
         f"{head}\n\n"
         f"Reply Y to keep, N to drop, or 'more <comment>' to refine."
     )
