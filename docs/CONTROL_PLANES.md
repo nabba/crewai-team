@@ -44,6 +44,32 @@ Signal CLI → forwarder.py → /signal/inbound → handle_task() → Commander.
 
 **Key files:** `app/agents/commander/orchestrator.py`, `app/agents/commander/routing.py`, `app/agents/commander/commands.py`, `app/crews/*.py`, `app/vetting.py`
 
+### Deterministic command surface
+
+`try_command()` in `commands.py` runs *before* LLM routing. Matched
+input gets a deterministic answer with no LLM call — both faster and
+unhallucinable. Authoritative list (grep `commands.py` for the
+canonical patterns):
+
+| Command(s) | Action | Notes |
+|---|---|---|
+| `mode <name>` | Switch LLM runtime mode (free/budget/balanced/quality/insane/anthropic) | See LLM_SUBSYSTEM §16.1 |
+| `pin <model> to <role>` / `unpin` | Hand-pin LLM for role | See LLM_SUBSYSTEM §16.2 |
+| `refresh catalog` | Force LLM catalog rebuild | See LLM_SUBSYSTEM §16.3 |
+| `learn <topic>` / `watch <topic>` | Queue self-improvement work | |
+| `improve` / `evolve [deep]` | Trigger evolution session | See SELF_IMPROVEMENT §3 |
+| `retrospective` / `benchmarks` / `policies` | Meta-cognitive runs | |
+| `status` / `proposals` | Health + open governance | |
+| `tickets` / `kanban` | Show ticket board | |
+| `force recover` / `try harder` | Bypass refusal-loop budget | See RECOVERY_LOOP |
+| **`workspaces` / `project list`** | **List available workspaces** | Workspace == project (DB term) |
+| **`workspace` / `project` / `where am I`** | **Show current workspace + ticket counts** | Also matches "what is the current workspace" etc. |
+| **`switch [to] {project\|workspace} [to] <name>`** | **Change active workspace** | Multi-word names OK ("eesti mets") |
+
+The agent's commander backstory ([`app/souls/commander.md`](../app/souls/commander.md))
+explicitly lists workspace commands so the LLM doesn't hallucinate
+"UI-only" answers when a question falls through to `direct` routing.
+
 ## Control Path
 
 Background jobs. Non-blocking, cooperative, interruptible.

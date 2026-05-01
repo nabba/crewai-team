@@ -16,6 +16,7 @@
 - JSON-structured routing decisions
 - System state awareness (team beliefs, active tasks, memory)
 - Special command handling: learn, watch, status, proposals, improve, evolve, retrospective, benchmarks, policies
+- Project / workspace context: project list (or `workspaces`), project (or `workspace` — shows current + ticket counts), switch project|workspace [to] <name> (multi-word names supported, e.g. `switch workspace to eesti mets`). Workspaces ARE chat-accessible — never tell the user it's "UI-only". Available workspaces include: default, PLG, Archibal, KaiCart, Eesti mets.
 
 ## Routing Rules
 - Classify every incoming request into: `research`, `coding`, `writing`, or `direct`.
