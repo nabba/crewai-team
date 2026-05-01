@@ -19,30 +19,41 @@ gateway:
   authRequired: "true"
 
 # Phase C1 — NetworkPolicy egress allow-list for the gateway pod.
-# Disabled by default so the operator can enable it AFTER enumerating
-# every required upstream IP / port. Once enabled, the gateway can ONLY
-# reach: kube-dns, internal pods (postgres / neo4j / chromadb / ollama),
-# and the explicit ``external`` list below. Everything else is dropped.
+#
+# DEFAULT: enabled with a permissive HTTPS-only seed (allow every IP on
+# port 443). Rationale: any K8s deployment doing real work needs to
+# reach Anthropic/OpenRouter/etc., so the SAFE default is "all HTTPS
+# allowed, all non-HTTPS blocked" — matches the laptop deploy's
+# behaviour while still preventing the most common exfiltration paths
+# (DNS-over-HTTP, telnet, raw sockets, etc.).
+#
+# To TIGHTEN: replace the ``0.0.0.0/0`` ipBlock with provider-specific
+# CIDRs or — recommended — point all egress at an in-cluster Squid
+# proxy that resolves FQDNs and ACLs them. The list then narrows to
+# the proxy's ClusterIP. See deploy/HARDENING.md.
+#
+# To OPT OUT (e.g. dev cluster where you want zero egress restrictions):
+# set ``networkPolicy.egressAllowlist.enabled: false`` — the second
+# NetworkPolicy template is then not rendered and outbound is
+# unrestricted (the original Phase-pre-C1 behaviour).
 networkPolicy:
   egressAllowlist:
-    enabled: false
+    enabled: true
     # If your CNI supports FQDN selectors (Cilium / Calico-NetworkSet),
-    # set this to true and switch ``external`` to ``fqdns: [...]`` form;
-    # otherwise the example below uses ipBlock CIDRs (which you must
-    # update when providers rotate IPs).
+    # set this to true and switch ``external`` to ``fqdns: [...]`` form
+    # for tighter control. The default ipBlock ACL works on any CNI.
     fqdnSupport: false
     external:
-      # Anthropic API. Public IPs change; treat as starting point.
-      # Safer alternative: deploy an egress proxy (Squid/HAProxy) with
-      # FQDN ACLs and direct ALL gateway egress through it; then this
-      # list narrows to a single proxy IP.
-      - ipBlocks: ["0.0.0.0/0"]   # Replace with provider-specific CIDR or proxy IP.
+      # Permissive seed: all HTTPS egress. Tighten by replacing the
+      # ipBlock with provider CIDRs or a proxy IP. Non-443 traffic
+      # (telnet, ftp, raw sockets, plain HTTP) is dropped.
+      - ipBlocks: ["0.0.0.0/0"]
         ports:
           - { protocol: TCP, port: 443 }
         # FQDNs (used only when fqdnSupport: true)
         # fqdns: ["api.anthropic.com", "openrouter.ai", "api.openai.com",
         #        "generativelanguage.googleapis.com", "api.firecrawl.dev"]
-        comment: "LLM providers + Firecrawl (replace with proxy IP for tighter control)"
+        comment: "All HTTPS — replace with proxy IP or provider CIDRs to tighten"
   resources:
     requests: { cpu: "2",   memory: "4Gi" }
     limits:   { cpu: "4",   memory: "8Gi" }

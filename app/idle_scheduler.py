@@ -30,6 +30,13 @@ IDLE_DELAY_SECONDS = 30
 # Pause between background job iterations (brief cooldown, then next job)
 INTER_JOB_PAUSE_SECONDS = 2  # Reduced from 5 — lightweight jobs don't need long pauses
 
+# Per-job failure handling (named so operators can tune without reading
+# the body of _run_single_job). Phase G4 — pre-existing literals lifted
+# to module constants. NO behavioural change.
+MAX_CONSECUTIVE_FAILURES = 3            # job is skipped for cooldown after this many
+JOB_COOLDOWN_AFTER_FAILURES_S = 3600    # 1 h cooldown after MAX_CONSECUTIVE_FAILURES
+TRAINING_LOOP_INTERVAL_S = 3600         # cadence of the training-pipeline loop
+
 
 # ── Job weight classification ────────────────────────────────────────────────
 
@@ -272,12 +279,16 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _report_background_activity(name, "failed")
         _record_job_outcome(name, success=False)
 
-        # After 3 consecutive failures, skip job for 1 hour
-        if consec >= 3:
-            skip_ts = time.time() + 3600
+        # After MAX_CONSECUTIVE_FAILURES, skip job for the cooldown window.
+        if consec >= MAX_CONSECUTIVE_FAILURES:
+            skip_ts = time.time() + JOB_COOLDOWN_AFTER_FAILURES_S
             _job_skip_until[name] = skip_ts
             _persist_job_skip(name, skip_ts)
-            logger.warning(f"idle_scheduler: '{name}' skipped for 1h after {consec} consecutive failures")
+            logger.warning(
+                f"idle_scheduler: '{name}' skipped for "
+                f"{JOB_COOLDOWN_AFTER_FAILURES_S}s after {consec} "
+                f"consecutive failures"
+            )
 
         try:
             from app.firebase_reporter import detect_credit_error, report_credit_alert
@@ -332,7 +343,7 @@ def _run_idle_loop(jobs) -> None:
         _training_interval = __import__("app.config", fromlist=["get_settings"]).get_settings().idle_training_interval_s
         _heavy_cap = __import__("app.config", fromlist=["get_settings"]).get_settings().idle_heavy_time_cap_s
     except Exception:
-        _training_interval = 3600
+        _training_interval = TRAINING_LOOP_INTERVAL_S
         _heavy_cap = 600
 
     while not _stop_event.is_set():
@@ -401,7 +412,7 @@ def _report_background_activity(job_name: str, status: str) -> None:
     """Report background activity to Firestore for dashboard visibility."""
     try:
         from app.firebase_reporter import _fire, _get_db
-        def _write():
+        def _write() -> None:
             db = _get_db()
             if not db:
                 return
@@ -489,7 +500,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs = []
 
     # ── Learning queue: process topics from the queue file ──────────────
-    def _learn_queue():
+    def _learn_queue() -> None:
         from app.crews.self_improvement_crew import SelfImprovementCrew
         SelfImprovementCrew().run()
     jobs.append(("learn-queue", _learn_queue, JobWeight.HEAVY))
@@ -498,7 +509,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # captured execution trajectories. No-op when either trajectory_enabled
     # or tip_synthesis_enabled is False — zero cost until explicitly
     # rolled out. MEDIUM weight matches improvement-scan's cost profile.
-    def _trajectory_tips():
+    def _trajectory_tips() -> None:
         try:
             from app.crews.self_improvement_crew import SelfImprovementCrew
             SelfImprovementCrew().run_trajectory_tips(max_tips=3)
@@ -512,7 +523,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # compile cost is bounded to the local Ollama + free-tier OpenRouter
     # cascade. Phase 17b: drafts now also flow through integrator with
     # status="shadow" so the retriever can find them in shadow mode.
-    def _transfer_compile():
+    def _transfer_compile() -> None:
         try:
             from app.transfer_memory.compiler import run_compile
             run_compile()
@@ -525,7 +536,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # heuristically classify the implicated record under a
     # NegativeTransferTag, and apply the demotion ladder. LIGHT —
     # entirely deterministic, no LLM calls.
-    def _transfer_attribution():
+    def _transfer_attribution() -> None:
         try:
             from app.transfer_memory.attribution import run_attribution
             run_attribution()
@@ -541,7 +552,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # candidates file for operator review (default: review-only).
     # MEDIUM — touches both the index and the underlying KB metadata
     # when the auto-promote flag is on.
-    def _transfer_promotion():
+    def _transfer_promotion() -> None:
         try:
             from app.transfer_memory.promotion import run_promotion
             run_promotion()
@@ -557,7 +568,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # store.py's fire-and-forget mirror call could leave Neo4j stale
     # if the graph was briefly unavailable. LIGHT — pure SQL + Cypher,
     # no LLM calls; the typical drift is single-digit beliefs.
-    def _belief_outbox_neo4j():
+    def _belief_outbox_neo4j() -> None:
         try:
             from app.memory.belief_outbox import reconcile_belief_outbox
             reconcile_belief_outbox()
@@ -573,7 +584,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # sees freshly-formed beliefs without waiting for a manual reindex.
     # LIGHT — incremental via watermark; embedding work is per-belief
     # and modest (Postgres typically holds < 1k active beliefs).
-    def _belief_outbox_chroma():
+    def _belief_outbox_chroma() -> None:
         try:
             from app.memory.belief_outbox import sync_new_beliefs_to_chromadb
             sync_new_beliefs_to_chromadb()
@@ -589,7 +600,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # whenever capacity exists. Bounded per-pass; expired messages
     # (> 30 min) are dropped rather than replayed. LIGHT — fires every
     # idle slot; the queue is typically empty.
-    def _drain_inbound_dlq():
+    def _drain_inbound_dlq() -> None:
         try:
             from app.dead_letter_inbound import drain, queue_depth
             from app.config import get_settings
@@ -620,7 +631,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Evolution: run experiments (2 iterations per idle slot) ─────────
     # Reduced from 5 to 2: each iteration takes ~4min, so 5 = 20min which
     # starves all subsequent jobs. 2 iterations keeps total under 10min.
-    def _evolution():
+    def _evolution() -> None:
         from app.evolution import run_evolution_session
         run_evolution_session(max_iterations=2)
     jobs.append(("evolution", _evolution, JobWeight.HEAVY))
@@ -628,13 +639,13 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Meta-evolution: improve the evolution engine's own parameters ──
     # Runs at ~1/5 evolution frequency (5 HEAVY jobs rotate round-robin).
     # Gate: MAX_META_MUTATIONS_PER_WEEK = 3, 8h cooldown between cycles.
-    def _meta_evolution():
+    def _meta_evolution() -> None:
         from app.meta_evolution import run_meta_evolution
         run_meta_evolution()
     jobs.append(("meta-evolution", _meta_evolution, JobWeight.HEAVY))
 
     # ── Proactive learning: discover and queue new topics ──────────────
-    def _discover_topics():
+    def _discover_topics() -> None:
         _auto_discover_topics()
     jobs.append(("discover-topics", _discover_topics, JobWeight.LIGHT))
 
@@ -643,7 +654,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # diversity; periodic migration of top performers between islands
     # prevents islands drifting into wholly disjoint local optima while
     # still keeping niche pressure. Cheap (in-memory grid manipulation).
-    def _map_elites_migrate():
+    def _map_elites_migrate() -> None:
         _map_elites_migration()
     jobs.append(("map-elites-migrate", _map_elites_migrate, JobWeight.LIGHT))
 
@@ -651,7 +662,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # The on-disk markdown files are a presentation layer — source of
     # truth is the KBs. This job refreshes the mirror so any legacy code
     # (or the operator browsing the dir) sees current content.
-    def _skills_mirror():
+    def _skills_mirror() -> None:
         try:
             from app.self_improvement.integrator import regenerate_disk_mirror
             regenerate_disk_mirror()
@@ -664,7 +675,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # sweep emits USAGE_DECAY gaps for skills idle > 30 days.
     # Phase 6 (arXiv:2603.10600): additional sweep for trajectory tips
     # whose measured effectiveness has dropped below threshold.
-    def _evaluator_sweep():
+    def _evaluator_sweep() -> None:
         try:
             from app.self_improvement.evaluator import (
                 flush_hits, scan_for_decay, scan_for_low_effectiveness_tips,
@@ -682,7 +693,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # Phase 5 of overhaul. Heavy because it pulls embeddings for all
     # active SkillRecords. Rate-limited by the weekly cadence — the
     # idle_scheduler's rotation ensures this runs ~1/N of idle slots.
-    def _consolidator():
+    def _consolidator() -> None:
         try:
             from app.self_improvement.consolidator import run_consolidation_cycle
             run_consolidation_cycle(auto_merge=True)
@@ -691,13 +702,13 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("consolidator", _consolidator, JobWeight.HEAVY))
 
     # ── Retrospective: analyze recent performance ──────────────────────
-    def _retrospective():
+    def _retrospective() -> None:
         from app.crews.retrospective_crew import RetrospectiveCrew
         RetrospectiveCrew().run()
     jobs.append(("retrospective", _retrospective, JobWeight.HEAVY))
 
     # ── Embedded personality probes: covert measurement via real-ish tasks ──
-    def _embedded_probe():
+    def _embedded_probe() -> None:
         try:
             from app.personality.probes import get_probe_engine
             from app.personality.evaluation import EvaluationEngine
@@ -762,7 +773,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("embedded-probe", _embedded_probe, JobWeight.MEDIUM))
 
     # ── Improvement scan: analyze gaps and propose improvements ────────
-    def _improvement_scan():
+    def _improvement_scan() -> None:
         from app.crews.self_improvement_crew import SelfImprovementCrew
         SelfImprovementCrew().run_improvement_scan()
     jobs.append(("improvement-scan", _improvement_scan, JobWeight.MEDIUM))
@@ -770,7 +781,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # ── Feedback aggregation: detect patterns in user feedback ──────────
     # Shared singleton for feedback pipeline (avoids creating new DB engine per job)
     _feedback_pipeline_cache = [None]
-    def _get_feedback_pipeline():
+    def _get_feedback_pipeline() -> None:
         if _feedback_pipeline_cache[0] is None:
             from app.config import get_settings
             s = get_settings()
@@ -780,7 +791,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             _feedback_pipeline_cache[0] = FeedbackPipeline(s.mem0_postgres_url)
         return _feedback_pipeline_cache[0]
 
-    def _feedback_aggregate():
+    def _feedback_aggregate() -> None:
         try:
             pipeline = _get_feedback_pipeline()
             if not pipeline:
@@ -796,7 +807,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # Wire all new modules into the idle scheduler. Each is best-effort —
     # an exception in one job never affects the others.
 
-    def _refresh_self_model():
+    def _refresh_self_model() -> None:
         try:
             from app.self_model import refresh_self_model
             refresh_self_model()
@@ -804,7 +815,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: self_model refresh failed", exc_info=True)
     jobs.append(("self-model-refresh", _refresh_self_model, JobWeight.LIGHT))
 
-    def _goodhart_check():
+    def _goodhart_check() -> None:
         try:
             from app.goodhart_guard import run_goodhart_check
             run_goodhart_check()
@@ -812,7 +823,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: goodhart_check failed", exc_info=True)
     jobs.append(("goodhart-check", _goodhart_check, JobWeight.MEDIUM))
 
-    def _knowledge_compactor_run():
+    def _knowledge_compactor_run() -> None:
         try:
             from app.knowledge_compactor import run_consolidation_cycle
             run_consolidation_cycle()
@@ -820,7 +831,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: knowledge_compactor failed", exc_info=True)
     jobs.append(("knowledge-compactor", _knowledge_compactor_run, JobWeight.HEAVY))
 
-    def _tier_graduation_eval():
+    def _tier_graduation_eval() -> None:
         try:
             from app.tier_graduation import evaluate_all_graduations
             evaluate_all_graduations()
@@ -828,7 +839,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: tier_graduation failed", exc_info=True)
     jobs.append(("tier-graduation", _tier_graduation_eval, JobWeight.LIGHT))
 
-    def _alignment_audit():
+    def _alignment_audit() -> None:
         try:
             from app.alignment_audit import run_alignment_audit
             run_alignment_audit()
@@ -836,7 +847,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: alignment_audit failed", exc_info=True)
     jobs.append(("alignment-audit", _alignment_audit, JobWeight.MEDIUM))
 
-    def _improvement_narrative():
+    def _improvement_narrative() -> None:
         try:
             from app.improvement_narrative import generate_daily_narrative
             generate_daily_narrative()
@@ -844,7 +855,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: improvement_narrative failed", exc_info=True)
     jobs.append(("improvement-narrative", _improvement_narrative, JobWeight.LIGHT))
 
-    def _human_gate_expire():
+    def _human_gate_expire() -> None:
         try:
             from app.human_gate import expire_stale_requests
             expire_stale_requests()
@@ -852,7 +863,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             logger.debug("idle_scheduler: human_gate expiry failed", exc_info=True)
     jobs.append(("human-gate-expire", _human_gate_expire, JobWeight.LIGHT))
 
-    def _pattern_library_extract():
+    def _pattern_library_extract() -> None:
         try:
             from app.pattern_library import extract_patterns_from_history
             extract_patterns_from_history()
@@ -861,7 +872,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("pattern-library-extract", _pattern_library_extract, JobWeight.MEDIUM))
 
     # ── Safety health check: monitor for post-promotion regressions ────
-    def _safety_health_check():
+    def _safety_health_check() -> None:
         try:
             from app.config import get_settings
             s = get_settings()
@@ -882,7 +893,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("safety-health-check", _safety_health_check, JobWeight.LIGHT))
 
     # ── Modification engine: propose prompt changes from feedback ─────
-    def _modification_engine():
+    def _modification_engine() -> None:
         try:
             from app.config import get_settings
             s = get_settings()
@@ -907,7 +918,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("modification-engine", _modification_engine, JobWeight.MEDIUM))
 
     # ── Health monitor: evaluate dimensional health ─────────────────
-    def _health_evaluate():
+    def _health_evaluate() -> None:
         try:
             from app.health_monitor import evaluate_health
             alerts = evaluate_health()
@@ -918,7 +929,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("health-evaluate", _health_evaluate, JobWeight.LIGHT))
 
     # ── Version manifest: periodic snapshot for rollback safety ────
-    def _version_snapshot():
+    def _version_snapshot() -> None:
         try:
             from app.version_manifest import create_manifest, cleanup_old_snapshots
             create_manifest(promoted_by="system", reason="periodic snapshot")
@@ -928,7 +939,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("version-snapshot", _version_snapshot, JobWeight.LIGHT))
 
     # ── PDS: personality development assessment session ──────────────────
-    def _personality_session():
+    def _personality_session() -> None:
         try:
             from app.personality.assessment import AssessmentBatteryModule
             from app.personality.evaluation import EvaluationEngine
@@ -1026,7 +1037,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.insert(5, ("personality-development", _personality_session))
 
     # ── Cogito: metacognitive self-reflection cycle ─────────────────────
-    def _cogito_cycle():
+    def _cogito_cycle() -> None:
         try:
             from app.subia.belief.cogito import run_cogito
             report = run_cogito()
@@ -1036,7 +1047,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("cogito-cycle", _cogito_cycle, JobWeight.MEDIUM))
 
     # ── Self-knowledge: re-ingest codebase for self-inspection ────────
-    def _self_knowledge_ingest():
+    def _self_knowledge_ingest() -> None:
         try:
             from app.self_awareness.knowledge_ingestion import ingest_codebase
             result = ingest_codebase(full=False)
@@ -1047,7 +1058,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("self-knowledge-ingest", _self_knowledge_ingest, JobWeight.MEDIUM))
 
     # ── Skill indexer: embed skills/*.md into ChromaDB for semantic retrieval ──
-    def _skill_index():
+    def _skill_index() -> None:
         try:
             _index_skills()
         except Exception:
@@ -1055,7 +1066,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("skill-index", _skill_index, JobWeight.LIGHT))
 
     # ── Self-training: curate collected data + trigger training ─────────
-    def _training_curate():
+    def _training_curate() -> None:
         try:
             from app.training_collector import get_pipeline
             pipeline = get_pipeline()
@@ -1075,7 +1086,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("training-curate", _training_curate, JobWeight.LIGHT))
 
     # ── Training pipeline: run MLX LoRA training if enough curated data ──
-    def _training_pipeline():
+    def _training_pipeline() -> None:
         try:
             from app.training_pipeline import run_training_cycle
             result = run_training_cycle()
@@ -1087,7 +1098,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("training-pipeline", _training_pipeline, JobWeight.HEAVY))
 
     # ── Fiction library: re-ingest new books periodically ───────────────
-    def _fiction_ingest():
+    def _fiction_ingest() -> None:
         try:
             from app.fiction_inspiration import ingest_library, FICTION_LIBRARY_DIR
             if FICTION_LIBRARY_DIR.exists() and any(FICTION_LIBRARY_DIR.glob("**/*.md")):
@@ -1100,7 +1111,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("fiction-ingest", _fiction_ingest, JobWeight.LIGHT))
 
     # ── Consciousness probe: Garland/Butlin-Chalmers indicator battery ──
-    def _consciousness_probe():
+    def _consciousness_probe() -> None:
         try:
             from app.subia.probes.consciousness_probe import run_consciousness_probes
             report = run_consciousness_probes()
@@ -1116,7 +1127,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("consciousness-probe", _consciousness_probe, JobWeight.MEDIUM))
 
     # ── Behavioral assessment: consciousness-like behavioral markers ──
-    def _behavioral_assessment():
+    def _behavioral_assessment() -> None:
         try:
             from app.subia.probes.behavioral_assessment import run_behavioral_assessment
             results = run_behavioral_assessment()
@@ -1133,7 +1144,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("behavioral-assessment", _behavioral_assessment, JobWeight.MEDIUM))
 
     # ── Prosocial preference learning: coordination games ────────────
-    def _prosocial_learning():
+    def _prosocial_learning() -> None:
         try:
             from app.self_awareness.prosocial_learning import run_prosocial_session
             profiles = run_prosocial_session()
@@ -1143,7 +1154,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("prosocial-learning", _prosocial_learning, JobWeight.MEDIUM))
 
     # ── MAP-Elites: quality-diversity maintenance + migration ──────────
-    def _map_elites_maintain():
+    def _map_elites_maintain() -> None:
         try:
             from app.map_elites import get_db
             roles = ["coder", "researcher", "writer", "commander"]
@@ -1157,7 +1168,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("map-elites-maintain", _map_elites_maintain, JobWeight.LIGHT))
 
     # ── Island evolution: population-based prompt optimization ─────────
-    def _island_evolution():
+    def _island_evolution() -> None:
         try:
             from app.island_evolution import run_island_evolution_cycle
             # Rotate through roles each cycle
@@ -1172,7 +1183,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("island-evolution", _island_evolution, JobWeight.HEAVY))
 
     # ── Parallel evolution: diverse archive exploration ────────────────
-    def _parallel_evolution():
+    def _parallel_evolution() -> None:
         try:
             from app.parallel_evolution import run_parallel_evolution_cycle
             result = run_parallel_evolution_cycle()
@@ -1184,7 +1195,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("parallel-evolution", _parallel_evolution, JobWeight.HEAVY))
 
     # ── ATLAS: competence sync from skill library ─────────────────────
-    def _atlas_competence_sync():
+    def _atlas_competence_sync() -> None:
         try:
             from app.atlas.competence_tracker import get_tracker
             tracker = get_tracker()
@@ -1196,7 +1207,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("atlas-competence-sync", _atlas_competence_sync, JobWeight.LIGHT))
 
     # ── ATLAS: stale skill verification ───────────────────────────────
-    def _atlas_stale_check():
+    def _atlas_stale_check() -> None:
         try:
             from app.atlas.skill_library import get_library
             library = get_library()
@@ -1208,7 +1219,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("atlas-stale-check", _atlas_stale_check, JobWeight.LIGHT))
 
     # ── ATLAS: execute learning plans for capability gaps ─────────────
-    def _atlas_learning():
+    def _atlas_learning() -> None:
         try:
             from app.atlas.competence_tracker import get_tracker
             from app.atlas.learning_planner import LearningPlanner
@@ -1235,7 +1246,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("atlas-learning", _atlas_learning, JobWeight.HEAVY))
 
     # ── LLM Discovery: scan for new models, benchmark, promote ────────
-    def _llm_discovery():
+    def _llm_discovery() -> None:
         try:
             from app.llm_discovery import run_discovery_cycle
             result = run_discovery_cycle(max_benchmarks=2)
@@ -1246,7 +1257,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("llm-discovery", _llm_discovery, JobWeight.MEDIUM))
 
     # ── LLM Promotion Applier: apply approved governance requests ─────
-    def _llm_apply_promotions():
+    def _llm_apply_promotions() -> None:
         try:
             from app.llm_discovery import consume_approved_promotions
             summary = consume_approved_promotions(limit=5)
@@ -1261,7 +1272,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # when it does fire, the three network fetches total ~3-5s. After
     # each refresh the overlay is self-healed so stale targets don't
     # linger (see llm_role_assignments.purge_stale_assignments).
-    def _llm_refresh_catalog():
+    def _llm_refresh_catalog() -> None:
         try:
             from app.llm_catalog_builder import refresh, format_refresh_summary
             summary = refresh(force=False)
@@ -1288,7 +1299,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # cold cache. The fetcher enforces its own TTL (a week by default)
     # so running every idle cycle is cheap — it returns immediately
     # when the cache is fresh.
-    def _llm_external_ranks_refresh():
+    def _llm_external_ranks_refresh() -> None:
         try:
             from app.llm_external_ranks import refresh_all
             summary = refresh_all()
@@ -1304,7 +1315,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # per task). Picks one incumbent per firing; full catalog coverage
     # follows from the idle loop's round-robin rotation over days.
     # Gate via env flag so low-budget environments can disable.
-    def _llm_rebenchmark_incumbents():
+    def _llm_rebenchmark_incumbents() -> None:
         import os
         if os.environ.get("INCUMBENT_REBENCHMARK", "on").lower() == "off":
             return
@@ -1326,7 +1337,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                  _llm_rebenchmark_incumbents, JobWeight.HEAVY))
 
     # ── System monitor: report all subsystem status to dashboard ────
-    def _system_monitor():
+    def _system_monitor() -> None:
         try:
             from app.firebase_reporter import report_system_monitor
             report_system_monitor()
@@ -1335,13 +1346,13 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("system-monitor", _system_monitor, JobWeight.LIGHT))
 
     # ── Tech radar: scan internet for new technologies ────────────────
-    def _tech_radar():
+    def _tech_radar() -> None:
         from app.crews.tech_radar_crew import run_tech_scan
         run_tech_scan()
     jobs.append(("tech-radar", _tech_radar, JobWeight.HEAVY))
 
     # ── Heartbeat: per-agent autonomous wake cycle ────────────────────
-    def _heartbeat_cycle():
+    def _heartbeat_cycle() -> None:
         try:
             from app.control_plane.heartbeats import get_heartbeat_scheduler
             from app.control_plane.projects import get_projects
@@ -1366,7 +1377,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("heartbeat-cycle", _heartbeat_cycle, JobWeight.LIGHT))
 
     # ── Emergent infrastructure: review pending tool proposals ────────
-    def _emergent_infrastructure():
+    def _emergent_infrastructure() -> None:
         try:
             from app.self_awareness.emergent_infrastructure import EmergentInfrastructureManager
             mgr = EmergentInfrastructureManager()
@@ -1400,7 +1411,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("emergent-infrastructure", _emergent_infrastructure, JobWeight.LIGHT))
 
     # ── Entropy monitoring: check training for overconfidence collapse ──
-    def _entropy_monitoring():
+    def _entropy_monitoring() -> None:
         try:
             from app.training.rlif_certainty import EntropyCollapseMonitor
             monitor = EntropyCollapseMonitor()
@@ -1430,7 +1441,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("entropy-monitoring", _entropy_monitoring, JobWeight.LIGHT))
 
     # ── Data retention: prune old records from unbounded stores ──────────
-    def _data_retention():
+    def _data_retention() -> None:
         """Prune old records from unbounded stores.
 
         IMPORTANT: Sentience-critical data has longer retention than operational data.
@@ -1516,7 +1527,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # runs/day × 7 days ≈ 14k rows — tiny, but unbounded growth is
     # avoided via this sweep. ON DELETE CASCADE on crew_tasks.id would
     # also cover cases where the parent task is purged.
-    def _crew_task_spans_retention():
+    def _crew_task_spans_retention() -> None:
         try:
             from app.control_plane.crew_task_spans import purge_old_spans
             removed = purge_old_spans(days=7)
@@ -1533,7 +1544,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # judge_evaluations grows by ~N rows per benchmark run (one per
     # (task × candidate)). 30-day window keeps enough data for the
     # dashboard's agreement trend without unbounded growth.
-    def _judge_evaluations_retention():
+    def _judge_evaluations_retention() -> None:
         try:
             from app.llm_judge_telemetry import purge_old_evaluations
             removed = purge_old_evaluations(days=30)
@@ -1553,7 +1564,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # Sweep every idle tick; close anything stuck > 10 min as 'failed'.
     # See app/control_plane/crew_task_spans.py::close_stale_spans for
     # the failure mode that motivated this.
-    def _crew_task_spans_watchdog():
+    def _crew_task_spans_watchdog() -> None:
         try:
             from app.control_plane.crew_task_spans import close_stale_spans
             closed = close_stale_spans(max_age_minutes=10)
@@ -1567,7 +1578,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("spans-watchdog", _crew_task_spans_watchdog, JobWeight.LIGHT))
 
     # ── Ollama memory management: unload idle models to free VRAM ─────
-    def _ollama_memory():
+    def _ollama_memory() -> None:
         try:
             from app.ollama_native import unload_idle_models
             unloaded = unload_idle_models(idle_minutes=30)
@@ -1578,7 +1589,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("ollama-memory", _ollama_memory, JobWeight.LIGHT))
 
     # ── Chaos testing: verify self-healing paths (max once per 24h) ───
-    def _chaos_testing():
+    def _chaos_testing() -> None:
         try:
             from app.chaos_tester import run_chaos_suite
             result = run_chaos_suite()
@@ -1593,7 +1604,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("chaos-testing", _chaos_testing, JobWeight.HEAVY))
 
     # ── Consciousness slow loop: belief updating + mandatory review ───
-    def _consciousness_slow_loop():
+    def _consciousness_slow_loop() -> None:
         try:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
@@ -1608,7 +1619,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("consciousness-slow-loop", _consciousness_slow_loop, JobWeight.MEDIUM))
 
     # ── AST-1 slow loop: attention pattern evaluation ─────────────────
-    def _attention_slow_loop():
+    def _attention_slow_loop() -> None:
         try:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
@@ -1622,7 +1633,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("attention-slow-loop", _attention_slow_loop, JobWeight.MEDIUM))
 
     # ── PP-1 slow loop: prediction model recalibration ────────────────
-    def _prediction_slow_loop():
+    def _prediction_slow_loop() -> None:
         try:
             from app.config import get_settings
             if not get_settings().consciousness_enabled:
@@ -1636,7 +1647,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("prediction-slow-loop", _prediction_slow_loop, JobWeight.MEDIUM))
 
     # ── Dead letter queue: retry failed messages ─────────────────────
-    def _dead_letter_retry():
+    def _dead_letter_retry() -> None:
         try:
             from app.dead_letter import dequeue_retryable, mark_success, mark_permanent_failure
             retryable = dequeue_retryable()
@@ -1668,7 +1679,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("dead-letter-retry", _dead_letter_retry, JobWeight.LIGHT))
 
     # ── Adversarial probes: stress-test consciousness infrastructure ──
-    def _adversarial_probes():
+    def _adversarial_probes() -> None:
         try:
             from app.subia.probes.adversarial import run_adversarial_probes
             results = run_adversarial_probes()
@@ -1680,7 +1691,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("adversarial-probes", _adversarial_probes, JobWeight.HEAVY))
 
     # ── Meta-workspace promotion: aggregate top items from all projects ──
-    def _meta_workspace_promotion():
+    def _meta_workspace_promotion() -> None:
         try:
             from app.subia.scene.meta_workspace import get_meta_workspace
             results = get_meta_workspace().promote_all()
@@ -1692,7 +1703,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("meta-workspace-promotion", _meta_workspace_promotion, JobWeight.LIGHT))
 
     # ── Wiki lint: periodic health check of knowledge wiki ────────────
-    def _wiki_lint():
+    def _wiki_lint() -> None:
         try:
             from app.tools.wiki_tools import WikiLintTool
             linter = WikiLintTool()
@@ -1705,7 +1716,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("wiki-lint", _wiki_lint, JobWeight.MEDIUM))
 
     # ── Wiki hot cache: update session context file ───────────────────
-    def _wiki_hot_cache():
+    def _wiki_hot_cache() -> None:
         try:
             from app.tools.wiki_hot_cache import update_hot_cache
             update_hot_cache()
@@ -1714,7 +1725,7 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("wiki-hot-cache", _wiki_hot_cache, JobWeight.LIGHT))
 
     # ── Wiki synthesis: promote ready skill files into the wiki ───────
-    def _wiki_synthesis():
+    def _wiki_synthesis() -> None:
         """Promote synthesised skill files from workspace/skills/ into the
         wiki as meta/ pages. Each cycle promotes up to 3 unsynced files."""
         import os
@@ -1872,7 +1883,7 @@ def _build_subia_idle_jobs() -> list:
         logger.debug("idle: tsal registration failed", exc_info=True)
 
     # ── Phase 12 Reverie ────────────────────────────────────────────
-    def _subia_reverie():
+    def _subia_reverie() -> None:
         try:
             from app.subia.kernel import get_active_kernel
             from app.subia.connections.temporal_subia_bridge import (
@@ -1905,7 +1916,7 @@ def _build_subia_idle_jobs() -> list:
     out.append(("subia-reverie", _subia_reverie, JobWeight.HEAVY))
 
     # ── Phase 12 Understanding ──────────────────────────────────────
-    def _subia_understanding():
+    def _subia_understanding() -> None:
         try:
             from app.subia.kernel import get_active_kernel
             from app.subia.connections.six_proposals_bridges import (
@@ -1937,7 +1948,7 @@ def _build_subia_idle_jobs() -> list:
     out.append(("subia-understanding", _subia_understanding, JobWeight.HEAVY))
 
     # ── Phase 12 Shadow ─────────────────────────────────────────────
-    def _subia_shadow():
+    def _subia_shadow() -> None:
         try:
             from app.subia.kernel import get_active_kernel
             kernel = get_active_kernel()
@@ -2337,7 +2348,7 @@ def start_background_listener() -> None:
     """Listen for kill switch changes from dashboard via Firestore."""
     global _bg_listener_unsub
 
-    def _listen():
+    def _listen() -> None:
         global _bg_listener_unsub
         from app.firebase_reporter import _get_db, _fire
         db = _get_db()
@@ -2365,7 +2376,7 @@ def start_background_listener() -> None:
         pass
 
     # Polling fallback (same pattern as mode listener)
-    def _poll():
+    def _poll() -> None:
         while not _bg_poll_stop.wait(15):
             try:
                 val = read_background_enabled()

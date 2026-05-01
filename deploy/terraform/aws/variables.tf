@@ -111,3 +111,35 @@ variable "rds_multi_az" {
   type        = bool
   default     = null
 }
+
+# ── External Secrets Operator (Phase C2 opt-in) ──────────────────────
+variable "use_external_secrets" {
+  description = <<-EOT
+    Use External Secrets Operator (ESO) to sync the gateway env Secret
+    from AWS Secrets Manager into the cluster, instead of Terraform
+    writing a ``kubernetes_secret`` directly.
+
+    Default false preserves the v1 behaviour (terraform-owned k8s
+    Secret). When true:
+      * Terraform NO LONGER creates ``kubernetes_secret.botarmy_env``.
+      * Terraform creates a ``ClusterSecretStore`` backed by Secrets
+        Manager and an ``ExternalSecret`` that ESO reconciles into the
+        same Secret name (``botarmy-env``) the chart references.
+      * The ESO controller must already be installed in the cluster
+        (``helm install external-secrets external-secrets/external-secrets``).
+      * IRSA bind: attach a role with secretsmanager:GetSecretValue
+        on this secret to the external-secrets service account. See
+        deploy/HARDENING.md for the IRSA HCL.
+
+    Rotation becomes: update Secrets Manager → ESO syncs within
+    ``external_secret_refresh_interval``. No ``terraform apply``.
+  EOT
+  type    = bool
+  default = false
+}
+
+variable "external_secret_refresh_interval" {
+  description = "How often ESO re-syncs from Secrets Manager. Ignored when use_external_secrets=false."
+  type        = string
+  default     = "5m"
+}

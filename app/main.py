@@ -152,7 +152,7 @@ MAX_MESSAGE_LENGTH = 4000  # Prevent abuse / token bombing
 # ── Extracted to app/response_utils.py ────────────────────────────────────────
 from app.response_utils import write_response_md as _write_response_md_impl, extract_to_mem0 as _extract_to_mem0
 
-def _write_response_md(full_text, user_question):
+def _write_response_md(full_text: str, user_question: str) -> str | None:
     return _write_response_md_impl(full_text, user_question, settings)
 
 
@@ -216,7 +216,7 @@ async def lifespan(app: FastAPI):
     # Fire-and-forget — doesn't block gateway startup.
     # Gate: PRELOAD_OLLAMA=0 disables (default ON when Ollama is up).
     if _ollama_up and os.environ.get("PRELOAD_OLLAMA", "1") == "1":
-        async def _preload_ollama_models():
+        async def _preload_ollama_models() -> None:
             import httpx as _httpx
             models_to_warm = set()
             # Role models + default
@@ -246,7 +246,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_preload_ollama_models())
 
     # ── Stage 2: pgvector HNSW + Neo4j indexes (idempotent) ──────────────
-    async def _apply_startup_migrations():
+    async def _apply_startup_migrations() -> None:
         try:
             from app.memory.startup_migrations import apply_all
             await asyncio.to_thread(apply_all)
@@ -259,7 +259,7 @@ async def lifespan(app: FastAPI):
     # Pay it once at startup, offline, so every user request sees a cached
     # collection handle. Gate: PRELOAD_CHROMA=0 disables.
     if os.environ.get("PRELOAD_CHROMA", "1") == "1":
-        async def _preopen_chroma():
+        async def _preopen_chroma() -> None:
             try:
                 from app.memory.chromadb_manager import _get_col
             except Exception as exc:
@@ -350,7 +350,7 @@ async def lifespan(app: FastAPI):
     )
 
     _hb_counter = [0]
-    def _heartbeat_tick():
+    def _heartbeat_tick() -> None:
         _hb_counter[0] += 1
         _observability_publishers.run_all(tick=_hb_counter[0])
     scheduler.add_job(_heartbeat_tick, "interval", seconds=60, id="heartbeat")
@@ -364,7 +364,7 @@ async def lifespan(app: FastAPI):
     # safety net in handle_task() never fires and the ticket stays
     # in_progress indefinitely).  Runs every 5 min; no-ops when the
     # board is clean.
-    def _run_stuck_ticket_janitor():
+    def _run_stuck_ticket_janitor() -> list:
         try:
             from app.control_plane.tickets import get_tickets
             failed = get_tickets().fail_stuck_in_progress(
@@ -392,7 +392,7 @@ async def lifespan(app: FastAPI):
     # signature, and writes detected anomalies (new patterns, rate spikes,
     # total-rate σ deviations) to control_plane.error_anomalies for the
     # React /cp/ops dashboard. See app/observability/error_monitor.py.
-    def _run_error_monitor_scan():
+    def _run_error_monitor_scan() -> dict | None:
         try:
             from app.observability.error_monitor import scan
             return scan()
@@ -546,13 +546,13 @@ async def lifespan(app: FastAPI):
         monitor = get_monitor()
         healer = SelfHealer()
 
-        async def _on_health_alert(alerts):
+        async def _on_health_alert(alerts: list) -> None:
             try:
                 await healer.handle_alerts(alerts)
             except Exception:
                 logger.debug("Self-healer alert handling failed", exc_info=True)
 
-        def _sync_alert_handler(alerts):
+        def _sync_alert_handler(alerts: list) -> None:
             try:
                 loop = asyncio.get_running_loop()
                 asyncio.ensure_future(_on_health_alert(alerts))
@@ -639,14 +639,14 @@ async def lifespan(app: FastAPI):
     # ── PARALLELIZED STARTUP: run independent I/O tasks concurrently ──
     # These three operations are independent and previously ran sequentially
     # (~2-3s total). Running in parallel saves ~1-2s on cold boot.
-    async def _report_phil():
+    async def _report_phil() -> None:
         try:
             from app.firebase_reporter import report_philosophy_kb
             await asyncio.to_thread(report_philosophy_kb)
         except Exception:
             pass
 
-    async def _gen_chronicle():
+    async def _gen_chronicle() -> None:
         try:
             from app.memory.system_chronicle import generate_and_save
             await asyncio.to_thread(generate_and_save)
@@ -654,7 +654,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning("System chronicle generation failed (non-fatal)", exc_info=True)
 
-    async def _report_monitor():
+    async def _report_monitor() -> None:
         try:
             from app.firebase_reporter import report_system_monitor
             await asyncio.to_thread(report_system_monitor)
@@ -1141,7 +1141,7 @@ async def receive_signal(request: Request):
 # Lazy-initialized feedback pipeline singleton
 _feedback_pipeline_instance = None
 
-def _get_feedback_pipeline():
+def _get_feedback_pipeline() -> "FeedbackPipeline | None":
     """Get or create the feedback pipeline singleton."""
     global _feedback_pipeline_instance
     if _feedback_pipeline_instance is None:
@@ -1155,7 +1155,7 @@ def _get_feedback_pipeline():
     return _feedback_pipeline_instance
 
 
-async def _safe_react(sender: str, msg_timestamp: int):
+async def _safe_react(sender: str, msg_timestamp: int) -> None:
     """Send 👀 reaction in background — never block the handler."""
     try:
         await signal_client.react(sender, "👀", sender, msg_timestamp)

@@ -85,7 +85,15 @@ resource "aws_secretsmanager_secret_version" "botarmy_env" {
 }
 
 # ─── Kubernetes Secret consumed by the chart ──────────────────
+# Two mutually-exclusive paths:
+#   * use_external_secrets=false (default): Terraform writes the Secret
+#     directly. v1 behaviour — simple, no extra deps.
+#   * use_external_secrets=true:  ESO reconciles the Secret from
+#     Secrets Manager. See HARDENING.md for the IRSA bind that lets the
+#     ESO controller READ this secret.
 resource "kubernetes_secret" "botarmy_env" {
+  count = var.use_external_secrets ? 0 : 1
+
   metadata {
     name      = "botarmy-env"
     namespace = kubernetes_namespace.botarmy.metadata[0].name
@@ -95,4 +103,72 @@ resource "kubernetes_secret" "botarmy_env" {
   # references it via `envFrom: { secretRef: { name: botarmy-env } }`.
   data = local.effective_env
   type = "Opaque"
+}
+
+# ─── ESO opt-in path ──────────────────────────────────────────
+# When use_external_secrets=true, replace the direct kubernetes_secret
+# with an ExternalSecret that ESO reconciles from AWS Secrets Manager
+# into the SAME Secret name (``botarmy-env``) the chart envFrom-references.
+# The ClusterSecretStore is namespaceless; one per cluster.
+
+resource "kubernetes_manifest" "aws_secret_store" {
+  count = var.use_external_secrets ? 1 : 0
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1beta1"
+    kind       = "ClusterSecretStore"
+    metadata   = { name = "${local.name}-secretsmanager" }
+    spec = {
+      provider = {
+        aws = {
+          service = "SecretsManager"
+          region  = var.region
+          # IRSA: this service account must be bound (out-of-band — see
+          # deploy/HARDENING.md) to a role with
+          # secretsmanager:GetSecretValue on aws_secretsmanager_secret.botarmy_env.
+          auth = {
+            jwt = {
+              serviceAccountRef = {
+                name      = "external-secrets"
+                namespace = "external-secrets"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "botarmy_env_external_secret" {
+  count = var.use_external_secrets ? 1 : 0
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1beta1"
+    kind       = "ExternalSecret"
+    metadata = {
+      name      = "botarmy-env"
+      namespace = kubernetes_namespace.botarmy.metadata[0].name
+    }
+    spec = {
+      refreshInterval = var.external_secret_refresh_interval
+      secretStoreRef = {
+        kind = "ClusterSecretStore"
+        name = "${local.name}-secretsmanager"
+      }
+      target = {
+        name           = "botarmy-env"
+        creationPolicy = "Owner"
+      }
+      # Materialize the entire JSON-encoded blob as flat key/value pairs.
+      # Matches the shape the chart's `envFrom` consumer expects.
+      dataFrom = [{
+        extract = {
+          key = aws_secretsmanager_secret.botarmy_env.name
+        }
+      }]
+    }
+  }
+
+  depends_on = [kubernetes_manifest.aws_secret_store]
 }

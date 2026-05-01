@@ -89,13 +89,81 @@ resource "google_secret_manager_secret_iam_member" "gateway_read" {
 }
 
 # ─── Kubernetes Secret consumed by the chart ──────────────────
-# Same approach as AWS for v1 — TF writes the values directly. Trade-off:
-# rotating a value means re-applying. ESO can be layered on later.
+# Two mutually-exclusive paths (use_external_secrets variable):
+#   * false (default): Terraform writes the Secret directly. v1 path.
+#   * true:  ESO reconciles the Secret from GCP Secret Manager into
+#            the same name (``botarmy-env``). Workload Identity bind
+#            for the external-secrets GSA documented in HARDENING.md.
 resource "kubernetes_secret" "botarmy_env" {
+  count = var.use_external_secrets ? 0 : 1
+
   metadata {
     name      = "botarmy-env"
     namespace = kubernetes_namespace.botarmy.metadata[0].name
   }
   data = local.effective_env
   type = "Opaque"
+}
+
+# ─── ESO opt-in path ──────────────────────────────────────────
+resource "kubernetes_manifest" "gcp_secret_store" {
+  count = var.use_external_secrets ? 1 : 0
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1beta1"
+    kind       = "ClusterSecretStore"
+    metadata   = { name = "${local.name}-secretmanager" }
+    spec = {
+      provider = {
+        gcpsm = {
+          projectID = var.project_id
+          # Workload Identity bind: this service account must be linked
+          # (out-of-band — see deploy/HARDENING.md) to a GSA that has
+          # roles/secretmanager.secretAccessor on this secret.
+          auth = {
+            workloadIdentity = {
+              clusterLocation  = var.region
+              clusterName      = var.cluster_name
+              clusterProjectID = var.project_id
+              serviceAccountRef = {
+                name      = "external-secrets"
+                namespace = "external-secrets"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "botarmy_env_external_secret" {
+  count = var.use_external_secrets ? 1 : 0
+
+  manifest = {
+    apiVersion = "external-secrets.io/v1beta1"
+    kind       = "ExternalSecret"
+    metadata = {
+      name      = "botarmy-env"
+      namespace = kubernetes_namespace.botarmy.metadata[0].name
+    }
+    spec = {
+      refreshInterval = var.external_secret_refresh_interval
+      secretStoreRef = {
+        kind = "ClusterSecretStore"
+        name = "${local.name}-secretmanager"
+      }
+      target = {
+        name           = "botarmy-env"
+        creationPolicy = "Owner"
+      }
+      dataFrom = [{
+        extract = {
+          key = google_secret_manager_secret.botarmy_env.secret_id
+        }
+      }]
+    }
+  }
+
+  depends_on = [kubernetes_manifest.gcp_secret_store]
 }
