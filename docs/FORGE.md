@@ -436,10 +436,47 @@ are stored in `forge_tools.security_eval` and surfaced in the React UI.
 
 **Pass criteria**: `verdict == "approve"` AND `risk_score < 6.0`.
 
-**On any failure** (judge unavailable, malformed JSON output, network
-error): conservative reject with `risk_score = 10.0` and the rejection
-reason — the tool stays in QUARANTINED. The operator can re-run the audit
-later (when the LLM is available) via the "Re-run audits" button.
+**Provider routing** ([semantic.py:_call_judge](../app/forge/audit/semantic.py)).
+The judge calls Anthropic directly for the prompt-injection-isolation
+property — it doesn't go through CrewAI's agent stack — but it DOES
+share the same credit-aware failover semantics:
+
+1. If `circuit_breaker["anthropic_credits"]` is already OPEN → skip the
+   Anthropic probe entirely, go straight to OpenRouter Claude.
+2. Try Anthropic direct.
+3. On `400 invalid_request_error` whose body contains "credit balance"
+   + "too low" (the canonical credit-exhausted signature): trip the
+   shared `anthropic_credits` breaker (so vetting / recovery / agent
+   stack all see the same authoritative state) AND retry the same
+   prompt through OpenRouter at `anthropic/<model>` on the OpenRouter
+   base URL.
+4. On any other exception (network, 500, rate limit): log + return
+   None. The conservative reject path below fires.
+
+The OpenRouter failover requires `OPENROUTER_API_KEY` to be set; when
+it's missing the function logs a warning explaining the configuration
+gap and the audit fails closed as before.
+
+**On any failure** (both providers unavailable, malformed JSON output,
+network error to BOTH paths): conservative reject with
+`risk_score = 10.0`, the rejection reason in `risk_justification`, and
+the synthetic capability `judge_unavailable_fail_closed` in
+`attack_classes_considered`. The tool stays in QUARANTINED. The
+operator can re-run the audit later (when LLM service is restored)
+via the "Re-run audits" button.
+
+**Diagnostic — judge_unavailable_fail_closed**: when this attack class
+appears in the audit log, check in this order:
+
+  1. `circuit_breaker["anthropic_credits"]` state via the dashboard or
+     `python -c "from app import circuit_breaker; b = circuit_breaker.get_breaker('anthropic_credits'); print(b.state, b.failure_count)"`.
+     OPEN means Anthropic credits are exhausted — top up at
+     <https://console.anthropic.com/settings/billing>.
+  2. `OPENROUTER_API_KEY` is set (otherwise the failover can't run).
+  3. Network connectivity from the gateway container to both
+     `api.anthropic.com` and `openrouter.ai`.
+  4. The audit_results JSONB on the tool will have the underlying
+     exception in `risk_justification`.
 
 ### Phase C — Summary generation ([summary.py](../app/forge/summary.py))
 
@@ -1222,9 +1259,26 @@ need a manual nudge).
 - Cause: semantic audit blocked it (LLM judge said reject, or judge
   unavailable so fail-closed).
 - Action: read `audit_results` for the semantic finding. If the judge
-  was unavailable, click **Re-run audits** when LLM is back. If the
-  judge actually rejected, decide whether to manually override (promote
-  to SHADOW with a reason in the audit log) or kill.
+  actually rejected, decide whether to manually override (promote to
+  SHADOW with a reason in the audit log) or kill. If `attack_classes_considered`
+  contains `judge_unavailable_fail_closed`, follow the diagnostic
+  ladder in [Phase B](#phase-b--semantic-audit) — usually means
+  Anthropic credits are exhausted AND the OpenRouter failover couldn't
+  run (no `OPENROUTER_API_KEY`, or OpenRouter itself failed). Top up
+  Anthropic credits or set the OpenRouter key, then click
+  **Re-run audits**.
+
+**Symptom**: every recent audit shows `judge_unavailable_fail_closed`
+- Cause: the shared `circuit_breaker["anthropic_credits"]` is OPEN
+  (typically because Anthropic credits ran out), and the OpenRouter
+  failover path is unavailable (env not set, OR OpenRouter is also
+  failing).
+- Action: top up Anthropic at
+  <https://console.anthropic.com/settings/billing> — the breaker
+  half-opens after its 3600s cooldown and the next audit probes
+  Anthropic again. To unblock immediately without waiting for cooldown,
+  set `OPENROUTER_API_KEY` and the next audit will route through
+  OpenRouter Claude.
 
 **Symptom**: invocation returns `ok=false, mode=refused`
 - Cause: killswitch refused. Check the explanation field for which layer.
@@ -1453,6 +1507,13 @@ docs/
 - **Risk score** — a 0–10 number from the semantic LLM judge (or the
   conservative-reject default of 10 when the judge is unavailable).
   Drives the verdict: `< 6.0 = approve, ≥ 6.0 = reject`.
+
+- **judge_unavailable_fail_closed** — synthetic capability emitted by
+  the semantic auditor in `attack_classes_considered` when both the
+  Anthropic-direct call and the OpenRouter Claude failover failed.
+  Almost always means Anthropic credits are exhausted AND
+  `OPENROUTER_API_KEY` isn't set (or OpenRouter is also failing).
+  See the diagnostic ladder under [Phase B](#phase-b--semantic-audit).
 
 - **Shadow mode** — the post-audit holding pen. Tools run, telemetry is
   collected, but the result is hidden from the caller (returned in
