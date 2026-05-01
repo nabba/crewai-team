@@ -34,7 +34,9 @@ from app.epistemic.pushback import ContradictionSignal, FoundationCheckResult
 if TYPE_CHECKING:
     # Lazy imports to avoid cycles:
     # postmortem.synthesize_report calls span_writer functions; both
-    # peer_review and override import span_writer at call time.
+    # peer_review and override import span_writer at call time;
+    # autotune.run_full_analysis calls back through here.
+    from app.epistemic.autotune import TuningProposal
     from app.epistemic.override import OverrideEvent
     from app.epistemic.peer_review import PeerReviewVerdict
     from app.epistemic.postmortem import IncidentReport
@@ -796,6 +798,358 @@ def override_aggregates(
         "force_proceed": by_action.get("force_proceed", 0),
         "use_revision": by_action.get("use_revision", 0),
         "abandon": by_action.get("abandon", 0),
+    }
+
+
+def bias_match_counts(*, window_days: int = 7) -> dict[str, int]:
+    """Per-bias fire counts over the window. Used by the autotuner."""
+    if not is_enabled():
+        return {}
+    try:
+        rows = execute(
+            """
+            SELECT bias_id, COUNT(*) AS n
+              FROM control_plane.epistemic_bias_matches
+             WHERE detected_at >= NOW() - (%s || ' days')::interval
+          GROUP BY bias_id
+            """,
+            (str(int(window_days)),),
+            fetch=True,
+        ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.bias_match_counts failed: %s", exc,
+        )
+        return {}
+    return {r["bias_id"]: int(r["n"]) for r in rows}
+
+
+def override_counts_by_bias(
+    *, window_days: int = 7,
+) -> dict[str, dict[str, int]]:
+    """Per-bias override counts.
+
+    Joins overrides to bias matches by ``task_id`` (the override
+    happened in the same task that fired the bias). Returns
+    ``{bias_id: {total, force_proceed, use_revision, abandon}}``.
+    """
+    if not is_enabled():
+        return {}
+    try:
+        rows = execute(
+            """
+            SELECT bm.bias_id, ov.user_action, COUNT(*) AS n
+              FROM control_plane.epistemic_overrides ov
+              JOIN control_plane.epistemic_bias_matches bm
+                ON bm.task_id = ov.task_id
+             WHERE ov.overridden_at >= NOW() - (%s || ' days')::interval
+          GROUP BY bm.bias_id, ov.user_action
+            """,
+            (str(int(window_days)),),
+            fetch=True,
+        ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.override_counts_by_bias failed: %s",
+            exc,
+        )
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        bid = r["bias_id"]
+        if bid not in out:
+            out[bid] = {"total": 0, "force_proceed": 0,
+                        "use_revision": 0, "abandon": 0}
+        n = int(r["n"])
+        out[bid]["total"] += n
+        action = r["user_action"]
+        if action in out[bid]:
+            out[bid][action] += n
+    return out
+
+
+def peer_review_counts_by_bias(
+    *, window_days: int = 7,
+) -> dict[str, dict[str, int]]:
+    """Per-bias peer-review decision counts.
+
+    Joins peer reviews to the bias matches that triggered them via
+    ``triggering_claim_id`` → ``epistemic_bias_matches.claim_id``.
+    Returns ``{bias_id: {total, allow, revise, veto}}``.
+    """
+    if not is_enabled():
+        return {}
+    try:
+        rows = execute(
+            """
+            SELECT bm.bias_id, pr.decision, COUNT(*) AS n
+              FROM control_plane.epistemic_peer_reviews pr
+              JOIN control_plane.epistemic_bias_matches bm
+                ON bm.claim_id = pr.triggering_claim_id
+             WHERE pr.requested_at >= NOW() - (%s || ' days')::interval
+          GROUP BY bm.bias_id, pr.decision
+            """,
+            (str(int(window_days)),),
+            fetch=True,
+        ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.peer_review_counts_by_bias failed: %s",
+            exc,
+        )
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        bid = r["bias_id"]
+        if bid not in out:
+            out[bid] = {"total": 0, "allow": 0, "revise": 0, "veto": 0}
+        n = int(r["n"])
+        out[bid]["total"] += n
+        d = r["decision"]
+        if d in out[bid]:
+            out[bid][d] += n
+    return out
+
+
+def incident_counts_by_root_cause(
+    *, window_days: int = 7,
+) -> dict[str, int]:
+    """Per-bias incident counts where the bias was the root cause."""
+    if not is_enabled():
+        return {}
+    try:
+        rows = execute(
+            """
+            SELECT root_cause_bias_id, COUNT(*) AS n
+              FROM control_plane.epistemic_incidents
+             WHERE created_at >= NOW() - (%s || ' days')::interval
+          GROUP BY root_cause_bias_id
+            """,
+            (str(int(window_days)),),
+            fetch=True,
+        ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.incident_counts_by_root_cause failed: %s",
+            exc,
+        )
+        return {}
+    return {r["root_cause_bias_id"]: int(r["n"]) for r in rows}
+
+
+def verifier_match_counts(*, window_days: int = 7) -> dict[str, int]:
+    """Per-verifier-shape match counts.
+
+    Approximate: counts how many claims in the window had a non-null
+    ``verifying_action`` whose ``tool`` matches each shape's tool head.
+    Tool heads are the first whitespace token of ``verifying_action.tool``.
+    """
+    if not is_enabled():
+        return {}
+    try:
+        rows = execute(
+            """
+            SELECT split_part(verifying_action->>'tool', ' ', 1) AS tool_head,
+                   COUNT(*) AS n
+              FROM control_plane.epistemic_claims
+             WHERE created_at >= NOW() - (%s || ' days')::interval
+               AND verifying_action IS NOT NULL
+          GROUP BY tool_head
+            """,
+            (str(int(window_days)),),
+            fetch=True,
+        ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.verifier_match_counts failed: %s",
+            exc,
+        )
+        return {}
+    # Map tool_head → shape_id by walking the registry. Multiple
+    # shapes may share a tool head; we attribute matches conservatively
+    # by giving each match to ALL shapes with that head (the caller
+    # treats this as an upper bound for retirement decisions).
+    from app.epistemic.verification import VERIFIER_REGISTRY
+    out: dict[str, int] = {}
+    head_to_n = {r["tool_head"]: int(r["n"]) for r in rows if r["tool_head"]}
+    for shape in VERIFIER_REGISTRY():
+        head = shape.tool.split()[0] if shape.tool else ""
+        out[shape.id] = head_to_n.get(head, 0)
+    return out
+
+
+def persist_tuning_proposal(proposal: "TuningProposal") -> None:
+    """UPSERT a tuning proposal keyed on ``content_hash``.
+
+    Re-running the analyzer over the same evidence produces the same
+    hash; the row is refreshed in place rather than duplicated. This
+    keeps the proposals table from growing unboundedly across re-runs.
+    """
+    if not is_enabled():
+        return
+    try:
+        execute(
+            """
+            INSERT INTO control_plane.epistemic_tuning_proposals
+                   (proposal_id, content_hash, target_kind, target_id,
+                    kind, rationale, metric_evidence, yaml_patch,
+                    confidence, status, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+                    'proposed', %s, %s)
+            ON CONFLICT (content_hash) DO UPDATE SET
+                metric_evidence = EXCLUDED.metric_evidence,
+                confidence      = EXCLUDED.confidence,
+                rationale       = EXCLUDED.rationale,
+                updated_at      = EXCLUDED.updated_at
+            """,
+            (
+                proposal.proposal_id,
+                proposal.content_hash,
+                proposal.target_kind,
+                proposal.target_id,
+                proposal.kind.value,
+                proposal.rationale,
+                json.dumps(dict(proposal.metric_evidence)),
+                proposal.yaml_patch,
+                proposal.confidence,
+                proposal.created_at,
+                datetime.now(timezone.utc),
+            ),
+        )
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.persist_tuning_proposal failed: %s",
+            exc,
+        )
+
+
+def list_tuning_proposals(
+    *,
+    status: str | None = "proposed",
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Return tuning proposals filtered by status.
+
+    Default is ``status="proposed"`` — the open queue the operator
+    reviews. Pass ``status=None`` for everything; pass an explicit
+    string for ``accepted``/``rejected``/``superseded``.
+    """
+    if not is_enabled():
+        return []
+    try:
+        if status is None:
+            rows = execute(
+                """
+                SELECT proposal_id, content_hash, target_kind, target_id,
+                       kind, rationale, metric_evidence, yaml_patch,
+                       confidence, status, operator_note,
+                       created_at, updated_at
+                  FROM control_plane.epistemic_tuning_proposals
+              ORDER BY created_at DESC
+                 LIMIT %s
+                """,
+                (int(limit),),
+                fetch=True,
+            ) or []
+        else:
+            rows = execute(
+                """
+                SELECT proposal_id, content_hash, target_kind, target_id,
+                       kind, rationale, metric_evidence, yaml_patch,
+                       confidence, status, operator_note,
+                       created_at, updated_at
+                  FROM control_plane.epistemic_tuning_proposals
+                 WHERE status = %s
+              ORDER BY created_at DESC
+                 LIMIT %s
+                """,
+                (status, int(limit)),
+                fetch=True,
+            ) or []
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.list_tuning_proposals failed: %s", exc,
+        )
+        return []
+    return [_proposal_row_to_jsonable(r) for r in rows]
+
+
+def lookup_tuning_proposal(proposal_id: str) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+    try:
+        row = execute_one(
+            """
+            SELECT proposal_id, content_hash, target_kind, target_id,
+                   kind, rationale, metric_evidence, yaml_patch,
+                   confidence, status, operator_note,
+                   created_at, updated_at
+              FROM control_plane.epistemic_tuning_proposals
+             WHERE proposal_id = %s
+            """,
+            (proposal_id,),
+        )
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.lookup_tuning_proposal failed: %s",
+            exc,
+        )
+        return None
+    if row is None:
+        return None
+    return _proposal_row_to_jsonable(row)
+
+
+def update_tuning_proposal_status(
+    *,
+    proposal_id: str,
+    status: str,
+    operator_note: str = "",
+) -> bool:
+    """Flip a proposal's status. Returns True on success."""
+    if not is_enabled():
+        return False
+    if status not in ("proposed", "accepted", "rejected", "superseded"):
+        raise ValueError(f"invalid status {status!r}")
+    try:
+        execute(
+            """
+            UPDATE control_plane.epistemic_tuning_proposals
+               SET status        = %s,
+                   operator_note = %s,
+                   updated_at    = %s
+             WHERE proposal_id   = %s
+            """,
+            (status, operator_note, datetime.now(timezone.utc), proposal_id),
+        )
+        return True
+    except Exception as exc:
+        logger.debug(
+            "epistemic span_writer.update_tuning_proposal_status failed: %s",
+            exc,
+        )
+        return False
+
+
+def _proposal_row_to_jsonable(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "proposal_id": row["proposal_id"],
+        "content_hash": row["content_hash"],
+        "target_kind": row["target_kind"],
+        "target_id": row["target_id"],
+        "kind": row["kind"],
+        "rationale": row["rationale"],
+        "metric_evidence": row["metric_evidence"] or {},
+        "yaml_patch": row["yaml_patch"],
+        "confidence": float(row["confidence"]),
+        "status": row["status"],
+        "operator_note": row["operator_note"],
+        "created_at": row["created_at"].isoformat()
+                      if hasattr(row["created_at"], "isoformat")
+                      else row["created_at"],
+        "updated_at": row["updated_at"].isoformat()
+                      if hasattr(row["updated_at"], "isoformat")
+                      else row["updated_at"],
     }
 
 

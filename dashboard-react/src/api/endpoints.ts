@@ -209,4 +209,15 @@ export const endpoints = {
   epistemicOverridesRecent: (windowMin = 1440, limit = 50) =>
     `/epistemic/overrides/recent?window_min=${windowMin}&limit=${limit}`,
   epistemicRecordOverride: () => `/epistemic/overrides`,
+  epistemicTuningProposals: (status: string | null = 'proposed', limit = 100) =>
+    status === null
+      ? `/epistemic/tuning/proposals?limit=${limit}`
+      : `/epistemic/tuning/proposals?status=${encodeURIComponent(status)}&limit=${limit}`,
+  epistemicTuningProposal: (proposalId: string) =>
+    `/epistemic/tuning/proposals/${encodeURIComponent(proposalId)}`,
+  epistemicTuningAccept: (proposalId: string) =>
+    `/epistemic/tuning/proposals/${encodeURIComponent(proposalId)}/accept`,
+  epistemicTuningReject: (proposalId: string) =>
+    `/epistemic/tuning/proposals/${encodeURIComponent(proposalId)}/reject`,
+  epistemicTuningRun: () => `/epistemic/tuning/run`,
 } as const;

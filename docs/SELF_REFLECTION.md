@@ -214,7 +214,10 @@ Recommended rollout sequence:
 1. Day 1: `EPISTEMIC_ENABLED=true` only. Watch the dashboard for false
    positives over 1–2 weeks.
 2. Tune `biases.yaml` and `verifier_registry.yaml` based on what the
-   bias-feed and override feedback say (these are CODEOWNERS PRs).
+   bias-feed and override feedback say (these are CODEOWNERS PRs). The
+   **autotuner** (§9.5) automates the analysis: it computes per-bias
+   metrics over the soak window and emits concrete tuning proposals
+   the operator reviews and accepts before opening the PR.
 3. When the override force-proceed rate is < 10% over a 7-day window,
    flip `EPISTEMIC_BLOCKING_MODE=true`.
 4. Optional later: enable LLM-backed extractors/detectors/peer-review one
@@ -239,6 +242,7 @@ Each section reads one or more API endpoints and renders a focused view:
 | **Incidents panel** | `GET /epistemic/incidents` + `/incidents/{id}` | Post-mortem reports. Click to expand: timeline, enabling factors, behavioral changes derived, missed signals, Self-Improver flush flag. |
 | **Bias library** | `GET /epistemic/biases` | The eight named biases with descriptions, severity, phase, corrective action. |
 | **Verifier registry** | `GET /epistemic/verifiers` | The eleven verifier shapes with their exact tool and expected signal. |
+| **Autotune proposals** | `GET /epistemic/tuning/proposals` + `POST /epistemic/tuning/run` + `POST /epistemic/tuning/proposals/{id}/{accept,reject}` | Operator-facing queue of severity / retirement / verifier-retirement proposals from the autotuner. Run on demand or via the CLI. See §10. |
 
 The dashboard is read-only except for the override-recording endpoint
 (`POST /epistemic/overrides`).
@@ -323,9 +327,94 @@ continuity, not just per-session metrics.
 
 ---
 
-## 10. Example walkthroughs
+## 10. The autotuner
 
-### 10.1 The reference incident, replayed
+Step 2 of the rollout is the manual loop where the operator stares at
+the bias-feed and override panels and decides which biases are firing
+too often (false positives), too rarely (retirement candidates), or
+are fine. The **autotuner** automates that analysis and emits
+concrete tuning proposals. It does NOT auto-apply changes — every
+proposal becomes a CODEOWNERS PR after operator review.
+
+### 10.1 What it does
+
+For each named bias, the autotuner computes (over a 7-day window by
+default):
+
+* Fire count.
+* Override count joined via `task_id` (how often did the user push
+  past outputs that fired this bias?).
+* Force-proceed rate (force_proceed / total overrides on this bias).
+* Peer-review veto/allow rate (joined via `triggering_claim_id`).
+* Incidents-as-root-cause count (post-mortem signal).
+
+Then it applies decision rules:
+
+| Pattern | Proposal |
+| --- | --- |
+| Fires ≤ 3 in window | `retirement_candidate` (low confidence if some fires; higher if zero) |
+| Fires ≥ 20, force-proceed rate ≥ 30%, ≥ 5 overrides | `severity_downgrade` (HIGH → MEDIUM) |
+| Peer-review allow rate ≥ 50% on ≥ 5 reviews | `severity_downgrade` (gate is too aggressive) |
+| Verifier shape matched 0 claims | `verifier_retirement` |
+
+Each proposal carries a stable `content_hash` so re-running the
+analyzer over the same evidence refreshes the row in place rather
+than creating duplicates.
+
+### 10.2 How to run it
+
+Three entry points:
+
+* **Dashboard** — open `/epistemic`, scroll to *Autotune proposals*,
+  click **Run analysis**. The panel populates with proposals; click a
+  row to expand the rationale + metric evidence + YAML patch text.
+  Accept or reject each with an optional note.
+* **CLI** — `python -m app.epistemic` (default 7-day window). Use
+  `--no-persist` for a dry-run, `--json` for machine-readable output.
+* **API** — `POST /epistemic/tuning/run` with `{"window_days": 7}`.
+  Cron-friendly.
+
+### 10.3 From proposal to PR
+
+When the operator accepts a proposal in the dashboard, the row's
+status flips to `accepted` — but no YAML on disk changes yet. The
+operator then either:
+
+1. Manually edits the YAML file using the patch text in the proposal
+   detail and opens a PR.
+2. Or runs `apply_proposal_to_disk(proposal)` from a Python REPL or
+   small helper script, which performs a surgical in-place edit for
+   severity changes (retirements are still manual — they often signal
+   missing test coverage rather than true obsolescence).
+3. Or runs `open_pr_for_proposal(proposal, dry_run=True)` to get a
+   command sequence (branch creation, commit, `gh pr create`) ready
+   to execute. `dry_run=False` is intentionally NOT implemented —
+   humans always type the commands.
+
+The CODEOWNERS gate on `app/epistemic/data/*.yaml` ensures the PR
+goes through normal code review before landing on `main`.
+
+### 10.4 What it WON'T tune
+
+* Detector thresholds in Python code (e.g. the 0.40 grounding floor
+  in `register_confidence_mismatch`). Those are
+  infrastructure-level module constants — the autotuner will
+  sometimes recommend reviewing them in the rationale, but it never
+  proposes a code change.
+* The autotuner's own decision rules
+  (`FORCE_PROCEED_RATE_TOO_STRICT`, etc.). Tuning the tuner requires
+  a code-review PR.
+* Bias library YAML adds (proposing a brand-new bias). That requires
+  human-curated detector code; autotune cannot generate predicates.
+
+The autotuner can only narrow / loosen / retire what already exists.
+That's the safety boundary.
+
+---
+
+## 11. Example walkthroughs
+
+### 11.1 The reference incident, replayed
 
 The agent runs `ls -la /etc/foo`, sees `drwxr-xr-x`, infers "/etc/foo is
 not a symlink", and is about to assert it as fact in a recommendation.
@@ -363,7 +452,7 @@ What the system does:
     in its narrative. The chapter is read on subsequent days as ambient
     context.
 
-### 10.2 User pushback
+### 11.2 User pushback
 
 The agent stated "/etc/foo is not a symlink." User replies: *"actually it
 IS a symlink."*
@@ -389,7 +478,7 @@ If the agent then *expanded the investigation* anyway (post-pushback,
 emitting ≥3 subsequent claims), the post-hoc `defending_periphery`
 detector flags it. The next post-mortem cites the failure pattern.
 
-### 10.3 Destructive recommendation with shaky ledger
+### 11.3 Destructive recommendation with shaky ledger
 
 User asks "should I delete the legacy_users table?". The agent looks at
 the ledger state, finds `count(*) FROM legacy_users` was an INFERRED
@@ -434,7 +523,7 @@ tune the bias library down.
 
 ---
 
-## 11. Safety boundaries (what the agent cannot do)
+## 12. Safety boundaries (what the agent cannot do)
 
 The CLAUDE.md safety invariant says: *"The Self-Improver agent cannot
 modify its own evaluation criteria."* Every choice in this layer respects
@@ -455,7 +544,7 @@ unilaterally tune the bias library. It opens PRs; humans review.
 
 ---
 
-## 12. Performance budgets
+## 13. Performance budgets
 
 Asserted in tests; failure of any budget blocks merge.
 
@@ -477,7 +566,7 @@ review (when enabled) is the only path that can take seconds.
 
 ---
 
-## 13. The cron jobs
+## 14. The cron jobs
 
 Two daily cron entries do the heavy lifting:
 
@@ -495,7 +584,7 @@ Both crons are infrastructure-level and not agent-modifiable.
 
 ---
 
-## 14. Glossary
+## 15. Glossary
 
 * **Claim** — the smallest unit of reasoning. An assertion the agent
   makes (statement + status + evidence + register + load_bearing flag +
@@ -530,10 +619,19 @@ Both crons are infrastructure-level and not agent-modifiable.
 * **Observe-mode vs blocking-mode** — observe-mode (the default) detects
   and persists everything but never blocks delivery. Blocking-mode
   enforces verdicts.
+* **Autotuner** — the analyzer that walks bias / override / peer-review
+  / incident counts over a window and emits :class:`TuningProposal`
+  records (severity downgrade, retirement candidate, verifier
+  retirement). Surfaced in the dashboard; never auto-applies. The
+  proposals → CODEOWNERS PR step is always operator-driven.
+* **Tuning proposal** — a single autotuner suggestion. Carries a
+  rationale, metric evidence, YAML patch text, confidence, and a
+  stable content_hash so re-runs idempotently refresh rather than
+  duplicate.
 
 ---
 
-## 15. What this is NOT
+## 16. What this is NOT
 
 * Not a hallucination preventer. The system can only catch claims the
   ledger contains. Agents that bypass emission produce no claims and no
@@ -551,7 +649,7 @@ Both crons are infrastructure-level and not agent-modifiable.
 
 ---
 
-## 16. Where to look in the code
+## 17. Where to look in the code
 
 | File | What's there |
 | --- | --- |
@@ -574,10 +672,12 @@ Both crons are infrastructure-level and not agent-modifiable.
 | `app/epistemic/postmortem.py` | Incident synthesis + Self-Improver flush |
 | `app/epistemic/override.py` | Override feedback loop |
 | `app/epistemic/orchestrator_hook.py` | Single `gate_output(...)` entry point |
+| `app/epistemic/autotune.py` | Autotuner: per-bias metrics, tuning proposals, YAML patch generation, PR plan |
+| `app/epistemic/__main__.py` | CLI runner (`python -m app.epistemic`) |
 | `app/epistemic/api.py` | FastAPI router |
 | `app/epistemic/reference_panel.py` | Replay harness for canonical scenarios |
 | `app/epistemic/data/*.yaml` | Bias library, verifier registry, reference panel |
-| `migrations/026..031_epistemic_*.sql` | All six tables |
+| `migrations/026..032_epistemic_*.sql` | All seven tables |
 | `dashboard-react/src/components/EpistemicPage.tsx` | Top-level pane |
 | `dashboard-react/src/components/epistemic/*` | Sub-components |
 | `tests/test_epistemic_*.py` | Unit + integration + e2e tests |
@@ -586,7 +686,7 @@ Both crons are infrastructure-level and not agent-modifiable.
 
 ---
 
-## 17. Closing note
+## 18. Closing note
 
 The layer was designed to answer one question: *can a multi-agent system
 catch its own cognitive failures and learn from them with the rigor of an

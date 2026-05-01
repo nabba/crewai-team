@@ -264,3 +264,47 @@ export interface OverridesRecentReport {
   count: number;
   overrides: OverrideDTO[];
 }
+
+// ── /epistemic/tuning ──────────────────────────────────────────────
+
+export type TuningProposalKind =
+  | 'severity_downgrade'
+  | 'severity_upgrade'
+  | 'retirement_candidate'
+  | 'verifier_retirement';
+
+export type TuningProposalStatus =
+  | 'proposed'
+  | 'accepted'
+  | 'rejected'
+  | 'superseded';
+
+export type TuningTargetKind = 'bias' | 'verifier';
+
+export interface TuningProposalDTO {
+  proposal_id: string;
+  content_hash: string;
+  target_kind: TuningTargetKind;
+  target_id: string;
+  kind: TuningProposalKind;
+  rationale: string;
+  metric_evidence: Record<string, unknown>;
+  yaml_patch: string;
+  confidence: number;
+  status: TuningProposalStatus;
+  operator_note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TuningProposalsReport {
+  status_filter: string | null;
+  count: number;
+  proposals: TuningProposalDTO[];
+}
+
+export interface TuningRunReport {
+  window_days: number;
+  proposal_count: number;
+  proposals: TuningProposalDTO[];
+}

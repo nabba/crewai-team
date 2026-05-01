@@ -12,6 +12,7 @@ import { NowLedger } from './epistemic/NowLedger';
 import { OverridesPanel } from './epistemic/OverridesPanel';
 import { PeerReviewsPanel } from './epistemic/PeerReviewsPanel';
 import { PushbackPanel } from './epistemic/PushbackPanel';
+import { TuningProposalsPanel } from './epistemic/TuningProposalsPanel';
 
 const STORAGE_KEY = 'epistemic.taskId';
 
@@ -87,6 +88,8 @@ export function EpistemicPage() {
       <OverridesPanel />
 
       <IncidentsPanel />
+
+      <TuningProposalsPanel />
 
       <BiasLibrarySection
         loading={biasesQuery.isLoading}

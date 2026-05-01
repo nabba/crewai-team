@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import { endpoints } from './endpoints';
 import type {
@@ -14,6 +14,8 @@ import type {
   PeerReviewsRecentReport,
   PushbackRecentReport,
   PushbackStatsReport,
+  TuningProposalsReport,
+  TuningRunReport,
   VerifierRegistryReport,
 } from '../types/epistemic';
 
@@ -43,6 +45,8 @@ export const epistemicKeys = {
     ['epistemic', 'overrides', 'stats', windowMin] as const,
   overridesRecent: (windowMin: number, limit: number) =>
     ['epistemic', 'overrides', 'recent', windowMin, limit] as const,
+  tuningProposals: (status: string | null) =>
+    ['epistemic', 'tuning', 'proposals', status ?? '__all__'] as const,
 };
 
 export function useEpistemicNowQuery(
@@ -178,5 +182,84 @@ export function useOverridesRecentQuery(
         endpoints.epistemicOverridesRecent(windowMin, limit),
       ),
     refetchInterval: POLL.normal,
+  });
+}
+
+// ── Autotune (tuning proposals) ────────────────────────────────────
+
+export function useTuningProposalsQuery(status: string | null = 'proposed') {
+  return useQuery({
+    queryKey: epistemicKeys.tuningProposals(status),
+    queryFn: () =>
+      api<TuningProposalsReport>(
+        endpoints.epistemicTuningProposals(status, 100),
+      ),
+    refetchInterval: POLL.slow,
+  });
+}
+
+export function useTuningAcceptMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      operatorNote,
+    }: {
+      proposalId: string;
+      operatorNote?: string;
+    }) =>
+      api<{ proposal_id: string; status: string }>(
+        endpoints.epistemicTuningAccept(proposalId),
+        {
+          method: 'POST',
+          body: JSON.stringify({ operator_note: operatorNote ?? '' }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ['epistemic', 'tuning', 'proposals'],
+      });
+    },
+  });
+}
+
+export function useTuningRejectMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      operatorNote,
+    }: {
+      proposalId: string;
+      operatorNote?: string;
+    }) =>
+      api<{ proposal_id: string; status: string }>(
+        endpoints.epistemicTuningReject(proposalId),
+        {
+          method: 'POST',
+          body: JSON.stringify({ operator_note: operatorNote ?? '' }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ['epistemic', 'tuning', 'proposals'],
+      });
+    },
+  });
+}
+
+export function useTuningRunMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (windowDays?: number) =>
+      api<TuningRunReport>(endpoints.epistemicTuningRun(), {
+        method: 'POST',
+        body: JSON.stringify({ window_days: windowDays ?? 7 }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ['epistemic', 'tuning', 'proposals'],
+      });
+    },
   });
 }

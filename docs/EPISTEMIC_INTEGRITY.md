@@ -1,6 +1,6 @@
 # Epistemic Integrity Layer
 
-> Status: **All phases shipped.** 276/276 Python tests + 12/12 reference panel scenarios + TS build clean. Last revised 2026-05-01.
+> Status: **All phases shipped + autotuner.** 310/310 Python tests + 12/12 reference panel scenarios + TS build clean. Last revised 2026-05-01.
 >
 > User-facing companion: [`SELF_REFLECTION.md`](./SELF_REFLECTION.md).
 
@@ -123,6 +123,33 @@ The system goes from observe-only to gate-enforcing. The orchestrator integratio
 
 The seven-phase shape is now structurally complete. Observe-mode is the default; blocking-mode is a single env-var flip away.
 
+## Autotune ships
+
+The post-Phase-7 follow-up that automates step 2 of the rollout (manual tuning of `biases.yaml` / `verifier_registry.yaml` based on bias-feed and override patterns). Operator still gates every YAML change via PR review.
+
+- **`app/epistemic/autotune.py`** — analyzer:
+  - `analyze_bias_library(window_days=7)` — joins `bias_match_counts`, `override_counts_by_bias`, `peer_review_counts_by_bias`, `incident_counts_by_root_cause` from span_writer; emits `TuningProposal` records.
+  - `analyze_verifier_registry(window_days=7)` — proposes retirement for shapes with zero matches.
+  - `run_full_analysis(window_days=7)` — convenience wrapper that runs both and persists.
+  - Decision rules (module constants, infrastructure-level): `FORCE_PROCEED_RATE_TOO_STRICT=0.30`, `MIN_FIRES_FOR_SEVERITY_PROPOSAL=20`, `RETIREMENT_FIRE_FLOOR=3`, `PEER_REVIEW_ALLOW_RATE_TOO_AGGRESSIVE=0.50`, `MIN_PEER_REVIEWS_FOR_AGGRESSIVE_PROPOSAL=5`. Tuning the *tuner* requires a code-review PR — same boundary as the bias library predicates.
+- **Proposal kinds**: `severity_downgrade` (HIGH→MEDIUM, etc.), `severity_upgrade` (rare, post-mortem-driven), `retirement_candidate` (low fire volume), `verifier_retirement` (zero matches).
+- **Idempotent re-runs**: every proposal carries a stable `content_hash` (sha256 of target+kind+yaml_patch); `persist_tuning_proposal` UPSERTs on the hash so the table doesn't grow unboundedly across re-runs — the row refreshes in place with the freshest evidence.
+- **Migration `032_epistemic_tuning_proposals.sql`** — dedicated table with three indexes (status, target, recent feed). Status lifecycle: proposed → accepted | rejected | superseded.
+- **`span_writer` extensions**:
+  - Aggregation helpers: `bias_match_counts`, `override_counts_by_bias`, `peer_review_counts_by_bias`, `incident_counts_by_root_cause`, `verifier_match_counts`. The override and peer-review counts join via `task_id` and `triggering_claim_id` respectively.
+  - Proposal persistence: `persist_tuning_proposal`, `list_tuning_proposals`, `lookup_tuning_proposal`, `update_tuning_proposal_status`.
+- **API endpoints**:
+  - `GET /epistemic/tuning/proposals?status=...` — list proposals (default: `status=proposed`).
+  - `GET /epistemic/tuning/proposals/{id}` — single-proposal drill-in.
+  - `POST /epistemic/tuning/proposals/{id}/accept` — operator accepts (with optional `operator_note`); records the decision but does NOT auto-apply YAML.
+  - `POST /epistemic/tuning/proposals/{id}/reject` — operator rejects.
+  - `POST /epistemic/tuning/run` — triggers fresh analysis on demand.
+- **CLI runner**: `python -m app.epistemic` (with `--window-days N`, `--no-persist`, `--json` flags).
+- **Operator helpers**:
+  - `apply_proposal_to_disk(proposal)` — surgical YAML edit for severity changes (does NOT auto-commit).
+  - `open_pr_for_proposal(proposal, dry_run=True)` — returns the git+gh command sequence the operator would run; `dry_run=False` raises `ProposalApplyError` (auto-execution intentionally NOT implemented — humans gate).
+- **React `TuningProposalsPanel`** — wired into `EpistemicPage`. Status filter (Open / Accepted / Rejected / All), per-proposal cards with kind-toned badges, expandable detail showing rationale + metric_evidence + YAML patch, accept/reject actions with optional operator note, "Run analysis" button.
+
 ## Test counts
 
 | Layer | File | Tests |
@@ -139,9 +166,10 @@ The seven-phase shape is now structurally complete. Observe-mode is the default;
 | Phase 6 | `test_epistemic_phase6.py` | 20 |
 | Phase 7 | `test_epistemic_phase7.py` | 30 |
 | End-to-end | `test_epistemic_e2e.py` | 8 |
-| **Total** | | **276** |
+| Autotune | `test_epistemic_autotune.py` | 34 |
+| **Total** | | **310** |
 
-`pytest tests/test_epistemic_*.py` — 276 passed in 0.47s.
+`pytest tests/test_epistemic_*.py` — 310 passed in 0.63s.
 
 A subsystem that gives the agent system the same quality of self-reflection a senior aviation post-mortem does: structured trace of what happened, separation of evidence from inference, named cognitive failure modes, root cause vs enabling factors, concrete behavioral changes, and persistence into the self-evolution loop.
 

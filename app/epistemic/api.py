@@ -22,12 +22,15 @@ from app.epistemic.span_writer import (
     list_recent_overrides,
     list_recent_peer_reviews,
     list_recent_pushback_events,
+    list_tuning_proposals,
     load_incident,
     load_ledger_for_task,
     lookup_claim,
+    lookup_tuning_proposal,
     override_aggregates,
     peer_review_aggregates,
     pushback_aggregates,
+    update_tuning_proposal_status,
 )
 from app.epistemic.verification import VERIFIER_REGISTRY
 
@@ -255,6 +258,83 @@ async def epistemic_record_override(
         flush_to_self_improver=bool(payload.get("flush_to_self_improver", True)),
     )
     return event.as_jsonable()
+
+
+@router.get("/tuning/proposals")
+async def epistemic_tuning_proposals(
+    status: str | None = Query("proposed"),
+    limit: int = Query(100, ge=1, le=500),
+) -> dict:
+    """Open tuning proposals from the autotuner.
+
+    By default returns ``status=proposed`` (the operator's queue).
+    Pass ``status=null`` (URL-encoded as empty string) for the full
+    history including accepted / rejected / superseded.
+    """
+    proposals = list_tuning_proposals(status=status, limit=limit)
+    return {
+        "status_filter": status,
+        "count": len(proposals),
+        "proposals": proposals,
+    }
+
+
+@router.get("/tuning/proposals/{proposal_id}")
+async def epistemic_tuning_proposal(proposal_id: str) -> dict:
+    detail = lookup_tuning_proposal(proposal_id)
+    if detail is None:
+        raise HTTPException(404, f"proposal {proposal_id!r} not found")
+    return detail
+
+
+@router.post("/tuning/proposals/{proposal_id}/accept")
+async def epistemic_tuning_accept(
+    proposal_id: str,
+    payload: dict = Body(default={}),
+) -> dict:
+    """Mark a proposal accepted. Does NOT auto-apply the YAML — the
+    operator opens a CODEOWNERS PR using the patch text in the body."""
+    note = str(payload.get("operator_note", ""))
+    ok = update_tuning_proposal_status(
+        proposal_id=proposal_id, status="accepted", operator_note=note,
+    )
+    if not ok:
+        raise HTTPException(500, "failed to update proposal status")
+    return {"proposal_id": proposal_id, "status": "accepted"}
+
+
+@router.post("/tuning/proposals/{proposal_id}/reject")
+async def epistemic_tuning_reject(
+    proposal_id: str,
+    payload: dict = Body(default={}),
+) -> dict:
+    """Mark a proposal rejected with the operator's reasoning."""
+    note = str(payload.get("operator_note", ""))
+    ok = update_tuning_proposal_status(
+        proposal_id=proposal_id, status="rejected", operator_note=note,
+    )
+    if not ok:
+        raise HTTPException(500, "failed to update proposal status")
+    return {"proposal_id": proposal_id, "status": "rejected"}
+
+
+@router.post("/tuning/run")
+async def epistemic_tuning_run(
+    payload: dict = Body(default={}),
+) -> dict:
+    """Trigger a fresh autotune analysis. Persists new proposals.
+
+    Idempotent: re-running over the same evidence refreshes existing
+    proposals (UPSERT on content_hash) rather than duplicating them.
+    """
+    from app.epistemic.autotune import run_full_analysis
+    window_days = int(payload.get("window_days", 7))
+    proposals = run_full_analysis(window_days=window_days, persist=True)
+    return {
+        "window_days": window_days,
+        "proposal_count": len(proposals),
+        "proposals": [p.as_jsonable() for p in proposals],
+    }
 
 
 @router.get("/peer-reviews/stats")
