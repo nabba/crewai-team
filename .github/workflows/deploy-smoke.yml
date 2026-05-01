@@ -1,0 +1,195 @@
+name: deploy-smoke
+
+# Cheap, fast checks for the deployment surfaces — terraform fmt + validate,
+# helm lint + multi-mode template render, kubeconform schema validation,
+# bash -n on every shell script, and the env-spec drift checker.
+#
+# Designed to catch (in order of severity):
+#   * `terraform validate` failures — the repo can't even be applied
+#   * `helm lint` / template errors — the chart can't be rendered
+#   * Schema drift — manifests render but k8s would reject them
+#   * Bash syntax errors in dispatchers
+#   * Drift between .env.example and the four places that consume it
+#
+# Each step is intentionally local-only — no AWS / GCP credentials needed,
+# no real cluster needed. Real-cluster apply is a separate, manual flow.
+
+on:
+  pull_request:
+    paths:
+      - 'install.sh'
+      - 'scripts/install/**'
+      - 'deploy/**'
+      - '.env.example'
+      - '.github/workflows/deploy-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'install.sh'
+      - 'scripts/install/**'
+      - 'deploy/**'
+      - '.env.example'
+      - '.github/workflows/deploy-smoke.yml'
+  # Manual trigger from the Actions tab — useful when chasing a CI flake.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ─── Bash dispatchers ───────────────────────────────────────
+  bash-syntax:
+    name: bash -n
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash syntax check
+        run: |
+          set -e
+          for f in install.sh scripts/install/*.sh; do
+              bash -n "$f"
+              echo "  OK: $f"
+          done
+
+  # ─── Terraform: fmt + validate, both clouds ─────────────────
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cloud: [aws, gcp]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.9'
+
+      - name: terraform fmt -check (${{ matrix.cloud }})
+        working-directory: deploy/terraform/${{ matrix.cloud }}
+        run: terraform fmt -recursive -check -diff
+
+      - name: terraform init -backend=false (${{ matrix.cloud }})
+        working-directory: deploy/terraform/${{ matrix.cloud }}
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate (${{ matrix.cloud }})
+        working-directory: deploy/terraform/${{ matrix.cloud }}
+        run: terraform validate
+
+  # ─── Helm: lint + render under multiple value combinations ──
+  helm:
+    name: helm lint + template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: 'v3.15.0'
+
+      - name: helm lint
+        run: helm lint deploy/k8s/
+
+      - name: render — defaults
+        run: helm template botarmy deploy/k8s/ > /tmp/render-default.yaml
+
+      - name: render — monitoring on, all toggles
+        run: |
+          helm template botarmy deploy/k8s/ \
+            --set monitoring.serviceMonitor.enabled=true \
+            --set monitoring.prometheusRule.enabled=true \
+            --set monitoring.dashboards.enabled=true \
+            > /tmp/render-monitoring.yaml
+
+      - name: render — AWS-shaped (managed RDS, ALB ingress, IRSA SA)
+        run: |
+          helm template botarmy deploy/k8s/ \
+            --set postgres.enabled=false \
+            --set monitoring.serviceMonitor.enabled=true \
+            --set serviceAccount.create=true \
+            --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::123:role/test' \
+            --set gateway.ingress.enabled=true \
+            --set gateway.ingress.className=alb \
+            --set gateway.ingress.host=bot.example.com \
+            > /tmp/render-aws.yaml
+
+      - name: render — GCP-shaped (Cloud SQL, GCE ingress, Workload Identity)
+        run: |
+          helm template botarmy deploy/k8s/ \
+            --set postgres.enabled=false \
+            --set monitoring.serviceMonitor.enabled=true \
+            --set serviceAccount.create=true \
+            --set 'serviceAccount.annotations.iam\.gke\.io/gcp-service-account=botarmy-gateway@x.iam.gserviceaccount.com' \
+            --set gateway.ingress.enabled=true \
+            --set gateway.ingress.className=gce \
+            --set gateway.ingress.host=bot.example.com \
+            > /tmp/render-gcp.yaml
+
+      - name: render — bare Kubernetes (in-cluster postgres + nginx ingress)
+        run: |
+          helm template botarmy deploy/k8s/ \
+            --set gateway.ingress.enabled=true \
+            --set gateway.ingress.className=nginx \
+            --set gateway.ingress.host=bot.example.com \
+            > /tmp/render-bare-k8s.yaml
+
+      - name: upload renders for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-renders
+          path: /tmp/render-*.yaml
+          retention-days: 7
+
+  # ─── kubeconform: schema-validate every render against the k8s OpenAPI ──
+  kubeconform:
+    name: kubeconform schema check
+    runs-on: ubuntu-latest
+    needs: helm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: 'v3.15.0'
+
+      - name: install kubeconform
+        run: |
+          set -e
+          cd /tmp
+          curl -fsSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+              | tar xz
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: render + validate (default)
+        run: |
+          helm template botarmy deploy/k8s/ \
+            | kubeconform -strict -summary -kubernetes-version 1.30.0 \
+                          -schema-location default \
+                          -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind | lower }}_{{ .ResourceAPIVersion }}.json'
+
+      - name: render + validate (monitoring on — needs Prometheus CRDs)
+        run: |
+          helm template botarmy deploy/k8s/ \
+            --set monitoring.serviceMonitor.enabled=true \
+            --set monitoring.prometheusRule.enabled=true \
+            --set monitoring.dashboards.enabled=true \
+            | kubeconform -strict -summary -kubernetes-version 1.30.0 \
+                          -schema-location default \
+                          -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind | lower }}_{{ .ResourceAPIVersion }}.json'
+
+  # ─── Env-spec drift: keep .env.example, secrets.sh, and the two
+  #     terraform secrets.tf files in sync. Catches "I added a key to
+  #     one but forgot the others", which is bug #6 from the e2e test.
+  env-drift:
+    name: env spec drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: run drift check
+        run: bash scripts/check-env-drift.sh

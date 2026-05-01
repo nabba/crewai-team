@@ -19,12 +19,41 @@ deployment (EKS / GKE / AKS / on-prem).
 | **Docker-socket sandbox** | ❌ skipped | Replace with Job-based sandbox (kaniko-style) — not in this chart |
 | Self-hosted Firecrawl | ❌ skipped | Add as Phase 2c if needed |
 
+## Image prereq
+
+The k8s dispatcher does NOT build or push images — that's your job before
+deploying. Pick a registry your cluster can pull from (Docker Hub for public
+testing; ECR/GCR/private registry for production), then:
+
+```bash
+# Linux/amd64 — match what your cluster nodes can run.
+# (Apple Silicon Macs need --platform linux/amd64, otherwise you push arm64
+# and the pod fails with "exec format error".)
+docker buildx build --platform linux/amd64 \
+    -t YOUR_REGISTRY/botarmy-gateway:0.1.0 \
+    --push .
+```
+
+Then point the chart at it via shell env vars (the dispatcher reads these):
+
+```bash
+export BOTARMY_IMAGE_REPOSITORY=YOUR_REGISTRY/botarmy-gateway
+export BOTARMY_IMAGE_TAG=0.1.0
+./install.sh --target k8s
+```
+
+If you forget, the gateway pod sits in `ImagePullBackOff` and the dispatcher
+prints recovery steps. No data is lost — just push the image and re-run
+`kubectl rollout restart` per the dispatcher's hint.
+
 ## Quick start
 
 ```bash
-# 1. Build + push the gateway image to a registry your cluster can pull from
-docker build -t YOUR_REGISTRY/botarmy-gateway:0.1.0 .
-docker push YOUR_REGISTRY/botarmy-gateway:0.1.0
+# 1. Build + push the gateway image (see "Image prereq" above)
+export BOTARMY_IMAGE_REPOSITORY=YOUR_REGISTRY/botarmy-gateway
+export BOTARMY_IMAGE_TAG=0.1.0
+docker buildx build --platform linux/amd64 \
+    -t "$BOTARMY_IMAGE_REPOSITORY:$BOTARMY_IMAGE_TAG" --push .
 
 # 2. Make sure ./.env exists (run a local install once, or hand-craft it)
 ls ../../.env
@@ -38,8 +67,8 @@ kubectl create namespace botarmy
 kubectl -n botarmy create secret generic botarmy-env --from-env-file=.env
 helm upgrade --install botarmy ./deploy/k8s \
     --namespace botarmy \
-    --set image.repository=YOUR_REGISTRY/botarmy-gateway \
-    --set image.tag=0.1.0
+    --set image.repository="$BOTARMY_IMAGE_REPOSITORY" \
+    --set image.tag="$BOTARMY_IMAGE_TAG"
 ```
 
 ## Production override example (`values-prod.yaml`)
