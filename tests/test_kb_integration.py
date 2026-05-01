@@ -37,10 +37,22 @@ from app.knowledge_base.tools import (
 
 def _ollama_reachable() -> bool:
     """Check if the Ollama embedding backend is up. KB tests need real
-    768-dim embeddings — there's no CPU fallback by design."""
+    768-dim embeddings — there's no CPU fallback by design.
+
+    We hit Ollama directly via HTTP rather than going through
+    chromadb_manager, because earlier tests can have mocked that module
+    in sys.modules (returning a MagicMock that looks "reachable" but
+    isn't really).
+    """
+    import os
     try:
-        from app.memory.chromadb_manager import _ollama_embed
-        return _ollama_embed("ping") is not None
+        import urllib.request
+        url = os.environ.get(
+            "OLLAMA_EMBED_URL",
+            os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434"),
+        )
+        urllib.request.urlopen(f"{url}/api/tags", timeout=2.0)
+        return True
     except Exception:
         return False
 
