@@ -1814,6 +1814,17 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         logger.debug("idle_scheduler: SubIA job registration failed",
                      exc_info=True)
 
+    # ── Companion Layer (Phase 1+) — per-workspace idle contemplation ─────
+    # Self-registers via app.companion.loop.get_idle_jobs() so this file
+    # doesn't need to know about Companion internals. Failure is logged
+    # and swallowed — Companion must never crash the scheduler thread.
+    try:
+        from app.companion.loop import get_idle_jobs as _companion_jobs
+        jobs.extend(_companion_jobs())
+    except Exception:
+        logger.debug("idle_scheduler: companion idle jobs skipped",
+                     exc_info=True)
+
     return jobs
 
 
