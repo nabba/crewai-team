@@ -1161,6 +1161,41 @@ Subsystems at `app.subia.prediction.*` maintain prediction hierarchies
 and surprise routing. Their internal stores feed homeostasis and the
 world model.
 
+### 11.7 Belief outbox — Postgres ↔ Neo4j ↔ ChromaDB reconciler
+
+```python
+from app.memory.belief_outbox import (
+    reconcile_belief_outbox,        # Postgres → Neo4j
+    sync_new_beliefs_to_chromadb,   # Postgres → ChromaDB (incremental)
+    backend_info,                   # diagnostic snapshot for the dashboard
+)
+```
+
+Each SubIA Phase-2 belief lives in **three** stores: Postgres
+(canonical row in `beliefs`), Neo4j (`:Belief` node, projected for
+graph queries), and ChromaDB (text embedding for semantic recall).
+The application's write path is fire-and-forget against Neo4j and
+periodic-only against ChromaDB — meaning a Neo4j blip or a never-run
+sync can leave the projections stale relative to Postgres.
+
+`belief_outbox.py` ships two periodic reconcilers, registered as LIGHT
+idle-scheduler jobs:
+
+| Job | Direction | Mechanism |
+|---|---|---|
+| `belief-outbox-neo4j` | Postgres → Neo4j | Read every `belief_id` from `beliefs`; query Neo4j for existing `:Belief` nodes; backfill the missing ones via `neo4j_mirror.mirror_belief()`. Idempotent; eventually consistent within the next idle pass. |
+| `belief-outbox-chroma` | Postgres → ChromaDB | Watermark-based incremental: read beliefs whose `last_updated > watermark`; index each into ChromaDB's `beliefs` collection; advance the watermark only on success (crash-safe). |
+
+Subsystem boundary: `app/subia/belief/store.py` is Tier-3 protected
+and never modified by the reconcilers. Postgres remains the system of
+record; Neo4j and ChromaDB are projections that converge under the
+outbox sweep.
+
+The dashboard's [`GET /api/cp/idle/jobs`](CONTROL_PLANES.md#idle-scheduler-snapshot)
+endpoint surfaces both jobs' status (last success/failure age,
+cooldown state, currently_running) so operators can confirm the
+projections are fresh.
+
 ---
 
 ## 12. Layer 10 — Trajectory-informed memory (arXiv:2603.10600)
