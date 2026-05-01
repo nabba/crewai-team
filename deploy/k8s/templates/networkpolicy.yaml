@@ -1,4 +1,17 @@
-{{- /* Lock down internal services so only the gateway can reach them. */ -}}
+{{- /*
+Two NetworkPolicies:
+
+  1. ``-internal-only`` — Restrict ingress to the data pods (postgres,
+     neo4j, chromadb). Only the gateway pod can talk to them. Pre-Phase-C
+     behaviour, unchanged.
+
+  2. ``-gateway-egress`` — Phase C1 — Restrict EGRESS from the gateway to
+     a documented allow-list of upstream services. Default-deny outbound
+     so a compromised pod cannot exfiltrate freely. Disabled by default
+     (``networkPolicy.egressAllowlist.enabled: false``) so an operator
+     who has not enumerated their upstream IPs is not surprised. Set to
+     true after verifying every required egress is captured.
+*/ -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -19,3 +32,58 @@ spec:
             matchLabels:
               app.kubernetes.io/name: {{ include "botarmy.name" . }}
               app.kubernetes.io/component: gateway
+
+{{- if .Values.networkPolicy.egressAllowlist.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "botarmy.fullname" . }}-gateway-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "botarmy.name" . }}
+      app.kubernetes.io/component: gateway
+  policyTypes: [Egress]
+  egress:
+    # ── DNS resolution (kube-dns / CoreDNS) ────────────────────────
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+
+    # ── Internal pods (postgres / neo4j / chromadb / ollama) ──────
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "botarmy.name" . }}
+
+    {{- /*
+    Outbound to upstream LLM providers and other external services.
+    Each entry is an explicit allow rule. Add what you actually use;
+    everything else is denied.
+
+    NOTE: NetworkPolicy egress is IP-based at the API level. Most
+    operators use a CNI that supports DNS/FQDN egress (Cilium, Calico
+    with NetworkSet) — see networkPolicy.egressAllowlist.fqdnSupport.
+    For plain NetworkPolicy, list the IP ranges (you'll need to keep
+    them in sync as providers change IPs).
+    */}}
+    {{- range .Values.networkPolicy.egressAllowlist.external }}
+    - to:
+        {{- range .ipBlocks }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        {{- range .ports }}
+        - { protocol: {{ .protocol | default "TCP" }}, port: {{ .port }} }
+        {{- end }}
+    {{- end }}
+{{- end }}

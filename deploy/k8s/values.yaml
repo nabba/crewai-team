@@ -17,6 +17,32 @@ gateway:
   # other boundary is NetworkPolicy. Set to "false" only for dedicated
   # dev clusters where the operator accepts the open-API risk.
   authRequired: "true"
+
+# Phase C1 — NetworkPolicy egress allow-list for the gateway pod.
+# Disabled by default so the operator can enable it AFTER enumerating
+# every required upstream IP / port. Once enabled, the gateway can ONLY
+# reach: kube-dns, internal pods (postgres / neo4j / chromadb / ollama),
+# and the explicit ``external`` list below. Everything else is dropped.
+networkPolicy:
+  egressAllowlist:
+    enabled: false
+    # If your CNI supports FQDN selectors (Cilium / Calico-NetworkSet),
+    # set this to true and switch ``external`` to ``fqdns: [...]`` form;
+    # otherwise the example below uses ipBlock CIDRs (which you must
+    # update when providers rotate IPs).
+    fqdnSupport: false
+    external:
+      # Anthropic API. Public IPs change; treat as starting point.
+      # Safer alternative: deploy an egress proxy (Squid/HAProxy) with
+      # FQDN ACLs and direct ALL gateway egress through it; then this
+      # list narrows to a single proxy IP.
+      - ipBlocks: ["0.0.0.0/0"]   # Replace with provider-specific CIDR or proxy IP.
+        ports:
+          - { protocol: TCP, port: 443 }
+        # FQDNs (used only when fqdnSupport: true)
+        # fqdns: ["api.anthropic.com", "openrouter.ai", "api.openai.com",
+        #        "generativelanguage.googleapis.com", "api.firecrawl.dev"]
+        comment: "LLM providers + Firecrawl (replace with proxy IP for tighter control)"
   resources:
     requests: { cpu: "2",   memory: "4Gi" }
     limits:   { cpu: "4",   memory: "8Gi" }

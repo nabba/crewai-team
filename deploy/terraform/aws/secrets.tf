@@ -9,7 +9,12 @@
 #
 # This avoids the External Secrets Operator dependency. Trade-off: rotating a
 # value means re-running `terraform apply`, not just updating Secrets Manager.
-# Acceptable for v1; ESO can be layered in later (see README → "Hardening").
+#
+# Phase C2: when you're ready to harden — see ``deploy/HARDENING.md`` for
+# the step-by-step migration to ESO + etcd encryption-at-rest. The
+# ExternalSecret + ClusterSecretStore HCL is documented there; replacing
+# the kubernetes_secret block at the bottom of this file is the only
+# change required (plus installing the ESO chart and binding IRSA).
 
 # ─── Generated GATEWAY_SECRET (auth token between Signal forwarder + gateway) ─
 resource "random_password" "gateway_secret" {

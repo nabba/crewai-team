@@ -5,6 +5,12 @@
 #      so anything in the GCP project can read them.
 #   3. Also synced into a Kubernetes Opaque Secret named `botarmy-env` in the
 #      workload namespace, consumed by the chart via envFrom.
+#
+# Phase C2: see ``deploy/HARDENING.md`` for the GCP-specific ESO setup
+# (ClusterSecretStore with Workload Identity binding to a GSA that has
+# ``roles/secretmanager.secretAccessor`` on this secret) plus GKE
+# Application-layer Secrets Encryption via ``google_kms_crypto_key``
+# referenced from ``database_encryption`` on the cluster.
 
 resource "random_password" "gateway_secret" {
   length  = 64
