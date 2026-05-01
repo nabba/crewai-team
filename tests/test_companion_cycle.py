@@ -130,3 +130,117 @@ def test_compose_prompt_drops_empty_text_snippets():
     # The body of the temporal_context snippet was empty; nothing for it
     # to render. Only the episteme line shows up under ## Context.
     assert prompt.count("[temporal_context") == 0
+
+
+# ── Phase 3: persistence + scoring ─────────────────────────────────────────
+
+def test_run_cycle_persists_converged_idea_with_scores():
+    cfg = CompanionConfig(seed_prompt="forests").clamp()
+    fake = _make_creative_result(p1=2, p2=2, final="converged synthesis",
+                                  cost=0.05)
+    persisted: list = []
+
+    def _fake_persist(rec):
+        persisted.append(rec)
+        return rec.idea_id
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist", _fake_persist), \
+         patch("app.companion.scoring.compute_novelty", lambda *a, **kw: 0.8), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.7), \
+         patch("app.companion.scoring.compute_transferability", lambda t: 0.6):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    # 2 fragments + 2 developed + 1 converged = 5 records.
+    assert len(persisted) == 5
+    assert result.converged_idea_id is not None
+    assert result.novelty == pytest.approx(0.8)
+    assert result.quality == pytest.approx(0.7)
+    assert result.transferability == pytest.approx(0.6)
+    # Cycle id propagates to all records.
+    assert all(r.cycle_id == result.cycle_id for r in persisted)
+
+
+def test_run_cycle_persists_lineage_correctly():
+    """Fragments → developed (parents=fragments) → converged (parents=developed)."""
+    cfg = CompanionConfig(seed_prompt="forests").clamp()
+    fake = _make_creative_result(p1=3, p2=2, final="final")
+    persisted: list = []
+
+    def _fake_persist(rec):
+        persisted.append(rec)
+        return rec.idea_id
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist", _fake_persist), \
+         patch("app.companion.scoring.compute_novelty", lambda *a, **kw: 0.0), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.0), \
+         patch("app.companion.scoring.compute_transferability", lambda t: 0.0):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    from app.companion.idea_store import IdeaState
+    fragments = [r for r in persisted if r.state == IdeaState.FRAGMENT]
+    developed = [r for r in persisted if r.state == IdeaState.DEVELOPED]
+    converged = [r for r in persisted if r.state == IdeaState.CONVERGED]
+
+    assert len(fragments) == 3
+    assert len(developed) == 2
+    assert len(converged) == 1
+
+    # Fragments have no parents.
+    assert all(r.lineage_parents == [] for r in fragments)
+    # Developed parents = ALL fragment ids.
+    fragment_ids = [r.idea_id for r in fragments]
+    for r in developed:
+        assert sorted(r.lineage_parents) == sorted(fragment_ids)
+    # Converged parents = developed ids.
+    developed_ids = [r.idea_id for r in developed]
+    assert sorted(converged[0].lineage_parents) == sorted(developed_ids)
+
+    # CycleResult exposes the same ids in the right slots.
+    assert sorted(result.fragment_ids) == sorted(fragment_ids)
+    assert sorted(result.developed_ids) == sorted(developed_ids)
+    assert result.converged_idea_id == converged[0].idea_id
+
+
+def test_run_cycle_skips_persistence_when_aborted():
+    cfg = CompanionConfig(seed_prompt="x").clamp()
+    fake = _make_creative_result(aborted="budget exceeded")
+    persisted: list = []
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist",
+               lambda r: persisted.append(r) or r.idea_id):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert persisted == []
+    assert result.converged_idea_id is None
+
+
+def test_run_cycle_skips_persistence_when_empty_final():
+    cfg = CompanionConfig(seed_prompt="x").clamp()
+    fake = _make_creative_result(final="   ")
+    persisted: list = []
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist",
+               lambda r: persisted.append(r) or r.idea_id):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert persisted == []
+    assert result.converged_idea_id is None
+
+
+def test_run_cycle_emits_cycle_id_even_on_abort():
+    cfg = CompanionConfig(seed_prompt=None).clamp()
+    result = _cycle.run_cycle("ws-1", cfg)
+    assert result.cycle_id.startswith("cyc_")
+    assert result.aborted_reason == "no_seed_prompt"
