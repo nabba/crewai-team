@@ -26,6 +26,23 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+def _default_decay_rate() -> float:
+    """Pull `decay_rate` default from `SUBIA_CONFIG.SCENE_DECAY_RATE` so
+    the infrastructure-level constant is the single source of truth.
+
+    Lazy import to avoid a circular dependency at module load time
+    (config imports from no SubIA modules; this module is loaded early
+    in the scene subpackage). Falls back to 0.05 if the config key is
+    absent or non-numeric.
+    """
+    try:
+        from app.subia.config import SUBIA_CONFIG
+        v = SUBIA_CONFIG.get("SCENE_DECAY_RATE", 0.05)
+        return float(v) if isinstance(v, (int, float)) else 0.05
+    except Exception:
+        return 0.05
+
+
 @dataclass
 class WorkspaceItem:
     """An item competing for workspace access."""
@@ -39,7 +56,9 @@ class WorkspaceItem:
     novelty_score: float = 0.0
     agent_urgency: float = 0.0
     surprise_signal: float = 0.0      # From PP-1 (0.0 if PP-1 not active)
-    decay_rate: float = 0.05
+    # Default sourced from SUBIA_CONFIG.SCENE_DECAY_RATE so changing
+    # the infrastructure-level constant actually changes behaviour.
+    decay_rate: float = field(default_factory=_default_decay_rate)
     entered_at: float = field(default_factory=time.monotonic)
     cycles_in_workspace: int = 0
     consumed: bool = False
