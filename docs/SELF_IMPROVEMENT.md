@@ -206,6 +206,68 @@ prevents convergence on local optima.
 **Weaknesses**: higher cost per session (population × generations); evolves
 isolated utilities rather than the live codebase.
 
+#### Operational requirements
+
+ShinkaEvolve is installed via the Dockerfile with `--no-deps` to avoid
+a transitive `httpx==0.27` pin that conflicts with CrewAI's `>=0.28`.
+The `--no-deps` flag means we **must** explicitly install every shinka
+runtime dep that isn't already in the image. Two passes:
+
+```dockerfile
+# Stable transitive deps (fixed versions, internal API)
+pip install --no-deps hydra-core==1.3.2 omegaconf==2.3.0 \
+    antlr4-python3-runtime==4.9.3 unidiff radon mando
+
+# Outer-API deps (need normal resolution for their own transitives)
+pip install google-genai python-Levenshtein seaborn psutil
+```
+
+Missing **any** of these makes shinka sessions crash silently at LLM-init
+or session start with `ImportError`. Diagnosed 2026-04-30 — the absent
+`google-genai` package alone meant ShinkaEvolve had run zero times in
+five+ weeks.
+
+#### Deep availability check — `_is_shinka_available()`
+
+`evolution._is_shinka_available()` runs the *actual* imports the engine
+performs at session start, not just `import shinka` (the empty namespace
+package). On any `ImportError` it logs a clear warning with "fall back
+to AVO" guidance and returns `False`, so the selector picks AVO instead
+of looping on a broken shinka:
+
+```python
+from shinka.core import ShinkaEvolveRunner, EvolutionConfig
+from shinka.launch import LocalJobConfig
+from shinka.database import DatabaseConfig
+```
+
+#### Model mapping — `shinka_engine._map_llm_models()`
+
+ShinkaEvolve has its own model registry (run `shinka_models --verbose`
+inside the container to inspect). Our mapping must use names that
+appear in that registry — Bedrock-style ARNs and arbitrary OpenRouter
+slugs are rejected at LLM-init.
+
+| AndrusAI key | ShinkaEvolve registry name | Notes |
+|---|---|---|
+| `anthropic_api_key` set | `claude-sonnet-4-6` | Direct Anthropic API, NOT Bedrock |
+| `OPENROUTER_API_KEY` set | `qwen/qwen3-coder` | Coder-specialised, in shinka's allowlist |
+| Local Ollama reachable | `local/<tag>@<host>/v1` | Coder/qwen tags only |
+
+#### Result tracking — dual-ledger writes
+
+Every shinka session writes to **both** ledgers via
+`shinka_engine._record_result()`:
+
+| Ledger | Used by | Why both |
+|---|---|---|
+| `results_ledger` (TSV) | dashboard, retrospective crew, `get_recent_results()` | per-experiment history |
+| `evolution_roi.json` | engine selector rule 5 (rotation) and rule 9 (ROI recommendation) | `days_since_engine_run("shinka")` is read from here |
+
+Pre-2026-04-30 only the first wrote, so even after a successful shinka
+run the rotation gate stayed at infinity and re-fired forever. The
+`record_evolution_cost(engine="shinka", ...)` call closes that loop.
+
 ### Meta-Evolution — `app/meta_evolution.py`
 
 **Second-order improvement**: evolves the *parameters* that control how the
@@ -234,7 +296,7 @@ Limited to **3 mutations/week** with an 8-hour cooldown. Requires real signal
 
 ```
 1.  Manual override (config.evolution_engine = "avo" or "shinka")
-2.  Availability check (ShinkaEvolve installed + initial.py present)
+2.  Availability check (deep imports — see §3)
 3.  SUBIA safety < 0.70                      → AVO (conservative)
 4.  Stagnation (5 consecutive failures)      → ShinkaEvolve (break out)
 5.  Forced rotation (shinka not in 7 days)   → ShinkaEvolve (exploration)
@@ -253,6 +315,34 @@ ROI data for comparison. The audit found ShinkaEvolve had run zero times in
 **Why rule 9 exists**: replaces a fragile count-modulo rotation. Once both
 engines have ≥1 real improvement in the 14-day window, the selector defers
 to whichever has lower cost-per-improvement.
+
+### Failure-mode reference
+
+The selector itself is correct, but four downstream gaps caused
+ShinkaEvolve to never actually run for 38+ days even after the rule-5
+rotation fix landed (2026-04-30 second-pass diagnosis):
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `_is_shinka_available()` returns True but session crashes immediately at LLM-init | Shallow check (`import shinka` only) — missed missing transitive deps like `google-genai` / `psutil` | Deep imports of `shinka.core`, `shinka.launch`, `shinka.database` (§3) |
+| Session crashes with "Requested model(s) are unavailable: bedrock missing AWS_*" | `_map_llm_models` returned a Bedrock ARN that needs AWS creds we don't set | Use shinka-registry names (`claude-sonnet-4-6`, `qwen/qwen3-coder`) |
+| Session runs but `days_since_engine_run("shinka")` stays at infinity → rule 5 keeps firing forever | `_record_result` wrote only to `results_ledger`, not `evolution_roi` | Dual-ledger write (§3) |
+| Container missing `google-genai` / `psutil` / `seaborn` / `python-Levenshtein` after rebuild | Dockerfile installed shinka with `--no-deps` and the explicit dep list missed these | Dockerfile updated to install the four (see §3) |
+
+Operators verifying ShinkaEvolve is actually running can check:
+
+```bash
+# Should return a real number (not ∞) once shinka has run at least once
+docker exec gateway python -c \
+  "from app.evolution_roi import days_since_engine_run; \
+   print(days_since_engine_run('shinka'))"
+
+# Should show shinka entries alongside avo
+docker exec gateway python -c \
+  "from app.results_ledger import get_recent_results; \
+   import json; print(json.dumps([r for r in get_recent_results(50) \
+     if 'shinka' in (r.get('detail') or '').lower()], indent=2))"
+```
 
 ---
 
@@ -1397,9 +1487,12 @@ docs/
 - **EVOLVE-BLOCK**: Marker for evolution-mutable content within a file
 - **FREEZE-BLOCK**: Marker for safety-critical content (never mutated)
 - **Forge**: Staged tool generation pipeline (audit + capability + killswitch)
+- **ShinkaEvolve registry**: ShinkaEvolve's allowlist of model identifiers; run `shinka_models --verbose` to inspect. Our `_map_llm_models()` must use names from this registry, not Bedrock ARNs or arbitrary OpenRouter slugs.
+- **Deep availability check**: `_is_shinka_available()` runs the actual deep imports the engine performs at session start (`shinka.core`, `shinka.launch`, `shinka.database`) — not just `import shinka`. Failures log a warning and let the selector fall back to AVO.
+- **Dual-ledger write**: Every shinka session writes to BOTH `results_ledger` (history) AND `evolution_roi.json` (rotation/ROI input). Without the second write, the rule-5 rotation gate keeps firing forever because `days_since_engine_run("shinka")` stays at infinity.
 
 ---
 
-*Last updated: 2026-04-26.
-For implementation history, see `git log --grep "self-improvement\|evolution\|elegance"`
+*Last updated: 2026-04-30.
+For implementation history, see `git log --grep "self-improvement\|evolution\|elegance\|shinka"`
 on the `main` branch of the AndrusAI repository.*
