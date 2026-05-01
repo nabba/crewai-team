@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_KB_TOP_K = 6
 DEFAULT_KB_COLLECTIONS = ("episteme", "experiential")
+COMPANION_SOURCES_COLLECTION = "companion_sources"
 
 
 @dataclass
@@ -58,6 +59,15 @@ def compose(workspace_id: str, query: str, *,
     except Exception as exc:
         logger.debug("companion.workspace_kb: kb_v2 helper raised: %s", exc)
 
+    try:
+        snippets.extend(_companion_sources_snippets(
+            workspace_id, query, top_k=top_k))
+    except Exception as exc:
+        logger.debug(
+            "companion.workspace_kb: companion_sources helper raised: %s",
+            exc,
+        )
+
     return snippets
 
 
@@ -70,6 +80,58 @@ def _temporal_snippet() -> KBSnippet:
         logger.debug("companion.workspace_kb: temporal_context failed: %s", exc)
         return KBSnippet(text="", score=0.0, source="temporal_context")
     return KBSnippet(text=block or "", score=1.0, source="temporal_context")
+
+
+def _companion_sources_snippets(workspace_id: str, query: str, *,
+                                  top_k: int) -> list[KBSnippet]:
+    """Workspace-scoped query of the companion_sources ChromaDB collection.
+
+    Returns [] when the collection is empty, ChromaDB is down, or the query
+    is empty. Items are tagged with ``source=<url-or-source_id>`` so the
+    prompt line shows where each snippet came from.
+    """
+    if not query or not query.strip():
+        return []
+    try:
+        results = _query_companion_sources(query, workspace_id, top_k)
+    except Exception as exc:
+        logger.debug("companion.workspace_kb: sources query failed: %s", exc)
+        return []
+    out: list[KBSnippet] = []
+    for r in results:
+        text = r.get("document") or ""
+        if not text:
+            continue
+        meta = r.get("metadata") or {}
+        dist = float(r.get("distance", 1.0))
+        src = meta.get("url") or meta.get("source_id") or "companion_sources"
+        out.append(KBSnippet(
+            text=text,
+            score=max(0.0, 1.0 - dist / 2.0),
+            source=str(src)[:80],
+        ))
+    return out
+
+
+def _query_companion_sources(query: str, workspace_id: str,
+                              top_k: int) -> list[dict]:
+    """Indirection over the ChromaDB filtered query, for testability."""
+    from app.memory.chromadb_manager import _get_col, embed
+    col = _get_col(COMPANION_SOURCES_COLLECTION)
+    embedding = embed(query)
+    results = col.query(
+        query_embeddings=[embedding],
+        n_results=top_k,
+        where={"workspace_id": workspace_id},
+        include=["documents", "metadatas", "distances"],
+    )
+    docs = (results.get("documents") or [[]])[0]
+    metas = (results.get("metadatas") or [[]])[0]
+    dists = (results.get("distances") or [[]])[0]
+    return [
+        {"document": d, "metadata": m, "distance": dist}
+        for d, m, dist in zip(docs, metas, dists)
+    ]
 
 
 def _kb_v2_snippets(query: str, *, top_k: int) -> list[KBSnippet]:

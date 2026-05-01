@@ -16,15 +16,17 @@ def tmp_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return tmp_path
 
 
-def test_get_idle_jobs_returns_one_medium_job():
+def test_get_idle_jobs_includes_tick_and_ingest():
+    """Phase 6: the loop registers two jobs (tick + ingest)."""
     jobs = _loop.get_idle_jobs()
-    assert len(jobs) == 1
-    name, fn, weight = jobs[0]
-    assert name == "companion-tick"
-    assert callable(fn)
+    names = [j[0] for j in jobs]
+    assert "companion-tick" in names
+    assert "companion-ingest" in names
 
     from app.idle_scheduler import JobWeight
-    assert weight == JobWeight.MEDIUM
+    by_name = {j[0]: j[2] for j in jobs}
+    assert by_name["companion-tick"] == JobWeight.MEDIUM
+    assert by_name["companion-ingest"] == JobWeight.LIGHT
 
 
 def test_idle_scheduler_default_jobs_includes_companion():
@@ -34,6 +36,7 @@ def test_idle_scheduler_default_jobs_includes_companion():
     jobs = idle_scheduler._default_jobs()
     names = [j[0] for j in jobs]
     assert "companion-tick" in names
+    assert "companion-ingest" in names
 
 
 def test_tick_with_no_workspaces_is_noop(tmp_state_dir):
