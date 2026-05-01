@@ -86,27 +86,57 @@ class TierChange:
 # ── History persistence ──────────────────────────────────────────────────────
 
 def _load_history() -> dict[str, TierHistory]:
-    """Load tier history from disk."""
+    """Load tier history from disk.
+
+    Phase G5 defensive read: every field uses ``.get()`` with a sensible
+    default so a partially-written or schema-evolved JSON file does not
+    crash the scheduler at startup. A single bad entry is logged and
+    skipped; the rest of the history loads. Previously a single missing
+    key (e.g. ``filepath`` on a hand-edited entry) crashed the whole
+    load and wiped the in-memory tier state.
+    """
     if not TIER_HISTORY_PATH.exists():
         return {}
     try:
         data = json.loads(TIER_HISTORY_PATH.read_text())
-        return {
-            path: TierHistory(
-                filepath=entry["filepath"],
-                static_tier=entry.get("static_tier", "open"),
-                dynamic_tier=entry.get("dynamic_tier", "open"),
-                dynamic_tier_since=entry.get("dynamic_tier_since", time.time()),
-                successful_mutations=entry.get("successful_mutations", 0),
-                rollbacks=entry.get("rollbacks", 0),
-                rollback_timestamps=entry.get("rollback_timestamps", []),
-                last_mutation_at=entry.get("last_mutation_at", 0.0),
-            )
-            for path, entry in data.items()
-        }
-    except (json.JSONDecodeError, OSError, KeyError) as e:
-        logger.warning(f"tier_graduation: history load failed: {e}")
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"tier_graduation: history file unreadable: {e}")
         return {}
+
+    if not isinstance(data, dict):
+        logger.warning(
+            f"tier_graduation: expected dict at top level, got {type(data).__name__}"
+        )
+        return {}
+
+    out: dict[str, TierHistory] = {}
+    skipped = 0
+    for path, entry in data.items():
+        if not isinstance(entry, dict):
+            skipped += 1
+            continue
+        try:
+            # Use the dict KEY as fallback filepath — the key is the
+            # canonical filepath in this schema, the field is redundant.
+            rollbacks_field = entry.get("rollback_timestamps", [])
+            if not isinstance(rollbacks_field, list):
+                rollbacks_field = []
+            out[path] = TierHistory(
+                filepath=str(entry.get("filepath", path)),
+                static_tier=str(entry.get("static_tier", "open")),
+                dynamic_tier=str(entry.get("dynamic_tier", "open")),
+                dynamic_tier_since=float(entry.get("dynamic_tier_since", time.time())),
+                successful_mutations=int(entry.get("successful_mutations", 0)),
+                rollbacks=int(entry.get("rollbacks", 0)),
+                rollback_timestamps=[float(x) for x in rollbacks_field if isinstance(x, (int, float))],
+                last_mutation_at=float(entry.get("last_mutation_at", 0.0)),
+            )
+        except (TypeError, ValueError) as e:
+            logger.warning(f"tier_graduation: skipping malformed entry for {path!r}: {e}")
+            skipped += 1
+    if skipped:
+        logger.info(f"tier_graduation: loaded {len(out)} entries, skipped {skipped} malformed")
+    return out
 
 
 def _save_history(history: dict[str, TierHistory]) -> None:
