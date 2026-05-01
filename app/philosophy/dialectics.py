@@ -39,16 +39,16 @@ def _get_driver():
         return None
 
     try:
-        from app.settings import get as get_settings
+        from app.config import get_settings
         s = get_settings()
 
-        url = getattr(s, "mem0_neo4j_url", "") or ""
-        user = getattr(s, "mem0_neo4j_user", "") or "neo4j"
-        password = getattr(s, "mem0_neo4j_password", "") or ""
+        url = s.mem0_neo4j_url or ""
+        user = s.mem0_neo4j_user or "neo4j"
+        password = s.mem0_neo4j_password.get_secret_value()
 
-        if not url:
+        if not (url and password):
             _driver_failed = True
-            logger.info("philosophy.dialectics: Neo4j URL not configured — dialectics disabled")
+            logger.info("philosophy.dialectics: Neo4j URL/password not configured — dialectics disabled")
             return None
 
         import neo4j
