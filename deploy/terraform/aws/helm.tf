@@ -94,6 +94,14 @@ resource "helm_release" "botarmy" {
   chart     = local.botarmy_chart_path
   namespace = kubernetes_namespace.botarmy.metadata[0].name
 
+  # Don't block the apply on pod readiness. The gateway pod can't be Ready
+  # until the dispatcher has built + pushed the image to ECR — which happens
+  # AFTER terraform apply returns. The dispatcher's `kubectl rollout status`
+  # call after the image push is the right gate. (Verified by an e2e test on
+  # 2026-05-01: with wait=true, helm timed out at 5m on ImagePullBackOff.)
+  wait    = false
+  timeout = 600
+
   # The chart's values get cloud-shaped overrides — image points at ECR,
   # in-cluster Postgres is disabled (we use RDS), ingress is wired up.
   values = [yamlencode({

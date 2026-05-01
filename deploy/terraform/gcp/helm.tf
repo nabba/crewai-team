@@ -20,6 +20,15 @@ resource "helm_release" "botarmy" {
   chart     = local.botarmy_chart_path
   namespace = kubernetes_namespace.botarmy.metadata[0].name
 
+  # Don't block the apply on pod readiness — the gateway pod can't start
+  # until the image has been pushed to Artifact Registry, which the
+  # dispatcher does after terraform apply returns. The dispatcher's
+  # `kubectl rollout status` call is the right readiness gate. (Verified
+  # by an e2e test on 2026-05-01: with wait=true, helm timed out at 5m
+  # on ImagePullBackOff.)
+  wait    = false
+  timeout = 600
+
   values = [yamlencode({
     image = {
       repository = "${local.artifact_registry_url}/gateway"

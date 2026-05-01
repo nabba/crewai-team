@@ -17,6 +17,14 @@ resource "random_password" "gateway_secret" {
   special = false
 }
 
+# Neo4j runs in-cluster (no RDS-equivalent for Neo4j). Generate a password
+# here and propagate via the env secret. The chart's neo4j.yaml composes
+# `NEO4J_AUTH = neo4j/$(MEM0_NEO4J_PASSWORD)` at pod startup.
+resource "random_password" "neo4j" {
+  length  = 32
+  special = false
+}
+
 # ─── Required Kubernetes namespace ────────────────────────────
 resource "kubernetes_namespace" "botarmy" {
   metadata { name = var.namespace }
@@ -34,6 +42,10 @@ locals {
     MEM0_POSTGRES_DB       = aws_db_instance.botarmy.db_name
     MEM0_POSTGRES_USER     = aws_db_instance.botarmy.username
     MEM0_POSTGRES_PASSWORD = random_password.rds.result
+
+    # Neo4j (in-cluster StatefulSet)
+    MEM0_NEO4J_PASSWORD = random_password.neo4j.result
+    MEM0_NEO4J_USER     = "neo4j"
 
     # Gateway
     GATEWAY_SECRET = random_password.gateway_secret.result

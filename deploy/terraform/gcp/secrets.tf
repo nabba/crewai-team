@@ -11,6 +11,15 @@ resource "random_password" "gateway_secret" {
   special = false
 }
 
+# Neo4j runs in-cluster (no GCP-managed Neo4j equivalent). Generate a password
+# here and propagate it via the env secret. The chart's neo4j.yaml composes
+# `NEO4J_AUTH = neo4j/$(MEM0_NEO4J_PASSWORD)` at pod startup using k8s var
+# expansion — so the value lives only in this secret, never in template literals.
+resource "random_password" "neo4j" {
+  length  = 32
+  special = false
+}
+
 resource "kubernetes_namespace" "botarmy" {
   metadata { name = var.namespace }
 }
@@ -23,6 +32,10 @@ locals {
     MEM0_POSTGRES_DB       = google_sql_database.mem0.name
     MEM0_POSTGRES_USER     = google_sql_user.mem0.name
     MEM0_POSTGRES_PASSWORD = random_password.cloudsql.result
+
+    # Neo4j (in-cluster StatefulSet)
+    MEM0_NEO4J_PASSWORD = random_password.neo4j.result
+    MEM0_NEO4J_USER     = "neo4j"
 
     # Gateway
     GATEWAY_SECRET = random_password.gateway_secret.result
