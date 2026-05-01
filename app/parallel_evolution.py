@@ -643,25 +643,25 @@ def run_parallel_evolution_cycle() -> dict:
             _ws_lock = None
         try:
             runner.archive.add(ArchiveEntry(
-            version_tag=f"v-parallel-{int(time.time())}",
-            metrics=best.metrics,
-            change_description=best.description,
-            parent_tag=best.parent_tag,
-            mutation_strategy=best.mutation_strategy,
-            composite_score=sum(best.metrics.get(d, 0) for d in [
-                "task_completion", "user_alignment", "efficiency",
-            ]),
-        ))
-        result["best_candidate"] = {
-            "strategy": best.mutation_strategy,
-            "metrics": best.metrics,
-            "description": best.description,
-        }
-        try:
-            from app.workspace_versioning import workspace_commit
-            workspace_commit(f"parallel-evolution: {best.mutation_strategy} — {best.description[:60]}")
-        except Exception:
-            pass
+                version_tag=f"v-parallel-{int(time.time())}",
+                metrics=best.metrics,
+                change_description=best.description,
+                parent_tag=best.parent_tag,
+                mutation_strategy=best.mutation_strategy,
+                composite_score=sum(best.metrics.get(d, 0) for d in [
+                    "task_completion", "user_alignment", "efficiency",
+                ]),
+            ))
+            result["best_candidate"] = {
+                "strategy": best.mutation_strategy,
+                "metrics": best.metrics,
+                "description": best.description,
+            }
+            try:
+                from app.workspace_versioning import workspace_commit
+                workspace_commit(f"parallel-evolution: {best.mutation_strategy} — {best.description[:60]}")
+            except Exception:
+                pass
         finally:
             if _ws_lock:
                 _ws_lock.release()
