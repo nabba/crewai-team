@@ -26,6 +26,15 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # ── Stub heavy dependencies before importing app modules ─────────────────────
+# These tests need their own custom stubs (e.g. a tool() decorator that
+# works as `tool("name")(fn)`), so we replace the real modules even when
+# they're installed. Track what we replaced so teardown_module below can
+# restore the originals — without that, our placeholders bleed into every
+# test file that runs afterward.
+_STUBS_REPLACED: dict[str, object] = {}
+_STUBS_INSERTED: list[str] = []
+_SENTINEL = object()
+
 _STUBS = [
     "crewai", "crewai.tools", "langchain_anthropic", "docker",
     "chromadb", "sentence_transformers", "trafilatura",
@@ -38,13 +47,16 @@ _STUBS = [
 ]
 
 for mod in _STUBS:
+    # Save the original (or sentinel for "not in sys.modules") before replacing.
+    _STUBS_REPLACED[mod] = sys.modules.get(mod, _SENTINEL)
     if mod not in sys.modules:
-        m = types.ModuleType(mod)
-        if mod == "crewai.tools":
-            m.tool = lambda name: (lambda fn: fn)
-        if mod == "youtube_transcript_api":
-            m.YouTubeTranscriptApi = MagicMock
-        sys.modules[mod] = m
+        _STUBS_INSERTED.append(mod)
+    m = types.ModuleType(mod)
+    if mod == "crewai.tools":
+        m.tool = lambda name: (lambda fn: fn)
+    if mod == "youtube_transcript_api":
+        m.YouTubeTranscriptApi = MagicMock
+    sys.modules[mod] = m
 
 # Stub pydantic and pydantic_settings only if not actually installed
 try:
@@ -812,6 +824,17 @@ class TestSyntax(unittest.TestCase):
             except SyntaxError as e:
                 errors.append(f"{f.relative_to(REPO)}: {e}")
         self.assertEqual(errors, [], f"Syntax errors found:\n" + "\n".join(errors))
+
+
+def teardown_module(module):
+    """Restore the modules we stubbed at import time so they don't bleed
+    into subsequent test files (test_capability_routing etc. need the real
+    `from crewai import Agent`)."""
+    for name, original in _STUBS_REPLACED.items():
+        if original is _SENTINEL:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 if __name__ == "__main__":
