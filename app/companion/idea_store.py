@@ -107,6 +107,49 @@ def find_by_workspace(workspace_id: str, *,
     return out[-limit:]
 
 
+def find_by_id(workspace_id: str, idea_id: str) -> IdeaRecord | None:
+    """Read one idea record by id. Returns None if not found."""
+    for r in find_by_workspace(workspace_id, limit=10_000):
+        if r.idea_id == idea_id:
+            return r
+    return None
+
+
+def current_state(workspace_id: str, idea_id: str) -> IdeaState | None:
+    """Effective state — original record + applied event-log overrides.
+
+    State machine (Phase 4):
+        CONVERGED ──surfaced────▶ SURFACED
+        SURFACED  ──fb DOWN──▶ ARCHIVED
+        SURFACED  ──fb UP─────▶ APPROVED
+        any       ──archived─▶ ARCHIVED
+        any       ──approved─▶ APPROVED
+
+    Returns None if the idea_id is not in this workspace.
+    """
+    rec = find_by_id(workspace_id, idea_id)
+    if rec is None:
+        return None
+    state = rec.state
+    try:
+        from app.companion import events as _events
+    except ImportError:
+        return state
+    for ev in _events.read_for_idea(workspace_id, idea_id):
+        if ev.type == _events.EventType.SURFACED:
+            state = IdeaState.SURFACED
+        elif ev.type == _events.EventType.ARCHIVED:
+            state = IdeaState.ARCHIVED
+        elif ev.type == _events.EventType.APPROVED:
+            state = IdeaState.DOCUMENTED  # treat APPROVED → DOCUMENTED for now
+        elif ev.type == _events.EventType.FEEDBACK:
+            pol = (ev.payload or {}).get("polarity")
+            if pol == "down":
+                state = IdeaState.ARCHIVED
+            # thumbs UP keeps SURFACED (Phase 5 may introduce APPROVED state).
+    return state
+
+
 def search_similar(workspace_id: str, text: str, *,
                    top_k: int = 5) -> list[dict]:
     """Return top-k most-similar prior ideas for one workspace.

@@ -1,13 +1,21 @@
 """Tests for app.companion.cycle — Creative MAS wiring + cost capture."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from app.companion import cycle as _cycle
+from app.companion import events as _events
 from app.companion import workspace_kb
 from app.companion.config import CompanionConfig
+
+
+@pytest.fixture(autouse=True)
+def _isolate_events_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Each cycle test gets its own events log so cooldown checks are clean."""
+    monkeypatch.setattr(_events, "_EVENTS_DIR", tmp_path / "events")
 
 
 def _make_creative_result(*, p1=3, p2=2, final="The idea", cost=0.05,
@@ -244,3 +252,110 @@ def test_run_cycle_emits_cycle_id_even_on_abort():
     result = _cycle.run_cycle("ws-1", cfg)
     assert result.cycle_id.startswith("cyc_")
     assert result.aborted_reason == "no_seed_prompt"
+
+
+# ── Phase 4: surfacing ─────────────────────────────────────────────────────
+
+def test_run_cycle_surfaces_when_eligible():
+    cfg = CompanionConfig(seed_prompt="forests",
+                           novelty_threshold=0.5,
+                           surface_threshold=0.5).clamp()
+    fake = _make_creative_result(p1=2, p2=1, final="A solid idea body")
+
+    surface_calls: list = []
+
+    def _surface(idea, config):
+        surface_calls.append(idea.idea_id)
+        return True
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist",
+               lambda r: r.idea_id), \
+         patch("app.companion.scoring.compute_novelty",
+               lambda *a, **kw: 0.9), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.9), \
+         patch("app.companion.scoring.compute_transferability",
+               lambda t: 0.5), \
+         patch("app.companion.surfacing.surface", _surface):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.surfaced is True
+    assert result.surface_reason == "ok"
+    assert len(surface_calls) == 1
+
+
+def test_run_cycle_does_not_surface_below_threshold():
+    cfg = CompanionConfig(seed_prompt="forests",
+                           novelty_threshold=0.7,
+                           surface_threshold=0.7).clamp()
+    fake = _make_creative_result(p1=1, p2=1, final="lukewarm idea")
+    surface_calls: list = []
+
+    def _surface(idea, config):
+        surface_calls.append(idea.idea_id)
+        return True
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist",
+               lambda r: r.idea_id), \
+         patch("app.companion.scoring.compute_novelty",
+               lambda *a, **kw: 0.4), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.5), \
+         patch("app.companion.scoring.compute_transferability",
+               lambda t: 0.5), \
+         patch("app.companion.surfacing.surface", _surface):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.surfaced is False
+    assert result.surface_reason == "below_novelty"
+    assert surface_calls == []
+
+
+def test_run_cycle_skips_surfacing_when_aborted():
+    cfg = CompanionConfig(seed_prompt="x").clamp()
+    fake = _make_creative_result(aborted="budget exceeded")
+    surface_calls: list = []
+
+    def _surface(idea, config):
+        surface_calls.append(idea.idea_id)
+        return True
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.surfacing.surface", _surface):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.surfaced is False
+    assert result.surface_reason == "not_attempted"
+    assert surface_calls == []
+
+
+def test_run_cycle_handles_surfacing_exception():
+    cfg = CompanionConfig(seed_prompt="x",
+                           novelty_threshold=0.0,
+                           surface_threshold=0.0).clamp()
+    fake = _make_creative_result(p1=1, p2=1, final="ok body")
+
+    def _broken(idea, config):
+        raise RuntimeError("send blew up")
+
+    with patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake), \
+         patch("app.companion.idea_store.persist",
+               lambda r: r.idea_id), \
+         patch("app.companion.scoring.compute_novelty",
+               lambda *a, **kw: 0.9), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.9), \
+         patch("app.companion.scoring.compute_transferability",
+               lambda t: 0.5), \
+         patch("app.companion.surfacing.surface", _broken):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.surfaced is False
+    assert "surface_failed" in result.surface_reason

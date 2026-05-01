@@ -1,0 +1,95 @@
+"""Append-only event log per workspace.
+
+Records state transitions and feedback events for Companion ideas. Each
+event is one JSON line at ``workspace/companion/events/<workspace_id>.jsonl``.
+
+Event sourcing: the ``ideas.jsonl`` file holds the immutable creation
+record (state at creation time); this event log holds everything that
+happens to an idea afterwards. Current state is derived by reading both
+and folding events forward — see ``app.companion.idea_store.current_state``.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import time
+import uuid
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from pathlib import Path
+from threading import Lock
+
+logger = logging.getLogger(__name__)
+
+_EVENTS_DIR = Path(os.environ.get(
+    "COMPANION_EVENTS_DIR", "workspace/companion/events"))
+_LOCK = Lock()
+
+
+class EventType(str, Enum):
+    SURFACED = "surfaced"
+    FEEDBACK = "feedback"
+    ARCHIVED = "archived"
+    APPROVED = "approved"
+
+
+@dataclass
+class Event:
+    event_id: str = field(
+        default_factory=lambda: f"ev_{uuid.uuid4().hex[:12]}")
+    workspace_id: str = ""
+    idea_id: str = ""
+    type: EventType = EventType.FEEDBACK
+    ts: float = field(default_factory=time.time)
+    payload: dict = field(default_factory=dict)
+
+
+def append(event: Event) -> str:
+    """Append the event to the workspace's log. Returns the event_id."""
+    p = _path_for(event.workspace_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(asdict(event), default=_json_default, sort_keys=True)
+    with _LOCK:
+        with open(p, "a") as f:
+            f.write(line + "\n")
+    return event.event_id
+
+
+def read_all(workspace_id: str) -> list[Event]:
+    """Read every event for a workspace, oldest first."""
+    p = _path_for(workspace_id)
+    if not p.exists():
+        return []
+    out: list[Event] = []
+    for line in p.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+            kwargs = {k: raw[k] for k in Event.__dataclass_fields__
+                      if k in raw}
+            if "type" in kwargs:
+                kwargs["type"] = EventType(kwargs["type"])
+            out.append(Event(**kwargs))
+        except Exception:
+            continue
+    return out
+
+
+def read_for_idea(workspace_id: str, idea_id: str) -> list[Event]:
+    """All events for one idea, oldest first."""
+    return [e for e in read_all(workspace_id) if e.idea_id == idea_id]
+
+
+def _path_for(workspace_id: str) -> Path:
+    safe = "".join(c for c in workspace_id if c.isalnum() or c in "-_") \
+        or "default"
+    return _EVENTS_DIR / f"{safe}.jsonl"
+
+
+def _json_default(o):
+    if isinstance(o, EventType):
+        return o.value
+    raise TypeError(f"Not JSON-serialisable: {type(o)}")

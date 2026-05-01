@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from app.companion import idea_store as _idea_store
 from app.companion import scoring as _scoring
+from app.companion import surfacing as _surfacing
 from app.companion import workspace_kb
 from app.companion.config import CompanionConfig
 
@@ -51,6 +52,9 @@ class CycleResult:
     novelty: float = 0.0
     quality: float = 0.0
     transferability: float = 0.0
+    # Phase 4 surfacing
+    surfaced: bool = False
+    surface_reason: str = ""
 
 
 def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
@@ -103,6 +107,9 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
     converged_id: str | None = None
     novelty = quality = transferability = 0.0
 
+    surfaced = False
+    surface_reason = "not_attempted"
+
     if aborted is None and final.strip():
         novelty = _scoring.compute_novelty(final, workspace_id)
         quality = _scoring.compute_quality(final)
@@ -117,6 +124,16 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
             quality=quality,
             transferability=transferability,
         )
+        if converged_id:
+            surfaced, surface_reason = _maybe_surface(
+                workspace_id=workspace_id,
+                idea_id=converged_id,
+                final=final,
+                novelty=novelty,
+                quality=quality,
+                transferability=transferability,
+                config=config,
+            )
 
     return CycleResult(
         workspace_id=workspace_id,
@@ -135,7 +152,37 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
         novelty=novelty,
         quality=quality,
         transferability=transferability,
+        surfaced=surfaced,
+        surface_reason=surface_reason,
     )
+
+
+def _maybe_surface(*, workspace_id: str, idea_id: str, final: str,
+                    novelty: float, quality: float, transferability: float,
+                    config: CompanionConfig) -> tuple[bool, str]:
+    """Build a transient IdeaRecord and run the surfacing pipeline."""
+    rec = _idea_store.IdeaRecord(
+        idea_id=idea_id,
+        workspace_id=workspace_id,
+        text=final,
+        state=_idea_store.IdeaState.CONVERGED,
+        novelty=novelty,
+        quality=quality,
+        transferability=transferability,
+    )
+    try:
+        decision = _surfacing.should_surface(rec, config)
+    except Exception as exc:
+        logger.debug("companion.cycle: should_surface raised: %s", exc)
+        return False, "decision_failed"
+    if not decision.eligible:
+        return False, decision.reason
+    try:
+        sent = _surfacing.surface(rec, config)
+    except Exception as exc:
+        logger.warning("companion.cycle: surface raised: %s", exc)
+        return False, f"surface_failed:{type(exc).__name__}"
+    return sent, "ok" if sent else "send_failed"
 
 
 def _persist_lineage(
