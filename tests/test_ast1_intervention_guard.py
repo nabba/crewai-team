@@ -31,14 +31,14 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock
 
-# Stub DB layers that attention_schema pulls in.
+# Stub DB layers that attention_schema pulls in. Don't mock control_plane
+# itself (the real package imports cleanly and execute() returns None when
+# no pool is configured — which is what tests want).
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 import pytest
 

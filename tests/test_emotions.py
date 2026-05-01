@@ -29,38 +29,68 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# ── Module-level mocks for Docker-only dependencies ──
-# chromadb, psycopg2, control_plane etc. aren't available outside Docker.
-# Somatic marker uses lazy imports inside functions, so we mock the modules
-# that would fail on import. These mocks get overridden by per-test patches.
-_mock_modules = {}
+# ── Module-level mocks (restored by teardown_module below) ──
+# Only mock what we genuinely need to avoid I/O. chromadb, psycopg2 etc.
+# are all installed; chromadb is mocked here only because somatic_marker's
+# lazy imports would otherwise pull in the real heavy module mid-test.
+# Without the teardown, these mutations bleed into every later test file.
+_MOCK_KEYS_INSERTED: list[str] = []
+_PARENT_ATTRS_OVERRIDDEN: list[tuple[object, str, object]] = []
+
+
+def _mock_module(name: str) -> MagicMock:
+    mock = MagicMock()
+    if name not in sys.modules:
+        _MOCK_KEYS_INSERTED.append(name)
+    sys.modules[name] = mock
+    return mock
+
+
+def _override_attr(parent, attr, value):
+    sentinel = object()
+    original = getattr(parent, attr, sentinel)
+    _PARENT_ATTRS_OVERRIDDEN.append((parent, attr, original))
+    setattr(parent, attr, value)
+
+
 for mod_name in (
     "chromadb", "psycopg2", "psycopg2.extras", "psycopg2.pool",
 ):
     if mod_name not in sys.modules:
-        _mock_modules[mod_name] = MagicMock()
-        sys.modules[mod_name] = _mock_modules[mod_name]
+        _MOCK_KEYS_INSERTED.append(mod_name)
+        sys.modules[mod_name] = MagicMock()
 
-# Mock control_plane.db so its `execute` function can be patched per-test
-# (db.py uses `list | None` type hint which fails on Python 3.9)
 import app
 import app.memory
 
+# Mock control_plane.db (real db.py uses Python 3.10+ `list | None` syntax
+# which is fine here, but we want to control execute() per-test).
 if "app.control_plane" not in sys.modules:
-    _cp_db = MagicMock()
+    _cp_db = _mock_module("app.control_plane.db")
     _cp_db.execute = MagicMock(return_value=[])
-    _cp = MagicMock()
+    _cp = _mock_module("app.control_plane")
     _cp.db = _cp_db
-    sys.modules["app.control_plane"] = _cp
-    sys.modules["app.control_plane.db"] = _cp_db
-    app.control_plane = _cp  # Make it accessible via getattr
+    _override_attr(app, "control_plane", _cp)
 
-# Mock chromadb_manager embed function
 if "app.memory.chromadb_manager" not in sys.modules:
-    _cm = MagicMock()
+    _cm = _mock_module("app.memory.chromadb_manager")
     _cm.embed = MagicMock(return_value=[0.1] * 768)
-    sys.modules["app.memory.chromadb_manager"] = _cm
-    app.memory.chromadb_manager = _cm  # Make it accessible via getattr
+    _override_attr(app.memory, "chromadb_manager", _cm)
+
+
+def teardown_module(module):
+    """Undo the module-level mocks so they don't bleed into later tests."""
+    sentinel = object()
+    for parent, attr, original in _PARENT_ATTRS_OVERRIDDEN:
+        if original is sentinel:
+            try:
+                delattr(parent, attr)
+            except AttributeError:
+                pass
+        else:
+            setattr(parent, attr, original)
+    for name in _MOCK_KEYS_INSERTED:
+        sys.modules.pop(name, None)
 
 from app.self_awareness.internal_state import (
     SomaticMarker, CertaintyVector, MetaCognitiveState,

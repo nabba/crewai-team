@@ -33,8 +33,9 @@ import sys
 from unittest.mock import MagicMock
 
 # Stub out DB backends that the shim-chain pulls in transitively.
+# Don't mock app.control_plane (real package imports cleanly; mocking
+# it as MagicMock breaks test_control_plane.py later in the run).
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()

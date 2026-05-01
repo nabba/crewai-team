@@ -14,28 +14,58 @@ import unittest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch, call
 
-# ── Stub heavy dependencies before importing app modules ────────────────
-_STUBS = [
+# ── Stub heavy dependencies that aren't on the dev host ─────────────────
+# Capture which entries we insert so teardown_module below can clean up
+# afterward — without that, the stubs bleed into every later test file
+# (e.g. crewai/Agent imports start failing).
+_STUBS_INSERTED: list[str] = []
+_PSYCOPG2_INSERTED: list[str] = []
+
+# Skip stubbing for modules that are installed in the venv. Those imports
+# are real on this host and stubbing them creates phantom failures in
+# later tests (test_capability_routing.py etc. need real `from crewai
+# import Agent`).
+_CANDIDATES = [
     "crewai", "crewai.tools", "langchain_anthropic", "docker",
     "chromadb", "sentence_transformers", "trafilatura",
     "youtube_transcript_api", "brave_search", "apscheduler",
     "firebase_admin", "pypdf", "docx", "openpyxl", "PIL",
     "litellm", "bs4", "neo4j", "mem0",
 ]
-for _mod in _STUBS:
-    if _mod not in sys.modules:
-        m = types.ModuleType(_mod)
-        if _mod == "crewai.tools":
-            m.tool = lambda name: (lambda fn: fn)
-        sys.modules[_mod] = m
+for _mod in _CANDIDATES:
+    if _mod in sys.modules:
+        continue
+    try:
+        __import__(_mod)
+        # Real module is importable — leave it alone.
+        continue
+    except Exception:
+        pass
+    m = types.ModuleType(_mod)
+    if _mod == "crewai.tools":
+        m.tool = lambda name: (lambda fn: fn)
+    sys.modules[_mod] = m
+    _STUBS_INSERTED.append(_mod)
 
 
 # ── Mock psycopg2 at module level so db.py imports cleanly ──────────────
 _mock_psycopg2 = MagicMock()
 _mock_psycopg2.InterfaceError = type("InterfaceError", (Exception,), {})
 _mock_psycopg2.OperationalError = type("OperationalError", (Exception,), {})
-sys.modules.setdefault("psycopg2", _mock_psycopg2)
-sys.modules.setdefault("psycopg2.pool", MagicMock())
+if "psycopg2" not in sys.modules:
+    sys.modules["psycopg2"] = _mock_psycopg2
+    _PSYCOPG2_INSERTED.append("psycopg2")
+if "psycopg2.pool" not in sys.modules:
+    sys.modules["psycopg2.pool"] = MagicMock()
+    _PSYCOPG2_INSERTED.append("psycopg2.pool")
+
+
+def teardown_module(module):
+    """Remove any stubs we inserted so subsequent test files that need
+    the real modules (crewai.Agent, real psycopg2.pool) don't see our
+    placeholders."""
+    for name in _STUBS_INSERTED + _PSYCOPG2_INSERTED:
+        sys.modules.pop(name, None)
 
 
 # ============================================================================

@@ -15,19 +15,16 @@ from contextlib import contextmanager
 
 import pytest
 
-# Mock backends BeliefStore lazy-imports. We do NOT mock chromadb here —
-# our tests don't exercise the embed() path, and mocking chromadb at import
-# time pollutes sys.modules for unrelated tests (test_mem0_integration's
-# TestMem0ToolsFactory in particular).
-_MOCK_MODULES = [
-    "psycopg2", "psycopg2.pool", "psycopg2.extras",
-    "app.control_plane", "app.control_plane.db",
-]
+# Mock only what's safe to mock without breaking other tests' imports:
+#   - psycopg2 internals (driver is installed but we don't want real DB I/O)
+# Do NOT mock chromadb (installed and used by other tests via dotted imports).
+# Do NOT mock app.control_plane / app.control_plane.db (test_control_plane.py
+# needs the real package; the real `execute()` returns None gracefully when
+# no Postgres pool is configured, which is what our test path expects).
+_MOCK_MODULES = ["psycopg2", "psycopg2.pool", "psycopg2.extras"]
 for _mod_name in _MOCK_MODULES:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock()
-
-sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 
 @contextmanager
