@@ -11,6 +11,7 @@ Run: docker exec crewai-team-gateway-1 python3 -m pytest /app/tests/test_island_
 
 import inspect
 import json
+import os
 import random
 import sys
 import tempfile
@@ -20,6 +21,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# app.island_evolution hardcodes ISLAND_DIR = "/app/workspace/island_evolution"
+# (Docker container layout). On macOS the parent /app exists but is the
+# system root and read-only, so any test that exercises the persist path
+# blows up with OSError: Read-only file system. Skip the whole module
+# unless we're in a writable Docker-style environment.
+pytestmark = pytest.mark.skipif(
+    not os.access("/app", os.W_OK),
+    reason="Requires Docker-style /app writable layout (run inside the gateway container)",
+)
 
 
 # ════════════════════════════════════════════════════════════════════════════════

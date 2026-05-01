@@ -10,6 +10,7 @@ Run: docker exec crewai-team-gateway-1 python3 -m pytest /app/tests/test_atlas.p
 
 import inspect
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# app.atlas hardcodes /app/workspace/atlas/* paths; on macOS the parent
+# /app is the read-only system root, so any test that touches the persist
+# layer fails with OSError. Skip the whole module unless we're in a
+# Docker-style writable layout.
+pytestmark = pytest.mark.skipif(
+    not os.access("/app", os.W_OK),
+    reason="Requires Docker-style /app writable layout (run inside the gateway container)",
+)
 
 
 # ════════════════════════════════════════════════════════════════════════════════

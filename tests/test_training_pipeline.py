@@ -13,6 +13,7 @@ Run: docker exec crewai-team-gateway-1 python3 -m pytest /app/tests/test_trainin
 """
 
 import hashlib
+import os
 import importlib
 import inspect
 import json
@@ -23,6 +24,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Persists state under /app/workspace, which is the read-only system root
+# on macOS hosts. Skip unless we're inside a Docker-style writable layout.
+pytestmark = pytest.mark.skipif(
+    not os.access("/app", os.W_OK),
+    reason="Requires Docker-style /app writable layout (run inside the gateway container)",
+)
+
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

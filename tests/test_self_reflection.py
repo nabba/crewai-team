@@ -14,6 +14,7 @@ Run: docker exec crewai-team-gateway-1 python3 -m pytest /app/tests/test_self_re
 import hashlib
 import inspect
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# This module is explicitly Docker-only (see docstring above). The
+# self-reflection subsystem persists state under /app/workspace which
+# isn't writable on macOS hosts.
+pytestmark = pytest.mark.skipif(
+    not os.access("/app", os.W_OK),
+    reason="Requires Docker-style /app writable layout (run inside the gateway container)",
+)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
