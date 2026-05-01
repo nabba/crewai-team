@@ -1,0 +1,28 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+# ServiceMonitor — tells the Prometheus operator to scrape the gateway's /metrics.
+# Requires the kube-prometheus-stack CRDs to be installed (Terraform does this
+# on AWS/GCP when var.enable_monitoring = true).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "botarmy.fullname" . }}-gateway
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    # The Prometheus operator picks up ServiceMonitors with this label by default.
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "botarmy.name" . }}
+      app.kubernetes.io/component: gateway
+  endpoints:
+    - port: http
+      path: {{ .Values.monitoring.serviceMonitor.path | quote }}
+      interval: {{ .Values.monitoring.serviceMonitor.interval | quote }}
+      # Drop the ridiculously long Go runtime / FastAPI label set on container_*
+      # metrics — keeps Prometheus storage tractable.
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'go_.*|process_.*'
+          action: drop
+{{- end }}

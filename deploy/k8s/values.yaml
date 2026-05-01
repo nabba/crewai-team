@@ -1,0 +1,93 @@
+# Default values for the BotArmy Helm chart.
+# Override per-environment with `helm install -f values-prod.yaml ...`.
+
+image:
+  repository: botarmy/gateway
+  tag: ""                       # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# The secret name created by ./install.sh --target k8s.
+# Contains every key from .env (ANTHROPIC_API_KEY, MEM0_POSTGRES_PASSWORD, etc.).
+envSecretName: botarmy-env
+
+gateway:
+  replicas: 1
+  resources:
+    requests: { cpu: "2",   memory: "4Gi" }
+    limits:   { cpu: "4",   memory: "8Gi" }
+  service:
+    type: ClusterIP             # ClusterIP + Ingress is the recommended path
+    port: 8765
+  ingress:
+    enabled: false              # toggle on for external access
+    className: nginx            # use 'alb' for AWS, 'gce' for GCP, 'nginx' for everything else
+    host: botarmy.example.com
+    annotations: {}             # cloud-specific (set by Terraform on AWS/GCP)
+    tls:
+      enabled: true
+      secretName: botarmy-tls   # cert-manager populates this when no ACM cert is supplied
+
+postgres:
+  enabled: true                 # set false when using managed Postgres (RDS / Cloud SQL).
+                                # When false, the gateway reads MEM0_POSTGRES_HOST etc.
+                                # from the envSecretName Secret (Terraform populates these).
+  image: pgvector/pgvector:pg16
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""            # "" = cluster default; set to gp3 / pd-ssd for cloud
+  resources:
+    requests: { cpu: "1", memory: "1Gi" }
+    limits:   { cpu: "2", memory: "2Gi" }
+
+neo4j:
+  image: neo4j:5-community
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: "1", memory: "2Gi" }
+    limits:   { cpu: "2", memory: "4Gi" }
+
+chromadb:
+  image: chromadb/chroma:0.5.23
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: "0.5", memory: "1Gi" }
+    limits:   { cpu: "2",   memory: "3Gi" }
+
+# ─── Optional service account (Workload Identity / IRSA) ─────
+# Cloud Terraform modules set this. For local install it's not needed.
+serviceAccount:
+  create: false
+  name: ""                      # defaults to chart fullname when create=true
+  annotations: {}
+
+# ─── Observability ────────────────────────────────────────────
+# Toggles wire the chart to the kube-prometheus-stack release that
+# Terraform installs (var.enable_monitoring on AWS / GCP). Off by
+# default — local installs and bare-cluster installs cost nothing.
+monitoring:
+  serviceMonitor:
+    enabled: false              # exposes /metrics for Prometheus to scrape
+    interval: 30s
+    path: /metrics
+  prometheusRule:
+    enabled: false              # Alertmanager rules for the obvious failure modes
+  dashboards:
+    enabled: false              # ConfigMap with Grafana dashboard JSON, picked up
+                                # by the Grafana sidecar (label: grafana_dashboard=1)
+
+# ─── Features that don't translate to k8s ─────────────────────
+# These are host-bound on the local stack. Setting `enabled: true` will fail
+# until the corresponding k8s-native replacement is built (see README.md).
+signal:
+  enabled: false                # Phase 2b — needs sidecar, not host launchd
+ollama:
+  enabled: false                # Phase 2b — needs in-cluster Deployment + GPU
+sandbox:
+  enabled: false                # Phase 2c — needs Job-based sandbox, not docker-socket

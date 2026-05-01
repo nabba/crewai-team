@@ -1,0 +1,51 @@
+# Copy to terraform.tfvars and edit. Anything not set falls back to the
+# defaults in variables.tf.
+
+# ─── Required ────────────────────────────────────────────────
+project_id = "my-gcp-project-12345"
+
+# ─── Region / sizing ─────────────────────────────────────────
+region       = "europe-north1"   # Hamina, Finland
+zone         = "europe-north1-a"
+cluster_name = "botarmy"
+tier         = "cheapest"        # or "prod" for HA Cloud SQL + regional Autopilot
+
+# ─── Optional ingress ────────────────────────────────────────
+# domain              = "bot.example.com"
+# managed_certificate = true        # Google manages the TLS cert (free)
+
+# ─── Observability ───────────────────────────────────────────
+enable_monitoring = true   # installs kube-prometheus-stack + Grafana + Alertmanager
+
+# ─── Application secrets ─────────────────────────────────────
+extra_env = {
+  ANTHROPIC_API_KEY  = "sk-ant-..."
+  OPENROUTER_API_KEY = "sk-or-v1-..."
+  BRAVE_API_KEY      = "BSA..."
+
+  # Optional integrations
+  # APOLLO_API_KEY    = "..."
+  # PROXYCURL_API_KEY = "..."
+  # SMITHERY_API_KEY  = "..."
+}
+
+# ─── Custom sizing (overrides tier presets) ──────────────────
+# cloudsql_tier              = "db-custom-4-15360"
+# cloudsql_disk_size         = 200
+# cloudsql_high_availability = true
+
+# ─── Alert routing ───────────────────────────────────────────
+# Both optional. Slack webhook + email destinations for kube-prometheus-stack
+# Alertmanager. If neither set, alerts are visible in the UI but not pushed.
+# alertmanager_slack_webhook_url = "https://hooks.slack.com/services/T0000/B0000/abc123"
+# alertmanager_slack_channel     = "#botarmy-alerts"
+#
+# alertmanager_email_to            = "you@example.com"
+# alertmanager_smtp_from           = "alerts@example.com"
+# alertmanager_smtp_smarthost      = "smtp.sendgrid.net:587"
+# alertmanager_smtp_auth_username  = "apikey"
+# alertmanager_smtp_auth_password  = "SG.abc..."
+#
+# Opsgenie — recommended for production paging
+# alertmanager_opsgenie_api_key = "ab12cd34-..."
+# alertmanager_opsgenie_api_url = "https://api.opsgenie.com/"   # or .eu. for EU accounts

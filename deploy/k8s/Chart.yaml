@@ -1,0 +1,14 @@
+apiVersion: v2
+name: botarmy
+description: BotArmy CrewAI multi-agent system — Mem0 + pgvector + Neo4j + ChromaDB
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/anthropics/botarmy
+maintainers:
+  - name: BotArmy
+keywords:
+  - crewai
+  - agents
+  - llm
+  - mem0

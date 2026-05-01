@@ -246,6 +246,17 @@ def maybe_recover(
     if recovered_result is not None:
         return recovered_result
 
+    # Every alternative strategy was tried (or budget exhausted) and none
+    # produced a successful completion.  This is the trigger for the
+    # BotArmyLLMCascadeAllFailing alert — exposed as a Prometheus counter
+    # so the alerting rule fires on increments over a 10m window.
+    try:
+        from app.observability.metrics import LLM_CASCADE_ALL_TIERS_FAILED_TOTAL
+        LLM_CASCADE_ALL_TIERS_FAILED_TOTAL.inc()
+    except Exception:
+        # Never let a metric emission break the recovery contract.
+        logger.debug("recovery: metric emission failed", exc_info=True)
+
     return RecoveryResult(
         triggered=True,
         success=False,

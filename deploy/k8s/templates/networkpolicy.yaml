@@ -1,0 +1,21 @@
+{{- /* Lock down internal services so only the gateway can reach them. */ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "botarmy.fullname" . }}-internal-only
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [{{ include "botarmy.name" . }}]
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [postgres, neo4j, chromadb]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "botarmy.name" . }}
+              app.kubernetes.io/component: gateway

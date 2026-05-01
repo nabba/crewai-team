@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "botarmy.fullname" . }}-chromadb
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chromadb
+spec:
+  serviceName: {{ include "botarmy.fullname" . }}-chromadb
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "botarmy.name" . }}
+      app.kubernetes.io/component: chromadb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "botarmy.name" . }}
+        app.kubernetes.io/component: chromadb
+    spec:
+      containers:
+        - name: chromadb
+          image: {{ .Values.chromadb.image }}
+          ports:
+            - { name: http, containerPort: 8000 }
+          env:
+            - name: IS_PERSISTENT
+              value: "TRUE"
+            - name: ANONYMIZED_TELEMETRY
+              value: "FALSE"
+          volumeMounts:
+            - name: data
+              mountPath: /chroma/chroma
+          readinessProbe:
+            httpGet: { path: /api/v2/heartbeat, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.chromadb.resources | nindent 12 }}
+  {{- if .Values.chromadb.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.chromadb.persistence.size }}
+        {{- if .Values.chromadb.persistence.storageClass }}
+        storageClassName: {{ .Values.chromadb.persistence.storageClass }}
+        {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "botarmy.fullname" . }}-chromadb
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chromadb
+spec:
+  clusterIP: None
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+  selector:
+    app.kubernetes.io/name: {{ include "botarmy.name" . }}
+    app.kubernetes.io/component: chromadb

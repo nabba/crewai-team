@@ -1,0 +1,50 @@
+# Copy to terraform.tfvars and edit. Anything not set falls back to the
+# defaults in variables.tf.
+
+# ─── Required-ish ────────────────────────────────────────────
+region       = "eu-north-1"      # Stockholm — closest to Helsinki/Tallinn
+cluster_name = "botarmy"
+tier         = "cheapest"        # or "prod" for HA / multi-AZ
+
+# ─── Optional ingress ────────────────────────────────────────
+# domain              = "bot.example.com"     # blank = no ingress, port-forward only
+# acm_certificate_arn = "arn:aws:acm:eu-north-1:123456789012:certificate/abcd-..."
+# # ↑ if blank but domain is set, cert-manager + Let's Encrypt are installed instead
+
+# ─── Application secrets ─────────────────────────────────────
+# Pulled into AWS Secrets Manager + the in-cluster Secret on apply.
+# Treat this file as sensitive — add it to .gitignore.
+extra_env = {
+  ANTHROPIC_API_KEY  = "sk-ant-..."
+  OPENROUTER_API_KEY = "sk-or-v1-..."
+  BRAVE_API_KEY      = "BSA..."
+
+  # Optional integrations
+  # APOLLO_API_KEY    = "..."
+  # PROXYCURL_API_KEY = "..."
+  # SMITHERY_API_KEY  = "..."
+}
+
+# ─── Custom sizing (overrides the tier presets) ──────────────
+# node_instance_types   = ["m5.xlarge"]
+# node_desired_size     = 4
+# rds_instance_class    = "db.m5.xlarge"
+# rds_allocated_storage = 200
+# rds_multi_az          = true
+
+# ─── Alert routing ───────────────────────────────────────────
+# Both optional. If neither is set, Alertmanager runs but doesn't notify.
+# Get a Slack webhook at https://api.slack.com/messaging/webhooks
+# alertmanager_slack_webhook_url = "https://hooks.slack.com/services/T0000/B0000/abc123"
+# alertmanager_slack_channel     = "#botarmy-alerts"
+#
+# alertmanager_email_to            = "you@example.com"
+# alertmanager_smtp_from           = "alerts@example.com"
+# alertmanager_smtp_smarthost      = "smtp.sendgrid.net:587"
+# alertmanager_smtp_auth_username  = "apikey"
+# alertmanager_smtp_auth_password  = "SG.abc..."
+#
+# Opsgenie — recommended for production paging
+# Get a key at https://app.opsgenie.com/settings/integration/add/API
+# alertmanager_opsgenie_api_key = "ab12cd34-..."
+# alertmanager_opsgenie_api_url = "https://api.opsgenie.com/"   # or .eu. for EU accounts

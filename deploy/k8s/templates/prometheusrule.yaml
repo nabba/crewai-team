@@ -1,0 +1,105 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+# Alertmanager rules for the obvious BotArmy failure modes. Tune the
+# thresholds in values.yaml or override this file with your own.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "botarmy.fullname" . }}-alerts
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: botarmy.gateway
+      rules:
+        - alert: BotArmyGatewayDown
+          expr: up{job=~".*botarmy.*-gateway"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "BotArmy gateway is down"
+            description: "No successful Prometheus scrapes of the gateway for 2 minutes."
+
+        - alert: BotArmyGatewayHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job=~".*botarmy.*-gateway",status=~"5.."}[5m]))
+              /
+            sum(rate(http_requests_total{job=~".*botarmy.*-gateway"}[5m]))
+              > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "BotArmy 5xx error rate >5% over 5m"
+            description: "Investigate gateway logs for upstream LLM failures or DB outages."
+
+        - alert: BotArmyGatewayHighMemory
+          expr: |
+            container_memory_working_set_bytes{namespace=~".*",pod=~".*botarmy.*-gateway-.*"}
+              / container_spec_memory_limit_bytes
+              > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway container >85% of memory limit"
+            description: "Consider raising gateway.resources.limits.memory or investigating leaks."
+
+    - name: botarmy.dependencies
+      rules:
+        - alert: BotArmyPostgresDown
+          # Matches both in-cluster Postgres and Mem0's connection-error metric.
+          # When using managed RDS / Cloud SQL, in-cluster pod metric won't exist.
+          expr: |
+            (up{job=~".*botarmy.*-postgres"} == 0)
+              or on()
+            (mem0_postgres_connection_errors_total > 0)
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Postgres / Mem0 store unreachable"
+
+        - alert: BotArmyNeo4jDown
+          expr: up{job=~".*botarmy.*-neo4j"} == 0
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Neo4j entity graph down — agent reasoning will degrade"
+
+        - alert: BotArmyChromaDown
+          expr: up{job=~".*botarmy.*-chromadb"} == 0
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ChromaDB RAG store down — retrieval will fail"
+
+    - name: botarmy.llm
+      rules:
+        - alert: BotArmyLLMCascadeAllFailing
+          # Custom metric the gateway exposes when every tier in the LLM
+          # cascade has been refusing for a sustained period.
+          expr: increase(llm_cascade_all_tiers_failed_total[10m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "All LLM tiers refusing — recovery loop exhausted"
+            description: |
+              Local + frontier API + premium fallback all failed within 10m.
+              Check OpenRouter / Anthropic status, API quotas, and Ollama health.
+
+        - alert: BotArmyLLMP95Latency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(llm_request_duration_seconds_bucket[5m])) by (le)
+            ) > 30
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "LLM p95 latency >30s for 10m"
+{{- end }}

@@ -797,6 +797,17 @@ def _publish_schedule() -> None:
 
 app = FastAPI(title="CrewAI Agent Gateway", lifespan=lifespan)
 
+# Expose Prometheus /metrics — auto-emits http_requests_total + duration
+# histogram via prometheus-fastapi-instrumentator, and surfaces the
+# application-level metrics defined in app.observability.metrics
+# (llm_requests_total, llm_request_duration_seconds, etc.). Safe no-op
+# when prometheus-fastapi-instrumentator isn't installed.
+try:
+    from app.observability.metrics import register_metrics
+    register_metrics(app)
+except Exception:
+    logger.warning("metrics: registration failed", exc_info=True)
+
 # ── CORS — allow control plane dashboard (port 3100) to call API (port 8765) ──
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(

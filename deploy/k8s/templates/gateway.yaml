@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "botarmy.fullname" . }}-gateway
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "botarmy.name" . }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "botarmy.name" . }}
+        app.kubernetes.io/component: gateway
+    spec:
+      {{- if or .Values.serviceAccount.create .Values.serviceAccount.name }}
+      serviceAccountName: {{ default (include "botarmy.fullname" .) .Values.serviceAccount.name }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: gateway
+          image: {{ include "botarmy.gatewayImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8765
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ .Values.envSecretName }}
+          env:
+            # Override compose-isms so the app finds in-cluster services
+            - name: GATEWAY_BIND
+              value: "0.0.0.0"
+            - name: GATEWAY_PORT
+              value: "8765"
+            - name: CREWAI_STORAGE_DIR
+              value: /app/workspace/crewai_storage
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          volumeMounts:
+            - name: workspace
+              mountPath: /app/workspace
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: {{ include "botarmy.fullname" . }}-workspace
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "botarmy.fullname" . }}-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+  {{- if .Values.gateway.storageClass }}
+  storageClassName: {{ .Values.gateway.storageClass }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "botarmy.fullname" . }}-gateway
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: {{ .Values.gateway.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.gateway.service.port }}
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: {{ include "botarmy.name" . }}
+    app.kubernetes.io/component: gateway
+{{- if .Values.gateway.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "botarmy.fullname" . }}-gateway
+  annotations:
+    {{- with .Values.gateway.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if and .Values.gateway.ingress.tls.enabled (not (hasKey (.Values.gateway.ingress.annotations | default dict) "alb.ingress.kubernetes.io/certificate-arn")) }}
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.gateway.ingress.className }}
+  rules:
+    - host: {{ .Values.gateway.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "botarmy.fullname" . }}-gateway
+                port: { name: http }
+  {{- if .Values.gateway.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.gateway.ingress.host }}]
+      secretName: {{ .Values.gateway.ingress.tls.secretName }}
+  {{- end }}
+{{- end }}

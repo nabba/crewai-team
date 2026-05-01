@@ -34,6 +34,22 @@ def _sanitize_exc(exc: Exception) -> str:
     msg = re.sub(r'password[=:]\S+', 'password=***', msg, flags=re.IGNORECASE)
     return msg
 
+
+def _bump_error_counter() -> None:
+    """Increment the Prometheus connection-error counter, swallowing any
+    failure to import the metrics module (keeps the warning path total-trust).
+
+    Used as the last line of every ``except Exception`` block in this file
+    so the BotArmyPostgresDown alert picks up degraded Mem0 even when
+    running against managed RDS / Cloud SQL where ``up{job=...-postgres}``
+    isn't a meaningful probe.
+    """
+    try:
+        from app.observability.metrics import MEM0_POSTGRES_CONNECTION_ERRORS_TOTAL
+        MEM0_POSTGRES_CONNECTION_ERRORS_TOTAL.inc()
+    except Exception:
+        pass
+
 def _validate_text(text: str, max_bytes: int) -> bool:
     """Validate text input: non-empty, within size limit, valid UTF-8, no null bytes."""
     if not text or not isinstance(text, str):
@@ -119,6 +135,7 @@ def get_client():
         except Exception as exc:
             logger.warning(f"mem0: init failed, running without persistent memory: {_sanitize_exc(exc)}")
             _init_failed = True
+            _bump_error_counter()
             return None
 
 def _get_user_id() -> str:
@@ -157,6 +174,7 @@ def store_memory(
         return result
     except Exception as exc:
         logger.warning(f"mem0: store failed: {_sanitize_exc(exc)}")
+        _bump_error_counter()
         return None
 
 # ── Stage 5.4: async writes — move Mem0 fact extraction off critical path ──
@@ -248,6 +266,7 @@ def store_conversation(
         return result
     except Exception as exc:
         logger.warning(f"mem0: conversation store failed: {_sanitize_exc(exc)}")
+        _bump_error_counter()
         return None
 
 def search_memory(
@@ -267,16 +286,19 @@ def search_memory(
         return []
     n = min(max(1, n), 20)  # cap results
     try:
-        kwargs = {"query": query, "user_id": _get_user_id(), "limit": n}
+        # Mem0 ≥ 1.x rejects top-level `user_id` / `agent_id` on search();
+        # both must travel inside `filters={}`.
+        filters: dict = {"user_id": _get_user_id()}
         if agent_id:
-            kwargs["agent_id"] = agent_id
-        results = client.search(**kwargs)
+            filters["agent_id"] = agent_id
+        results = client.search(query=query, filters=filters, limit=n)
         # Mem0 returns {"results": [...]} or a list directly depending on version
         if isinstance(results, dict):
             return results.get("results", [])
         return results if isinstance(results, list) else []
     except Exception as exc:
         logger.warning(f"mem0: search failed: {_sanitize_exc(exc)}")
+        _bump_error_counter()
         return []
 
 def search_shared(query: str, n: int = 5) -> list[dict]:
@@ -302,4 +324,5 @@ def get_all_memories(agent_id: str | None = None) -> list[dict]:
         return results if isinstance(results, list) else []
     except Exception as exc:
         logger.warning(f"mem0: get_all failed: {_sanitize_exc(exc)}")
+        _bump_error_counter()
         return []

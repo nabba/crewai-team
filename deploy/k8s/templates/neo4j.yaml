@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "botarmy.fullname" . }}-neo4j
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: neo4j
+spec:
+  serviceName: {{ include "botarmy.fullname" . }}-neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "botarmy.name" . }}
+      app.kubernetes.io/component: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "botarmy.name" . }}
+        app.kubernetes.io/component: neo4j
+    spec:
+      containers:
+        - name: neo4j
+          image: {{ .Values.neo4j.image }}
+          ports:
+            - { name: http,  containerPort: 7474 }
+            - { name: bolt,  containerPort: 7687 }
+          env:
+            - name: NEO4J_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.envSecretName }}
+                  key: MEM0_NEO4J_PASSWORD
+                  # Note: NEO4J_AUTH expects "neo4j/<password>" — populated via
+                  # an init env munge below using a fieldRef + lifecycle script.
+                  # For Phase 2 we wrap with a small entrypoint shim. TODO.
+            - name: NEO4J_PLUGINS
+              value: "[]"
+            - name: NEO4J_server_memory_heap_max__size
+              value: "2g"
+            - name: NEO4J_server_memory_pagecache_size
+              value: "1g"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.neo4j.resources | nindent 12 }}
+  {{- if .Values.neo4j.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.neo4j.persistence.size }}
+        {{- if .Values.neo4j.persistence.storageClass }}
+        storageClassName: {{ .Values.neo4j.persistence.storageClass }}
+        {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "botarmy.fullname" . }}-neo4j
+  labels:
+    {{- include "botarmy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: neo4j
+spec:
+  clusterIP: None
+  ports:
+    - { name: http, port: 7474, targetPort: http }
+    - { name: bolt, port: 7687, targetPort: bolt }
+  selector:
+    app.kubernetes.io/name: {{ include "botarmy.name" . }}
+    app.kubernetes.io/component: neo4j

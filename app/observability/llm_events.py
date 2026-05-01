@@ -68,6 +68,7 @@ from crewai.events.event_bus import crewai_event_bus
 from crewai.events.types.llm_events import (
     LLMCallCompletedEvent,
     LLMCallFailedEvent,
+    LLMCallStartedEvent,
 )
 
 from app.rate_throttle import record_llm_activity
@@ -78,6 +79,39 @@ logger = logging.getLogger(__name__)
 # Decorator registration is idempotent in CrewAI's event bus, but we still
 # guard against double-install so the log line isn't noisy.
 _installed: bool = False
+
+
+# ── Latency tracking ─────────────────────────────────────────────────
+# CrewAI's events carry a ``timestamp`` and a per-call ``call_id`` but
+# don't compute duration for us. We pair Started→Completed/Failed events
+# via call_id and emit the histogram from the difference.
+#
+# The dict only ever holds in-flight calls (typical: <100 entries) so
+# memory is bounded.  We still cap it defensively at 10k so a leak in
+# CrewAI's event emission can't OOM the gateway — beyond that we evict
+# oldest-first.
+_MAX_INFLIGHT_CALLS = 10_000
+_inflight_starts: "dict[str, datetime]" = {}
+
+
+def _model_to_labels(model: str | None) -> tuple[str, str, str]:
+    """Resolve (tier, provider, model) labels for a given model name.
+
+    Falls back to ``"unknown"`` when the catalog has no entry — keeps the
+    cardinality of metric labels bounded even for one-off / experimental
+    models we haven't catalogued yet.
+    """
+    name = (model or "unknown").strip() or "unknown"
+    try:
+        # Lazy import — llm_catalog has heavy module-level init we don't
+        # want to pay at observability install time.
+        from app.llm_catalog import get_provider, get_tier
+        tier = get_tier(name) or "unknown"
+        provider = get_provider(name) or "unknown"
+    except Exception:
+        tier = "unknown"
+        provider = "unknown"
+    return tier, provider, name
 
 
 def install() -> None:
@@ -91,10 +125,38 @@ def install() -> None:
     if _installed:
         return
 
+    # Lazy import — keeps prometheus_client out of the import graph if
+    # someone runs this module in a context without the dep.
+    from app.observability.metrics import (
+        LLM_REQUESTS_TOTAL,
+        LLM_REQUEST_DURATION_SECONDS,
+    )
+
+    @crewai_event_bus.on(LLMCallStartedEvent)
+    def _on_started(source, event):  # noqa: ARG001 — CrewAI signature
+        try:
+            cid = getattr(event, "call_id", None)
+            ts = getattr(event, "timestamp", None)
+            if cid and ts is not None:
+                # Defensive size cap (see _MAX_INFLIGHT_CALLS comment).
+                if len(_inflight_starts) >= _MAX_INFLIGHT_CALLS:
+                    # Drop the oldest entry — Python dicts iterate in
+                    # insertion order, so the first key is the oldest.
+                    _inflight_starts.pop(next(iter(_inflight_starts)), None)
+                _inflight_starts[cid] = ts
+        except Exception:
+            logger.debug("llm_events: started-handler failed", exc_info=True)
+
     @crewai_event_bus.on(LLMCallCompletedEvent)
     def _on_completed(source, event):  # noqa: ARG001 — CrewAI signature
         record_llm_activity()
         _record_cost_from_event(event)
+        _record_metric_from_event(
+            event,
+            status="success",
+            counter=LLM_REQUESTS_TOTAL,
+            histogram=LLM_REQUEST_DURATION_SECONDS,
+        )
 
     @crewai_event_bus.on(LLMCallFailedEvent)
     def _on_failed(source, event):  # noqa: ARG001
@@ -105,15 +167,55 @@ def install() -> None:
         # NEITHER success NOR failure has been observed for an extended
         # period, i.e. the orchestrator is frozen on non-LLM code.
         record_llm_activity()
+        _record_metric_from_event(
+            event,
+            status="failure",
+            counter=LLM_REQUESTS_TOTAL,
+            histogram=LLM_REQUEST_DURATION_SECONDS,
+        )
         # No cost to record on failure — no tokens came back.
 
     _installed = True
     logger.info(
         "observability.llm_events: subscribed to CrewAI event bus "
-        "(LLMCallCompletedEvent + LLMCallFailedEvent) — unified path for "
-        "heartbeat, token accounting, and per-request cost aggregation "
-        "across every BaseLLM provider (native + LiteLLM-mediated)."
+        "(Started + Completed + Failed) — unified path for heartbeat, "
+        "token accounting, per-request cost aggregation, and Prometheus "
+        "metric emission across every BaseLLM provider (native + LiteLLM-"
+        "mediated)."
     )
+
+
+def _record_metric_from_event(event, *, status: str, counter, histogram) -> None:
+    """Emit ``llm_requests_total`` and ``llm_request_duration_seconds``.
+
+    Latency is computed from the matching Started event's timestamp.  If
+    we somehow lost the start (e.g. gateway restarted mid-call), only the
+    counter increments — the histogram observation is skipped to avoid
+    polluting it with bogus durations.
+    """
+    try:
+        model = getattr(event, "model", None)
+        tier, provider, model_label = _model_to_labels(model)
+        counter.labels(
+            tier=tier, provider=provider, model=model_label, status=status
+        ).inc()
+
+        cid = getattr(event, "call_id", None)
+        if not cid:
+            return
+        start_ts = _inflight_starts.pop(cid, None)
+        end_ts = getattr(event, "timestamp", None)
+        if start_ts is None or end_ts is None:
+            return
+        duration = (end_ts - start_ts).total_seconds()
+        if duration < 0:
+            # Clock skew / event reordering — skip rather than poison the bucket.
+            return
+        histogram.labels(
+            tier=tier, provider=provider, model=model_label
+        ).observe(duration)
+    except Exception:
+        logger.debug("llm_events: metric emission failed", exc_info=True)
 
 
 # ── Cost / token accounting ─────────────────────────────────────────
