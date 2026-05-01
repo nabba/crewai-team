@@ -78,36 +78,142 @@ def _conservative_reject(reason: str, judge_model: str) -> tuple[AuditFinding, S
     return finding, eval_
 
 
-def _call_judge(prompt: str, model: str) -> str | None:
-    """Invoke the configured LLM. Returns raw text or None on failure."""
-    try:
-        from anthropic import Anthropic  # type: ignore
-        from app.config import get_settings
-        settings = get_settings()
-        api_key = settings.anthropic_api_key.get_secret_value()
-        client = Anthropic(api_key=api_key)
-        # Map our internal name to a real Anthropic model ID; fall back to a
-        # known-good model when the configured name has no obvious mapping.
-        anthropic_model = {
-            "claude-opus-4-7": "claude-opus-4-7",
-            "claude-opus-4-6": "claude-opus-4-6",
-            "claude-sonnet-4-6": "claude-sonnet-4-6",
-            "claude-haiku-4-5": "claude-haiku-4-5-20251001",
-        }.get(model, "claude-sonnet-4-6")
+def _model_to_anthropic_id(model: str) -> str:
+    """Map our internal name to a real Anthropic model ID."""
+    return {
+        "claude-opus-4-7": "claude-opus-4-7",
+        "claude-opus-4-6": "claude-opus-4-6",
+        "claude-sonnet-4-6": "claude-sonnet-4-6",
+        "claude-haiku-4-5": "claude-haiku-4-5-20251001",
+    }.get(model, "claude-sonnet-4-6")
 
-        response = client.messages.create(
-            model=anthropic_model,
-            max_tokens=2000,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if not response.content:
-            return None
-        text_blocks = [b.text for b in response.content if hasattr(b, "text")]
-        return "".join(text_blocks).strip() or None
-    except Exception as exc:
-        logger.warning("forge.audit.semantic: judge call failed: %s", exc)
+
+def _call_judge_anthropic_direct(prompt: str, model: str) -> str | None:
+    """Try Anthropic's direct API. Returns raw text, or None on failure.
+
+    Re-raises the credit-exhausted error so the caller can trip the
+    shared breaker and failover to OpenRouter — same pattern as
+    ``CreditAwareAnthropicCompletion`` uses for the agent stack.
+    """
+    from anthropic import Anthropic  # type: ignore
+    from app.config import get_settings
+    settings = get_settings()
+    api_key = settings.anthropic_api_key.get_secret_value()
+    client = Anthropic(api_key=api_key)
+
+    response = client.messages.create(
+        model=_model_to_anthropic_id(model),
+        max_tokens=2000,
+        system=_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    if not response.content:
         return None
+    text_blocks = [b.text for b in response.content if hasattr(b, "text")]
+    return "".join(text_blocks).strip() or None
+
+
+def _call_judge_openrouter(prompt: str, model: str) -> str | None:
+    """Failover path: same model family on OpenRouter.
+
+    Used when the Anthropic-direct path returns a credit-exhausted 400.
+    Same prompt / system message — the judge's contract (JSON-only
+    structured output) is provider-independent.
+    """
+    try:
+        from openai import OpenAI  # type: ignore
+        from app.config import get_settings
+    except ImportError:
+        return None
+    settings = get_settings()
+    api_key = settings.openrouter_api_key.get_secret_value() if hasattr(
+        settings, "openrouter_api_key"
+    ) else ""
+    if not api_key:
+        logger.warning(
+            "forge.audit.semantic: OpenRouter failover unavailable "
+            "(OPENROUTER_API_KEY not set) — judge will fail closed"
+        )
+        return None
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
+    or_model = f"anthropic/{_model_to_anthropic_id(model)}"
+    try:
+        response = client.chat.completions.create(
+            model=or_model,
+            max_tokens=2000,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception as exc:
+        logger.warning(
+            "forge.audit.semantic: OpenRouter failover call failed: %s", exc,
+        )
+        return None
+    if not response.choices:
+        return None
+    text = response.choices[0].message.content
+    return (text or "").strip() or None
+
+
+def _call_judge(prompt: str, model: str) -> str | None:
+    """Invoke the configured LLM with credit-aware Anthropic→OpenRouter
+    failover. Returns raw text or None on failure.
+
+    Behaviour:
+      1. Anthropic direct.
+      2. On a credit-exhausted 400: trip the shared
+         ``circuit_breaker['anthropic_credits']`` (so other components
+         see the same authoritative state) AND retry through OpenRouter.
+      3. On any other exception: log + return None (caller produces a
+         fail-closed reject — same as before).
+
+    Pre-2026-04-30 this function silently swallowed the credit-exhausted
+    400, returned None, and the audit ended at ``judge_unavailable_fail_closed``.
+    Worse: the shared breaker was never tripped, so the rest of the
+    system kept hammering Anthropic with the same dead key.
+    """
+    # Skip Anthropic direct entirely when the breaker is already open —
+    # avoids gratuitous 400s and keeps other components honest.
+    skip_anthropic = False
+    try:
+        from app import circuit_breaker
+        if not circuit_breaker.is_available("anthropic_credits"):
+            skip_anthropic = True
+    except Exception:
+        pass
+
+    if not skip_anthropic:
+        try:
+            return _call_judge_anthropic_direct(prompt, model)
+        except Exception as exc:
+            try:
+                from app.llms.credit_aware_anthropic import is_credit_exhausted_error
+                credit_exhausted = is_credit_exhausted_error(exc)
+            except Exception:
+                credit_exhausted = "credit balance" in str(exc).lower()
+            if not credit_exhausted:
+                logger.warning(
+                    "forge.audit.semantic: judge call failed: %s", exc,
+                )
+                return None
+            # Trip the shared breaker — same authority as the agent path.
+            try:
+                from app import circuit_breaker
+                circuit_breaker.record_failure("anthropic_credits")
+            except Exception:
+                pass
+            logger.warning(
+                "forge.audit.semantic: Anthropic credit-exhausted — "
+                "failing over to OpenRouter Claude"
+            )
+
+    # Failover path
+    return _call_judge_openrouter(prompt, model)
 
 
 def _parse_judge_output(raw: str) -> dict[str, Any] | None:
