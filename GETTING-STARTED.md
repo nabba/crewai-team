@@ -316,6 +316,40 @@ Useful if you want to test programmatically. Send a POST request to
 `/api/cp/tasks` with a JSON body. See the OpenAPI docs at
 `http://127.0.0.1:8765/docs`.
 
+**On a laptop install** (Path A) the gateway listens only on `127.0.0.1`,
+which is a security boundary on its own — no auth header needed. Just `curl`.
+
+**On a cloud install** (Path B/C) the gateway listens on `0.0.0.0` so
+Kubernetes can reach it. To compensate, the installer turns on
+**bearer-token auth** for any request that creates or modifies things —
+your token is the `GATEWAY_SECRET` value the installer auto-generated. Get
+it back later with:
+
+```bash
+# AWS
+aws secretsmanager get-secret-value --secret-id botarmy-env \
+    --query SecretString --output text | jq -r .GATEWAY_SECRET
+
+# GCP
+gcloud secrets versions access latest --secret botarmy-env \
+    | jq -r .GATEWAY_SECRET
+
+# Either cloud — also stored as a Kubernetes Secret
+kubectl -n botarmy get secret botarmy-env \
+    -o jsonpath='{.data.GATEWAY_SECRET}' | base64 -d
+```
+
+Then send your requests with an `Authorization` header:
+
+```bash
+TOKEN="..."   # the value from above
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+    https://bot.example.com/api/cp/tasks -d '{"text": "research X"}'
+```
+
+Read endpoints (GET requests), `/health`, and `/metrics` work without the
+header — only mutations need it.
+
 The first task takes 30–60 seconds because the agents need to warm up
 and pull memories. Later tasks are faster.
 

@@ -169,6 +169,12 @@ This currently:
 * Postgres / Neo4j / ChromaDB as StatefulSets with PersistentVolumeClaims.
 * NetworkPolicy locking down internal services to only the gateway.
 * Optional Ingress with cert-manager TLS.
+* **Bearer-token auth** on `/api/cp/*` and `/epistemic/*` mutating routes
+  (chart sets `gateway.authRequired: "true"` by default in K8s mode). Token
+  is `$GATEWAY_SECRET`, sourced from the auto-generated env Secret. Read
+  routes, `/health`, and `/metrics` are unaffected. See
+  [deploy/k8s/README.md](deploy/k8s/README.md#authenticating-to-the-gateway-phase-b)
+  for the auth model + how to make authorized requests.
 
 ### What's intentionally NOT in Phase 2
 
