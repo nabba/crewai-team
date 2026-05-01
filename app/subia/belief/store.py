@@ -256,6 +256,17 @@ class BeliefStore:
                 (new_conf, new_status, belief_id),
             )
 
+            # Mirror confidence + status changes to Neo4j (best-effort).
+            try:
+                from app.subia.belief import neo4j_mirror
+                neo4j_mirror.mirror_belief(
+                    belief_id,
+                    confidence=new_conf,
+                    belief_status=new_status,
+                )
+            except Exception:
+                logger.debug("belief_store: neo4j mirror failed", exc_info=True)
+
             update = MetacognitiveUpdate(
                 source_belief_id=belief_id,
                 trigger=trigger,
@@ -329,6 +340,16 @@ class BeliefStore:
                 """,
                 (replacement_id, belief_id),
             )
+
+            # Mirror retraction + supersession edge to Neo4j (best-effort).
+            try:
+                from app.subia.belief import neo4j_mirror
+                neo4j_mirror.mirror_belief(belief_id, belief_status="RETRACTED")
+                if replacement_id:
+                    neo4j_mirror.mirror_supersession(belief_id, replacement_id)
+            except Exception:
+                logger.debug("belief_store: neo4j mirror failed", exc_info=True)
+
             update = MetacognitiveUpdate(
                 source_belief_id=belief_id,
                 trigger="EXTERNAL_EVIDENCE",
@@ -342,6 +363,24 @@ class BeliefStore:
             return update
         except Exception:
             return None
+
+    def get_supersession_chain(self, belief_id: str, max_depth: int = 20) -> list[dict]:
+        """Walk the supersession chain forward from `belief_id` via Neo4j.
+
+        Returns the chain oldest-to-newest. Each element has belief_id,
+        domain, confidence, belief_status. The starting belief is index 0;
+        the terminal (current) belief is the last element.
+
+        Returns [] if Neo4j is unavailable (PostgreSQL `superseded_by`
+        column remains the source of truth — callers needing a chain when
+        Neo4j is down should walk that recursively).
+        """
+        try:
+            from app.subia.belief import neo4j_mirror
+            return neo4j_mirror.get_supersession_chain(belief_id, max_depth=max_depth)
+        except Exception as e:
+            logger.debug(f"belief_store: get_supersession_chain failed: {e}")
+            return []
 
     def get_stats(self) -> dict:
         """Dashboard stats: belief counts by status and domain."""
@@ -380,7 +419,7 @@ class BeliefStore:
             return stored_confidence
 
     def _persist_belief(self, belief: Belief) -> None:
-        """Store belief to PostgreSQL."""
+        """Store belief to PostgreSQL, then mirror to Neo4j (best-effort)."""
         try:
             from app.control_plane.db import execute
             execute(
@@ -406,6 +445,20 @@ class BeliefStore:
             )
         except Exception:
             logger.debug("belief_store: persist failed", exc_info=True)
+            return
+
+        # Mirror to Neo4j as a :Belief node. Best-effort; SQL is authoritative.
+        try:
+            from app.subia.belief import neo4j_mirror
+            neo4j_mirror.mirror_belief(
+                belief.belief_id,
+                domain=belief.domain,
+                confidence=belief.confidence,
+                belief_status=belief.belief_status,
+                formed_at=belief.formed_at,
+            )
+        except Exception:
+            logger.debug("belief_store: neo4j mirror failed", exc_info=True)
 
     def _persist_update(self, update: MetacognitiveUpdate) -> None:
         """Store metacognitive update to PostgreSQL."""
