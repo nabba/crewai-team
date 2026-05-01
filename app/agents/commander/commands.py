@@ -606,10 +606,39 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
             except Exception as exc:
                 return f"Error: {str(exc)[:200]}"
 
-        if lower in (
-            "project status", "project",
-            "workspace status", "workspace",
-        ):
+        # Project / workspace status. Matches both the canonical short
+        # forms ("project", "workspace status") AND natural-language
+        # questions ("what is the current active workspace", "which
+        # project am I on", "where am I"). The natural-language patterns
+        # were added 2026-04-30 after the agent answered "what is the
+        # current active workspace" by routing to the research crew —
+        # which has no project-introspection tool and produced a
+        # "missing tool" recovery message instead of a 1-line answer.
+        _stripped = lower.rstrip("?.! ").strip()
+        _is_status_q = (
+            _stripped in (
+                "project status", "project",
+                "workspace status", "workspace",
+                "where am i",
+            )
+            or bool(re.match(
+                r"^(?:"
+                    # "what (is) (the) (current|active) (project|workspace)"
+                    r"what(?:'s| is)?(?:\s+the)?(?:\s+(?:current|active))*\s+(?:project|workspace)"
+                    r"|"
+                    # "which (project|workspace) (am I in|am I on|...)"
+                    r"which\s+(?:project|workspace)"
+                    r"|"
+                    # "current (project|workspace)" / "active (project|workspace)"
+                    r"(?:current|active)\s+(?:project|workspace)"
+                    r"|"
+                    # "what (project|workspace) am I (on|in|using|working on)"
+                    r"what\s+(?:project|workspace)\s+am\s+i\s+(?:on|in|using|working)"
+                r")\b",
+                _stripped,
+            ))
+        )
+        if _is_status_q:
             try:
                 from app.control_plane.projects import get_projects
                 pm = get_projects()
@@ -622,10 +651,42 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
                     f"   Mission: {proj.get('mission', '—')[:100]}",
                     f"   Tickets: {tickets.get('todo', 0)} todo, {tickets.get('in_progress', 0)} in progress, "
                     f"{tickets.get('done', 0)} done, {tickets.get('failed', 0)} failed",
+                    "",
+                    "Switch with `switch workspace to <name>` or list with `workspaces`.",
                 ]
                 return "\n".join(lines)
             except Exception as exc:
                 return f"Error: {str(exc)[:200]}"
+
+        # Definitional: "what is a workspace?" / "what is a project?".
+        # Matches the agent's first question that got hallucinated direct-
+        # route reply about "UI only". Returns a short factual answer
+        # plus the actual command surface so the user knows it's chat-
+        # accessible.
+        _is_definitional_q = bool(re.match(
+            r"^what(?:'s| is)?(?:\s+a)?\s+(?:project|workspace)\b",
+            _stripped,
+        ))
+        if _is_definitional_q:
+            try:
+                from app.control_plane.projects import get_projects
+                pm = get_projects()
+                pid = pm.get_active_project_id()
+                proj = pm.get_by_id(pid) or {}
+                active_name = proj.get("name", "default")
+            except Exception:
+                active_name = "(unknown)"
+            return (
+                "A **workspace** (also called a project in the DB schema) is a "
+                "named context that scopes tickets, budgets, KB content, audit "
+                "logs, and agent memory. Each workspace has isolated state — "
+                "switching workspaces changes which data the agents see.\n\n"
+                f"You're currently on: **{active_name}**.\n\n"
+                "Commands:\n"
+                "  • `workspaces` — list available\n"
+                "  • `workspace` — show current + ticket counts\n"
+                "  • `switch workspace to <name>` — change active workspace"
+            )
 
         # ── Ticket management ─────────────────────────────────────────────
         if lower in ("tickets", "ticket list", "kanban"):

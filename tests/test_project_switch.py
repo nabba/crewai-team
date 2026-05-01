@@ -109,6 +109,137 @@ class TestSwitchCommandRegex:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Status / definitional question patterns
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Added 2026-04-30 after the user asked "what is the current active workspace"
+# and the agent routed to the research crew (no project-introspection tool)
+# instead of returning the active project. Plus the agent answered "what is
+# the workspace?" with hallucinated info about "UI-only switching".
+#
+# Both questions should match deterministic command patterns and return
+# real data — no LLM round-trip, no routing.
+
+_STATUS_PATTERN = re.compile(
+    r"^(?:"
+        r"what(?:'s| is)?(?:\s+the)?(?:\s+(?:current|active))*\s+(?:project|workspace)"
+        r"|"
+        r"which\s+(?:project|workspace)"
+        r"|"
+        r"(?:current|active)\s+(?:project|workspace)"
+        r"|"
+        r"what\s+(?:project|workspace)\s+am\s+i\s+(?:on|in|using|working)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_DEFINITIONAL_PATTERN = re.compile(
+    r"^what(?:'s| is)?(?:\s+a)?\s+(?:project|workspace)\b",
+    re.IGNORECASE,
+)
+
+_STATUS_EXACT = {
+    "project status", "project",
+    "workspace status", "workspace",
+    "where am i",
+}
+
+
+def _is_status_question(text: str) -> bool:
+    stripped = text.lower().rstrip("?.! ").strip()
+    return stripped in _STATUS_EXACT or bool(_STATUS_PATTERN.match(stripped))
+
+
+def _is_definitional_question(text: str) -> bool:
+    stripped = text.lower().rstrip("?.! ").strip()
+    return bool(_DEFINITIONAL_PATTERN.match(stripped))
+
+
+class TestStatusQuestionPatterns:
+    """Natural-language phrasings of "what is my current workspace"."""
+
+    def test_exact_short_forms(self):
+        assert _is_status_question("workspace")
+        assert _is_status_question("project")
+        assert _is_status_question("workspace status")
+        assert _is_status_question("project status")
+
+    def test_where_am_i(self):
+        assert _is_status_question("where am I")
+        assert _is_status_question("Where am I?")
+
+    def test_what_is_current_active_workspace(self):
+        """The user's actual second question."""
+        assert _is_status_question("what is the current active workspace")
+        assert _is_status_question("what is the current active workspace?")
+        assert _is_status_question("What's the current workspace?")
+
+    def test_which_workspace(self):
+        assert _is_status_question("which workspace")
+        assert _is_status_question("which project am I on")
+        assert _is_status_question("Which workspace are we using?")
+
+    def test_what_project_am_i_on(self):
+        assert _is_status_question("what project am I on")
+        assert _is_status_question("what workspace am I working on")
+        assert _is_status_question("what workspace am I in")
+
+    def test_current_workspace_short(self):
+        assert _is_status_question("current workspace")
+        assert _is_status_question("active project")
+
+    def test_strips_trailing_punctuation(self):
+        assert _is_status_question("workspace?")
+        assert _is_status_question("workspace.")
+        assert _is_status_question("workspace!")
+
+    def test_does_not_match_definitional_question(self):
+        """Definitional ('what is a workspace') should fall to its own
+        handler, not the status one — the answer shape is different."""
+        # A bare "what is a workspace" doesn't talk about THE/current/active
+        # workspace, so the status pattern shouldn't fire.
+        assert not _is_status_question("what is a workspace")
+
+    def test_does_not_match_unrelated(self):
+        assert not _is_status_question("switch workspace to plg")
+        assert not _is_status_question("workspaces")  # plural is the LIST command
+        assert not _is_status_question("hello")
+
+
+class TestDefinitionalQuestionPatterns:
+    """Natural-language phrasings of "what is a workspace".
+
+    Note: "what is THE workspace" intentionally falls to the STATUS
+    pattern (returns current active) — the definite article reads as
+    "the [current] workspace". Only "what is A workspace" or "what is
+    workspace" routes to definitional. The status response already
+    includes a "Switch with..." hint so the user gets the same
+    actionable answer either way.
+    """
+
+    def test_what_is_a_workspace(self):
+        assert _is_definitional_question("what is a workspace")
+        assert _is_definitional_question("What's a project?")
+
+    def test_what_is_workspace_no_article(self):
+        """Bare "what is workspace" → definitional (no article = generic)."""
+        assert _is_definitional_question("what is workspace")
+        assert _is_definitional_question("what is project")
+
+    def test_what_is_THE_workspace_is_NOT_definitional(self):
+        """Definite article reads as "the current" — should fall to
+        status pattern, not definitional. Status pattern test covers
+        the positive case in TestStatusQuestionPatterns."""
+        assert not _is_definitional_question("what is the workspace")
+        assert _is_status_question("what is the workspace")
+
+    def test_does_not_match_unrelated(self):
+        assert not _is_definitional_question("switch workspace to plg")
+        assert not _is_definitional_question("hello")
+        assert not _is_definitional_question("which workspace")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # project_isolation.ProjectManager — case-insensitive activate()
 # ═══════════════════════════════════════════════════════════════════════════
 
