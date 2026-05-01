@@ -53,6 +53,22 @@ Attractor sequence: {attractor_sequence}
 Write a 2-3 sentence reflective episode entry (no headings, no bullet lists):"""
 
 
+# Appended to the base prompt when any salient events have
+# kind="cognitive_failure" (emitted by app.epistemic.affect_bridge for
+# high-severity bias matches). Switches the framing from felt
+# experience to aviation post-mortem: blame-free, structural,
+# focused on the moment the inference slipped.
+_COGNITIVE_FAILURE_ADDENDUM = """
+
+A subset of these events are cognitive_failure events from the
+Epistemic Integrity Layer — bias detections (inference labeled as
+fact, narrative-too-clean, etc.). For those, frame the reflection as
+an aviation post-mortem would: identify the moment a verifiable
+claim slipped past as inference; name the structural condition that
+allowed it; do not generate self-flagellation. Tone: senior engineer
+reviewing an incident, analytical and learning-oriented."""
+
+
 # ── Public entry points ─────────────────────────────────────────────────────
 
 
@@ -105,6 +121,11 @@ def synthesize_and_store(
             v_start=v_start, v_end=v_end, a_start=a_start, a_end=a_end,
             c_start=c_start, c_end=c_end, attractor_sequence=attractor_sequence,
         )
+        # Append post-mortem framing when any cognitive_failure events
+        # are in the window — the Epistemic Integrity Layer's bridge
+        # writes these for high-severity realtime bias firings.
+        if any(e.kind == "cognitive_failure" for e in events_sorted):
+            prompt = prompt + _COGNITIVE_FAILURE_ADDENDUM
 
         narrative = _generate_narrative(prompt) or _fallback_narrative(
             events_sorted, attractor_sequence, reason,

@@ -180,4 +180,33 @@ export const endpoints = {
   affectWelfareConfig: () => `/affect/welfare-config`,
   affectSetpoints: () => `/affect/setpoints`,
   affectOverrideReset: () => `/affect/override-reset`,
+
+  // Epistemic Integrity Layer
+  // see crewai-team/docs/EPISTEMIC_INTEGRITY.md
+  epistemicNow: (taskId?: string) =>
+    taskId
+      ? `/epistemic/now?task_id=${encodeURIComponent(taskId)}`
+      : `/epistemic/now`,
+  epistemicFeed: (windowMin = 60, limit = 200) =>
+    `/epistemic/feed?window_min=${windowMin}&limit=${limit}`,
+  epistemicClaim: (claimId: string) =>
+    `/epistemic/claim/${encodeURIComponent(claimId)}`,
+  epistemicBiases: () => `/epistemic/biases`,
+  epistemicVerifiers: () => `/epistemic/verifiers`,
+  epistemicPushbackStats: (windowMin = 1440) =>
+    `/epistemic/pushback/stats?window_min=${windowMin}`,
+  epistemicPushbackRecent: (windowMin = 1440, limit = 50) =>
+    `/epistemic/pushback/recent?window_min=${windowMin}&limit=${limit}`,
+  epistemicIncidents: (limit = 50) => `/epistemic/incidents?limit=${limit}`,
+  epistemicIncident: (incidentId: string) =>
+    `/epistemic/incidents/${encodeURIComponent(incidentId)}`,
+  epistemicPeerReviewStats: (windowMin = 1440) =>
+    `/epistemic/peer-reviews/stats?window_min=${windowMin}`,
+  epistemicPeerReviewsRecent: (windowMin = 1440, limit = 50) =>
+    `/epistemic/peer-reviews/recent?window_min=${windowMin}&limit=${limit}`,
+  epistemicOverrideStats: (windowMin = 1440) =>
+    `/epistemic/overrides/stats?window_min=${windowMin}`,
+  epistemicOverridesRecent: (windowMin = 1440, limit = 50) =>
+    `/epistemic/overrides/recent?window_min=${windowMin}&limit=${limit}`,
+  epistemicRecordOverride: () => `/epistemic/overrides`,
 } as const;

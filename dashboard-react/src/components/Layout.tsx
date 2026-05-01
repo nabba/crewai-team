@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/costs', label: 'Costs', icon: '📈', exact: false },
   { to: '/workspaces', label: 'Workspaces', icon: '🧠', exact: false },
   { to: '/affect', label: 'Affect', icon: '🌡️', exact: false },
+  { to: '/epistemic', label: 'Epistemic', icon: '🪞', exact: false },
   { to: '/evolution', label: 'Evolution', icon: '🧬', exact: false },
   { to: '/ops', label: 'Ops', icon: '🛠️', exact: false },
   { to: '/llms', label: 'LLMs', icon: '🤖', exact: false },

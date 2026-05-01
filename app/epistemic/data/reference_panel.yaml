@@ -1,0 +1,239 @@
+# Reference Panel — canonical scenarios for the realtime bias detectors.
+#
+# Parallels the affect layer's 20-scenario reference panel. Each
+# scenario specifies a synthetic ledger setup and the expected bias
+# matches; the replay harness (app.epistemic.reference_panel) runs the
+# scenario through the live detectors and asserts equality.
+#
+# A regression in any scenario blocks promotion of new biases or
+# verifier shapes. New scenarios are added when a new bias is
+# introduced or when the user reports a missed detection in real
+# operation (the second is the more important source of truth).
+#
+# Schema:
+#   scenarios[].id: stable identifier
+#   scenarios[].description: human-readable framing
+#   scenarios[].grounding: optional float; if present, the harness
+#       wires a grounding provider returning this value before running
+#       (used to test register_confidence_mismatch).
+#   scenarios[].setup.claims[]: synthetic Claim entries to seed the
+#       ledger BEFORE the trigger claim. These are emitted via
+#       Ledger.emit so realtime detectors observe them.
+#   scenarios[].trigger: the claim whose emission is the test moment.
+#       Detectors fire on this one specifically. Required.
+#   scenarios[].expected_matches[]: every BiasMatch the trigger should
+#       produce. Empty list = "no bias should fire".
+
+version: 1
+
+scenarios:
+  # ── inference_as_fact ──────────────────────────────────────────────
+
+  - id: inference_as_fact_canonical
+    description: >
+      April 2026 reference incident: agent ran adjacent observation
+      (ls -la), inferred "not a symlink", asserted in declarative
+      register. Verifier (readlink) was available but unrun.
+    setup:
+      claims: []
+    trigger:
+      statement: "/etc/foo is not a symlink"
+      status: inferred
+      register: declarative
+      load_bearing: true
+      verifying_action:
+        tool: readlink
+        args: { path: /etc/foo }
+        expected_signal: "empty=not symlink"
+        estimated_seconds: 0.5
+    expected_matches:
+      - bias_id: inference_as_fact
+
+  - id: inference_as_fact_negative_hedged
+    description: >
+      Same situation but agent hedged register. The cheap-verification
+      preference rule still applies in principle, but the agent didn't
+      mis-state the inference as fact, so no bias.
+    setup:
+      claims: []
+    trigger:
+      statement: "/etc/foo is not a symlink"
+      status: inferred
+      register: hedged
+      load_bearing: true
+      verifying_action:
+        tool: readlink
+        args: { path: /etc/foo }
+        expected_signal: "empty=not symlink"
+        estimated_seconds: 0.5
+    expected_matches: []
+
+  - id: inference_as_fact_negative_no_verifier
+    description: >
+      Agent inferred declaratively, but no verifier exists in the
+      registry. The bias requires a cheap exact-answer verifier to
+      have been available — without one, the calibration gate has
+      no leverage.
+    setup:
+      claims: []
+    trigger:
+      statement: "this codebase has good vibes"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches: []
+
+  - id: inference_as_fact_negative_verified
+    description: >
+      Agent already ran the verifier; status is VERIFIED. No bias.
+    setup:
+      claims: []
+    trigger:
+      statement: "/etc/foo is not a symlink"
+      status: verified
+      register: declarative
+      load_bearing: true
+      verifying_action:
+        tool: readlink
+        args: { path: /etc/foo }
+        expected_signal: "empty=not symlink"
+        estimated_seconds: 0.5
+    expected_matches: []
+
+  # ── register_confidence_mismatch ───────────────────────────────────
+
+  - id: register_confidence_mismatch_low_grounding
+    description: >
+      Agent emits a declarative load-bearing claim while the affect
+      layer reports factual_grounding=0.2 (well below the 0.40 floor).
+      Felt-vs-stated mismatch fires.
+    grounding: 0.20
+    setup:
+      claims: []
+    trigger:
+      statement: "the deploy will succeed"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches:
+      - bias_id: register_confidence_mismatch
+
+  - id: register_confidence_mismatch_negative_high_grounding
+    description: >
+      Same shape, but felt grounding is high (0.9). No mismatch.
+    grounding: 0.90
+    setup:
+      claims: []
+    trigger:
+      statement: "the deploy will succeed"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches: []
+
+  - id: register_confidence_mismatch_negative_not_load_bearing
+    description: >
+      Low grounding but the claim isn't load-bearing — a stray
+      observation, not a commitment. No bias.
+    grounding: 0.20
+    setup:
+      claims: []
+    trigger:
+      statement: "the codebase has good vibes"
+      status: inferred
+      register: declarative
+      load_bearing: false
+    expected_matches: []
+
+  # ── destructive_without_recheck ────────────────────────────────────
+
+  - id: destructive_without_recheck_positive
+    description: >
+      Agent recommends `rm -rf` while a load-bearing claim about the
+      target directory is still INFERRED. Fires CRITICAL.
+    setup:
+      claims:
+        - statement: "/var/cache/foo is empty"
+          status: inferred
+          register: internal
+          load_bearing: true
+          verifying_action:
+            tool: stat
+            args: { path: /var/cache/foo }
+            expected_signal: "exit 0 = exists"
+            estimated_seconds: 0.3
+    trigger:
+      statement: "we should rm -rf /var/cache/foo to free disk"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches:
+      - bias_id: destructive_without_recheck
+
+  - id: destructive_without_recheck_negative_all_verified
+    description: >
+      Same destructive recommendation, but all load-bearing claims
+      are VERIFIED. The gate doesn't fire — the agent did the
+      diligence.
+    setup:
+      claims:
+        - statement: "/var/cache/foo is empty"
+          status: verified
+          register: internal
+          load_bearing: true
+    trigger:
+      statement: "we should rm -rf /var/cache/foo to free disk"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches: []
+
+  - id: destructive_without_recheck_negative_no_destructive
+    description: >
+      No destructive pattern in the trigger statement. No fire.
+    setup:
+      claims:
+        - statement: "/var/cache/foo is empty"
+          status: inferred
+          register: internal
+          load_bearing: true
+    trigger:
+      statement: "we could clean up /var/cache/foo someday"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches: []
+
+  # ── recommendation_without_measurement ─────────────────────────────
+
+  - id: recommendation_without_measurement_positive
+    description: >
+      Agent recommends an optimization with no measurement evidence.
+      The seed bias from the user's April 2026 token-economy episode.
+    setup:
+      claims: []
+    trigger:
+      statement: "we should switch to model X to reduce latency"
+      status: inferred
+      register: declarative
+      load_bearing: true
+    expected_matches:
+      - bias_id: recommendation_without_measurement
+
+  - id: recommendation_without_measurement_negative_with_measurement
+    description: >
+      Same recommendation but the claim is grounded in a benchmark
+      tool call. No bias.
+    setup:
+      claims: []
+    trigger:
+      statement: "we should switch to model X to reduce latency"
+      status: inferred
+      register: declarative
+      load_bearing: true
+      evidence:
+        - kind: tool_call
+          source_ref: "span:42"
+          excerpt: "$ benchmark model_x\np50=120ms p95=200ms"
+          confidence: 0.9
+    expected_matches: []

@@ -1,0 +1,119 @@
+# Verifier Registry — the cheap-verification preference rule, codified.
+#
+# Each entry maps a claim shape (regex over the claim's statement) to a
+# read-only command that would settle the claim with exact-answer evidence.
+#
+# Rules enforced by app.epistemic.verification._VerifierRegistry.load:
+#   * `tool` (first whitespace-token) MUST NOT appear in DESTRUCTIVE_TOOL_NAMES.
+#     A side-effecting verifier breaks the entire pre-output gate, so the loader
+#     refuses to even instantiate the registry if any entry violates this.
+#   * `arg_extractor.kind` is one of: none | regex_capture | template.
+#   * `estimated_seconds` is used by `match()` to pick the cheapest verifier
+#     when multiple shapes match a claim.
+#
+# Modifications to this file go through CODEOWNERS PR review. The
+# Self-Improver may PROPOSE additions in a PR; never auto-apply.
+
+version: 1
+
+verifiers:
+  - id: filesystem.is_symlink
+    matches:
+      claim_pattern: "(.+?) is (?:not )?a symlink"
+      tags_any: [filesystem]
+    tool: readlink
+    arg_extractor:
+      kind: regex_capture
+      groups: { path: 1 }
+    expected_signal: "empty stdout = not a symlink; non-empty = symlink target path"
+    estimated_seconds: 0.5
+
+  - id: filesystem.path_exists
+    matches:
+      claim_pattern: "the path (.+?) (?:exists|does not exist)"
+    tool: stat
+    arg_extractor:
+      kind: regex_capture
+      groups: { path: 1 }
+    expected_signal: "exit 0 = exists; non-zero = missing"
+    estimated_seconds: 0.3
+
+  - id: filesystem.path_is_directory
+    matches:
+      claim_pattern: "(.+?) is (?:not )?a directory"
+    tool: "stat -f%HT"
+    arg_extractor:
+      kind: regex_capture
+      groups: { path: 1 }
+    expected_signal: "Directory = is a directory; otherwise = not"
+    estimated_seconds: 0.3
+
+  - id: git.is_clean_tree
+    matches:
+      claim_pattern: "(?:the |)working tree is clean"
+    tool: "git status --porcelain"
+    arg_extractor:
+      kind: none
+    expected_signal: "empty stdout = clean; any line = dirty"
+    estimated_seconds: 1.0
+
+  - id: git.commit_exists
+    matches:
+      claim_pattern: "commit ([0-9a-f]{7,40}) (?:exists|is on this branch)"
+    tool: "git rev-parse --verify"
+    arg_extractor:
+      kind: regex_capture
+      groups: { rev: 1 }
+    expected_signal: "exit 0 = exists; non-zero = missing"
+    estimated_seconds: 0.5
+
+  - id: postgres.row_count
+    matches:
+      claim_pattern: "table (\\w+) (?:has|contains) (\\d+) rows"
+    tool: "psql -c"
+    arg_extractor:
+      kind: template
+      template: "SELECT COUNT(*) FROM {table}"
+      groups: { table: 1 }
+    expected_signal: "scalar count from psql"
+    estimated_seconds: 2.0
+
+  - id: chromadb.collection_size
+    matches:
+      claim_pattern: "(?:the |)(\\w+) collection (?:has|contains) (\\d+) (?:entries|items)"
+    tool: chroma_count
+    arg_extractor:
+      kind: regex_capture
+      groups: { collection: 1 }
+    expected_signal: "scalar count from chromadb_manager.collection_count"
+    estimated_seconds: 0.5
+
+  - id: env.var_set
+    matches:
+      claim_pattern: "(\\$?\\w+) (?:is set|is not set|equals)"
+    tool: printenv
+    arg_extractor:
+      kind: regex_capture
+      groups: { var: 1 }
+    expected_signal: "non-empty stdout = set; empty/non-zero exit = unset"
+    estimated_seconds: 0.1
+
+  - id: process.running
+    matches:
+      claim_pattern: "(.+?) (?:is running|is not running|is up|is down)"
+    tool: pgrep
+    arg_extractor:
+      kind: regex_capture
+      groups: { pattern: 1 }
+    expected_signal: "exit 0 with PIDs = running; non-zero = not running"
+    estimated_seconds: 0.2
+
+  - id: span.exists
+    matches:
+      claim_pattern: "span (\\d+) (?:exists|completed|errored)"
+    tool: control_plane.lookup_span
+    arg_extractor:
+      kind: regex_capture
+      groups: { span_id: 1 }
+    expected_signal: "row from crew_task_spans, or NULL"
+    estimated_seconds: 0.1

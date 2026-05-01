@@ -1782,6 +1782,20 @@ try:
 except Exception:
     logger.debug("Affect API router registration failed", exc_info=True)
 
+# ── Epistemic Integrity router (/epistemic/now, /feed, /biases, /verifiers,
+#     /claim/{id}, /pushback/*, /incidents/*) — see EPISTEMIC_INTEGRITY.md ─
+try:
+    from app.epistemic.api import router as epistemic_router
+    app.include_router(epistemic_router)
+    # Phase 5: wire affect ↔ epistemic bridge so the
+    # register_confidence_mismatch detector sees the live grounding
+    # signal and high-severity bias firings emit cognitive_failure
+    # SalienceEvents into the narrative-self pipeline.
+    from app.epistemic.affect_bridge import bootstrap as epistemic_affect_bootstrap
+    epistemic_affect_bootstrap()
+except Exception:
+    logger.debug("Epistemic API router registration failed", exc_info=True)
+
 # ── Workspace API (consciousness workspaces for React dashboard) ──────────────
 try:
     from app.api.workspace_api import router as workspace_router

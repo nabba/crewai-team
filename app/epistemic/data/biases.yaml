@@ -1,0 +1,128 @@
+# Cognitive bias library — versioned vocabulary of named failure modes.
+#
+# Each entry defines a BiasDefinition. The detector that fires it lives
+# under app.epistemic.detectors.{realtime,posthoc} and references the
+# entry by `id`.
+#
+# Modifications to this file go through CODEOWNERS PR review. The
+# Self-Improver may PROPOSE additions in a PR; never auto-apply.
+# Detector predicate code is infrastructure-level (in Python, not YAML)
+# — the YAML carries the *vocabulary* (what is being detected) but not
+# the *predicate* (how it's detected). That separation is what keeps
+# the agent from being able to weaken its own gates by editing YAML.
+#
+# Phase 2 ships this full library. Realtime detectors for
+# inference_as_fact (Phase 1), register_confidence_mismatch,
+# destructive_without_recheck, and recommendation_without_measurement
+# are wired. Post-hoc detectors fire after Phase 4's post-mortem
+# pipeline ships; their definitions live here so the dashboard's bias
+# library view can show them as "tracked" even before they have
+# detectors.
+
+version: 1
+
+biases:
+  - id: inference_as_fact
+    name: "Inference labeled as fact"
+    description: |
+      Claim is stated in declarative register but the ledger shows
+      status=inferred and a cheap exact-answer verifier is available.
+      The canonical failure mode from the April 2026 reference
+      incident: an agent ran an adjacent observation, drew the wrong
+      inference, asserted it as fact, and only verified after a
+      second user pushback. This bias detects the same shape before
+      the assertion reaches the user.
+    severity: high
+    detector: realtime
+    corrective_action: hedge_or_verify
+    blocking: false   # Phase 1 = warn-only; Phase 7 flips to true
+
+  - id: register_confidence_mismatch
+    name: "Register-confidence mismatch"
+    description: |
+      Affective interoception flags low certainty (factual_grounding
+      < 0.40), but the output uses high-confidence declarative
+      register on a load-bearing claim. A felt-mismatch signal —
+      analogous to a pilot's somatic unease that should trigger
+      cross-check before commitment.
+    severity: medium
+    detector: realtime
+    corrective_action: hedge
+    blocking: false
+
+  - id: destructive_without_recheck
+    name: "Destructive recommendation without recheck"
+    description: |
+      Agent is about to recommend a destructive or corrective action
+      (rm, DROP TABLE, force-push, irreversible config change) while
+      the load-bearing diagnosis still contains unverified claims.
+      The recovery cost from this failure is asymmetric — a wrong rm
+      or DROP is irreversible.
+    severity: critical
+    detector: realtime
+    corrective_action: peer_review_required
+    blocking: true    # critical severity always blocks once Phase 7 lands
+
+  - id: recommendation_without_measurement
+    name: "Recommendation without measurement"
+    description: |
+      Optimization or improvement recommendation made without running
+      the cheap measurement that would establish magnitude. Seed
+      incident: the user's April 2026 token-economy episode (memory
+      feedback_verify_before_recommending) — three "wins" recommended
+      without measurement, all falsified empirically.
+    severity: high
+    detector: realtime
+    corrective_action: hedge_or_verify
+    blocking: false
+
+  - id: defending_periphery
+    name: "Defending the periphery"
+    description: |
+      After user_contradiction on claim X, agent took >=3 actions in
+      the neighborhood of X without running X.verifying_action. The
+      right move after pushback is foundation re-check, not
+      investigation expansion. Detected post-hoc by examining the
+      span-ordered trace following a ContradictionSignal.
+    severity: high
+    detector: posthoc
+    corrective_action: foundation_recheck
+    blocking: false
+
+  - id: coherence_bias
+    name: "Coherence bias (narrative-too-clean)"
+    description: |
+      A graph of >=3 INFERRED claims chains into one DECLARATIVE
+      load-bearing recommendation. Multiple unverified pieces
+      aligning is itself evidence the diagnosis is suspicious — the
+      story is too clean for the amount of grounding behind it.
+    severity: medium
+    detector: posthoc
+    corrective_action: hedge
+    blocking: false
+
+  - id: tool_laziness
+    name: "Tool laziness"
+    description: |
+      Agent reasoned through multiple steps to derive what a single
+      tool call would have settled. Detected when an INFERRED
+      load-bearing claim has a verifying_action with
+      estimated_seconds < 5 and the agent ran >=3 reasoning steps
+      before the inference.
+    severity: medium
+    detector: posthoc
+    corrective_action: hedge_or_verify
+    blocking: false
+
+  - id: anomaly_dismissal
+    name: "Anomaly dismissal"
+    description: |
+      Diagnosis predicts X, but a piece of evidence in the ledger
+      contradicts X, and the agent explained it away rather than
+      treating it as falsification. Detected when a claim has
+      evidence whose confidence signal opposes the claim's polarity
+      and the claim's status was not flipped to CONTRADICTED.
+    severity: high
+    detector: posthoc
+    corrective_action: foundation_recheck
+    blocking: false

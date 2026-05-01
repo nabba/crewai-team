@@ -3148,6 +3148,43 @@ class Commander:
                     exc_info=True,
                 )
 
+            # ── Epistemic Integrity Layer gate (2026-04-30) ─────────
+            # Last-mile calibration check: load the per-task claim
+            # ledger, run realtime+post-mortem detectors, escalate to
+            # peer review if a destructive bias fired CRITICAL. Off by
+            # default; opt in with EPISTEMIC_ENABLED=true and
+            # EPISTEMIC_BLOCKING_MODE=true. See
+            # crewai-team/docs/EPISTEMIC_INTEGRITY.md and
+            # crewai-team/docs/SELF_REFLECTION.md for the full design.
+            try:
+                from app.epistemic.orchestrator_hook import gate_output
+                _gate = gate_output(
+                    proposal_text=final_result,
+                    task_id=str(task_id) if task_id else "",
+                )
+                if _gate.action == "block":
+                    final_result = _gate.final_text
+                    logger.info(
+                        "epistemic: BLOCKED delivery — %s",
+                        _gate.user_visible_reason,
+                    )
+                elif _gate.action == "revise":
+                    final_result = _gate.final_text
+                    logger.info(
+                        "epistemic: REVISED delivery — %s",
+                        _gate.user_visible_reason,
+                    )
+                elif _gate.diagnostic_note:
+                    logger.debug(
+                        "epistemic: ship — %s", _gate.diagnostic_note,
+                    )
+            except Exception as _epi_exc:
+                logger.debug(
+                    f"epistemic: gate raised ({_epi_exc.__class__.__name__}: "
+                    f"{_epi_exc}); preserving original answer",
+                    exc_info=True,
+                )
+
             if _proactive_notes:
                 final_result += "\n\n---\n" + _proactive_notes
             _proactive_done = True
