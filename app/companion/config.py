@@ -121,3 +121,53 @@ def _get_project_by_id(project_id: str) -> dict | None:
     """
     from app.control_plane.projects import get_projects
     return get_projects().get_by_id(project_id)
+
+
+def save(project_id: str, config: CompanionConfig) -> bool:
+    """Persist CompanionConfig to ``CP.projects.config_json.companion``.
+
+    Read-modify-write merge: the rest of ``config_json`` is preserved so
+    we don't stomp settings owned by other modules. Returns False on any
+    failure (project missing, DB unavailable, write error). Bounds are
+    re-clamped before write so callers can't slip out-of-range values past
+    the API into storage.
+    """
+    cfg = config.clamp()
+    try:
+        existing = _get_full_config_json(project_id)
+    except Exception as exc:
+        logger.warning("companion.config: read for save failed (%s): %s",
+                       project_id, exc)
+        return False
+    if existing is None:
+        return False
+    if not isinstance(existing, dict):
+        existing = {}
+    existing["companion"] = cfg.to_dict()
+    try:
+        return _save_full_config_json(project_id, existing)
+    except Exception as exc:
+        logger.warning("companion.config: save failed for %s: %s",
+                       project_id, exc)
+        return False
+
+
+def _get_full_config_json(project_id: str) -> dict | None:
+    """Indirection for testability — returns the project's whole config_json,
+    or None if the project doesn't exist."""
+    row = _get_project_by_id(project_id)
+    if row is None:
+        return None
+    return row.get("config_json") or {}
+
+
+def _save_full_config_json(project_id: str, config_json: dict) -> bool:
+    """Indirection for testability — UPDATE the project's config_json."""
+    import json as _json
+    from app.control_plane.db import execute
+    execute(
+        "UPDATE control_plane.projects SET config_json = %s WHERE id = %s",
+        (_json.dumps(config_json), project_id),
+        fetch=False,
+    )
+    return True

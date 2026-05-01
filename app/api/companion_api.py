@@ -12,6 +12,10 @@ Endpoints under ``/api/cp/companion/*``:
     DELETE /sources/{workspace_id}/{source_id} — remove a source
     GET    /sources/{workspace_id}/suggestions — LLM-proposed sources
 
+  Phase 6.5 (config)
+    GET  /config/{workspace_id}                — read CompanionConfig
+    POST /config/{workspace_id}                — patch seed/budget/thresholds
+
 Phase 9 (Wiki) will add document/wiki endpoints; Phase 13 (cross-workspace)
 adds inbox endpoints. To enable in production:
 ``app.include_router(companion_router)`` next to the other CP routers in
@@ -165,3 +169,50 @@ def get_source_suggestions(workspace_id: str, limit: int = 5):
         "count": len(proposals),
         "suggestions": proposals,
     }
+
+
+# ── Phase 6.5: workspace CompanionConfig ───────────────────────────────────
+
+class UpdateConfigRequest(BaseModel):
+    """Patch shape for ``POST /config/{workspace_id}``.
+
+    Every field is optional. Only fields the caller sets are applied;
+    others retain their stored value. Bounds are re-clamped on save so
+    out-of-range values are silently coerced rather than rejected.
+    """
+    enabled: bool | None = None
+    seed_prompt: str | None = None
+    daily_budget_usd: float | None = None
+    surface_threshold: float | None = None
+    novelty_threshold: float | None = None
+    transferability_threshold: float | None = None
+    quiet_hours_start: int | None = None
+    quiet_hours_end: int | None = None
+
+
+@router.get("/config/{workspace_id}")
+def get_companion_config(workspace_id: str):
+    """Read CompanionConfig for one workspace. Falls back to defaults if the
+    workspace exists but has never been configured (no ``companion`` key in
+    config_json yet)."""
+    from app.companion.config import CompanionConfig, load as _load
+    cfg = _load(workspace_id)
+    if cfg is None:
+        cfg = CompanionConfig()
+    return {"workspace_id": workspace_id, "config": cfg.to_dict()}
+
+
+@router.post("/config/{workspace_id}")
+def update_companion_config(workspace_id: str, req: UpdateConfigRequest):
+    """Patch CompanionConfig. Unset fields are left untouched."""
+    from app.companion.config import CompanionConfig, load as _load
+    from app.companion.config import save as _save
+    cfg = _load(workspace_id) or CompanionConfig()
+    update = req.model_dump(exclude_unset=True)
+    for k, v in update.items():
+        if v is not None:
+            setattr(cfg, k, v)
+    cfg = cfg.clamp()
+    if not _save(workspace_id, cfg):
+        raise HTTPException(status_code=500, detail="failed to save config")
+    return {"ok": True, "workspace_id": workspace_id, "config": cfg.to_dict()}
