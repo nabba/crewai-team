@@ -22,11 +22,33 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Install ShinkaEvolve separately (--no-deps avoids httpx version conflict with crewai)
+# Install ShinkaEvolve separately (--no-deps avoids httpx version
+# conflict with crewai — shinka declares httpx==0.27, crewai needs
+# >=0.28, and shinka actually works fine with 0.28 in practice).
+#
+# The transitive deps below are the ones shinka actually imports at
+# session start. Without them every shinka session crashed at LLM-init
+# with cryptic "Requested model(s) are unavailable" / "No module named
+# 'psutil'" — and because shinka writes no ledger record on those
+# crashes, the engine selector's days_since_engine_run("shinka")
+# stayed at infinity and forced-rotation kept picking shinka forever
+# (2026-04-30 diagnosis). Bake the deps into the image so this can't
+# regress on rebuild.
+#
+# hydra-core / omegaconf / antlr4 / unidiff / radon / mando keep
+# --no-deps to avoid pulling in conflicting transitive versions; they
+# are direct shinka requirements with stable APIs.
+#
+# google-genai / python-Levenshtein / seaborn / psutil get full
+# dependency resolution because their deps are well-behaved and
+# google-genai needs anyio/google-auth/websockets pulled cleanly.
 RUN pip install --no-cache-dir --no-deps \
     shinka-evolve@git+https://github.com/SakanaAI/ShinkaEvolve.git && \
-    pip install --no-cache-dir --no-deps hydra-core==1.3.2 omegaconf==2.3.0 antlr4-python3-runtime==4.9.3 \
-    unidiff radon mando || true
+    pip install --no-cache-dir --no-deps \
+    hydra-core==1.3.2 omegaconf==2.3.0 antlr4-python3-runtime==4.9.3 \
+    unidiff radon mando && \
+    pip install --no-cache-dir \
+    google-genai python-Levenshtein seaborn psutil || true
 
 # Install Playwright + Chromium for browser automation tools (T1-4).
 # Chromium + its system libs are large; build skips the fonts pack to save space.

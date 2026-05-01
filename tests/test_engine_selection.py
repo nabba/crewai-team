@@ -250,3 +250,198 @@ class TestSelectorROIRecommendation:
             from app.evolution import _select_evolution_engine
             # Without shinka data, ROI rule abstains; default returns avo
             assert _select_evolution_engine() == "avo"
+
+
+# ── _is_shinka_available — deep-import verification ─────────────────────────
+#
+# Added 2026-04-30 after diagnosing that shinka had silently failed every
+# session for weeks: shinka was installed --no-deps in the Dockerfile, so
+# transitive deps (google-genai, psutil, seaborn, python-Levenshtein) were
+# missing. The old _is_shinka_available only ran ``import shinka`` (the
+# empty package namespace), passed, but the engine then crashed at
+# session start with cryptic ImportError. Worse, no ledger record was
+# written on those crashes, so days_since_engine_run("shinka") stayed at
+# ``inf`` and forced rotation kept picking shinka — forever.
+
+class TestIsShinkaAvailableDeepCheck:
+
+    def test_returns_false_when_core_import_fails(self, monkeypatch):
+        """Missing google-genai → shinka.core import fails → False."""
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name.startswith("shinka.core"):
+                raise ImportError("cannot import name 'genai' from 'google'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        from app.evolution import _is_shinka_available
+        assert _is_shinka_available() is False
+
+    def test_returns_false_when_launch_import_fails(self, monkeypatch):
+        """Missing psutil → shinka.launch fails → False."""
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name.startswith("shinka.launch"):
+                raise ImportError("No module named 'psutil'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        from app.evolution import _is_shinka_available
+        assert _is_shinka_available() is False
+
+    def test_logs_warning_with_actionable_message(self, monkeypatch, caplog):
+        """When a deep import fails, the operator should see a clear
+        log line — not a silent loop. The warning is the single
+        observable signal that shinka is misconfigured."""
+        import builtins
+        import logging
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name.startswith("shinka.core"):
+                raise ImportError("No module named 'google.genai'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with caplog.at_level(logging.WARNING, logger="app.evolution"):
+            from app.evolution import _is_shinka_available
+            assert _is_shinka_available() is False
+        # The warning message should make it clear what to do
+        msg = " ".join(r.getMessage() for r in caplog.records)
+        assert "shinka unavailable" in msg.lower()
+        assert "fall back to avo" in msg.lower() or "avo" in msg.lower()
+
+
+# ── _map_llm_models — shinka-registry-compatible strings ────────────────────
+#
+# Added 2026-04-30 alongside the deep-availability fix. The legacy
+# mapping returned ``us.anthropic.claude-sonnet-4-20250514-v1:0`` (a
+# Bedrock ARN that needs AWS_* env we don't set) and
+# ``openrouter/deepseek/deepseek-chat-v3-0324`` (not in shinka's
+# OpenRouter allowlist). Result: shinka rejected every model and the
+# session crashed at LLM-init.
+
+class TestMapLlmModels:
+
+    def test_anthropic_uses_direct_api_string_not_bedrock(self, monkeypatch):
+        """When ANTHROPIC_API_KEY is set, use the shinka-registry name
+        (``claude-sonnet-4-6``), NOT the Bedrock-style ARN."""
+        from unittest.mock import MagicMock
+        fake_settings = MagicMock()
+        fake_settings.anthropic_api_key.get_secret_value.return_value = "sk-ant-x" * 5
+        monkeypatch.setattr("app.config.get_settings", lambda: fake_settings)
+        # Disable openrouter + ollama so we isolate the anthropic path
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setenv("OLLAMA_HOST", "http://invalid-host-no-such-thing.local:11434")
+
+        from app.shinka_engine import _map_llm_models
+        models = _map_llm_models()
+        assert any("claude" in m and "anthropic" not in m for m in models), (
+            f"expected non-Bedrock claude string, got {models}"
+        )
+        # Bedrock ARNs are the regression we're guarding against
+        assert not any("us.anthropic" in m for m in models)
+
+    def test_openrouter_uses_registry_compatible_string(self, monkeypatch):
+        """OpenRouter mapping must use a model string that's in
+        shinka's allowlist (qwen/qwen3-coder), not deepseek-chat-v3
+        which isn't recognised."""
+        from unittest.mock import MagicMock
+        fake_settings = MagicMock()
+        fake_settings.anthropic_api_key.get_secret_value.return_value = ""
+        monkeypatch.setattr("app.config.get_settings", lambda: fake_settings)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-fake")
+        monkeypatch.setenv("OLLAMA_HOST", "http://invalid-host-no-such-thing.local:11434")
+
+        from app.shinka_engine import _map_llm_models
+        models = _map_llm_models()
+        # qwen3-coder is in shinka's OpenRouter allowlist
+        assert any("qwen" in m for m in models), (
+            f"expected qwen-family openrouter model, got {models}"
+        )
+        # Regression guard: deepseek-chat-v3 is NOT in shinka's allowlist
+        assert not any("deepseek-chat-v3" in m for m in models)
+
+    def test_no_api_keys_still_returns_at_least_one_model(self, monkeypatch):
+        """Function must always return a non-empty list — empty would
+        crash shinka's LLM client init with a less-clear error."""
+        from unittest.mock import MagicMock
+        fake_settings = MagicMock()
+        fake_settings.anthropic_api_key.get_secret_value.return_value = ""
+        monkeypatch.setattr("app.config.get_settings", lambda: fake_settings)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setenv("OLLAMA_HOST", "http://invalid-host-no-such-thing.local:11434")
+
+        from app.shinka_engine import _map_llm_models
+        models = _map_llm_models()
+        assert len(models) >= 1
+
+
+# ── _record_result — dual-ledger writes ────────────────────────────────────
+#
+# Added 2026-04-30. The pre-fix shinka_engine wrote only to
+# results_ledger; evolution_roi never saw shinka activity. Result:
+# ``days_since_engine_run("shinka")`` always returned ``inf`` even
+# after a successful shinka run, so forced-rotation kept firing every
+# cycle.
+
+class TestShinkaRecordResultDualLedger:
+
+    def test_writes_to_both_results_and_roi_ledgers(self, monkeypatch):
+        """A successful shinka run must populate both ledgers — not
+        just results_ledger. Otherwise the rotation rule's input is
+        permanently broken."""
+        from unittest.mock import MagicMock
+        results_calls: list[dict] = []
+        roi_calls: list[dict] = []
+
+        def _fake_results(**kwargs):
+            results_calls.append(kwargs)
+
+        def _fake_roi(**kwargs):
+            roi_calls.append(kwargs)
+
+        monkeypatch.setattr(
+            "app.results_ledger.record_experiment", _fake_results,
+        )
+        monkeypatch.setattr(
+            "app.evolution_roi.record_evolution_cost", _fake_roi,
+        )
+
+        from app.shinka_engine import _record_result
+        _record_result(baseline=0.5, after=0.6, delta=0.1, status="keep")
+
+        assert len(results_calls) == 1
+        assert len(roi_calls) == 1
+        # The ROI entry MUST be tagged engine="shinka" — the whole point
+        assert roi_calls[0].get("engine") == "shinka"
+        # Status threading
+        assert roi_calls[0].get("status") == "keep"
+        assert results_calls[0].get("status") == "keep"
+
+    def test_results_ledger_failure_does_not_crash(self, monkeypatch):
+        """If the results ledger write fails, log + bail (don't try
+        ROI write either, since the experiment_id won't be valid)."""
+        def _boom(**kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(
+            "app.results_ledger.record_experiment", _boom,
+        )
+        roi_called = {"n": 0}
+
+        def _fake_roi(**kwargs):
+            roi_called["n"] += 1
+
+        monkeypatch.setattr(
+            "app.evolution_roi.record_evolution_cost", _fake_roi,
+        )
+
+        from app.shinka_engine import _record_result
+        # Must not raise
+        _record_result(baseline=0.5, after=0.6, delta=0.1, status="keep")
+        assert roi_called["n"] == 0  # short-circuit after results failure

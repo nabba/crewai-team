@@ -137,12 +137,23 @@ def _build_subia_task_prompt() -> str:
 def _map_llm_models() -> list[str]:
     """Map AndrusAI's LLM configuration to ShinkaEvolve model strings.
 
-    ShinkaEvolve supports: OpenAI, Anthropic, OpenRouter, and local models.
-    We map our existing LLM cascade to ShinkaEvolve's format.
-    """
-    models = []
+    Returns model identifiers that ShinkaEvolve's registry recognises —
+    NOT Bedrock-style ARNs. Run ``shinka_models --verbose`` inside the
+    container to see the live allowlist; the strings below are pulled
+    from there.
 
-    # Check for Anthropic API key
+    2026-04-30 fix: previous mapping returned ``us.anthropic.claude-
+    sonnet-4-20250514-v1:0`` (Bedrock; needs AWS_* env that we don't
+    set) and ``openrouter/deepseek/deepseek-chat-v3-0324`` (not in
+    ShinkaEvolve's OpenRouter allowlist). Result: every ShinkaEvolve
+    session crashed at LLM-init with ``Requested model(s) are
+    unavailable``, no ledger record was written, and the engine
+    selector kept picking ShinkaEvolve forever (since
+    ``days_since_engine_run("shinka")`` stayed at ``inf``).
+    """
+    models: list[str] = []
+
+    # Anthropic — direct API (NOT Bedrock).
     try:
         from app.config import get_settings
         settings = get_settings()
@@ -151,16 +162,18 @@ def _map_llm_models() -> list[str]:
             if hasattr(key, "get_secret_value"):
                 key = key.get_secret_value()
             if key and len(key) > 10:
-                models.append("us.anthropic.claude-sonnet-4-20250514-v1:0")
+                # ShinkaEvolve registry exposes Sonnet 4.6 as
+                # ``claude-sonnet-4-6`` (the current production sonnet).
+                models.append("claude-sonnet-4-6")
     except Exception:
         pass
 
-    # Check for OpenRouter (budget tier)
+    # OpenRouter — pick a coding-strong model that's in shinka's allowlist.
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
     if openrouter_key:
-        models.append("openrouter/deepseek/deepseek-chat-v3-0324")
+        models.append("qwen/qwen3-coder")
 
-    # Check for local Ollama
+    # Local Ollama (still optional — useful when API budget is tight).
     ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     try:
         import requests
@@ -175,9 +188,11 @@ def _map_llm_models() -> list[str]:
     except Exception:
         pass
 
-    # Fallback: if no models found, use OpenRouter with DeepSeek
+    # Fallback when no API keys are set: OpenRouter via the same coder
+    # we map above. (Trying ShinkaEvolve without ANY model is pointless
+    # but the safety net keeps the function total.)
     if not models:
-        models.append("openrouter/deepseek/deepseek-chat-v3-0324")
+        models.append("qwen/qwen3-coder")
 
     return models
 
@@ -459,12 +474,26 @@ def _record_result(
     delta: float,
     status: str,
 ) -> None:
-    """Record the ShinkaEvolve result in the standard results ledger."""
+    """Record the ShinkaEvolve result in BOTH ledgers.
+
+    1. ``results_ledger`` (shared with AVO) — used by the evolution
+       dashboard, retrospective crew, and ``get_recent_results`` for
+       per-experiment history.
+
+    2. ``evolution_roi`` — used by the engine selector's forced-rotation
+       rule (``days_since_engine_run("shinka")``) and ROI recommendation.
+
+    Pre-2026-04-30 only #1 fired, which meant ``days_since_engine_run``
+    always returned ``inf`` even after a successful shinka run — keeping
+    the forced-rotation rule firing every cycle. Diagnosed alongside
+    the missing-deps issue.
+    """
     try:
         from app.results_ledger import record_experiment
         from app.experiment_runner import generate_experiment_id
+        experiment_id = generate_experiment_id("shinka-evolve")
         record_experiment(
-            experiment_id=generate_experiment_id("shinka-evolve"),
+            experiment_id=experiment_id,
             hypothesis="ShinkaEvolve island-model evolution of agent utilities",
             change_type="code",
             metric_before=baseline,
@@ -474,4 +503,33 @@ def _record_result(
             detail=f"ShinkaEvolve delta={delta:+.4f}",
         )
     except Exception as e:
-        logger.warning(f"shinka_engine: ledger recording failed: {e}")
+        logger.warning(f"shinka_engine: results_ledger recording failed: {e}")
+        return
+
+    # ── ROI ledger — what the engine selector rule 5 reads ────────────
+    try:
+        from app.evolution_roi import record_evolution_cost
+        # Cost estimate: ShinkaEvolve sessions burn $1-5 of API budget
+        # depending on generations × islands; the api_budget cap in
+        # run_shinka_session is the upper bound. Use 2.0 as a midpoint
+        # estimate when we don't have a precise tracker handle. A
+        # future improvement: thread the actual usage from shinka's
+        # cost summary back here.
+        cost_estimate = 2.0
+        try:
+            from app.rate_throttle import get_request_cost_estimate
+            actual = get_request_cost_estimate()
+            if actual is not None and actual > 0:
+                cost_estimate = actual
+        except Exception:
+            pass
+        record_evolution_cost(
+            experiment_id=experiment_id,
+            engine="shinka",
+            cost_usd=cost_estimate,
+            delta=delta,
+            status=status,
+            deployed=(status == "keep"),
+        )
+    except Exception as e:
+        logger.warning(f"shinka_engine: ROI recording failed: {e}")

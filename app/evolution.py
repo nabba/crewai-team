@@ -1490,15 +1490,44 @@ def _select_evolution_engine() -> str:
 
 
 def _is_shinka_available() -> bool:
-    """Check if ShinkaEvolve is installed and workspace files exist."""
+    """Check ShinkaEvolve is *actually runnable*, not just installed.
+
+    Verifies the deep imports the engine needs at session start —
+    ``shinka.core``, ``shinka.launch``, ``shinka.database``. The
+    historical version only did ``import shinka`` (the empty package
+    namespace), which silently passed when transitive deps like
+    ``google-genai``, ``psutil``, ``seaborn``, or ``python-Levenshtein``
+    were missing — and they were, because the Dockerfile installs
+    shinka with ``--no-deps``. The selector then kept picking
+    ShinkaEvolve session after session, each one crashing immediately
+    at ``run_shinka_session()`` with ``ImportError`` and writing
+    nothing to either ledger. ``days_since_engine_run("shinka")``
+    stayed at infinity → forced rotation kept firing → forever loop.
+
+    Failure now means: log once, return False, let rule 1-10 flow
+    through to AVO.
+    """
     try:
-        import shinka  # noqa: F401
-        from pathlib import Path
-        initial = Path("/app/workspace/shinka/initial.py")
-        evaluate = Path("/app/workspace/shinka/evaluate.py")
-        return initial.exists() and evaluate.exists()
-    except ImportError:
+        # The full chain of imports the engine actually performs at
+        # session start. Any one of these missing means the session
+        # WILL crash at LLM-init time — better to know now and let
+        # the selector pick AVO instead.
+        from shinka.core import (  # noqa: F401
+            ShinkaEvolveRunner,
+            EvolutionConfig,
+        )
+        from shinka.launch import LocalJobConfig  # noqa: F401
+        from shinka.database import DatabaseConfig  # noqa: F401
+    except ImportError as exc:
+        logger.warning(
+            "shinka unavailable: %s — engine selector will fall back to AVO. "
+            "Install missing dep(s) and restart the gateway to enable.", exc,
+        )
         return False
+    from pathlib import Path
+    initial = Path("/app/workspace/shinka/initial.py")
+    evaluate = Path("/app/workspace/shinka/evaluate.py")
+    return initial.exists() and evaluate.exists()
 
 
 def _get_subia_safety_value() -> float:
