@@ -557,32 +557,59 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
     # ── Control Plane commands ───────────────────────────────────────────
     if settings.control_plane_enabled:
 
-        # ── Project management ────────────────────────────────────────────
-        if lower in ("project list", "projects"):
+        # ── Project / workspace management ───────────────────────────────
+        # The user-facing dashboard calls these "Workspaces" while the
+        # control-plane DB schema calls them "Projects" — accept both
+        # terms verbatim so the user doesn't have to remember which side
+        # of the system they're talking to.
+        if lower in (
+            "project list", "projects",
+            "workspace list", "workspaces",
+        ):
             try:
                 from app.control_plane.projects import get_projects
                 return get_projects().format_list()
             except Exception as exc:
                 return f"Error: {str(exc)[:200]}"
 
-        # Match both word orders: "project switch X" AND "switch project X"
-        # Match against original (non-lowercased) input so project name case is preserved
+        # Match every reasonable phrasing the user might type:
+        #   project switch X         / workspace switch X
+        #   switch project X         / switch workspace X
+        #   switch to project X      / switch to workspace X
+        #   switch project to X      / switch workspace to X   ← user's case
+        # Project name capture is greedy (.+) so multi-word names like
+        # "eesti mets" survive — the earlier regex used \S+ which
+        # truncated to the first token. Match against the original
+        # (non-lowercased) input so display-case names round-trip
+        # correctly via get_by_name (case-insensitive lookup) →
+        # canonical_name. The trailing optional "to " strips a connector
+        # word the user likely typed between the noun and the name.
         _proj_switch = re.match(
-            r"^(?:project\s+switch|switch\s+(?:to\s+)?project)\s+(\S+)",
+            r"^(?:"
+                r"(?:project|workspace)\s+switch"
+                r"|"
+                r"switch\s+(?:to\s+)?(?:project|workspace)"
+            r")\s+(?:to\s+)?(.+)",
             user_input.strip(), re.IGNORECASE,
         )
         if _proj_switch:
             try:
                 from app.control_plane.projects import get_projects
-                name = _proj_switch.group(1).strip(".,!?")
+                name = _proj_switch.group(1).strip().strip(".,!?")
                 result = get_projects().switch(name)
                 if result:
                     return f"Switched to project: {result.get('name')} — {result.get('mission', '')[:100]}"
-                return f"Project '{name}' not found. Use `project list` to see available projects."
+                return (
+                    f"Project '{name}' not found. "
+                    f"Use `project list` (or `workspaces`) to see available ones."
+                )
             except Exception as exc:
                 return f"Error: {str(exc)[:200]}"
 
-        if lower in ("project status", "project"):
+        if lower in (
+            "project status", "project",
+            "workspace status", "workspace",
+        ):
             try:
                 from app.control_plane.projects import get_projects
                 pm = get_projects()

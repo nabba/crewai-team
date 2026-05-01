@@ -24,17 +24,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestSwitchCommandRegex:
-    """The regex must match user input in both word orders and any casing."""
+    """The regex must match user input across:
+      - Both word orders (``<noun> switch X`` AND ``switch <noun> X``)
+      - Both nouns (``project`` AND ``workspace``) — the dashboard uses
+        "workspace" while the DB schema uses "project"; both forms are
+        valid user-facing
+      - Optional ``to`` connector before OR after the noun
+      - Multi-word project names (``eesti mets`` not just ``eesti``)
+      - Any casing
+    """
 
     PATTERN = re.compile(
-        r"^(?:project\s+switch|switch\s+(?:to\s+)?project)\s+(\S+)",
+        r"^(?:"
+            r"(?:project|workspace)\s+switch"
+            r"|"
+            r"switch\s+(?:to\s+)?(?:project|workspace)"
+        r")\s+(?:to\s+)?(.+)",
         re.IGNORECASE,
     )
 
     def _extract(self, text: str) -> str | None:
         m = self.PATTERN.match(text.strip())
-        return m.group(1).strip(".,!?") if m else None
+        return m.group(1).strip().strip(".,!?") if m else None
 
+    # ── Original "project" forms ──
     def test_legacy_word_order(self):
         assert self._extract("project switch plg") == "plg"
 
@@ -54,10 +67,45 @@ class TestSwitchCommandRegex:
         assert self._extract("switch project PLG.") == "PLG"
         assert self._extract("switch project PLG!") == "PLG"
 
+    # ── "workspace" alias (added 2026-04-30 after the agent refused
+    #    "switch workspace to eesti mets" with a flustered "I can't") ──
+
+    def test_workspace_alias_natural(self):
+        assert self._extract("switch workspace plg") == "plg"
+
+    def test_workspace_alias_with_to_after_noun(self):
+        """The user's actual case: ``switch workspace TO eesti mets``."""
+        assert self._extract("switch workspace to eesti mets") == "eesti mets"
+
+    def test_workspace_alias_with_to_before_noun(self):
+        assert self._extract("switch to workspace plg") == "plg"
+
+    def test_workspace_alias_legacy_word_order(self):
+        assert self._extract("workspace switch eesti mets") == "eesti mets"
+
+    def test_workspace_alias_uppercase(self):
+        assert self._extract("Switch Workspace To Eesti Mets") == "Eesti Mets"
+
+    # ── Multi-word names — the qx \\S+ regression ──
+
+    def test_multi_word_name_project(self):
+        """Earlier regex used ``\\S+`` which truncated multi-word names."""
+        assert self._extract("switch project eesti mets") == "eesti mets"
+
+    def test_multi_word_name_three_words(self):
+        assert self._extract("switch workspace to my big project") == "my big project"
+
+    def test_multi_word_strips_trailing_punctuation(self):
+        assert self._extract("switch workspace to eesti mets.") == "eesti mets"
+
+    # ── Negative cases — must not over-match ──
+
     def test_rejects_unrelated_text(self):
         assert self._extract("project list") is None
+        assert self._extract("workspace list") is None
         assert self._extract("what project am I on") is None
         assert self._extract("switch llm mode") is None
+        assert self._extract("switch to anthropic mode") is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
