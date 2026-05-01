@@ -160,11 +160,18 @@ def _write_response_md(full_text, user_question):
 async def lifespan(app: FastAPI):
     from app.crews.self_improvement_crew import SelfImprovementCrew
 
-    # Fail fast if gateway is misconfigured to bind on a public interface
-    if settings.gateway_bind != "127.0.0.1":
+    # Fail fast if gateway is misconfigured to bind on a public interface.
+    # Exception: when running inside Kubernetes (KUBERNETES_SERVICE_HOST is set
+    # automatically by kubelet for every pod), 0.0.0.0 is correct — the pod
+    # network namespace is private, k8s Services + NetworkPolicy provide the
+    # actual access boundary. Detect k8s and allow 0.0.0.0 in that case.
+    in_kubernetes = bool(os.environ.get("KUBERNETES_SERVICE_HOST"))
+    if settings.gateway_bind != "127.0.0.1" and not in_kubernetes:
         raise RuntimeError(
-            f"GATEWAY_BIND must be 127.0.0.1, got {settings.gateway_bind!r}. "
-            "Refusing to start — binding to a public interface is unsafe."
+            f"GATEWAY_BIND must be 127.0.0.1 outside Kubernetes, got "
+            f"{settings.gateway_bind!r}. Refusing to start — binding to a "
+            "public interface is unsafe on a host with no other access "
+            "control. (In k8s, NetworkPolicy + Service do the gating.)"
         )
 
     _configure_audit_log()
