@@ -23,10 +23,8 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 # Mock Docker-only modules
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "chromadb", "chromadb.config", "chromadb.utils",
-             "chromadb.utils.embedding_functions",
              "app.control_plane", "app.control_plane.db",
-             "app.memory", "app.memory.chromadb_manager"]:
+             "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
 

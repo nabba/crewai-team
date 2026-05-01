@@ -231,7 +231,6 @@ class TestLoopIntegration:
         from unittest.mock import MagicMock
 
         for _mod in ["chromadb", "chromadb.config", "chromadb.utils",
-                     "chromadb.utils.embedding_functions",
                      "app.memory.chromadb_manager"]:
             if _mod not in sys.modules:
                 sys.modules[_mod] = MagicMock()
@@ -270,7 +269,6 @@ class TestLoopIntegration:
         import sys
         from unittest.mock import MagicMock
         for _mod in ["chromadb", "chromadb.config", "chromadb.utils",
-                     "chromadb.utils.embedding_functions",
                      "app.memory.chromadb_manager"]:
             if _mod not in sys.modules:
                 sys.modules[_mod] = MagicMock()

@@ -26,25 +26,18 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Mock Docker-only modules
+# Mock Docker-only / heavy backends. crewai, crewai.tools, and pydantic
+# are all installed in the venv now — DO NOT mock them, since doing so as
+# MagicMock pollutes every downstream module that runs after this file:
+#   - mocking `crewai.tools` breaks Mem0StoreTool/etc. by replacing BaseTool
+#     with a mock that doesn't accept kwargs
+#   - mocking `pydantic` breaks `app.config` (BaseSettings) and any test
+#     that imports it afterward
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "chromadb", "chromadb.config", "chromadb.utils",
-             "chromadb.utils.embedding_functions",
-             "crewai", "crewai.tools",
              "app.control_plane", "app.control_plane.db",
-             "app.memory", "app.memory.chromadb_manager"]:
+             "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
-
-# Mock BaseTool so wiki tools can import
-class _MockBaseTool:
-    name: str = ""
-    description: str = ""
-    def _run(self, **kwargs): pass
-
-sys.modules["crewai.tools"].BaseTool = _MockBaseTool
-sys.modules["pydantic"] = MagicMock()
-sys.modules["pydantic"].Field = lambda **kw: None
 
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
 sys.modules["app.memory.chromadb_manager"].store = MagicMock()

@@ -29,10 +29,8 @@ from unittest.mock import MagicMock, patch
 
 # Mock Docker-only modules before importing app code
 for _mod_name in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-                   "chromadb", "chromadb.config", "chromadb.utils",
-                   "chromadb.utils.embedding_functions",
                    "app.control_plane", "app.control_plane.db",
-                   "app.memory", "app.memory.chromadb_manager"]:
+                   "app.memory.chromadb_manager"]:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock()
 

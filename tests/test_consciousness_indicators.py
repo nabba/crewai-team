@@ -22,23 +22,25 @@ from unittest.mock import patch, MagicMock
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
-# Mock modules not available on host (only in Docker).
-# Also mock modules that use Python 3.10+ type hints (X | None)
-# which fail on 3.9.
+# Mock host-unavailable backends. We mock SUBMODULES, never package roots
+# like `app.memory`, because mocking a package as MagicMock breaks
+# `from app.memory.X import Y` in subsequent tests (Python needs the
+# parent to be a real package).
+#
+# The chromadb library itself is NOT mocked — it's installed in the venv,
+# and consciousness modules go through app.memory.chromadb_manager anyway.
 _MOCK_MODULES = [
     "psycopg2", "psycopg2.pool", "psycopg2.extras",
-    "chromadb", "chromadb.config", "chromadb.utils",
-    "chromadb.utils.embedding_functions",
     "app.control_plane", "app.control_plane.db",
-    "app.memory", "app.memory.chromadb_manager",
+    "app.memory.chromadb_manager",
 ]
 for _mod_name in _MOCK_MODULES:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock()
 
-# Ensure embed() returns a proper list
+# Ensure embed() returns a proper list (avoids hitting Ollama in tests).
 sys.modules["app.memory.chromadb_manager"].embed = MagicMock(return_value=[0.1] * 768)
-# Ensure execute() returns empty list
+# Ensure execute() returns empty list (avoids real Postgres connection).
 sys.modules["app.control_plane.db"].execute = MagicMock(return_value=[])
 
 import pytest

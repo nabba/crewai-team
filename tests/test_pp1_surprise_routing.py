@@ -32,8 +32,6 @@ from unittest.mock import MagicMock
 # Stub out chromadb / pgvector / control_plane deps that buffer.py
 # and layer.py transitively import but don't need for these tests.
 for _mod in ["psycopg2", "psycopg2.pool", "psycopg2.extras",
-             "chromadb", "chromadb.config", "chromadb.utils",
-             "chromadb.utils.embedding_functions",
              "app.control_plane", "app.control_plane.db",
              "app.memory.chromadb_manager"]:
     if _mod not in sys.modules:
