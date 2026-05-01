@@ -35,10 +35,11 @@ resource "google_sql_database_instance" "botarmy" {
       enable_private_path_for_google_cloud_services = true
     }
 
-    database_flags {
-      name  = "cloudsql.enable_pgvector"
-      value = "on"
-    }
+    # pgvector is preinstalled on Cloud SQL Postgres 16; no flag needed.
+    # The `postgresql_extension.vector` resource below runs CREATE EXTENSION
+    # to make it available in our database. (Earlier versions of this file
+    # set cloudsql.enable_pgvector here — that flag does not exist in the
+    # Cloud SQL admin API. Verified by an end-to-end test on 2026-05-01.)
 
     database_flags {
       name  = "log_min_duration_statement"

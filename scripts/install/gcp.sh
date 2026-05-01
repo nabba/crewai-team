@@ -174,7 +174,7 @@ _show_gcp_cost_estimate() {
 EOF
     if [[ "$tier" == "prod" ]]; then
         cat <<'EOF'
-    Autopilot (regional control plane)  ~$73
+    Autopilot regional control plane     ~$73
     Autopilot pod compute (HA replicas)  ~$140
     db-custom-2-7680 HA Cloud SQL        ~$140
     1× LB + regional NAT                  ~$60
@@ -184,16 +184,17 @@ EOF
 EOF
     else
         cat <<'EOF'
-    Autopilot zonal control plane        $0
+    Autopilot regional control plane     ~$73 *
     Autopilot pod compute (BotArmy)      ~$60
     db-g1-small Cloud SQL                ~$25
     1× LB + 1× NAT                        ~$30
     PD SSD storage (~30 GiB)              ~$5
     ──────────────────────────────────────────
-    Total (very rough)                   ~$120 / month
+    Total (very rough)                   ~$190 / month
 EOF
     fi
     echo
+    warn "* GCP gives every billing account a \$74.40/mo credit that covers exactly one cluster's control plane fee. If this is your only GKE cluster on the account, the control-plane line above is effectively \$0 and the cheapest tier ends up at ~\$120/mo."
     warn "Egress to Anthropic / OpenRouter etc. bills separately at ~\$0.12/GB and can surprise you."
     echo
 }

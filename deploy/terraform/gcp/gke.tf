@@ -8,8 +8,13 @@ resource "google_container_cluster" "botarmy" {
   provider = google-beta
   name     = local.name
 
-  # Zonal vs regional placement
-  location = local.cluster_regional ? var.region : var.zone
+  # Autopilot REQUIRES regional clusters — zonal Autopilot is rejected by the
+  # API ("Autopilot clusters must be regional clusters"). Standard mode would
+  # allow zonal at the cost of node management; we keep Autopilot for both
+  # tiers to give a single operational model. Regional Autopilot's control
+  # plane bills the same $0.10/hr as Standard regional, and GCP gives every
+  # billing account a $74.40/mo credit that covers exactly one cluster.
+  location = var.region
 
   enable_autopilot    = true
   deletion_protection = false # turn on for prod by hand if you want
@@ -59,8 +64,14 @@ resource "google_service_account" "gateway" {
 }
 
 # IAM binding so the Kubernetes ServiceAccount can act as the GCP SA.
+# The Workload Identity pool `<project>.svc.id.goog` is created when the
+# Autopilot cluster comes up — we therefore depend on the cluster explicitly.
+# Without this depends_on, terraform parallelises and the IAM binding can
+# race ahead, hitting "Identity Pool does not exist (<project>.svc.id.goog)".
 resource "google_service_account_iam_member" "gateway_workload_identity" {
   service_account_id = google_service_account.gateway.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/botarmy-gateway]"
+
+  depends_on = [google_container_cluster.botarmy]
 }

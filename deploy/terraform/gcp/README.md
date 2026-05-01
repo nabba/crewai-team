@@ -43,19 +43,28 @@ bails with install URLs if any are missing.
 Both rough monthly estimates in `europe-north1`. GCP bills more granularly than AWS so
 real bills depend a lot on traffic.
 
-| Tier | Compute (Autopilot) | DB | Network | Storage | **~$/month** |
-| --- | --- | --- | --- | --- | --- |
-| `cheapest` | ~$60 (BotArmy + addons) | db-g1-small ($25) | 1× LB + 1× NAT (~$30) | PD SSD 30 GiB ($5) | **~$120** |
-| `prod`     | ~$140 (regional, replicas) | db-custom-2-7680 HA ($140) | 1× LB + regional NAT (~$60) | PD SSD 150 GiB ($25) | **~$365** |
+| Tier | Control plane | Compute | DB | Network | Storage | **~$/month** |
+| --- | --- | --- | --- | --- | --- | --- |
+| `cheapest` | ~$73 *  | ~$60 (BotArmy pods) | db-g1-small ($25) | 1× LB + 1× NAT (~$30) | PD SSD 30 GiB ($5) | **~$120–195** |
+| `prod`     | ~$73 *  | ~$140 (HA replicas) | db-custom-2-7680 HA ($140) | 1× LB + regional NAT (~$60) | PD SSD 150 GiB ($25) | **~$440** |
+
+\* GCP credits every billing account `$74.40/mo` against the control-plane fee
+— enough to cover exactly one GKE cluster. If BotArmy is your only cluster on
+the account, the control plane is effectively **free** and `cheapest` lands at
+~$120/mo. If you already have another cluster running for something else, you
+pay full freight.
 
 Notes:
-- **GKE Autopilot has no node group bills** — you pay per pod resource request × time.
-  This is great when BotArmy is the only thing running; less great if you scale to dozens
-  of services.
-- **Zonal Autopilot's control plane is free**; regional adds ~$73/mo (same as EKS).
+- **Autopilot is regional-only** — the API rejects zonal Autopilot clusters
+  ("Autopilot clusters must be regional clusters"). The first version of this
+  module tried to make a zonal Autopilot for `cheapest`; an end-to-end test
+  on 2026-05-01 surfaced the constraint.
+- **GKE Autopilot has no node group bills** — you pay per pod resource request
+  × time. Great when BotArmy is the only thing running; less great if you
+  scale to dozens of services.
 - **Cloud SQL HA roughly doubles** the DB bill (synchronous standby in another zone).
-- **Egress is the surprise** — LLM API calls go to Anthropic / OpenRouter (egress to
-  internet ~$0.12/GB). A heavy-use bot can add $5-20/mo of egress.
+- **Egress is the surprise** — LLM API calls go to Anthropic / OpenRouter
+  (egress to internet ~$0.12/GB). A heavy-use bot can add $5-20/mo.
 
 The dispatcher shows this estimate and requires explicit confirmation before `apply`.
 
