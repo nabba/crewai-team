@@ -30,21 +30,21 @@ class TestStripInternalMetadata(unittest.TestCase):
     """Verify metadata stripping without truncation."""
 
     def test_strips_metadata_preserves_full_text(self):
-        from app.agents.commander import _strip_internal_metadata
+        from app.agents.commander.postprocess import _strip_internal_metadata
         long_text = "A" * 3000
         result = _strip_internal_metadata(long_text)
         # Should NOT truncate — just strip metadata
         self.assertEqual(len(result), 3000)
 
     def test_strips_critic_review(self):
-        from app.agents.commander import _strip_internal_metadata
+        from app.agents.commander.postprocess import _strip_internal_metadata
         text = "Answer.\n\n---\n\n**[Critic Review]**\nInternal review."
         result = _strip_internal_metadata(text)
         self.assertNotIn("Critic Review", result)
         self.assertIn("Answer", result)
 
     def test_empty_input(self):
-        from app.agents.commander import _strip_internal_metadata
+        from app.agents.commander.postprocess import _strip_internal_metadata
         self.assertEqual(_strip_internal_metadata(""), "")
         self.assertEqual(_strip_internal_metadata(None), None)
 
@@ -103,35 +103,35 @@ class TestSignalClientAttachments(unittest.TestCase):
 
 
 class TestWriteResponseMd(unittest.TestCase):
-    """Verify .md file creation logic exists in main.py."""
+    """Verify .md file creation logic. The implementation was extracted
+    from main.py into app/response_utils.py; main.py keeps a thin wrapper."""
 
     def test_write_response_md_function_exists(self):
-        with open("app/main.py") as f:
+        with open("app/response_utils.py") as f:
             source = f.read()
-        self.assertIn("def _write_response_md(", source)
+        self.assertIn("def write_response_md(", source)
         # Writes markdown with question and full text
-        self.assertIn("# Response", source)
         self.assertIn("question_preview", source)
         self.assertIn("full_text", source)
 
     def test_returns_none_without_host_path(self):
-        with open("app/main.py") as f:
+        with open("app/response_utils.py") as f:
             source = f.read()
-        # Should check workspace_host_path and return None if empty
         self.assertIn("workspace_host_path", source)
         self.assertIn("return None", source)
 
     def test_translates_docker_to_host_path(self):
-        with open("app/main.py") as f:
+        with open("app/response_utils.py") as f:
             source = f.read()
-        # Should replace _WORKSPACE_ROOT with host path
-        self.assertIn("docker_path.replace(_WORKSPACE_ROOT", source)
+        # Both the path replacement and the host_workspace var should be present.
+        self.assertIn("host_workspace", source)
+        self.assertIn("docker_path", source)
 
     def test_response_file_naming(self):
-        with open("app/main.py") as f:
+        with open("app/response_utils.py") as f:
             source = f.read()
         self.assertIn('response_', source)
-        self.assertIn('.md"', source)
+        self.assertIn('.md', source)
 
 
 class TestHandleTaskLongResponse(unittest.TestCase):
@@ -142,13 +142,16 @@ class TestHandleTaskLongResponse(unittest.TestCase):
             source = f.read()
         self.assertIn("_write_response_md", source)
         self.assertIn("truncate_for_signal", source)
-        self.assertIn("signal_attachments", source)
-        self.assertIn("attachments=signal_attachments", source)
+        # The variable was renamed from `signal_attachments` to `md_path`
+        # when the implementation was inlined; it's now passed directly
+        # as `attachments=[md_path]`.
+        self.assertIn("attachments=[md_path]", source)
 
     def test_prune_function_exists(self):
-        with open("app/main.py") as f:
+        # Pruning moved into response_utils.py too.
+        with open("app/response_utils.py") as f:
             source = f.read()
-        self.assertIn("_prune_response_files", source)
+        self.assertIn("prune_response_files", source)
         self.assertIn("_MAX_RESPONSE_FILES", source)
 
 

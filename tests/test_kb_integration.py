@@ -35,6 +35,24 @@ from app.knowledge_base.tools import (
 )
 
 
+def _ollama_reachable() -> bool:
+    """Check if the Ollama embedding backend is up. KB tests need real
+    768-dim embeddings — there's no CPU fallback by design."""
+    try:
+        from app.memory.chromadb_manager import _ollama_embed
+        return _ollama_embed("ping") is not None
+    except Exception:
+        return False
+
+
+# Skip the whole module when Ollama isn't reachable so the KnowledgeStore
+# fixture doesn't error out on every test.
+pytestmark = pytest.mark.skipif(
+    not _ollama_reachable(),
+    reason="Requires Ollama (nomic-embed-text) — start Ollama or run inside the gateway container",
+)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

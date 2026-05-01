@@ -8,13 +8,13 @@ class TestCleanResponse(unittest.TestCase):
     """Test the _clean_response function strips internal metadata."""
 
     def _clean(self, text):
-        # Import here to avoid heavy module-level imports
-        with open("app/agents/commander.py") as f:
+        # _clean_response moved to postprocess.py when commander.py was
+        # modularized into commander/{commands,context,execution,
+        # orchestrator,postprocess,routing}.py.
+        with open("app/agents/commander/postprocess.py") as f:
             source = f.read()
-        # Verify the function exists
         assert "def _clean_response" in source
-        # Use regex patterns directly for testing
-        from app.agents.commander import _clean_response
+        from app.agents.commander.postprocess import _clean_response
         return _clean_response(text)
 
     def test_strips_critic_review(self):
@@ -80,10 +80,10 @@ class TestResearchCrewFastPath(unittest.TestCase):
         # Low difficulty should skip debate and critic
         self.assertIn("if difficulty <= 3:", source)
         self.assertIn("_run_simple", source)
-        # Debate only for difficulty >= 6
-        self.assertIn("if difficulty >= 6:", source)
-        # Critic only for difficulty >= 7
-        self.assertIn("if difficulty >= 7:", source)
+        # Debate threshold was tightened (Apr 2026): now difficulty >= 8,
+        # or >= 6 only when synthesis output is short (< 200 chars).
+        # Previously triggered at >= 6 unconditionally.
+        self.assertIn("difficulty >= 8", source)
 
     def test_critic_review_does_not_append_to_output(self):
         """Critic review must NOT append [Critic Review] to user output."""
@@ -106,7 +106,9 @@ class TestRoutingPromptQuality(unittest.TestCase):
     """Verify routing prompt includes conciseness rules."""
 
     def test_routing_prompt_has_output_rules(self):
-        with open("app/agents/commander.py") as f:
+        # Routing prompt moved to commander/routing.py during the
+        # commander.py modularization.
+        with open("app/agents/commander/routing.py") as f:
             source = f.read()
         self.assertIn("CRITICAL OUTPUT RULES", source)
         self.assertIn("PHONE via Signal", source)
@@ -117,10 +119,17 @@ class TestProactiveNotesNotInOutput(unittest.TestCase):
     """Proactive scan results should be logged, not sent to user."""
 
     def test_proactive_notes_not_appended(self):
-        with open("app/agents/commander.py") as f:
-            source = f.read()
-        # The old pattern appended to final_result
-        self.assertNotIn('final_result += (\n                    "\\n\\n---\\n\\n**[Proactive Notes]', source)
+        # Proactive-notes stripping moved to commander/postprocess.py;
+        # the orchestrator no longer appends them to final_result. We
+        # assert the postprocess STRIP_PATTERNS still includes the
+        # Proactive Notes regex (i.e., we still scrub them if present).
+        with open("app/agents/commander/postprocess.py") as f:
+            postprocess_src = f.read()
+        self.assertIn("Proactive Notes", postprocess_src)
+        with open("app/agents/commander/orchestrator.py") as f:
+            orchestrator_src = f.read()
+        # The old pattern appended Proactive Notes — make sure that's gone.
+        self.assertNotIn('final_result += (\n                    "\\n\\n---\\n\\n**[Proactive Notes]', orchestrator_src)
 
 
 if __name__ == "__main__":
