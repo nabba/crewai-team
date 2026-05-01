@@ -537,16 +537,51 @@ via `_parse_model_id()` → `(family, size_b, quant, variants)` and
 degrade gracefully when the parse can't identify the dimension they
 care about (no false-positive blocks).
 
-**Filter 1 — same-family dominance** (`filter_dominated_by_installed`):
-skips a candidate when its family already has a strictly larger
-locally-installed sibling.
+**Filter 1 — dominance by installed** (`filter_dominated_by_installed`):
+skips a candidate that's already covered by something the user has
+locally. Implements three layered rules — the second and third were
+added on a follow-up pass after a different rejection wave (qwen3.5:latest
++ qwen3:14b + qwen3:8b proposed while qwen3.5:35b-a3b was already
+installed) showed Rule 1 alone was too narrow.
 
-```text
-installed: qwen3.5:35b-a3b-q4_K_M (35B)
-proposed:  qwen3.5:4b-q8_0          (4B)  → SKIP — strict downgrade
-proposed:  qwen3.5:122b-a10b        (122B) → KEEP — larger, not dominated
-proposed:  llama3.1:8b              (8B)   → KEEP — different family
-```
+  *Rule 1 — same family + strictly smaller explicit size*:
+  ```text
+  installed: qwen3.5:35b-a3b-q4_K_M (35B)
+  proposed:  qwen3.5:4b-q8_0          (4B)  → SKIP — strict downgrade
+  proposed:  qwen3.5:122b-a10b        (122B) → KEEP — larger, not dominated
+  ```
+
+  *Rule 2 — same family + sizeless candidate (`:latest`, `:instruct`)
+  when the family already has an installed member*. The user already
+  pinned a specific variant; the generic alias is almost always the
+  smallest default and not what they want:
+  ```text
+  installed: qwen3.5:35b-a3b-q4_K_M
+  proposed:  qwen3.5:latest           → SKIP — :latest of pinned family
+  proposed:  qwen3.5:instruct         → SKIP — same reason
+  proposed:  phi3:latest              → KEEP — phi family not installed
+  ```
+
+  *Rule 3 — cross-version-within-base dominance*. Family names parse
+  via `_family_base_and_version()` into `(base, version)` so
+  ``qwen3.5`` → `("qwen", 3.5)` and ``qwen3`` → `("qwen", 3.0)`. A
+  candidate at a *lower* lineage version than something installed of
+  the same base is treated as dominated:
+  ```text
+  installed: qwen3.5:35b-a3b-q4_K_M  (base=qwen, ver=3.5)
+  proposed:  qwen3:14b-q4_K_M        (base=qwen, ver=3.0) → SKIP
+  proposed:  qwen3:8b-q4_K_M         (base=qwen, ver=3.0) → SKIP
+  proposed:  qwen4:14b-q4_K_M        (base=qwen, ver=4.0) → KEEP — newer
+  proposed:  llama3.1:8b             (base=llama)         → KEEP — diff base
+  ```
+  Lineage detection covers `llama3.1`/`llama4`, `gemma3`/`gemma4`,
+  `phi3`/`phi3.5`, `deepseek-r1` etc. Families without trailing version
+  digits (`codestral`, `glm-ocr`) parse as `(family, None)` and skip
+  Rule 3 entirely (no false-positive blocks across unrelated families).
+
+When all three rules find nothing to compare against (different
+family, candidate has all the data, no lineage relationship) the
+candidate passes through.
 
 **Filter 2 — quantization preference** (`filter_quant_dominated`):
 skips a candidate that's a higher-quant (bigger / more precise)
@@ -842,7 +877,7 @@ Dashboard → Tasks tab → click any row. Drawer opens; toggle 🌳 Tree
 | Discovery promotes the wrong model | Demote button on dashboard or `demote <model>` Signal | Catalog rehydrates immediately |
 | ollama.com unreachable or HTML format changes | `parse_tags_page()` returns `[]`, no proposals emitted | Degrades silently — local discovery still runs; never raises |
 | `governance_requests` table unreachable for rejection lookup | `get_recently_rejected_models()` returns `set()` | Loud-over-silent: scanner still proposes, user re-rejects if needed |
-| Scanner repeatedly proposes a smaller-family sibling of an installed model | `filter_dominated_by_installed` blocks at source | 2026-04-30 fix; removes the 9-of-9 rejection storm scenario |
+| Scanner repeatedly proposes a smaller-family sibling, `:latest` alias of a pinned family, or older-lineage variant | `filter_dominated_by_installed` (3 rules: size dominance, sizeless-alias, cross-version-base) blocks at source | 2026-04-30 fixes; removes the original 9-of-9 storm AND the follow-up `qwen3.5:latest` / `qwen3:8b` / `qwen3:14b` slip-through |
 | Host-capacity probe fails (no env, no Docker, no sysctl) | `_DEFAULT_MAX_SIZE_GB_FALLBACK = 16 GB` cap | Strictly conservative — better to under-propose than blow memory |
 
 ---
@@ -893,7 +928,8 @@ pytest tests/test_llm_*.py tests/test_vetting_feedback.py tests/test_crew_task_s
 | **Incumbent** | The current top-scoring model for a role + mode pair. Discovery proposes replacements. |
 | **Pareto dominance** | Quality ≥ AND cost ≤ (with at least one strict inequality, mode-weighted). |
 | **Registry scanner** | `app/llm_registry_scanner.py` — crawls ollama.com for new local-model variants, applies host-capacity sizing + three proposal filters, emits governance requests. Never auto-pulls. |
-| **Same-family dominance** | A candidate is "dominated" when its family already has a strictly larger sibling installed (qwen3.5:4b vs qwen3.5:35b). Such proposals are skipped — installing a smaller variant of an existing model is almost always a mistake. |
+| **Dominance by installed** | An installed model "dominates" a candidate when any of three rules applies: same family + strictly smaller size (qwen3.5:4b vs qwen3.5:35b), sizeless candidate (`:latest`) of an already-pinned family (qwen3.5:latest when qwen3.5:35b is in), or candidate's lineage version is lower than installed under the same base (qwen3:14b dominated by qwen3.5:35b). Dominated proposals are skipped — installing a smaller / sizeless / older-lineage variant when a better one is already in is almost always a mistake. |
+| **Lineage base / version** | Result of `_family_base_and_version()`: a family name like `qwen3.5` is split into base (`qwen`) and version (`3.5`). Two families share a lineage iff their bases match; the higher version dominates the lower for governance-proposal purposes. Families without trailing digits (`codestral`, `glm-ocr`) parse as `(family, None)` and don't participate in cross-version dominance — their candidates pass through Rule 3 unchanged. |
 | **Quant rank** | Numeric ordering over quantizations (q4_K_M=4, q5_K_M=5, q8_0=7, fp16=9). Used by `filter_quant_dominated` to skip "bigger for marginal gain" variants of an installed base. |
 | **Rejection learning** | `filter_recently_rejected` reads `governance_requests` for `local_model_pull` rejections in the last 30 days and suppresses re-proposing the same `model_id`. Stops the idle-cycle nag loop. |
 
