@@ -95,11 +95,15 @@ resource "aws_db_instance" "botarmy" {
   }
 }
 
-# Once the DB is up, install the pgvector extension. The Mem0 client
-# attempts CREATE EXTENSION on first connect, but doing it here keeps it
-# explicit and lets the user connect with a non-superuser later if needed.
-resource "postgresql_extension" "vector" {
-  name       = "vector"
-  database   = aws_db_instance.botarmy.db_name
-  depends_on = [aws_db_instance.botarmy]
-}
+# CREATE EXTENSION vector is handled by the application layer (Mem0's
+# pgvector backend issues it on first connect). RDS Postgres 16 includes
+# pgvector in the allowlist, and the mem0 master user has permission to
+# create extensions in its own database.
+#
+# Why we removed the postgresql_extension.vector resource: the postgresql
+# provider would have to talk to RDS from the Terraform host. RDS is in
+# private subnets — laptop / CI runner can only reach it via NAT GW egress,
+# which most corporate networks block on outbound 5432. The resource was
+# fragile across user environments. Doing CREATE EXTENSION at app boot is
+# both more reliable and matches what Mem0 already does on the local
+# install. Verified 2026-05-01 against the GCP module's identical change.

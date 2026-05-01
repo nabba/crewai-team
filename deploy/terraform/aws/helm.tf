@@ -147,6 +147,6 @@ resource "helm_release" "botarmy" {
     helm_release.alb_controller,
     helm_release.kube_prometheus_stack,
     kubernetes_secret.botarmy_env,
-    postgresql_extension.vector,
+    aws_db_instance.botarmy, # ensure DB exists before gateway pod connects
   ]
 }

@@ -111,20 +111,25 @@ kubectl -n "$NS" get pods,svc,ingress
 
 ## Troubleshooting
 
-**`postgresql_extension.vector ... could not connect`**
+**pgvector extension not available**
 
-Same root cause as the AWS module. Cloud SQL is on a private IP only — the Terraform
-host needs network reachability into the VPC. Options:
+The module no longer creates the extension via Terraform — Mem0 issues
+`CREATE EXTENSION IF NOT EXISTS vector;` on first connect, and Cloud SQL
+gives the `mem0` user the `cloudsqlsuperuser` role by default, which is
+sufficient. The previous design used the postgresql provider, which had to
+talk to Cloud SQL's private IP from the Terraform host — fragile across user
+networks and removed in 2026-05-01.
 
-1. **From inside the project** (cleanest): run `terraform apply` from a Cloud Shell or a
-   Compute Engine instance that lives in the same VPC.
-2. **From a laptop** (most common): use `gcloud compute start-iap-tunnel` on a small bastion
-   VM, OR install the Cloud SQL Auth Proxy and point the postgresql provider at
-   `127.0.0.1`.
-3. **Skip the Terraform extension creation**: set `--target=skip` to apply infrastructure
-   only, then run `CREATE EXTENSION vector;` manually via Cloud Shell, then re-apply.
+If for some reason Mem0's auto-creation fails (e.g. you've narrowed the
+user's permissions), connect manually via the Cloud SQL Auth Proxy:
 
-For v1 the dispatcher prints clearer instructions if the postgresql provider fails.
+```bash
+cloud-sql-proxy --address 127.0.0.1 --port 5432 \
+    <PROJECT>:europe-north1:<INSTANCE> &
+PGPASSWORD=$(gcloud secrets versions access latest --secret <CLUSTER>-env \
+    | jq -r .MEM0_POSTGRES_PASSWORD) \
+    psql -h 127.0.0.1 -U mem0 -d mem0 -c "CREATE EXTENSION vector;"
+```
 
 **Pods stuck in `Pending` on Autopilot**
 

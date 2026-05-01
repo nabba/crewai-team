@@ -80,16 +80,9 @@ provider "helm" {
   }
 }
 
-# Postgres provider — talks to Cloud SQL through its private IP via the
-# user's machine + VPN/peered network. Same caveat as the AWS module:
-# CREATE EXTENSION needs network reachability from the Terraform host.
-provider "postgresql" {
-  host            = google_sql_database_instance.botarmy.private_ip_address
-  port            = 5432
-  database        = google_sql_database.mem0.name
-  username        = google_sql_user.mem0.name
-  password        = random_password.cloudsql.result
-  sslmode         = "disable" # private IP, intra-VPC; SSL still recommended for prod
-  connect_timeout = 30
-  superuser       = false
-}
+# Note: no postgresql provider is configured. Cloud SQL is on a private IP
+# only reachable from inside the VPC — the postgresql provider would have to
+# run from a host inside the VPC (bastion, Cloud Build, etc.) to talk to it.
+# Instead we let the application layer (Mem0's pgvector backend) run
+# `CREATE EXTENSION vector` on first connect. See cloudsql.tf for the full
+# rationale.

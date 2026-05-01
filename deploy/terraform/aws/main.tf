@@ -71,14 +71,7 @@ provider "helm" {
   }
 }
 
-# Postgres provider — used to create the `vector` extension after RDS is up.
-provider "postgresql" {
-  host            = aws_db_instance.botarmy.address
-  port            = aws_db_instance.botarmy.port
-  database        = aws_db_instance.botarmy.db_name
-  username        = aws_db_instance.botarmy.username
-  password        = random_password.rds.result
-  sslmode         = "require"
-  connect_timeout = 30
-  superuser       = false
-}
+# Note: no postgresql provider is configured. RDS sits in private subnets and
+# isn't reachable from the Terraform host on most networks. Mem0's pgvector
+# backend runs `CREATE EXTENSION vector` on first connect, which is more
+# reliable than threading the extension call through Terraform. See rds.tf.

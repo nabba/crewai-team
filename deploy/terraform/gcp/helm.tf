@@ -79,7 +79,7 @@ resource "helm_release" "botarmy" {
 
   depends_on = [
     kubernetes_secret.botarmy_env,
-    postgresql_extension.vector,
+    google_sql_user.mem0, # ensure the DB user exists before the gateway pod tries to use it
     helm_release.kube_prometheus_stack,
   ]
 }

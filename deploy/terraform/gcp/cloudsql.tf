@@ -68,16 +68,15 @@ resource "google_sql_user" "mem0" {
   password = random_password.cloudsql.result
 }
 
-# CREATE EXTENSION vector — runs from the laptop / runner via the
-# private IP. Requires that the Terraform host can route to the VPC
-# (Cloud VPN, IAP TCP forwarding, or running TF from a Cloud Build job
-# inside the project). See README troubleshooting if this step times out.
-resource "postgresql_extension" "vector" {
-  name     = "vector"
-  database = google_sql_database.mem0.name
-
-  depends_on = [
-    google_sql_database.mem0,
-    google_sql_user.mem0,
-  ]
-}
+# CREATE EXTENSION vector is handled by the application layer, not Terraform.
+# Cloud SQL grants the `cloudsqlsuperuser` role to user-created roles by
+# default, which is sufficient to run `CREATE EXTENSION vector;`. Mem0's
+# pgvector backend issues that statement on first connect (mem0_manager.py),
+# so we don't need the postgresql provider to do it.
+#
+# Why we removed the postgresql_extension.vector resource: the postgresql
+# provider runs from the Terraform host. Cloud SQL's private IP isn't
+# reachable from outside the VPC — laptop, CI runner, etc. — so the resource
+# would always time out on real-world deploys unless the user spun up the
+# Cloud SQL Auth Proxy first. Verified by an end-to-end apply on
+# 2026-05-01.
