@@ -281,8 +281,8 @@
       "size": 4259
     },
     "app/subia/persistence.py": {
-      "sha256": "0637867bc51bfa68ce1af0e70823c8524b5394afaf4df483c239257e09a62961",
-      "size": 27366
+      "sha256": "0b6437baed16f3467b3104ec8985af8f781ec93281a199ddc9e8bf8b71b00c13",
+      "size": 29733
     },
     "app/subia/phase12_hooks.py": {
       "sha256": "58e04974804febe82c1ad43348cd9f0fde776dd34c22db085db6f114bd56b1f9",
@@ -405,8 +405,8 @@
       "size": 12660
     },
     "app/subia/scene/buffer.py": {
-      "sha256": "52e9bb4f251148f4df6554183f1e878449f0bd9ce01ccc06213d7243c5411001",
-      "size": 14000
+      "sha256": "0e2e937cf4739dc0ac4a1f8304658debea980dc496173ed2c653d41d02dee604",
+      "size": 14820
     },
     "app/subia/scene/compact_context.py": {
       "sha256": "43c58b1974c14fdde0bdcfc430c0623c23edfbb5b09a27c057bda98438d6f9ec",

@@ -253,16 +253,66 @@ def _kernel_payload(kernel: SubjectivityKernel) -> dict[str, Any]:
     }
 
 
-def _scene_item_dict(i: SceneItem) -> dict:
+def _scene_item_dict(i) -> dict:
+    """Serialize a scene-list item to a JSON-safe dict.
+
+    Duck-typed because `kernel.scene` is the union of two shapes:
+    `SceneItem` (the canonical kernel type) and `WorkspaceItem` (gate
+    internals — entered through PP-1 surprise routing in Step 8). Both
+    are valid in-flight scene items; persistence treats them
+    uniformly, mapping `WorkspaceItem.{item_id, content, source_agent,
+    salience_score}` to the SceneItem schema. Float-monotonic
+    `entered_at` from WorkspaceItem is replaced with the current ISO
+    timestamp — the original monotonic value is meaningless after a
+    process restart anyway.
+    """
+    # Identity (SceneItem.id | WorkspaceItem.item_id)
+    item_id = getattr(i, "id", None) or getattr(i, "item_id", "") or ""
+    source = (
+        getattr(i, "source", None)
+        or getattr(i, "source_agent", None)
+        or getattr(i, "source_channel", "")
+        or ""
+    )
+    content_ref = getattr(i, "content_ref", "") or ""
+    summary_raw = (
+        getattr(i, "summary", None)
+        or getattr(i, "content", "")
+        or ""
+    )
+    salience_val = (
+        getattr(i, "salience", None)
+        if getattr(i, "salience", None) is not None
+        else getattr(i, "salience_score", 0.0)
+    )
+    entered_at = getattr(i, "entered_at", "")
+    if isinstance(entered_at, (int, float)):
+        # WorkspaceItem stores a float monotonic timestamp; convert.
+        entered_at = datetime.now(timezone.utc).isoformat()
+    elif not isinstance(entered_at, str):
+        entered_at = ""
+
+    metadata = getattr(i, "metadata", {}) or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
     return {
-        "id": i.id, "source": i.source, "content_ref": i.content_ref,
-        "summary": i.summary[:200], "salience": round(i.salience, 4),
-        "entered_at": i.entered_at, "ownership": i.ownership,
-        "valence": round(i.valence, 4),
-        "dominant_affect": i.dominant_affect,
-        "conflicts_with": list(i.conflicts_with),
-        "action_options": list(i.action_options),
-        "tier": i.tier,
+        "id": str(item_id),
+        "source": str(source),
+        "content_ref": str(content_ref),
+        "summary": str(summary_raw)[:200],
+        "salience": round(float(salience_val or 0.0), 4),
+        "entered_at": entered_at,
+        "ownership": getattr(i, "ownership", "") or "self",
+        "valence": round(float(getattr(i, "valence", 0.0) or 0.0), 4),
+        "dominant_affect": (
+            getattr(i, "dominant_affect", None)
+            or metadata.get("affect", "")
+            or "neutral"
+        ),
+        "conflicts_with": list(getattr(i, "conflicts_with", []) or []),
+        "action_options": list(getattr(i, "action_options", []) or []),
+        "tier": getattr(i, "tier", "") or "focal",
     }
 
 
@@ -653,10 +703,21 @@ def _markdown_body(kernel: SubjectivityKernel) -> str:
     if focal:
         for i, item in enumerate(focal, 1):
             affect = getattr(item, "dominant_affect", "neutral")
-            salience = round(getattr(item, "salience", 0.0), 2)
+            # Salience: SceneItem.salience | WorkspaceItem.salience_score
+            salience = round(
+                float(getattr(item, "salience", None)
+                      or getattr(item, "salience_score", 0.0) or 0.0),
+                2,
+            )
             tag = f" [{affect}]" if affect != "neutral" else ""
+            # Summary: SceneItem.summary | WorkspaceItem.content
+            summary_text = (
+                getattr(item, "summary", None)
+                or getattr(item, "content", "")
+                or ""
+            )
             lines.append(
-                f"{i}. {item.summary[:120]} — salience {salience}{tag}"
+                f"{i}. {str(summary_text)[:120]} — salience {salience}{tag}"
             )
     else:
         lines.append("(scene empty)")
