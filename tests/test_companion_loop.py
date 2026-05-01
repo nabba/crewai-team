@@ -51,7 +51,9 @@ def test_tick_records_state_when_no_seed(tmp_state_dir):
     """Workspace with no seed → cycle returns aborted; tick still recorded."""
     rows = [{
         "id": "a",
-        "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0}},
+        "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "quiet_hours_start": 0,
+                                       "quiet_hours_end": 0}},
     }]
     with patch("app.companion.scheduler._list_projects", lambda: rows):
         _loop.companion_tick()
@@ -66,6 +68,8 @@ def test_tick_charges_budget_on_real_cycle(tmp_state_dir):
     rows = [{
         "id": "a",
         "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "quiet_hours_start": 0,
+                                       "quiet_hours_end": 0,
                                        "seed_prompt": "forests"}},
     }]
     fake_result = _cycle.CycleResult(
@@ -87,6 +91,8 @@ def test_tick_records_state_when_cycle_raises(tmp_state_dir):
     rows = [{
         "id": "a",
         "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "quiet_hours_start": 0,
+                                       "quiet_hours_end": 0,
                                        "seed_prompt": "forests"}},
     }]
 
@@ -105,6 +111,8 @@ def test_tick_skips_charge_when_cost_zero(tmp_state_dir):
     rows = [{
         "id": "a",
         "config_json": {"companion": {"enabled": True, "daily_budget_usd": 1.0,
+                                       "quiet_hours_start": 0,
+                                       "quiet_hours_end": 0,
                                        "seed_prompt": "x"}},
     }]
     fake_result = _cycle.CycleResult(
