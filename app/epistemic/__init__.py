@@ -14,6 +14,20 @@ Phase 0 (this commit) ships only the foundational data model:
     without the Ledger importing them
 
 Off by default — toggle with EPISTEMIC_ENABLED=true.
+
+──────────────────────────────────────────────────────────────────────
+Naming note (Phase A5 disambiguation):
+
+    app.epistemic ← THIS PACKAGE: claim ledger, calibration, pushback,
+                    overrides. Runtime tracking of what the system
+                    CLAIMS and whether those claims hold up.
+
+    app.episteme  ← DIFFERENT PACKAGE: RAG retrieval over a research
+                    knowledge base. "What does the literature say
+                    about X?" — vector search tool for agents.
+
+The two are intentionally separate concerns; do not conflate them.
+──────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
 

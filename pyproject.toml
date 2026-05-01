@@ -1,0 +1,100 @@
+# pyproject.toml — Phase A4 baseline.
+#
+# Goal: provide a single source of truth for code-quality tooling without
+# disrupting any existing developer workflow. Everything here is permissive
+# by default; tighten gradually in follow-up PRs.
+#
+#   - ruff: lint + format. Configured to match the existing code style
+#     (no autoformat in this PR — only check-mode).
+#   - mypy: warn-only on existing code; can be enabled per-file via
+#     `# mypy: strict` once a module is fully annotated.
+#   - black: NOT used as the canonical formatter (ruff format is the canon
+#     once we adopt one). Listed here only to align line-length.
+#
+# Activation:
+#   pip install ruff mypy
+#   ruff check app/                     # see warnings without blocking
+#   mypy --config-file pyproject.toml   # opt-in type check
+#
+# CI gating is intentionally NOT added in this commit. Tightening is a
+# separate, gradual step.
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [
+    ".venv",
+    ".venv-smoke",
+    "workspace",
+    "migrations",
+    "dashboard",
+    "dashboard-react",
+    "ShinkaEvolve",
+    "raw",
+    "wiki",
+    "wiki_schema",
+    "host_bridge",
+    "repobot",
+]
+
+[tool.ruff.lint]
+# Permissive baseline: only the genuinely high-signal rules.
+# Tighten by adding rule prefixes (e.g. "B", "UP", "SIM") in later PRs.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (undefined names, unused imports, etc.)
+    "W",   # pycodestyle warnings
+    "I",   # isort (import ordering)
+]
+ignore = [
+    "E501",  # line-too-long — re-enable when the codebase is reformatted
+    "E402",  # module-level import not at top — many modules use lazy imports
+    "E731",  # do not assign a lambda
+    "F401",  # imported but unused — many modules re-export from shims
+    "F403",  # star imports — used by facade __init__.py
+    "F405",  # may be undefined from star imports
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/**/*.py" = ["F401", "F811"]
+
+[tool.ruff.format]
+# Not yet enabled — running `ruff format` would create a massive diff.
+# Add this command to a separate cleanup PR.
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+# Permissive baseline. Files can opt-in to strict by adding `# mypy: strict`
+# at the top, or by being added to the allow-strict list below.
+strict = false
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = false  # don't fail on untyped function bodies yet
+disallow_untyped_defs = false  # don't fail on missing annotations yet
+exclude = [
+    "\\.venv",
+    "\\.venv-smoke",
+    "workspace",
+    "migrations",
+    "ShinkaEvolve",
+    "raw",
+    "host_bridge",
+    "repobot",
+    "dashboard",
+    "tests",  # tests freely use Mock objects
+]
+
+# Modules that ARE expected to be fully annotated. Adding a path here makes
+# its annotations enforced; the rest of the codebase remains permissive.
+# Start small and grow this list as type-hint backfill lands.
+[[tool.mypy.overrides]]
+module = [
+    # Phase G1 will extend this list as files are annotated.
+]
+strict = true

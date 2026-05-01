@@ -380,9 +380,15 @@ def _snapshot_mem0(ts_str: str) -> dict:
 
             table_counts = {}
             total_rows = 0
+            # Use psycopg2.sql.Identifier for safe identifier quoting. Values
+            # come from pg_tables today (low risk) but the f-string form is a
+            # footgun if the inputs ever widen.
+            from psycopg2 import sql as _sql
             for schema, table in tables:
                 try:
-                    cur.execute(f"SELECT COUNT(*) FROM {schema}.{table}")
+                    cur.execute(_sql.SQL("SELECT COUNT(*) FROM {}.{}").format(
+                        _sql.Identifier(schema), _sql.Identifier(table)
+                    ))
                     count = cur.fetchone()[0]
                     table_counts[f"{schema}.{table}"] = count
                     total_rows += count

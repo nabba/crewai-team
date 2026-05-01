@@ -29,3 +29,25 @@ wiki/.locks/*.lock
 # Compiled CoreLocation helper binary
 signal/location-helper
 wiki/.slides/
+
+# ── Workspace runtime state (Phase A3 hygiene) ─────────────────────────
+# These files are written continuously by background jobs and the CIL loop.
+# They represent transient state, not source-of-truth knowledge.
+# Existing tracked instances are not removed by this pattern (use
+# `git rm --cached <path>` if you want to stop tracking them); this only
+# prevents NEW transient writes from being committed accidentally.
+workspace/.workspace.lock
+workspace/.locks/
+workspace/.self_knowledge_hashes.json
+workspace/SYSTEM_AUDIT_*.md
+workspace/agent_state.json
+workspace/alignment_audits.json
+workspace/audit_journal.json
+workspace/benchmarks.json
+workspace/error_tracker.json
+workspace/homeostasis.json
+workspace/atlas/competence/competence_map.json
+workspace/island_evolution/*/state.json
+workspace/checkpoints/
+workspace/cache/
+workspace/experiential/*/length.bin

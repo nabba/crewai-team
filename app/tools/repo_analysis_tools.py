@@ -15,6 +15,7 @@ Usage:
 import json
 import logging
 import re
+import shlex
 from pathlib import PurePosixPath
 
 logger = logging.getLogger(__name__)
@@ -203,8 +204,11 @@ def create_repo_analysis_tools(agent_id: str) -> list:
         args_schema: Type[BaseModel] = _RepoMetricsInput
 
         def _run(self, repo_path: str) -> str:
-            # Use cloc if available, otherwise wc -l
-            result = bridge.execute(["sh", "-c", f"find {repo_path} -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.rs' -o -name '*.java' -o -name '*.rb' | head -500 | xargs wc -l 2>/dev/null | tail -1"])
+            # Use cloc if available, otherwise wc -l.
+            # shlex.quote neutralizes shell metacharacters in repo_path so an
+            # agent-provided path cannot break out of the find argument.
+            qpath = shlex.quote(repo_path)
+            result = bridge.execute(["sh", "-c", f"find {qpath} -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.rs' -o -name '*.java' -o -name '*.rb' | head -500 | xargs wc -l 2>/dev/null | tail -1"])
             if "error" in result:
                 loc_total = "unknown"
             else:
@@ -242,12 +246,15 @@ def create_repo_analysis_tools(agent_id: str) -> list:
         def _count_deps(self, repo_path: str) -> str:
             """Count dependencies from package files."""
             counts = []
+            # shlex.quote neutralizes shell metacharacters so paths supplied
+            # by agents cannot inject additional commands.
+            qpath = shlex.quote(repo_path)
             # Python
-            r = bridge.execute(["sh", "-c", f"wc -l < {repo_path}/requirements.txt 2>/dev/null"])
+            r = bridge.execute(["sh", "-c", f"wc -l < {qpath}/requirements.txt 2>/dev/null"])
             if "error" not in r and r.get("stdout", "").strip().isdigit():
                 counts.append(f"Python: {r['stdout'].strip()}")
             # Node
-            r = bridge.execute(["sh", "-c", f"cat {repo_path}/package.json 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); print(len(d.get('dependencies',{{}})) + len(d.get('devDependencies',{{}})))\""])
+            r = bridge.execute(["sh", "-c", f"cat {qpath}/package.json 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); print(len(d.get('dependencies',{{}})) + len(d.get('devDependencies',{{}})))\""])
             if "error" not in r and r.get("stdout", "").strip().isdigit():
                 counts.append(f"Node: {r['stdout'].strip()}")
             return ", ".join(counts) if counts else "unknown"
