@@ -52,6 +52,14 @@ settings = get_settings()
 PROGRAM_PATH = Path("/app/workspace/program.md")
 SKILLS_DIR = Path("/app/workspace/skills")
 
+# ── Tunables (Phase G4: lifted from in-code defaults to named module
+# constants so operators can reason about them without reading the
+# source. None of these change behaviour; they make the existing
+# defaults discoverable. If you want to tune at runtime, override via
+# environment variable in the wrappers above.
+RECENT_HYPOTHESIS_HISTORY_N = 50  # how many recent results to scan for dedup
+FUZZY_HASH_PREFIX_LEN = 40        # normalize length for near-duplicate detection
+
 
 # ── Program file (research directions) ──────────────────────────────────────
 
@@ -73,7 +81,7 @@ def _hypothesis_hash(hypothesis: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()[:8]
 
 
-def _get_tried_hypotheses(n: int = 50) -> set[str]:
+def _get_tried_hypotheses(n: int = RECENT_HYPOTHESIS_HISTORY_N) -> set[str]:
     """Return hashes of recently tried hypotheses to avoid repeats.
 
     Includes both exact hashes and fuzzy hashes (normalized, first 40 chars)
