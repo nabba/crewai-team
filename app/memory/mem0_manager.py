@@ -93,19 +93,6 @@ def _get_config() -> dict:
         "version": "v1.1",
     }
 
-    # Graph store is optional — only add if Neo4j URL and password are configured
-    neo4j_url = s.mem0_neo4j_url
-    neo4j_pw = s.mem0_neo4j_password.get_secret_value()
-    if neo4j_url and neo4j_pw:
-        config["graph_store"] = {
-            "provider": "neo4j",
-            "config": {
-                "url": neo4j_url,
-                "username": s.mem0_neo4j_user,
-                "password": neo4j_pw,
-            },
-        }
-
     return config
 
 def get_client():
@@ -130,7 +117,7 @@ def get_client():
             from mem0 import Memory
             config = _get_config()
             _client = Memory.from_config(config)
-            logger.info("mem0: client initialised (pgvector + neo4j)")
+            logger.info("mem0: client initialised (pgvector)")
             return _client
         except Exception as exc:
             logger.warning(f"mem0: init failed, running without persistent memory: {_sanitize_exc(exc)}")
@@ -286,12 +273,19 @@ def search_memory(
         return []
     n = min(max(1, n), 20)  # cap results
     try:
-        # Mem0 ≥ 1.x rejects top-level `user_id` / `agent_id` on search();
-        # both must travel inside `filters={}`.
+        # Mem0 v2: entity IDs must travel inside `filters={}`. Search defaults
+        # changed from v1: `top_k` (was `limit`), `threshold=0.1` (was None),
+        # `rerank=False` (was True). Pin to v1 behavior to preserve recall.
         filters: dict = {"user_id": _get_user_id()}
         if agent_id:
             filters["agent_id"] = agent_id
-        results = client.search(query=query, filters=filters, limit=n)
+        results = client.search(
+            query=query,
+            filters=filters,
+            top_k=n,
+            threshold=0.0,
+            rerank=True,
+        )
         # Mem0 returns {"results": [...]} or a list directly depending on version
         if isinstance(results, dict):
             return results.get("results", [])
@@ -315,10 +309,12 @@ def get_all_memories(agent_id: str | None = None) -> list[dict]:
     if not client:
         return []
     try:
-        kwargs = {"user_id": _get_user_id()}
+        # Mem0 v2: entity IDs must travel inside `filters={}`; `top_k` default
+        # dropped from 100 → 20, so pin to 100 to preserve v1 behavior.
+        filters: dict = {"user_id": _get_user_id()}
         if agent_id:
-            kwargs["agent_id"] = agent_id
-        results = client.get_all(**kwargs)
+            filters["agent_id"] = agent_id
+        results = client.get_all(filters=filters, top_k=100)
         if isinstance(results, dict):
             return results.get("results", [])
         return results if isinstance(results, list) else []

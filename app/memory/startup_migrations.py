@@ -1,8 +1,6 @@
 """startup_migrations.py — idempotent speed-upgrade indexes applied at startup.
 
-Stage 2 of the speed-upgrade plan:
-  * HNSW indexes on pgvector tables (Mem0 infrastructure).
-  * Name / topic indexes on Neo4j entity graph.
+HNSW indexes on pgvector tables (Mem0 infrastructure).
 
 All operations use IF NOT EXISTS / CREATE INDEX IF NOT EXISTS so re-running
 is a no-op. Failures are logged but never raise — a startup hiccup must not
@@ -85,53 +83,9 @@ def _apply_pgvector_indexes() -> None:
         logger.warning(f"startup_migrations: pgvector HNSW apply skipped/failed: {exc}")
 
 
-# ── Neo4j entity + memory indexes ─────────────────────────────────────────
-
-_NEO4J_INDEXES = [
-    "CREATE INDEX entity_name_idx IF NOT EXISTS FOR (n:Entity) ON (n.name)",
-    "CREATE INDEX memory_user_id_idx IF NOT EXISTS FOR (n:Memory) ON (n.user_id)",
-    "CREATE INDEX memory_run_id_idx IF NOT EXISTS FOR (n:Memory) ON (n.run_id)",
-    "CREATE INDEX belief_topic_idx IF NOT EXISTS FOR (n:Belief) ON (n.topic)",
-]
-
-
-def _apply_neo4j_indexes() -> None:
-    """Create Neo4j indexes on hot-path matched labels/properties."""
-    try:
-        from app.config import get_settings
-        s = get_settings()
-        if not s.mem0_enabled:
-            return
-        url = s.mem0_neo4j_url
-        user = s.mem0_neo4j_user
-        pw = s.mem0_neo4j_password.get_secret_value()
-        if not (url and pw):
-            return
-    except Exception as exc:
-        logger.debug(f"startup_migrations: neo4j settings unavailable ({exc})")
-        return
-
-    try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(url, auth=(user, pw))
-        try:
-            with driver.session() as session:
-                for cypher in _NEO4J_INDEXES:
-                    try:
-                        session.run(cypher)
-                    except Exception as exc:
-                        logger.debug(f"startup_migrations: Neo4j index '{cypher[:50]}…' failed: {exc}")
-            logger.info(f"startup_migrations: Neo4j indexes ensured ({len(_NEO4J_INDEXES)} stmts)")
-        finally:
-            driver.close()
-    except Exception as exc:
-        logger.warning(f"startup_migrations: Neo4j index apply skipped/failed: {exc}")
-
-
 def apply_all() -> None:
-    """Apply both migration groups. Safe to call multiple times."""
+    """Apply migrations. Safe to call multiple times."""
     if os.environ.get("SKIP_STARTUP_MIGRATIONS", "0") == "1":
         logger.info("startup_migrations: SKIP_STARTUP_MIGRATIONS=1 — skipping")
         return
     _apply_pgvector_indexes()
-    _apply_neo4j_indexes()
