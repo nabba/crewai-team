@@ -166,6 +166,78 @@ def _persist_job_skip(name: str, until: float) -> None:
 _load_job_state()
 
 
+# ── Phase E3: introspection snapshot for the dashboard ───────────────
+# Read-only view of the scheduler's state. Exposes which jobs are
+# currently in cooldown, their failure counts, and (where available)
+# the names of jobs the scheduler considers "registered" via the
+# ``_default_jobs()`` factory. The dashboard surface uses this so
+# operators can answer "why hasn't job X run for 4 hours?" without
+# attaching a debugger.
+
+_last_job_success_ts: dict[str, float] = {}    # name -> monotonic ts
+_last_job_failure_ts: dict[str, float] = {}    # name -> monotonic ts
+_currently_running_job: str | None = None       # set/cleared in _run_single_job
+
+
+def _record_job_outcome(name: str, success: bool) -> None:
+    """Update last-success / last-failure timestamps. Called by _run_single_job."""
+    now = time.monotonic()
+    if success:
+        _last_job_success_ts[name] = now
+    else:
+        _last_job_failure_ts[name] = now
+
+
+def get_job_snapshot() -> dict[str, dict]:
+    """Return a JSON-serializable snapshot of every known job's state.
+
+    Format::
+
+        {
+          "<job_name>": {
+            "failure_count": int,
+            "in_cooldown": bool,
+            "cooldown_until_ts": float | None,
+            "seconds_since_last_success": float | None,
+            "seconds_since_last_failure": float | None,
+            "currently_running": bool,
+          },
+          ...
+        }
+
+    Job names are the union of every name we've seen — failure
+    counters, cooldowns, success/failure timestamps. The scheduler's
+    static job-list registry is not exposed here (it's a closure local
+    inside ``_run_idle_loop``); callers wanting that should consult
+    the source. This snapshot is enough to answer "what's stuck?".
+    """
+    now_mono = time.monotonic()
+    now_wall = time.time()
+    names = (
+        set(_job_failure_counts.keys())
+        | set(_job_skip_until.keys())
+        | set(_last_job_success_ts.keys())
+        | set(_last_job_failure_ts.keys())
+    )
+    if _currently_running_job:
+        names.add(_currently_running_job)
+    out: dict[str, dict] = {}
+    for name in sorted(names):
+        cooldown_until = _job_skip_until.get(name)
+        in_cooldown = bool(cooldown_until and cooldown_until > now_wall)
+        last_succ = _last_job_success_ts.get(name)
+        last_fail = _last_job_failure_ts.get(name)
+        out[name] = {
+            "failure_count": _job_failure_counts.get(name, 0),
+            "in_cooldown": in_cooldown,
+            "cooldown_until_ts": cooldown_until if in_cooldown else None,
+            "seconds_since_last_success": (now_mono - last_succ) if last_succ else None,
+            "seconds_since_last_failure": (now_mono - last_fail) if last_fail else None,
+            "currently_running": (name == _currently_running_job),
+        }
+    return out
+
+
 def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
     """Run a single job with time cap, retry on failure, and skip-after-3-failures.
 
@@ -181,6 +253,8 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
     timer = threading.Timer(timeout_s, _job_timeout.set)
     timer.daemon = True
     timer.start()
+    global _currently_running_job
+    _currently_running_job = name
     try:
         _report_background_activity(name, "running")
         fn()
@@ -188,6 +262,7 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _report_background_activity(name, "completed")
         _job_failure_counts[name] = 0  # Reset on success
         _persist_job_failure(name, 0)
+        _record_job_outcome(name, success=True)
         return True
     except Exception as exc:
         _job_failure_counts[name] = _job_failure_counts.get(name, 0) + 1
@@ -195,6 +270,7 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _persist_job_failure(name, consec)
         logger.warning(f"idle_scheduler: '{name}' failed ({consec} consecutive): {exc}")
         _report_background_activity(name, "failed")
+        _record_job_outcome(name, success=False)
 
         # After 3 consecutive failures, skip job for 1 hour
         if consec >= 3:
@@ -214,6 +290,9 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
     finally:
         timer.cancel()
         _job_timeout.clear()
+        # Phase E3: clear "currently running" so the snapshot is accurate
+        # the moment the job exits (success, failure, or via cooldown skip).
+        _currently_running_job = None
 
 
 def _run_idle_loop(jobs) -> None:

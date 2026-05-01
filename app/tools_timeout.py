@@ -50,6 +50,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -89,6 +90,48 @@ _PER_TOOL_OVERRIDES: dict[str, int] = {
 
 _installed: bool = False
 _install_lock = threading.Lock()
+
+# ── Phase E2: tool-activity heartbeat for the handle_task stall checker ──
+# A monotonic timestamp updated on every tool ENTRY and EXIT. The stall
+# checker in main.py reads this as a fourth diagnostic signal alongside
+# output-progress, zero-output, and llm-activity. Purpose: when an agent
+# is genuinely cycling through tools (each completing quickly), the LLM
+# activity timestamp also moves; but if the LLM is wedged WAITING on a
+# tool that is itself idle, only the tool-activity stamp differentiates
+# "tool computing" from "tool stuck mid-call".
+_last_tool_activity_ts: float = 0.0
+_last_tool_timeout_ts: float = 0.0
+_tool_timeout_count: int = 0
+
+
+def _record_tool_activity() -> None:
+    """Update the tool heartbeat timestamp. Cheap; called per tool call."""
+    global _last_tool_activity_ts
+    _last_tool_activity_ts = time.monotonic()
+
+
+def seconds_since_last_tool_activity() -> float | None:
+    """Seconds since the last tool started OR finished, or None if never.
+
+    Mirrors the contract of
+    :func:`app.rate_throttle.seconds_since_last_llm_activity`. Used by
+    main.py's _stall_check for diagnostic logging on kill decisions.
+    """
+    if _last_tool_activity_ts == 0.0:
+        return None
+    return time.monotonic() - _last_tool_activity_ts
+
+
+def get_tool_timeout_count() -> int:
+    """How many tool timeouts have fired in this process. Diagnostic only."""
+    return _tool_timeout_count
+
+
+def seconds_since_last_tool_timeout() -> float | None:
+    """Seconds since the most recent tool timeout fired (None if none yet)."""
+    if _last_tool_timeout_ts == 0.0:
+        return None
+    return time.monotonic() - _last_tool_timeout_ts
 
 
 def _resolve_timeout(tool_name: str) -> int:
@@ -133,6 +176,9 @@ def install() -> None:
         def _timed_run(self: Any, *args: Any, **kwargs: Any) -> Any:
             tool_name = getattr(self, "name", "") or type(self).__name__
             budget = _resolve_timeout(tool_name)
+            # Heartbeat: record tool entry. The handle_task stall checker
+            # reads this via seconds_since_last_tool_activity().
+            _record_tool_activity()
             # Fresh single-worker pool per call.  A hung previous call
             # can't block the next one — abandoning it with
             # ``shutdown(wait=False)`` is fine because the leaked
@@ -157,6 +203,12 @@ def install() -> None:
                         "tools_timeout: '%s' exceeded %ss budget — returning "
                         "timeout error to agent", tool_name, budget,
                     )
+                    # Phase E2: surface tool timeouts to handle_task stall
+                    # checker so kill decisions can include "tool just
+                    # timed out — give the agent a moment to react."
+                    global _last_tool_timeout_ts, _tool_timeout_count
+                    _last_tool_timeout_ts = time.monotonic()
+                    _tool_timeout_count += 1
                     return msg
                 except Exception as exc:
                     # Propagate non-timeout exceptions to CrewAI's
@@ -165,6 +217,8 @@ def install() -> None:
                     raise exc
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
+                # Heartbeat: record tool exit (success, error, OR timeout).
+                _record_tool_activity()
 
         BaseTool.run = _timed_run  # type: ignore[method-assign]
         _installed = True

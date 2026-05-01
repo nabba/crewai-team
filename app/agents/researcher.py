@@ -1,6 +1,7 @@
 import logging
 
 from crewai import Agent
+from app.agents._common import optional_tool_group
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -70,13 +71,11 @@ def create_researcher(force_tier: str | None = None, light: bool = False, task_i
         mem0_tools = create_mem0_tools("researcher")
         tools = [web_search, web_fetch, file_manager, read_attachment, KnowledgeSearchTool()] + mem0_tools
         # Firecrawl search+scrape
-        try:
+        with optional_tool_group("researcher", "firecrawl"):
             from app.tools.firecrawl_tools import create_firecrawl_tools
             fc = create_firecrawl_tools()
             if fc:
                 tools.extend(fc[:2])  # scrape + search (keep tool count low)
-        except Exception:
-            pass
         backstory = _COMPACT_RESEARCHER_BACKSTORY
     else:
         # R5: Removed world_model_tool (write-only, never read) and self-awareness
@@ -90,69 +89,53 @@ def create_researcher(force_tier: str | None = None, light: bool = False, task_i
         from app.experiential.tools import get_experiential_tools
         tools = [web_search, web_fetch, get_youtube_transcript, file_manager, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + get_episteme_tools() + get_experiential_tools("researcher")
         # Firecrawl tools (scrape, extract, search, map) — gracefully empty if unavailable
-        try:
+        with optional_tool_group("researcher", "firecrawl"):
             from app.tools.firecrawl_tools import create_firecrawl_tools
             fc_tools = create_firecrawl_tools()
             if fc_tools:
                 tools.extend(fc_tools[:4])  # scrape, search, extract, map (not crawl)
-        except Exception:
-            pass
         # Composio SaaS tools (Gmail, GitHub, Slack, etc.) — gracefully empty if unavailable
-        try:
+        with optional_tool_group("researcher", "composio"):
             from app.tools.composio_tool import get_composio_tools
             composio_tools = get_composio_tools()
             if composio_tools:
                 tools.extend(composio_tools[:10])
-        except Exception:
-            pass
         # Host Bridge tools (read/write host files, execute commands, LAN access)
-        try:
+        with optional_tool_group("researcher", "bridge"):
             from app.tools.bridge_tools import create_bridge_tools
             bridge_tools = create_bridge_tools("researcher")
             if bridge_tools:
                 tools.extend(bridge_tools)
-        except Exception:
-            pass
         # Wiki tools (read, write, search — researcher is primary wiki contributor)
-        try:
+        with optional_tool_group("researcher", "wiki"):
             from app.tools.wiki_tool_registry import create_wiki_tools
             wiki_tools = create_wiki_tools("read", "write", "search", "slides")
             if wiki_tools:
                 tools.extend(wiki_tools)
-        except Exception:
-            pass
         # Blackboard tools (deposit/read findings — P1 research synthesis)
         if task_id:
-            try:
+            with optional_tool_group("researcher", "blackboard"):
                 from app.tools.blackboard_tool import create_blackboard_tools
                 bb_tools = create_blackboard_tools(task_id, "researcher")
                 tools.extend(bb_tools)
-            except Exception:
-                pass
         # Tension tools — researcher records contradictions found during research
-        try:
+        with optional_tool_group("researcher", "tensions"):
             from app.tensions.tools import get_tension_tools
             tools.extend(get_tension_tools("researcher"))
-        except Exception:
-            pass
         # OCR tool — extract text from images (screenshots, documents, receipts)
-        try:
+        with optional_tool_group("researcher", "ocr"):
             from app.tools.ocr_tool import create_ocr_tool
             ocr = create_ocr_tool()
             if ocr:
                 tools.append(ocr)
-        except Exception:
-            pass
         # Research orchestrator — structured (subjects × fields) matrix
         # research with partial streaming + per-domain circuit breakers.
         # Prevents the "LLM retry-loop burns 45 min for no deliverable"
         # failure mode when the user asks for a table of N companies × M
         # attributes.  See app/tools/research_orchestrator.py.
-        try:
+        with optional_tool_group("researcher", "research_orchestrator"):
             from app.tools.research_orchestrator import research_orchestrator
             tools.append(research_orchestrator)
-        except Exception:
-            logger.debug("research_orchestrator tool unavailable", exc_info=True)
         backstory = RESEARCHER_BACKSTORY
 
     return Agent(

@@ -69,11 +69,9 @@ def create_web_specialist(force_tier: str | None = None) -> Agent:
     # sub-matrix to this leaf, still use the structured pipeline rather
     # than individual web_search calls.  The coordinator should have
     # caught this already (MATRIX MODE), but this keeps the leaf honest.
-    try:
+    with optional_tool_group('specialists', 'research_orchestrator'):
         from app.tools.research_orchestrator import research_orchestrator
         tools.append(research_orchestrator)
-    except Exception:
-        pass
 
     return Agent(
         role="Web Research Specialist",
@@ -162,20 +160,16 @@ def create_synthesis_specialist(force_tier: str | None = None) -> Agent:
         ("app.philosophy.rag_tool", "PhilosophyRAGTool", ()),
         ("app.philosophy.dialectics_tool", "FindCounterArgumentTool", ()),
     ]:
-        try:
+        with optional_tool_group('specialists', 'unknown'):
             cls = __import__(mod, fromlist=[fn]).__dict__[fn]
             tools.append(cls())
-        except Exception:
-            pass
 
     # Conceptual blend
-    try:
+    with optional_tool_group('specialists', 'blend_tool'):
         from app.philosophy.blend_tool import create_conceptual_blend_tool
         t = create_conceptual_blend_tool()
         if t:
             tools.append(t)
-    except Exception:
-        pass
 
     # Tensions / experiential / aesthetic — all with their full read+write surface
     for mod, fn, args in [
@@ -270,12 +264,10 @@ def create_research_coordinator(force_tier: str | None = None) -> Agent:
     # read_attachment + file_manager so the coordinator can directly
     # read uploaded PDFs/CSVs and previous .md reports without needing
     # to delegate to a leaf specialist for basic file I/O.
-    try:
+    with optional_tool_group('specialists', 'file_manager'):
         from app.tools.file_manager import file_manager
         from app.tools.attachment_reader import read_attachment
         tools.extend([file_manager, read_attachment])
-    except Exception:
-        pass
 
     return Agent(
         role="Research Coordinator",
@@ -512,14 +504,12 @@ def create_writing_research_specialist(force_tier: str | None = None) -> Agent:
         ("app.episteme.tools", "get_episteme_tools", ("writer",)),
         ("app.experiential.tools", "get_experiential_tools", ("writer",)),
     ]:
-        try:
+        with optional_tool_group('specialists', 'unknown'):
             cls_or_fn = __import__(mod, fromlist=[fn]).__dict__[fn]
             if isinstance(cls_or_fn, type):
                 tools.append(cls_or_fn())
             else:
                 tools.extend(_safe(lambda c=cls_or_fn, a=args: c(*a)))
-        except Exception:
-            pass
 
     return Agent(
         role="Writing Research Specialist",

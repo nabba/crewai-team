@@ -23,31 +23,25 @@ def create_repo_analyst(force_tier: str | None = None) -> Agent:
     tools = [web_search, file_manager, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools
 
     # Repo analysis tools
-    try:
+    with optional_tool_group('repoanalyst', 'repo_analysis_tools'):
         from app.tools.repo_analysis_tools import create_repo_analysis_tools
         repo_tools = create_repo_analysis_tools("repo_analyst")
         if repo_tools:
             tools.extend(repo_tools)
-    except Exception:
-        pass
 
     # Document generation for reports
-    try:
+    with optional_tool_group('repoanalyst', 'document_generator'):
         from app.tools.document_generator import create_document_tools
         doc_tools = create_document_tools()
         if doc_tools:
             tools.extend(doc_tools)
-    except Exception:
-        pass
 
     # Bridge tools
-    try:
+    with optional_tool_group('repoanalyst', 'bridge_tools'):
         from app.tools.bridge_tools import create_bridge_tools
         bridge_tools = create_bridge_tools("repo_analyst")
         if bridge_tools:
             tools.extend(bridge_tools)
-    except Exception:
-        pass
 
     return Agent(
         role="Repository Analyst",

@@ -23,49 +23,39 @@ def create_devops_agent(force_tier: str | None = None) -> Agent:
     tools = [execute_code, file_manager, web_search] + memory_tools + scoped_tools + mem0_tools
 
     # Project builder tools
-    try:
+    with optional_tool_group('devops', 'project_builder_tools'):
         from app.tools.project_builder_tools import create_project_builder_tools
         builder_tools = create_project_builder_tools("devops")
         if builder_tools:
             tools.extend(builder_tools)
-    except Exception:
-        pass
 
     # Deployment tools
-    try:
+    with optional_tool_group('devops', 'deployment_tools'):
         from app.tools.deployment_tools import create_deployment_tools
         deploy_tools = create_deployment_tools("devops")
         if deploy_tools:
             tools.extend(deploy_tools)
-    except Exception:
-        pass
 
     # CI/CD generation tools
-    try:
+    with optional_tool_group('devops', 'ci_cd_tools'):
         from app.tools.ci_cd_tools import create_ci_cd_tools
         cicd_tools = create_ci_cd_tools("devops")
         if cicd_tools:
             tools.extend(cicd_tools)
-    except Exception:
-        pass
 
     # Mobile app tools (Expo/React Native, PWA)
-    try:
+    with optional_tool_group('devops', 'mobile_tools'):
         from app.tools.mobile_tools import create_mobile_tools
         mob_tools = create_mobile_tools("devops")
         if mob_tools:
             tools.extend(mob_tools)
-    except Exception:
-        pass
 
     # Bridge tools
-    try:
+    with optional_tool_group('devops', 'bridge_tools'):
         from app.tools.bridge_tools import create_bridge_tools
         bridge_tools = create_bridge_tools("devops")
         if bridge_tools:
             tools.extend(bridge_tools)
-    except Exception:
-        pass
 
     return Agent(
         role="DevOps Engineer",

@@ -267,6 +267,26 @@ def audit_costs(project_id: str = Query(None)):
     from app.control_plane.audit import get_audit
     return get_audit().cost_summary(project_id)
 
+# ── Idle scheduler observability (Phase E3) ──────────────────────────────────
+
+@router.get("/idle/jobs")
+def list_idle_jobs():
+    """Snapshot of every known idle job's current state.
+
+    Closes the cross-area gap where the dashboard previously showed
+    only Firebase heartbeats while the idle scheduler ran ~100 jobs
+    invisibly. Each entry includes failure_count, in_cooldown,
+    cooldown_until_ts, seconds_since_last_success/failure, and
+    currently_running. Read-only; calling this never affects the
+    scheduler's behaviour.
+    """
+    from app.idle_scheduler import get_job_snapshot, is_enabled, is_idle
+    return {
+        "scheduler_enabled": is_enabled(),
+        "scheduler_idle": is_idle(),
+        "jobs": get_job_snapshot(),
+    }
+
 # ── Governance ───────────────────────────────────────────────────────────────
 
 @router.get("/governance/pending")

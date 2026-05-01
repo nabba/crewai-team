@@ -1,4 +1,5 @@
 from crewai import Agent
+from app.agents._common import optional_tool_group
 from app.config import get_settings
 from app.llm_factory import create_specialist_llm
 from app.tools.code_executor import execute_code
@@ -29,36 +30,28 @@ def create_coder(force_tier: str | None = None) -> Agent:
     from app.experiential.tools import get_experiential_tools
     tools = [execute_code, file_manager, web_search, read_attachment, KnowledgeSearchTool()] + memory_tools + scoped_tools + mem0_tools + get_fiction_tools() + get_aesthetic_tools("coder") + get_experiential_tools("coder")
     # Tension tools — coder records conflicts between approaches (e.g. speed vs readability)
-    try:
+    with optional_tool_group("coder", "tensions"):
         from app.tensions.tools import get_tension_tools
         tools.extend(get_tension_tools("coder"))
-    except Exception:
-        pass
     # Host Bridge tools (read/write host files, execute commands on Mac)
-    try:
+    with optional_tool_group("coder", "bridge"):
         from app.tools.bridge_tools import create_bridge_tools
         bridge_tools = create_bridge_tools("coder")
         if bridge_tools:
             tools.extend(bridge_tools)
-    except Exception:
-        pass
     # Wiki tools (read, write — coder updates technical architecture pages)
-    try:
+    with optional_tool_group("coder", "wiki"):
         from app.tools.wiki_tool_registry import create_wiki_tools
         tools.extend(create_wiki_tools("read", "write"))
-    except Exception:
-        pass
     # Forge generator — only exposed when both TOOL_FORGE_ENABLED and
     # TOOL_FORGE_AGENT_GENERATION_ENABLED are set. Lets Coder register a new
     # sandboxed tool through the audit pipeline. Tool lands in SHADOW at best;
     # promotion past SHADOW requires manual human approval.
-    try:
+    with optional_tool_group("coder", "forge_generator"):
         from app.forge.generator_tool import get_forge_generator_tool
         forge_tool = get_forge_generator_tool()
         if forge_tool is not None:
             tools.append(forge_tool)
-    except Exception:
-        pass
 
     return Agent(
         role="Coder",

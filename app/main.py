@@ -1376,6 +1376,15 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             reset_task,
             seconds_since_last_output_progress,
         )
+        # Phase E2: tool-activity heartbeat. A fourth diagnostic signal
+        # alongside output / zero-output / llm-activity. Logged on kill
+        # so we can distinguish "tool stuck mid-call" from "agent loop
+        # without progress". Does not change kill thresholds.
+        from app.tools_timeout import (
+            seconds_since_last_tool_activity,
+            seconds_since_last_tool_timeout,
+            get_tool_timeout_count,
+        )
 
         _SOFT_TIMEOUT_SECS = 900         # 15 min — soft checkpoint
         _HARD_TIMEOUT_SECS = 2700        # 45 min — absolute ceiling
@@ -1438,6 +1447,21 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             # when the task isn't output-instrumented.
             llm_stall = seconds_since_last_llm_activity()
             if llm_stall is not None and llm_stall > _STALL_THRESHOLD_SECS:
+                # Phase E2: enrich the kill diagnostic with tool-activity
+                # state. Helps distinguish "tool wedged mid-call" from
+                # "agent looped through tools without progress".
+                tool_idle = seconds_since_last_tool_activity()
+                tool_timeout_age = seconds_since_last_tool_timeout()
+                tool_timeouts = get_tool_timeout_count()
+                logger.info(
+                    "stall: llm-stall %.1fs (tool_idle=%s tool_timeout_age=%s "
+                    "tool_timeouts=%d task_id=%s)",
+                    llm_stall,
+                    f"{tool_idle:.1f}s" if tool_idle is not None else "n/a",
+                    f"{tool_timeout_age:.1f}s" if tool_timeout_age is not None else "n/a",
+                    tool_timeouts,
+                    task_id,
+                )
                 return ("llm-stall", llm_stall)
             return None
 

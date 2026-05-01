@@ -20,47 +20,37 @@ def create_pim_agent(force_tier: str | None = None) -> Agent:
     tools: list = [] + memory_tools + scoped_tools + mem0_tools
 
     # Email tools
-    try:
+    with optional_tool_group('pim', 'email_tools'):
         from app.tools.email_tools import create_email_tools
         email_tools = create_email_tools("pim")
         if email_tools:
             tools.extend(email_tools)
-    except Exception:
-        pass
 
     # Calendar tools
-    try:
+    with optional_tool_group('pim', 'calendar_tools'):
         from app.tools.calendar_tools import create_calendar_tools
         cal_tools = create_calendar_tools("pim")
         if cal_tools:
             tools.extend(cal_tools)
-    except Exception:
-        pass
 
     # Task tools
-    try:
+    with optional_tool_group('pim', 'task_tools'):
         from app.tools.task_tools import create_task_tools
         task_tools = create_task_tools("pim")
         if task_tools:
             tools.extend(task_tools)
-    except Exception:
-        pass
 
     # Photos tools (macOS Photos.app via AppleScript through bridge)
-    try:
+    with optional_tool_group('pim', 'photos_tools'):
         from app.tools.photos_tools import create_photos_tools
         photo_tools = create_photos_tools("pim")
         if photo_tools:
             tools.extend(photo_tools)
-    except Exception:
-        pass
 
     # Wiki tools
-    try:
+    with optional_tool_group('pim', 'wiki_tool_registry'):
         from app.tools.wiki_tool_registry import create_wiki_tools
         tools.extend(create_wiki_tools("read", "write"))
-    except Exception:
-        pass
 
     return Agent(
         role="Personal Information Manager",

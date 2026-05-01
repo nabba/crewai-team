@@ -7,6 +7,7 @@ adversarial validation pattern from Tran et al. 2025.
 """
 
 from crewai import Agent
+from app.agents._common import optional_tool_group
 from app.llm_factory import create_specialist_llm
 from app.tools.memory_tool import create_memory_tools
 from app.tools.scoped_memory_tool import create_scoped_memory_tools
@@ -54,17 +55,13 @@ def create_critic() -> Agent:
     # Critic needs fact-checking tools + dialectical reasoning
     tools = [web_search, KnowledgeSearchTool(), PhilosophyRAGTool()] + memory_tools + scoped_tools + awareness_tools
     # Dialectics tool — critic's primary weapon: find counter-arguments to claims
-    try:
+    with optional_tool_group("critic", "dialectics"):
         from app.philosophy.dialectics_tool import FindCounterArgumentTool
         tools.append(FindCounterArgumentTool())
-    except Exception:
-        pass
     # Tension tools — critic is a natural tension detector
-    try:
+    with optional_tool_group("critic", "tensions"):
         from app.tensions.tools import get_tension_tools
         tools.extend(get_tension_tools("critic"))
-    except Exception:
-        pass
 
     return Agent(
         role="Critic",

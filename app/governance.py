@@ -38,7 +38,23 @@ MAX_PROMOTIONS_PER_DAY = 20 # Rate limit across all systems combined
 
 @dataclass
 class PromotionRequest:
-    """Universal promotion request submitted by any improvement system."""
+    """Universal promotion request submitted by any improvement system.
+
+    Phase E4: ``__post_init__`` runs strict shape validation. Catches
+    the silent-None / wrong-type class of bug that the cross-area audit
+    flagged — historically a missing field could slip through and the
+    safety/quality comparison would raise a confusing TypeError deep
+    inside :func:`evaluate_promotion`. Now every request must satisfy:
+
+      - ``system``, ``target``, ``proposed_by`` are non-empty strings
+      - ``quality_score`` and ``safety_score`` are floats in [0.0, 1.0]
+      - ``metrics``, ``baseline_scores``, ``artifacts`` are dicts
+
+    Any violation raises ``ValueError`` at construction with a precise
+    message; the caller (evolution.py / modification_engine.py / etc.)
+    can log the malformed payload instead of polluting the governance
+    audit trail with garbage.
+    """
     system: str              # "evolution" | "modification" | "training" | "atlas"
     target: str              # What's being promoted (role name, adapter name, skill name, etc.)
     proposed_by: str         # Which subsystem or agent proposed this
@@ -48,6 +64,37 @@ class PromotionRequest:
     baseline_scores: dict = field(default_factory=dict)  # Previous version metrics
     artifacts: dict = field(default_factory=dict)      # System-specific (prompt text, adapter path, etc.)
     reason: str = ""         # Human-readable explanation
+
+    def __post_init__(self) -> None:
+        # Strings must be non-empty (governance audit needs them).
+        for fname in ("system", "target", "proposed_by"):
+            v = getattr(self, fname)
+            if not isinstance(v, str) or not v.strip():
+                raise ValueError(
+                    f"PromotionRequest.{fname} must be a non-empty string, got {v!r}"
+                )
+        # Scores must be numeric and in [0, 1] — the gate comparisons
+        # depend on this. None or out-of-range here would create
+        # malformed audit rows.
+        for fname in ("quality_score", "safety_score"):
+            v = getattr(self, fname)
+            if not isinstance(v, (int, float)) or isinstance(v, bool):
+                raise ValueError(
+                    f"PromotionRequest.{fname} must be a float, got {type(v).__name__}={v!r}"
+                )
+            if not (0.0 <= float(v) <= 1.0):
+                raise ValueError(
+                    f"PromotionRequest.{fname} must be in [0.0, 1.0], got {v!r}"
+                )
+            # Coerce ints to float so downstream `>=` is consistent.
+            object.__setattr__(self, fname, float(v))
+        # Containers must be dicts (audit serialization assumes this).
+        for fname in ("metrics", "baseline_scores", "artifacts"):
+            v = getattr(self, fname)
+            if not isinstance(v, dict):
+                raise ValueError(
+                    f"PromotionRequest.{fname} must be a dict, got {type(v).__name__}"
+                )
 
 
 @dataclass
