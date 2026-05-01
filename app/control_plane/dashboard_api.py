@@ -2,17 +2,28 @@
 
 Provides REST endpoints for the React dashboard.
 All routes prefixed with /api/cp/.
+
+Auth (Phase B1): when ``GATEWAY_AUTH_REQUIRED=1`` is set, every route
+on this router requires ``Authorization: Bearer <gateway-secret>``.
+Default behaviour (env var unset) is pass-through, preserving the
+laptop developer experience. See :mod:`app.control_plane.auth_dep`.
 """
 import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.control_plane.auth_dep import require_gateway_auth
+
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/cp", tags=["control-plane"])
+router = APIRouter(
+    prefix="/api/cp",
+    tags=["control-plane"],
+    dependencies=[Depends(require_gateway_auth)],
+)
 
 # ── Request models ───────────────────────────────────────────────────────────
 

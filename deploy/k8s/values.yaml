@@ -12,6 +12,11 @@ envSecretName: botarmy-env
 
 gateway:
   replicas: 1
+  # Phase B3 — Bearer-token auth on /api/cp/* and /epistemic/* mutating
+  # routes. Default ON in K8s because the bind is 0.0.0.0 and the only
+  # other boundary is NetworkPolicy. Set to "false" only for dedicated
+  # dev clusters where the operator accepts the open-API risk.
+  authRequired: "true"
   resources:
     requests: { cpu: "2",   memory: "4Gi" }
     limits:   { cpu: "4",   memory: "8Gi" }

@@ -1,19 +1,27 @@
 """FastAPI router for the Epistemic Integrity dashboard.
 
-Exposes read-only endpoints under ``/epistemic/*`` for the React pane.
-Mirrors the structure of :mod:`app.affect.api`.
+Exposes endpoints under ``/epistemic/*`` for the React pane. Read-only
+queries plus four mutating routes (``POST /overrides``, the three
+``/tuning/*`` endpoints). Mirrors the structure of :mod:`app.affect.api`.
 
 Mounted in ``app/main.py`` via::
 
     from app.epistemic.api import router as epistemic_router
     app.include_router(epistemic_router)
+
+Auth (Phase B1): when ``GATEWAY_AUTH_REQUIRED=1`` is set, every route
+requires ``Authorization: Bearer <gateway-secret>``. The default
+(env var unset) is pass-through. Internal Python callers — e.g.
+``record_override`` invoked from ``orchestrator_hook`` — DO NOT go
+through this dependency; the auth boundary is HTTP, not function calls.
 """
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from app.control_plane.auth_dep import require_gateway_auth
 from app.epistemic.biases import BIAS_LIBRARY
 from app.epistemic.span_writer import (
     list_bias_matches_for_task,
@@ -37,7 +45,11 @@ from app.epistemic.verification import VERIFIER_REGISTRY
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/epistemic", tags=["epistemic"])
+router = APIRouter(
+    prefix="/epistemic",
+    tags=["epistemic"],
+    dependencies=[Depends(require_gateway_auth)],
+)
 
 
 @router.get("/now")

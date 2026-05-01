@@ -175,6 +175,18 @@ class Settings(BaseSettings):
         default=False, validation_alias="SUBIA_INTROSPECTION_ENABLED",
     )
 
+    # ── Gateway HTTP auth enforcement (Phase B3) ───────────────────────
+    # When True, every dashboard / epistemic mutating route requires
+    # `Authorization: Bearer <gateway_secret>`. Default False preserves
+    # the laptop developer experience (localhost-only). Helm sets it to
+    # True for K8s deployments, where the perimeter is no longer the OS.
+    # See app/control_plane/auth_dep.py for the dependency implementation.
+    # NOTE: this field is also readable via os.environ.get directly so the
+    # dependency module does not have to construct a Settings instance.
+    gateway_auth_required: bool = Field(
+        default=False, validation_alias="GATEWAY_AUTH_REQUIRED",
+    )
+
     # ── Control Plane ─────────────────────────────────────────────────
     control_plane_enabled: bool = True      # enable control plane (tickets, budgets, audit)
     budget_enforcement_enabled: bool = True  # pre-call budget checks in llm_factory

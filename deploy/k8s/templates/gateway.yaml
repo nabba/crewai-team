@@ -43,6 +43,13 @@ spec:
               value: "8765"
             - name: CREWAI_STORAGE_DIR
               value: /app/workspace/crewai_storage
+            # Phase B3 — enforce HTTP auth on the gateway. Inside K8s the
+            # bind is 0.0.0.0 (so NetworkPolicy + Service are the only
+            # network boundary); enforcing Bearer-token auth here is the
+            # belt to NetworkPolicy's braces. Override per-environment via
+            # `gateway.authRequired: false` only for explicit dev clusters.
+            - name: GATEWAY_AUTH_REQUIRED
+              value: {{ .Values.gateway.authRequired | default "true" | quote }}
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
           livenessProbe:
