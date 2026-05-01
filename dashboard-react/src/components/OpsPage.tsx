@@ -6,14 +6,16 @@ import {
   useAnomaliesQuery,
   useDeploysQuery,
   useSnapshotKinds,
+  useErrorAuditQuery,
   type ErrorEntry,
   type AnomalyAlert,
   type DeployEntry,
 } from '../api/queries';
 import { crewIcon, crewLabel } from '../crews';
 import { SnapshotExplorer } from './SnapshotExplorer';
+import { ErrorMonitor } from './ErrorMonitor';
 
-type OpsTab = 'errors' | 'anomalies' | 'deploys' | 'observability';
+type OpsTab = 'monitor' | 'errors' | 'anomalies' | 'deploys' | 'observability';
 
 // Port of the old dashboard's "Errors & Self-Healing", "🛡️ Anomaly Detection"
 // and "🏗️ Self-Deploy Pipeline" cards — grouped as tabs on a single page.
@@ -262,22 +264,25 @@ function DeployRow({ deploy }: { deploy: DeployEntry }) {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function OpsPage() {
-  const [tab, setTab] = useState<OpsTab>('errors');
+  const [tab, setTab] = useState<OpsTab>('monitor');
 
   // Small counts in tab labels for at-a-glance status.
   const errorsQ = useErrorsQuery();
   const anomaliesQ = useAnomaliesQuery();
   const deploysQ = useDeploysQuery();
   const snapshotKindsQ = useSnapshotKinds();
+  const errorAuditQ = useErrorAuditQuery();
 
   const counts = useMemo(() => ({
+    monitor: errorAuditQ.data?.active_anomalies.length ?? 0,
     errors: errorsQ.data?.recent.length ?? 0,
     anomalies: anomaliesQ.data?.recent_alerts.length ?? 0,
     deploys: deploysQ.data?.recent.length ?? 0,
     observability: snapshotKindsQ.data?.kinds.length ?? 0,
-  }), [errorsQ.data, anomaliesQ.data, deploysQ.data, snapshotKindsQ.data]);
+  }), [errorAuditQ.data, errorsQ.data, anomaliesQ.data, deploysQ.data, snapshotKindsQ.data]);
 
   const tabs: { key: OpsTab; label: string; icon: string; count: number }[] = [
+    { key: 'monitor', label: 'Error Monitor', icon: '📈', count: counts.monitor },
     { key: 'errors', label: 'Errors & Self-Healing', icon: '⚠️', count: counts.errors },
     { key: 'anomalies', label: 'Anomaly Detection', icon: '🛡️', count: counts.anomalies },
     { key: 'deploys', label: 'Self-Deploy Pipeline', icon: '🏗️', count: counts.deploys },
@@ -312,6 +317,7 @@ export function OpsPage() {
       </div>
 
       <div className="bg-[#111820] border border-[#1e2738] rounded-lg p-4">
+        {tab === 'monitor' && <ErrorMonitor />}
         {tab === 'errors' && <ErrorsTab />}
         {tab === 'anomalies' && <AnomaliesTab />}
         {tab === 'deploys' && <DeploysTab />}

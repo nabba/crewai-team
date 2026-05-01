@@ -53,6 +53,7 @@ export const keys = {
   errors: (limit: number) => ['errors', limit] as const,
   anomalies: (limit: number) => ['anomalies', limit] as const,
   deploys: (limit: number) => ['deploys', limit] as const,
+  errorAudit: ['error-audit'] as const,
   techRadar: (limit: number) => ['tech-radar', limit] as const,
   snapshotKinds: ['snapshots', 'kinds'] as const,
   snapshotLatest: (kind: string) => ['snapshots', kind, 'latest'] as const,
@@ -661,6 +662,71 @@ export function useDeploysQuery() {
     queryKey: keys.deploys(20),
     queryFn: () => api<DeploysReport>(endpoints.deploys(20)),
     refetchInterval: POLL.slow,
+  });
+}
+
+// ── Permanent Error Monitor ─────────────────────────────────────────────────
+// Surfaces signature-grouped error patterns + open anomalies from the
+// errors.jsonl analyzer (app/observability/error_monitor.py). Polls every
+// 30 s; the underlying scan runs every 5 min server-side, so faster polling
+// gives no fresher data.
+
+export interface ErrorAuditSummary {
+  total_24h: number;
+  total_1h: number;
+  hourly_avg_24h: number;
+  trend: 'rising' | 'falling' | 'stable';
+}
+
+export interface ErrorAuditPattern {
+  signature: string;
+  sample: string;
+  count: number;
+  share_pct: number;
+}
+
+export interface ErrorAuditTrendPoint {
+  hour: string;
+  count: number;
+}
+
+export interface ErrorAuditAnomaly {
+  id: string;
+  signature: string;
+  sample: string;
+  type: 'new_pattern' | 'rate_spike' | 'total_rate';
+  severity: 'info' | 'warning' | 'critical';
+  hourly_rate: number;
+  baseline_rate: number;
+  detected_at: string | null;
+}
+
+export interface ErrorAuditReport {
+  summary: ErrorAuditSummary;
+  top_patterns_24h: ErrorAuditPattern[];
+  trend_hourly: ErrorAuditTrendPoint[];
+  active_anomalies: ErrorAuditAnomaly[];
+  updated_at: string;
+  error?: string | null;
+}
+
+export function useErrorAuditQuery() {
+  return useQuery({
+    queryKey: keys.errorAudit,
+    queryFn: () => api<ErrorAuditReport>(endpoints.errorAudit()),
+    refetchInterval: POLL.verySlow,
+  });
+}
+
+export function useAcknowledgeAnomaly() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (anomalyId: string) =>
+      api<{ ok: boolean; anomaly_id: string; error?: string }>(
+        endpoints.acknowledgeAnomaly(anomalyId),
+        { method: 'POST', body: JSON.stringify({}) },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.errorAudit }),
   });
 }
 

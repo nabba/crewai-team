@@ -202,6 +202,29 @@ job `llm-refresh-catalog`. It:
 A typical refresh produces ~360 entries. Manual trigger: send Signal
 command `refresh catalog` or POST to `/api/cp/llms/discovery/run`.
 
+#### Embedding-only models are filtered out
+
+Both ingestion paths (`_build_local_entry` in the catalog builder and
+`scan_ollama` in `app/llm_discovery.py`) reject any model whose name
+contains `embed`. Without this guard, embedding-only Ollama models like
+`nomic-embed-text` got registered as `ollama_chat/...` chat models, the
+selector eventually picked one for a chat role, and `litellm.completion`
+returned `400 "<model> does not support chat"` on every call. Working
+embeddings already flow through `app/memory/chromadb_manager.py` which
+calls Ollama's `/api/embeddings` endpoint directly — never the catalog.
+
+#### OpenRouter "Stealth" provider is excluded
+
+`_cached_llm` injects `extra_body={"provider": {"ignore": ["Stealth"]}}`
+into every OpenRouter request (any LLM whose `base_url` matches
+`openrouter.ai`). OpenRouter's anonymous "Stealth" provider class
+periodically returns `502 "Invalid URL: ''"` — historically the highest-
+volume single-cause error class on the system. The exclusion list is
+overridable via the `OPENROUTER_IGNORE_PROVIDERS` env var (CSV); set
+empty to disable filtering. The mechanism mirrors the parallel block
+that injects `extra_headers` for Anthropic prompt-caching, so adding
+more provider names later is a one-line change.
+
 ### 5.3 Strengths map (9 canonical task types)
 
 ```

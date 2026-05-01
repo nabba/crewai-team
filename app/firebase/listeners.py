@@ -9,7 +9,7 @@ Firestore mode reading.
 import logging
 import threading
 
-from app.firebase.infra import _get_db, _fire, _now_iso
+from app.firebase.infra import _get_db, _fire, _now_iso, _firebase_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -755,6 +755,13 @@ def start_chat_inbox_poller(handle_fn) -> None:
         handle_fn: async function(text: str) -> str -- processes the message
     """
     import asyncio
+
+    # Skip when Firebase is disabled (the default). Without this gate the
+    # poller spawns a thread that immediately exits with a WARNING log,
+    # which accumulates 1 line per boot in errors.jsonl.
+    if not _firebase_enabled():
+        logger.debug("firebase.listeners: chat inbox poller skipped (FIREBASE_ENABLED=0)")
+        return
 
     _stop = threading.Event()
 

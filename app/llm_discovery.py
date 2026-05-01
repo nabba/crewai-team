@@ -96,6 +96,8 @@ def scan_ollama() -> list[dict]:
         resp = httpx.get(f"{ollama_url}/api/tags", timeout=10)
         if resp.status_code == 200:
             models = resp.json().get("models", [])
+            # Skip embedding-only models — they must not be persisted as
+            # chat-capable. See _build_local_entry in llm_catalog_builder.py.
             return [
                 {
                     "id": f"ollama_chat/{m['name']}",
@@ -106,6 +108,7 @@ def scan_ollama() -> list[dict]:
                     "provider": "ollama",
                 }
                 for m in models
+                if "embed" not in (m.get("name") or "").lower()
             ]
     except Exception:
         pass

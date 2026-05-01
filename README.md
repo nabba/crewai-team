@@ -358,6 +358,21 @@ Phases 0 through 16a shipped. Each phase shipped behind green tests and is indep
 
 **~897 SubIA-relevant tests green** at Phase 16a. **126 test files** in [`tests/`](./tests/) total.
 
+### Operational reliability — May 2026
+
+Outside the SubIA roadmap, a separate reliability pass squashed nine
+high-volume error patterns from `errors.jsonl` (pool exhaustion, OpenRouter
+"Stealth"-routed 502s, embedding model leaking into the chat catalog,
+Mem0 search API drift, fiction-library retry storms, Firebase chat-inbox
+warning, numeric overflow on accumulated `cost_usd`, missing
+consciousness-table indexes, chat-tab poller noise) and shipped a
+**permanent error monitor** at `/cp/ops` → "📈 Error Monitor" tab. The
+monitor scans `errors.jsonl` every 5 minutes, groups errors by stable
+signature, and flags new patterns, rate spikes (≥ 3× baseline), and 2σ
+deviations on total error rate. Anomalies persist to
+`control_plane.error_anomalies` with open / acknowledged / resolved
+lifecycle. See [`docs/ERROR_MONITOR.md`](docs/ERROR_MONITOR.md).
+
 ---
 
 ## Tech stack

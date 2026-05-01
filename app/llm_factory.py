@@ -116,6 +116,29 @@ def _cached_llm(
             extra_headers["anthropic-beta"] = "prompt-caching-2024-07-31"
             kwargs["extra_headers"] = extra_headers
 
+        # ── OpenRouter provider exclusion ──
+        # OpenRouter's anonymous "Stealth" sub-provider class periodically
+        # returns 502 `Invalid URL: ''` (3 174/50k errors as of 2026-04-30).
+        # We exclude such providers by default via OpenRouter's documented
+        # provider-routing API. Active role-assigned models (Claude / Gemma /
+        # DeepSeek paid variants) all have non-Stealth routes, so this is a
+        # reliability gain with no functional loss. Override via env var
+        # OPENROUTER_IGNORE_PROVIDERS (CSV); set it empty to disable filtering.
+        if "openrouter.ai" in (base_url or ""):
+            import os as _os
+            env_ignore = _os.environ.get("OPENROUTER_IGNORE_PROVIDERS", "Stealth")
+            ignore_list = [n.strip() for n in env_ignore.split(",") if n.strip()]
+            if ignore_list:
+                extra_body = dict(kwargs.pop("extra_body", {}) or {})
+                provider_pref = dict(extra_body.get("provider", {}) or {})
+                existing = list(provider_pref.get("ignore", []) or [])
+                for name in ignore_list:
+                    if name not in existing:
+                        existing.append(name)
+                provider_pref["ignore"] = existing
+                extra_body["provider"] = provider_pref
+                kwargs["extra_body"] = extra_body
+
         if llm_builder is not None:
             llm = llm_builder(model_id, max_tokens, **kwargs)
         else:

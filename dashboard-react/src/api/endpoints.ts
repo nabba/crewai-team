@@ -56,6 +56,11 @@ export const endpoints = {
   anomalies: (limit = 20) => `${CP}/anomalies?limit=${limit}`,
   deploys: (limit = 20) => `${CP}/deploys?limit=${limit}`,
 
+  // Permanent error monitor (errors.jsonl signature analyzer)
+  errorAudit: () => `${CP}/error_audit`,
+  acknowledgeAnomaly: (id: string) =>
+    `${CP}/error_audit/anomaly/${encodeURIComponent(id)}/acknowledge`,
+
   // Tech radar
   techRadar: (limit = 20) => `${CP}/tech-radar?limit=${limit}`,
 

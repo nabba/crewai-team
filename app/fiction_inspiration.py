@@ -67,6 +67,13 @@ LITERARY_GENRES = {
 CHUNK_SIZE_CHARS = 6000        # ~1500 tokens
 CHUNK_OVERLAP_CHARS = 800      # ~200 tokens
 
+# Per-file failure quarantine: a book that fails ingestion (e.g., transient
+# Ollama embedding dim drift) is skipped on subsequent runs for this many
+# days, then retried once. Prevents the "same 2 files fail every cycle"
+# retry storm without permanently giving up.
+_SKIP_RETRY_DAYS = 7
+_SKIP_LIST_FILENAME = ".fiction_skip_list.json"
+
 # Structural patterns in .md fiction files
 CHAPTER_PATTERN = re.compile(r"^#{1,2}\s+", re.MULTILINE)
 SCENE_BREAK_PATTERN = re.compile(r"\n\s*(?:---|\*\*\*|___)\s*\n")
@@ -658,22 +665,72 @@ def _extract_concepts_llm(text: str, themes: list) -> dict:
         pass
     return {}
 
+def _load_skip_list(library_dir: Path) -> dict[str, float]:
+    """Load {filename → last-failure unix-timestamp} map. Empty on missing/corrupt."""
+    skip_path = library_dir / _SKIP_LIST_FILENAME
+    if not skip_path.exists():
+        return {}
+    try:
+        data = json.loads(skip_path.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_skip_list(library_dir: Path, skip: dict[str, float]) -> None:
+    skip_path = library_dir / _SKIP_LIST_FILENAME
+    try:
+        skip_path.write_text(json.dumps(skip, indent=2, sort_keys=True))
+    except Exception as e:
+        logger.debug(f"fiction_inspiration: could not persist skip list: {e}")
+
+
 def ingest_library(library_dir: Path = FICTION_LIBRARY_DIR,
                    extract_concepts: bool = False) -> dict:
-    """Ingest all .md files from the fiction library directory."""
+    """Ingest all .md files from the fiction library directory.
+
+    Per-file quarantine: files that raise during ingestion are recorded in
+    a skip-list and skipped for ``_SKIP_RETRY_DAYS`` days before being
+    retried once. A successful ingestion clears the file from the skip list.
+    """
     if not library_dir.exists():
         library_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"fiction_inspiration: created library dir {library_dir}")
         return {"books_ingested": 0}
 
     md_files = sorted(library_dir.glob("**/*.md"))
-    results = []
+    skip = _load_skip_list(library_dir)
+    now = time.time()
+    retry_threshold = now - (_SKIP_RETRY_DAYS * 86400)
+
+    results: list[dict] = []
+    skipped: list[str] = []
+    skip_dirty = False
     for filepath in md_files:
+        last_failed = skip.get(filepath.name, 0.0)
+        if last_failed and last_failed > retry_threshold:
+            skipped.append(filepath.name)
+            continue
         try:
             result = ingest_book(filepath, extract_concepts=extract_concepts)
             results.append(result)
+            if filepath.name in skip:
+                skip.pop(filepath.name, None)
+                skip_dirty = True
         except Exception as e:
             logger.warning(f"fiction_inspiration: failed to ingest {filepath}: {e}")
+            skip[filepath.name] = now
+            skip_dirty = True
+
+    if skip_dirty:
+        _save_skip_list(library_dir, skip)
+
+    if skipped:
+        logger.info(
+            f"fiction_inspiration: quarantined {len(skipped)} file(s) "
+            f"that failed within the last {_SKIP_RETRY_DAYS} days; "
+            f"will retry once after the window expires"
+        )
 
     total = sum(r.get("ingested", 0) for r in results)
     logger.info(f"fiction_inspiration: ingested {total} chunks from {len(results)} books")

@@ -597,6 +597,46 @@ def recent_anomalies(limit: int = Query(20, ge=1, le=200)):
         "error": err,
     }
 
+@router.get("/error_audit")
+def error_audit():
+    """Permanent error monitor — aggregated stats + open anomalies.
+
+    The shape is whatever ``app.observability.error_monitor.snapshot()``
+    returns; the React dashboard renders it directly. The monitor itself
+    runs on a 5-min cron registered in main.py.
+    """
+    try:
+        from app.observability.error_monitor import snapshot
+        return snapshot()
+    except Exception as exc:
+        logger.debug("error_audit endpoint: %s", exc)
+        return {
+            "summary": {"total_24h": 0, "total_1h": 0, "hourly_avg_24h": 0, "trend": "stable"},
+            "top_patterns_24h": [],
+            "trend_hourly": [],
+            "active_anomalies": [],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(exc),
+        }
+
+
+@router.post("/error_audit/anomaly/{anomaly_id}/acknowledge")
+def acknowledge_anomaly(anomaly_id: str):
+    """Mark an open anomaly as acknowledged (silenced; preserves history).
+
+    Auto-resolution still runs in the background — if the underlying spike
+    fades, the entry transitions to ``resolved``. Acknowledgement is the
+    "I've seen this and don't need it on the dashboard anymore" signal.
+    """
+    try:
+        from app.observability.error_monitor import acknowledge
+        ok = acknowledge(anomaly_id)
+        return {"ok": bool(ok), "anomaly_id": anomaly_id}
+    except Exception as exc:
+        logger.debug("acknowledge_anomaly endpoint: %s", exc)
+        return {"ok": False, "anomaly_id": anomaly_id, "error": str(exc)}
+
+
 @router.get("/deploys")
 def recent_deploys(limit: int = Query(20, ge=1, le=200)):
     """Recent entries from the self-deploy pipeline log."""

@@ -380,6 +380,32 @@ async def lifespan(app: FastAPI):
     logger.info("Stuck-ticket janitor scheduled: every 5 min "
                 "(fails in_progress > 15min with $0 cost)")
 
+    # ── Permanent error monitor ─────────────────────────────────────────
+    # Tails workspace/logs/errors.jsonl every 5 min, groups errors by
+    # signature, and writes detected anomalies (new patterns, rate spikes,
+    # total-rate σ deviations) to control_plane.error_anomalies for the
+    # React /cp/ops dashboard. See app/observability/error_monitor.py.
+    def _run_error_monitor_scan():
+        try:
+            from app.observability.error_monitor import scan
+            return scan()
+        except Exception:
+            logger.debug("Error monitor scan failed (non-fatal)", exc_info=True)
+            return None
+    # Run the first scan immediately so the dashboard has data right
+    # after boot (otherwise the /cp/ops Monitor tab shows zeros for the
+    # first 5 minutes of every restart, which looks broken).
+    from datetime import datetime as _dt
+    scheduler.add_job(
+        _run_error_monitor_scan,
+        "interval",
+        minutes=5,
+        id="error_monitor_scan",
+        next_run_time=_dt.now(),
+    )
+    logger.info("Error monitor scheduled: every 5 min "
+                "(tails errors.jsonl, surfaces anomalies on /cp/ops)")
+
     # ── User-configurable schedules (loaded from workspace/schedules.json) ──
     try:
         from app.tools.schedule_manager_tools import register_user_schedules

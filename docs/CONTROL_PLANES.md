@@ -60,6 +60,8 @@ Background jobs. Non-blocking, cooperative, interruptible.
 │  benchmark        │ 0 5 * * *   │ Daily metrics             │
 │  workspace_sync   │ 0 * * * *   │ Git backup                │
 │  heartbeat        │ every 60s   │ Dashboard + anomalies     │
+│  error_monitor    │ every 5 min │ errors.jsonl scan, anomalies → /cp/ops │
+│  stuck_ticket_jan │ every 5 min │ Fail in_progress > 15 min │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐

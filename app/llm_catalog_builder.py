@@ -360,6 +360,12 @@ def _build_local_entry(local_row: dict) -> dict:
     name = local_row.get("name") or local_row.get("model") or ""
     if not name:
         return {}
+    # Embedding-only models (e.g. nomic-embed-text, mxbai-embed-large) must
+    # NOT enter the chat catalog. Once present, the selector / cascade /
+    # auto-promotion can pick them for a chat role and litellm.completion
+    # then 400s with "does not support chat" on every call.
+    if "embed" in name.lower():
+        return {}
     size_bytes = int(local_row.get("size") or 0)
     size_gb = round(size_bytes / (1024 ** 3), 1) if size_bytes else 0
     entry = {
