@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.companion import critique as _critique
+from app.companion import diversity as _diversity
 from app.companion import idea_store as _idea_store
 from app.companion import reflexion as _reflexion
 from app.companion import scoring as _scoring
@@ -140,6 +141,21 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
             panel_score=panel_score,
         )
         if converged_id:
+            # Phase 12: record on the workspace MAP-Elites grid before
+            # surfacing so the next cycle's prompt can pull sparse-cell
+            # hints. Failure absorbed inside diversity.record_cycle.
+            fitness_composite = (novelty + quality + panel_score) / 3.0
+            try:
+                _diversity.record_cycle(
+                    workspace_id=workspace_id,
+                    idea_id=converged_id,
+                    text=final,
+                    fitness=fitness_composite,
+                    panel_score=panel_score,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "companion.cycle: diversity.record_cycle raised: %s", exc)
             surfaced, surface_reason = _maybe_surface(
                 workspace_id=workspace_id,
                 idea_id=converged_id,
@@ -303,6 +319,19 @@ def _compose_prompt(seed: str, snippets: list[workspace_kb.KBSnippet],
             block = ""
         if block:
             lines.append(block)
+        # Phase 12: nudge toward under-explored cells of this workspace's
+        # MAP-Elites grid. Empty list means no voids worth filling yet.
+        try:
+            hints = _diversity.sparse_cell_hints(workspace_id)
+        except Exception as exc:
+            logger.debug(
+                "companion.cycle: diversity.sparse_cell_hints raised: %s", exc)
+            hints = []
+        if hints:
+            lines.append("## Diversity targets")
+            for h in hints:
+                lines.append(f"- {h}")
+            lines.append("")
     lines.append(
         "## Task\n"
         "Generate fresh, surprising ideas that bear on the workspace seed. "
