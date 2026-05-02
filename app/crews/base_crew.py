@@ -54,6 +54,162 @@ def register_tool_plugin(factory) -> None:
         _plugin_tools_cache = None  # Invalidate cache
 
 
+# ── Declarative Tool Registry (Week 2 audit fix — Shift 1) ──────────────────
+#
+# The 2026-05-02 deep audit (Phase 3) found an O(n_tools × n_agents) matrix
+# of "which tools are wired to which agents" maintained by hand across ~10
+# agent factories.  The matrix had at least one critical hole:
+# `gee_run_script` was attached to the standalone `coder` agent but missing
+# from the four `delegated_coding` specialists that handle every dispatch
+# routed to "coding".  Week 1 patched the hole with a stop-gap helper
+# (`_extend_specialist_domain_tools`); Week 2 replaces both the helper and
+# the open-coded `tools.extend(...)` blocks with a declarative registry.
+#
+# Convention — each tool factory is registered with metadata:
+#   category          — e.g. "geospatial" / "web_research" / "code_execution"
+#   intended_agents   — tuple of agent IDs (e.g. ("coder", "designer")) or
+#                       ("*",) for tools every agent should consider
+#   priority          — 0-100, higher survives the per-provider cap
+#
+# Agent factories then call:
+#   tools = assemble_tools(agent_id="designer",
+#                          categories=("memory", "filesystem", "geospatial",
+#                                      "code_execution", "web_research"))
+# instead of open-coded `tools.extend(create_X_tools(...))`.
+#
+# Coexists with the older `register_tool_plugin` mechanism — plugin tools
+# (MCP, browser, session_search) still get auto-injected on every agent
+# via the monkey-patched `Agent.__init__`.  Only NEW tool sources should
+# use `register_tool_factory` going forward; the older `register_tool_plugin`
+# stays for the universal-injection use case.
+
+_REGISTERED_TOOL_FACTORIES: list[dict] = []  # list of dicts with keys: factory, category, intended_agents, priority
+_assembled_tools_cache: dict[tuple, list] = {}
+
+
+def register_tool_factory(
+    factory,
+    *,
+    category: str,
+    intended_agents: tuple[str, ...] = ("*",),
+    priority: int = 50,
+) -> None:
+    """Register a tool-factory function with metadata for declarative assembly.
+
+    Parameters
+    ----------
+    factory : callable
+        ``factory(agent_id) -> list[BaseTool]`` (or ``factory()`` if the
+        tools are agent-agnostic).  The factory is invoked lazily when an
+        agent calls :func:`assemble_tools`.  Returning ``[]`` is fine —
+        useful for tools whose dependencies may be unconfigured.
+    category : str
+        Stable category name.  Agent factories request a set of categories;
+        only matching tools are returned.  Common values: ``"memory"``,
+        ``"filesystem"``, ``"code_execution"``, ``"web_research"``,
+        ``"scrape"``, ``"geospatial"``, ``"knowledge"``, ``"document_gen"``,
+        ``"introspection"``, ``"delegation"``, ``"media"``.
+    intended_agents : tuple[str, ...]
+        Agent IDs this tool is appropriate for.  Use ``("*",)`` for tools
+        every agent should be able to consider.  Specific IDs are matched
+        case-insensitively against the ``agent_id`` passed to
+        :func:`assemble_tools`.
+    priority : int
+        0-100, higher survives the per-provider tool cap.  Approximate
+        guide: 100 = core (execute_code, file_manager); 90 = primary
+        info retrieval; 80 = memory; 70 = PIM; 60 = OCR/media; 50 = bridge;
+        40 = wiki; 30 = creative aux; 20 = introspective; 10 = peripheral.
+    """
+    global _assembled_tools_cache
+    _REGISTERED_TOOL_FACTORIES.append({
+        "factory": factory,
+        "category": category,
+        "intended_agents": tuple(a.lower() for a in intended_agents),
+        "priority": int(priority),
+    })
+    _assembled_tools_cache = {}  # Invalidate any cached assemblies.
+
+
+def assemble_tools(
+    agent_id: str,
+    *,
+    categories: tuple[str, ...] | None = None,
+) -> list:
+    """Return the tool list for *agent_id*, filtered to the requested categories.
+
+    Parameters
+    ----------
+    agent_id : str
+        Identifier the agent factory uses to claim tools (e.g. ``"coder"``,
+        ``"designer"``, ``"researcher"``).  Matched case-insensitively
+        against each registered tool's ``intended_agents``; ``"*"`` always
+        matches.
+    categories : tuple[str, ...] | None
+        Restrict to these categories.  ``None`` means no filter — returns
+        every tool the agent is intended to see.  In practice agent
+        factories should be explicit about what they need so the prompt
+        budget stays focused.
+
+    Returns
+    -------
+    list[BaseTool]
+        Sorted by ``priority`` descending; uniqued by tool ``name``
+        (first-registered wins on collision).  Caller is still responsible
+        for applying the per-provider cap via :func:`_cap_tools_by_priority`
+        (which inspects each tool's priority via the same metadata).
+    """
+    cache_key = (agent_id.lower(), categories)
+    cached = _assembled_tools_cache.get(cache_key)
+    if cached is not None:
+        return list(cached)  # defensive copy
+
+    aid = agent_id.lower()
+    cat_set = set(categories) if categories else None
+    seen_names: set[str] = set()
+    out: list = []
+
+    # Pull from registry, sorted by descending priority so highest-priority
+    # tools resolve their names first (later same-named instances dropped).
+    for entry in sorted(
+        _REGISTERED_TOOL_FACTORIES,
+        key=lambda e: -e["priority"],
+    ):
+        if cat_set is not None and entry["category"] not in cat_set:
+            continue
+        if "*" not in entry["intended_agents"] and aid not in entry["intended_agents"]:
+            continue
+        try:
+            # Try agent-aware factory first; fall back to no-arg factory.
+            try:
+                produced = entry["factory"](agent_id)
+            except TypeError:
+                produced = entry["factory"]()
+        except Exception:
+            logger.warning(
+                "assemble_tools: factory %s failed for agent_id=%s",
+                getattr(entry["factory"], "__name__", repr(entry["factory"])),
+                agent_id,
+                exc_info=True,
+            )
+            continue
+        for t in (produced or []):
+            name = getattr(t, "name", "")
+            if not name or name in seen_names:
+                continue
+            seen_names.add(name)
+            # Stamp the priority on the tool so _tool_priority can pick
+            # it up later (avoids needing the lookup map for new tools).
+            try:
+                if not getattr(t, "_audit_priority", None):
+                    t._audit_priority = entry["priority"]
+            except Exception:
+                pass  # tool may forbid attribute mutation
+            out.append(t)
+
+    _assembled_tools_cache[cache_key] = list(out)
+    return out
+
+
 # Ordered priority list for tool capping (highest = drop last).
 # When an agent's tool count exceeds MAX_TOOLS_PER_AGENT (default 18, max
 # 20 due to Anthropic's strict-tools limit), tools with lower priority
@@ -154,7 +310,17 @@ _TOOL_PRIORITY_MAP = {name: prio for name, prio in _TOOL_PRIORITY_ORDER}
 
 
 def _tool_priority(tool) -> int:
-    """Return priority 0-100 for a tool.  Unknown names default to 10."""
+    """Return priority 0-100 for a tool.
+
+    Resolution order:
+      1. ``tool._audit_priority`` — set by :func:`assemble_tools` when the
+         tool came from a :func:`register_tool_factory`-registered source.
+      2. ``_TOOL_PRIORITY_MAP`` — the legacy hand-maintained list.
+      3. Default 10 — unknown / peripheral.
+    """
+    explicit = getattr(tool, "_audit_priority", None)
+    if isinstance(explicit, int):
+        return explicit
     name = getattr(tool, "name", "") or ""
     return _TOOL_PRIORITY_MAP.get(name, 10)
 
@@ -650,8 +816,190 @@ def _register_default_plugins() -> None:
         lambda: __import__("app.tools.mcp_manager_tool", fromlist=["create_mcp_manager_tools"]).create_mcp_manager_tools()
     )
 
+    # ── Declarative tool registry (Week 2 audit fix — Shift 1) ──
+    # Registers the tool factories with category + intended-agents + priority
+    # metadata so agent factories can call assemble_tools(agent_id, categories=
+    # (...)) instead of open-coding tools.extend(create_X_tools(...)).  See
+    # the register_tool_factory docstring for the design.
+    _register_builtin_tool_factories()
+
     # Patch crewai.Agent so every agent instance gets plugin tools automatically
     _patch_agent_for_plugins()
+
+
+def _register_builtin_tool_factories() -> None:
+    """Register the built-in tool factories with declarative metadata.
+
+    Categories used here:
+      memory          — long-term + scoped + team memory stores
+      filesystem      — file_manager, read_attachment
+      code_execution  — sandbox runners, bridge tools (host-side)
+      geospatial      — Google Earth Engine
+      web_research    — web_search + web_fetch (search engines, URL fetch)
+      scrape          — Firecrawl (structured scraping/extraction)
+      knowledge       — enterprise KB, research KB, episteme, experiential
+      introspection   — tensions store
+    """
+    _CODING_AGENTS = ("coder", "designer", "coordinator", "executor", "debugger")
+    _RESEARCH_AGENTS = ("researcher", "debugger")
+
+    # Memory — every coding-crew agent shares the same "coder" identity
+    # for memory scoping so designer/coordinator/executor/debugger all see
+    # the same scoped + mem0 namespaces.  Pre-Week-2 the open-coded factories
+    # in specialists.py hardcoded "coder" too; the registry preserves that.
+    register_tool_factory(
+        lambda agent_id="coder": __import__(
+            "app.tools.memory_tool", fromlist=["create_memory_tools"]
+        ).create_memory_tools(collection="coding"),
+        category="memory",
+        intended_agents=_CODING_AGENTS,
+        priority=80,
+    )
+    register_tool_factory(
+        lambda agent_id="coder": __import__(
+            "app.tools.scoped_memory_tool", fromlist=["create_scoped_memory_tools"]
+        ).create_scoped_memory_tools("coder"),
+        category="memory",
+        intended_agents=_CODING_AGENTS,
+        priority=80,
+    )
+    register_tool_factory(
+        lambda agent_id="coder": __import__(
+            "app.tools.mem0_tools", fromlist=["create_mem0_tools"]
+        ).create_mem0_tools("coder"),
+        category="memory",
+        intended_agents=_CODING_AGENTS,
+        priority=80,
+    )
+
+    # Filesystem — every agent has these.
+    register_tool_factory(
+        lambda agent_id="coder": [
+            __import__("app.tools.file_manager", fromlist=["file_manager"]).file_manager,
+        ],
+        category="filesystem",
+        intended_agents=("*",),
+        priority=100,
+    )
+    register_tool_factory(
+        lambda agent_id="coder": [
+            __import__("app.tools.attachment_reader", fromlist=["read_attachment"]).read_attachment,
+        ],
+        category="filesystem",
+        intended_agents=("*",),
+        priority=100,
+    )
+
+    # Code execution — only the executor + standalone coder run code.
+    # The pre-Week-2 specialists.py loop imported "app.tools.code_execution"
+    # and "app.tools.sandbox_tools" but neither module exists in the
+    # current repo — those imports silently returned [] via `_safe`.
+    # The actual code-execution primitive is `execute_code` in
+    # `app.tools.code_executor`.
+    register_tool_factory(
+        lambda agent_id="executor": [
+            __import__("app.tools.code_executor", fromlist=["execute_code"]).execute_code,
+        ],
+        category="code_execution",
+        intended_agents=("executor", "coder"),
+        priority=100,
+    )
+    # Bridge tools — host-side execution.  Passes "coder" identity to
+    # bridge regardless of which specialist requests them so capability
+    # scoping stays consistent across the coding crew (designer doesn't
+    # get different host permissions than executor — both act on behalf
+    # of the coder identity).
+    register_tool_factory(
+        lambda agent_id="coder": __import__(
+            "app.tools.bridge_tools", fromlist=["create_bridge_tools"]
+        ).create_bridge_tools("coder"),
+        category="code_execution",
+        intended_agents=("executor", "coder"),
+        priority=55,
+    )
+
+    # Geospatial — Google Earth Engine.  Phase 3 of the audit found this
+    # tool wasn't reaching ANY of the four delegated_coding specialists;
+    # the registry below replaces the Week 1 stop-gap helper that fixed
+    # that hole.  Returns [] when GOOGLE_APPLICATION_CREDENTIALS is unset.
+    register_tool_factory(
+        lambda agent_id="coder": __import__(
+            "app.tools.gee_tool", fromlist=["create_gee_tools"]
+        ).create_gee_tools(agent_id),
+        category="geospatial",
+        intended_agents=_CODING_AGENTS + _RESEARCH_AGENTS,
+        priority=88,
+    )
+
+    # Web research — every dispatch-handling agent should have web_search;
+    # web_fetch + youtube transcripts more selectively.
+    register_tool_factory(
+        lambda agent_id="*": [
+            __import__("app.tools.web_search", fromlist=["web_search"]).web_search,
+        ],
+        category="web_research",
+        intended_agents=("*",),
+        priority=90,
+    )
+
+    # Scrape (Firecrawl) — researcher + debugger.  Optional; returns []
+    # if firecrawl-py isn't installed or FIRECRAWL_API_KEY is unset.
+    register_tool_factory(
+        lambda agent_id="researcher": _safe_call(
+            "app.tools.firecrawl_tools", "create_firecrawl_tools"
+        ),
+        category="scrape",
+        intended_agents=("researcher", "debugger", "coordinator"),
+        priority=88,
+    )
+
+    # Knowledge — enterprise KB + research KB + experiential journal.
+    register_tool_factory(
+        lambda agent_id="debugger": [
+            __import__("app.knowledge_base.tools", fromlist=["KnowledgeSearchTool"]).KnowledgeSearchTool(),
+        ],
+        category="knowledge",
+        intended_agents=("*",),
+        priority=90,
+    )
+    for mod, fn in [
+        ("app.experiential.tools", "get_experiential_tools"),
+        ("app.episteme.tools", "get_episteme_tools"),
+    ]:
+        register_tool_factory(
+            (lambda mod=mod, fn=fn: lambda agent_id="debugger":
+                _safe_call(mod, fn, "coder"))(),
+            category="knowledge",
+            intended_agents=_CODING_AGENTS + _RESEARCH_AGENTS,
+            priority=68,
+        )
+
+    # Introspection — tensions store (read-side useful, write-side via
+    # post-task hooks).  Hardcoded to "coder" identity for the same
+    # reason as memory — all coding-crew specialists share scope.
+    register_tool_factory(
+        lambda agent_id="debugger": _safe_call(
+            "app.tensions.tools", "get_tension_tools", "coder"
+        ),
+        category="introspection",
+        intended_agents=_CODING_AGENTS + _RESEARCH_AGENTS,
+        priority=35,
+    )
+
+
+def _safe_call(modpath: str, attr: str, *args) -> list:
+    """Invoke a tool factory in the safest possible way.  Used by
+    :func:`_register_builtin_tool_factories` so optional / unconfigured
+    tool sources degrade silently rather than failing the whole registry.
+    """
+    try:
+        mod = __import__(modpath, fromlist=[attr])
+        result = getattr(mod, attr)(*args)
+        if isinstance(result, list):
+            return result
+        return [result] if result else []
+    except Exception:
+        return []
 
 
 _agent_patched = False

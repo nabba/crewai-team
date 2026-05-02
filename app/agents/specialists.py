@@ -35,40 +35,6 @@ def _safe(factory, *args, **kwargs):
         return []
 
 
-# ── Domain-tool stop-gap (Week 1 audit fix — replaces ad-hoc holes) ─
-#
-# Phase 3 of the 2026-05-02 deep audit found that none of the four
-# delegated_coding specialists (designer/coordinator/executor/debugger)
-# had `gee_run_script` attached, despite the routing prompt explicitly
-# naming GEE for satellite-imagery tasks.  Root cause: the standalone
-# `coder` agent factory wires GEE in directly; the specialist factories
-# were a separate code path that never got the import.
-#
-# This helper is the stop-gap.  Week 2 of the audit ships a declarative
-# tool-registry mechanism (`assemble_tools(agent_id, categories=...)`)
-# that supersedes both this helper and the rest of the open-coded tool
-# wiring across the four specialist factories.  When that lands, this
-# helper and its callers can be deleted in one PR.
-#
-# Until then: every coding-crew specialist gets the same domain tools.
-def _extend_specialist_domain_tools(tools: list) -> None:
-    """Append cross-specialist domain tools (geospatial, etc.) to *tools*.
-
-    Each domain tool source is wrapped in `_safe` — missing dependencies
-    or unconfigured services degrade silently rather than killing the
-    crew.  Order matches priority: most-likely-needed last so cap-by-
-    priority dropping kicks in on less-needed tools first.
-    """
-    # Geospatial — `gee_run_script` for Google Earth Engine.  Returns []
-    # when GOOGLE_APPLICATION_CREDENTIALS is unset (the standalone case
-    # at agent factory startup), so this is safe to call unconditionally.
-    tools.extend(_safe(
-        lambda: __import__(
-            "app.tools.gee_tool", fromlist=["create_gee_tools"]
-        ).create_gee_tools("coder")
-    ))
-
-
 # ── Web specialist ───────────────────────────────────────────────────
 # Handles: web search, page fetch, youtube transcripts, browser
 # navigation, firecrawl scraping, MCP-served web tools.
@@ -354,19 +320,18 @@ _DESIGN_BACKSTORY = (
 
 def create_design_specialist(force_tier: str | None = None) -> Agent:
     llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
-    tools: list = []
 
-    # Read-only tooling — design is a thinking phase, not a writing phase.
-    from app.tools.memory_tool import create_memory_tools
-    from app.tools.scoped_memory_tool import create_scoped_memory_tools
-    from app.tools.mem0_tools import create_mem0_tools
-    from app.tools.file_manager import file_manager
-    from app.tools.attachment_reader import read_attachment
-    tools.extend(create_memory_tools(collection="coding"))
-    tools.extend(create_scoped_memory_tools("coder"))
-    tools.extend(create_mem0_tools("coder"))
-    tools.extend([file_manager, read_attachment])
-    _extend_specialist_domain_tools(tools)
+    # 2026-05-02 audit Week 2 (Shift 1) — declarative assembly replaces
+    # the open-coded tools.extend(...) that previously lived here.  The
+    # declared categories list this agent's intent; the registry resolves
+    # which concrete tools an agent named "designer" gets.  Adding a new
+    # tool source is now a one-line register_tool_factory(...) call in
+    # base_crew._register_builtin_tool_factories — no further edit here.
+    from app.crews.base_crew import assemble_tools
+    tools = assemble_tools(
+        "designer",
+        categories=("memory", "filesystem", "geospatial", "knowledge"),
+    )
 
     return Agent(
         role="Design Specialist",
@@ -386,21 +351,15 @@ def create_design_specialist(force_tier: str | None = None) -> Agent:
 
 def create_execution_specialist(force_tier: str | None = None) -> Agent:
     llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
-    tools: list = []
-    from app.tools.file_manager import file_manager
-    from app.tools.attachment_reader import read_attachment
-    tools.extend([file_manager, read_attachment])
 
-    # Code execution tools
-    for mod, fn, args in [
-        ("app.tools.code_execution", "create_code_tools", ()),
-        ("app.tools.sandbox_tools", "create_sandbox_tools", ()),
-        ("app.tools.bridge_tools", "create_bridge_tools", ("coder",)),
-    ]:
-        tools.extend(_safe(
-            lambda m=mod, f=fn, a=args: __import__(m, fromlist=[f]).__dict__[f](*a),
-        ))
-    _extend_specialist_domain_tools(tools)
+    # 2026-05-02 audit Week 2 — declarative assembly.  Executor RUNS the
+    # code so it gets sandbox/bridge in addition to filesystem + geospatial
+    # so it can directly invoke gee_run_script for satellite tasks.
+    from app.crews.base_crew import assemble_tools
+    tools = assemble_tools(
+        "executor",
+        categories=("filesystem", "code_execution", "geospatial"),
+    )
 
     return Agent(
         role="Execution Specialist",
@@ -430,33 +389,18 @@ _DEBUG_BACKSTORY = (
 
 def create_debug_specialist(force_tier: str | None = None) -> Agent:
     llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
-    tools: list = []
-    from app.knowledge_base.tools import KnowledgeSearchTool
-    tools.append(KnowledgeSearchTool())
 
-    # File + attachment access — the coordinator and execution specialist
-    # both have these; the debug specialist historically did not, so when
-    # the coding crew was (mis-)routed a file-heavy task and delegated to
-    # Debug for "what's going wrong", Debug had no way to actually look
-    # at the input file.  Same pattern as the 2026-04-24 desktop-agent fix.
-    from app.tools.file_manager import file_manager
-    from app.tools.attachment_reader import read_attachment
-    tools.extend([file_manager, read_attachment])
-
-    # Experiential, tensions, team decisions
-    for mod, fn, args in [
-        ("app.experiential.tools", "get_experiential_tools", ("coder",)),
-        ("app.tensions.tools", "get_tension_tools", ("coder",)),
-        ("app.episteme.tools", "get_episteme_tools", ("coder",)),
-    ]:
-        tools.extend(_safe(
-            lambda m=mod, f=fn, a=args: __import__(m, fromlist=[f]).__dict__[f](*a),
-        ))
-
-    # Web search — for known-error patterns ("stack trace ...")
-    from app.tools.web_search import web_search
-    tools.append(web_search)
-    _extend_specialist_domain_tools(tools)
+    # 2026-05-02 audit Week 2 — declarative assembly.  Debug specialist
+    # diagnoses failures, so it gets web_search for stack-trace lookups,
+    # knowledge for past-incident context, introspection for tensions,
+    # filesystem to inspect inputs, and geospatial because debugging GEE
+    # scripts often needs to actually run a corrected version.
+    from app.crews.base_crew import assemble_tools
+    tools = assemble_tools(
+        "debugger",
+        categories=("filesystem", "knowledge", "web_research",
+                    "introspection", "geospatial"),
+    )
 
     return Agent(
         role="Debug Specialist",
@@ -486,18 +430,16 @@ _CODE_COORD_BACKSTORY = compose_backstory("coder") + (
 
 def create_coding_coordinator(force_tier: str | None = None) -> Agent:
     llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
-    tools: list = []
 
-    from app.tools.memory_tool import create_memory_tools
-    from app.tools.scoped_memory_tool import create_scoped_memory_tools
-    from app.tools.mem0_tools import create_mem0_tools
-    from app.tools.file_manager import file_manager
-    from app.tools.attachment_reader import read_attachment
-    tools.extend(create_memory_tools(collection="coding"))
-    tools.extend(create_scoped_memory_tools("coder"))
-    tools.extend(create_mem0_tools("coder"))
-    tools.extend([file_manager, read_attachment])
-    _extend_specialist_domain_tools(tools)
+    # 2026-05-02 audit Week 2 — declarative assembly.  Coordinator owns
+    # the design + delegates execution; gets memory + filesystem for the
+    # design work, plus geospatial so it knows the tool exists when
+    # writing a script that delegates to Execution Specialist.
+    from app.crews.base_crew import assemble_tools
+    tools = assemble_tools(
+        "coordinator",
+        categories=("memory", "filesystem", "geospatial", "knowledge"),
+    )
 
     return Agent(
         role="Coding Coordinator",
