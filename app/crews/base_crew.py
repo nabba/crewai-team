@@ -1062,6 +1062,21 @@ def _register_builtin_tool_factories() -> None:
         priority=35,
     )
 
+    # Dataset discovery — curated index of geospatial / forest /
+    # remote-sensing / climate / population / boundary datasets.
+    # Returns relevant datasets with access patterns + caveats so the
+    # design phase doesn't default to Hansen-only when (e.g.) Besnard
+    # 2021 forest age would be a better answer.  See
+    # app/tools/dataset_search_tool.py.
+    register_tool_factory(
+        lambda agent_id="researcher": __import__(
+            "app.tools.dataset_search_tool", fromlist=["create_dataset_search_tools"]
+        ).create_dataset_search_tools(agent_id),
+        category="knowledge",
+        intended_agents=("*",),
+        priority=85,
+    )
+
     # Forge — agent-driven tool generation (H9 audit fix).  The forge
     # subsystem lets a coding agent design + register a new tool when
     # the existing inventory doesn't cover a need.  Returns None when
