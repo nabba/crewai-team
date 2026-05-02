@@ -54,6 +54,71 @@ each crew's agent file under `app/agents/`):
 | `rank_emails` / `check_email` (PIM) | pim | inline in [`app/tools/email_tools.py`](../app/tools/email_tools.py) |
 | `recovery_loop` strategies (refusal handling) | all | [`docs/RECOVERY_LOOP.md`](RECOVERY_LOOP.md) |
 
+### Watchdog (request-path timeouts)
+
+Every `handle_task` call runs under a progressive timeout. A single
+hard wall-clock timeout couldn't distinguish "still making progress"
+from "stalled" — d=9 deep research legitimately takes 15–30 min, but a
+stuck retry-loop that cycles for 45 min is pure waste. The watchdog
+keeps a task alive as long as it's *demonstrably* doing useful work
+and kills it as soon as that signal goes flat.
+
+**Phase flow** (in [`app/main.py`](../app/main.py), around `handle_task` /
+`_evaluate_stall`):
+
+| Phase | Trigger | Action |
+|---|---|---|
+| **Soft checkpoint** @ 900s (15 min) | Task hasn't returned | Run `_evaluate_stall`. If alive, send a "still working" Signal note and enter extension mode |
+| **Progress-gated extension** | Every 30s while extending | Run `_evaluate_stall`; finished → return; stalled → kill; otherwise wait another window |
+| **Hard cap** @ 2700s (45 min) | Cap reached | Abandon thread; user gets a "hit hard cap" message |
+
+`_evaluate_stall(task_id, elapsed_secs)` is a tiered read over three
+process-wide heartbeats. **First match wins** — tiers are ordered by
+strictness:
+
+| # | Tier | Fires when | Threshold | Source heartbeat |
+|---|---|---|---|---|
+| 1 | `output-stall` | A tool recorded a partial, then nothing for ≥ 5 min | 300s | `task_progress.seconds_since_last_output_progress` |
+| 2 | `crew-zero-progress` | Elapsed ≥ 10 min, **never** any partial, AND tool-activity heartbeat is stale (≥ 4 min, or never seen) | 600s + 240s tool-quiet | `tools_timeout.seconds_since_last_tool_activity` |
+| 3 | `zero-output` | Elapsed ≥ 20 min, **never** any partial (regardless of tool state) | 1200s | `task_progress.output_progress_count == 0` |
+| 4 | `llm-stall` | LLM heartbeat stale ≥ 4 min | 240s | `rate_throttle.seconds_since_last_llm_activity` |
+
+**Heartbeats** ticked from three independent sources, each detecting a
+different failure mode:
+
+| Heartbeat | Ticked by | Catches | Misses |
+|---|---|---|---|
+| Output progress | Tools that call `record_output_progress` (research orchestrator, search-result tools) | Slow draining, hallucination loops with no deliverable | Un-instrumented tools — falls back to tool-activity |
+| Tool activity | Every `BaseTool.run` entry/exit, via the `tools_timeout` monkey-patch | Stuck retry-loops (provider 401/429 hammering — no tools fire), hung MCP / external calls (single tool wedged > 4 min) | A genuinely slow single-call (heartbeat reads stale during the call) — tier-2's 240s threshold leaves margin past the longest default tool budget (180s) |
+| LLM activity | Every LiteLLM completion (success **or** failure) | Hung threads, provider-side outages | Retry-loops — failures still tick the heartbeat warm; tier 2 is the answer |
+
+**Tier 2 (`crew-zero-progress`) was added 2026-05-02** after a
+20-minute coding-crew dispatch produced zero output, masked by an
+Anthropic credit-exhausted retry-loop that kept the LLM heartbeat warm
+the whole time. The tool-activity gate is what distinguishes "LLM
+genuinely cycling through tools" from "LLM stuck without external
+action." Strictly tighter than tier 3 — the 1200s zero-output
+backstop remains in place for the slow-but-cycling case (tools firing
+every minute but no deliverable, e.g. sequential GEE `getInfo()`
+calls).
+
+**Inertness guarantees** (the watchdog must not kill legitimate work):
+
+* High-difficulty research that ticks tool-activity every minute or two
+  → tier 2 stays inert; tier 3's 20-min budget is the relevant gate.
+* Tasks that emit partials → tier 2 never reachable (tier 1 supersedes
+  on the output-progress branch).
+* Sub-10-min tasks → tier 2 never reachable.
+
+**Operator messaging** (kill-message branches in `handle_task`):
+
+| Tier | User-facing message style |
+|---|---|
+| `output-stall` | "Stopped producing partial results — delivering what's been streamed so far" |
+| `crew-zero-progress` | "10+ min, no partial, no tool activity — likely stuck retry-loop or hung external call" |
+| `zero-output` | "20+ min, no partial — researcher likely looping on a blocked source" |
+| `llm-stall` | "No LLM activity for several minutes — provider outage or stuck retry" |
+
 ### Deterministic command surface
 
 `try_command()` in `commands.py` runs *before* LLM routing. Matched

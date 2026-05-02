@@ -1229,6 +1229,127 @@ class _MessageDedup:
 _msg_dedup = _MessageDedup()
 
 
+# ── Watchdog thresholds (request-path stall detection) ─────────────────
+#
+# See ``_evaluate_stall`` below and ``docs/CONTROL_PLANES.md`` §"Watchdog
+# (request-path timeouts)" for the full flow. Module-level so they can
+# be patched in tests without monkey-patching the closure.
+
+_SOFT_TIMEOUT_SECS = 900             # 15 min — soft checkpoint
+_HARD_TIMEOUT_SECS = 2700            # 45 min — absolute ceiling
+_STALL_THRESHOLD_SECS = 240          # 4 min w/o LLM return (loose)
+_OUTPUT_STALL_THRESHOLD_SECS = 300   # 5 min w/o partial result (tight)
+# Past this elapsed wall-clock with ZERO output-progress events ever
+# recorded, we kill even if the LLM is still cycling. Backstop for the
+# slow-but-cycling case (tools firing every minute, no deliverable yet).
+_ZERO_OUTPUT_KILL_SECS = 1200        # 20 min elapsed + zero partials → kill
+# Crew-zero-progress: tighter than zero-output, gated on the
+# tool-activity heartbeat. Fires when the system has been "thinking"
+# for a long time without any external action — the canonical
+# "stuck-in-LLM-retry-loop" or "MCP-tool-hung" signature. Strictly
+# tighter than the 1200s zero-output tier; leaves the 1200s backstop
+# in place for the slow-cycling case.
+_CREW_ZERO_PROGRESS_KILL_SECS = 600  # 10 min elapsed + zero partials + tool quiet
+_CREW_TOOL_QUIET_SECS = 240          # tool entry/exit must be ≥ this stale (or never)
+_PROGRESS_CHECK_EVERY = 30           # how often we re-check after soft
+
+
+def _evaluate_stall(task_id: str, elapsed_secs: float) -> tuple[str, float] | None:
+    """Tiered stall check used by ``handle_task``.
+
+    Pure function over the global heartbeat timestamps; module-level so
+    tests can drive it without spinning up the full request path.
+
+    Returns ``(kind, seconds)`` if the task should be killed, else None.
+    Tiers are checked in order of strictness — first match wins:
+
+      * **output-stall**       — a tool recorded a partial recently,
+                                 then stopped. Strict 5-min threshold.
+      * **crew-zero-progress** — > 10 min elapsed, never produced a
+                                 partial, AND the tool-activity heartbeat
+                                 is stale (no tool entry/exit for 4 min,
+                                 or never). Catches retry-loops where the
+                                 LLM keeps cycling but no work reaches
+                                 tools and no output appears.
+      * **zero-output**        — > 20 min elapsed, never produced a
+                                 partial. Backstop for the slow-cycling
+                                 case (tools firing, but no deliverable).
+      * **llm-stall**          — LLM heartbeat stale for 4+ min. Loose
+                                 fallback for hung threads.
+    """
+    from app.observability.task_progress import (
+        output_progress_count,
+        seconds_since_last_output_progress,
+    )
+    from app.rate_throttle import seconds_since_last_llm_activity
+    from app.tools_timeout import (
+        get_tool_timeout_count,
+        seconds_since_last_tool_activity,
+        seconds_since_last_tool_timeout,
+    )
+
+    out_stall = seconds_since_last_output_progress(task_id)
+
+    if out_stall is not None:
+        # Instrumented path: a tool recorded a partial at some point.
+        # Ignore LLM-activity AND tool-activity — output progress is
+        # the strictest signal and supersedes the looser tiers.
+        if out_stall > _OUTPUT_STALL_THRESHOLD_SECS:
+            return ("output-stall", out_stall)
+        return None
+
+    progress_count = output_progress_count(task_id)
+
+    # Crew-zero-progress: tighter than zero-output. The tool-activity
+    # heartbeat distinguishes "LLM is genuinely cycling through tools"
+    # (heartbeat fresh — give it more time) from "LLM is stuck without
+    # any external action" (heartbeat stale or never — kill earlier).
+    # The 2026-05-02 production failure was the second case: 20 min of
+    # Anthropic credit-exhausted retries kept the LLM-activity stamp
+    # warm, but no tools fired and no partial appeared. This tier kills
+    # that pattern at 10 min instead of 20.
+    if elapsed_secs > _CREW_ZERO_PROGRESS_KILL_SECS and progress_count == 0:
+        tool_idle = seconds_since_last_tool_activity()
+        if tool_idle is None or tool_idle > _CREW_TOOL_QUIET_SECS:
+            logger.info(
+                "stall: crew-zero-progress %.1fs elapsed (tool_idle=%s "
+                "task_id=%s)",
+                elapsed_secs,
+                f"{tool_idle:.1f}s" if tool_idle is not None else "never",
+                task_id,
+            )
+            return ("crew-zero-progress", elapsed_secs)
+
+    # Zero-output backstop: catches the slow-cycling case — tools are
+    # firing (so crew-zero-progress stays inert), but no deliverable
+    # has ever appeared. 20 min is "any legitimate task would have said
+    # SOMETHING by now" and kills hallucination loops that ship nothing.
+    if elapsed_secs > _ZERO_OUTPUT_KILL_SECS and progress_count == 0:
+        return ("zero-output", elapsed_secs)
+
+    # Loosest fallback: LLM heartbeat. Catches hung threads when the
+    # task isn't output-instrumented.
+    llm_stall = seconds_since_last_llm_activity()
+    if llm_stall is not None and llm_stall > _STALL_THRESHOLD_SECS:
+        # Phase E2: enrich the kill diagnostic with tool-activity state.
+        # Helps distinguish "tool wedged mid-call" from "agent looped
+        # through tools without progress".
+        tool_idle = seconds_since_last_tool_activity()
+        tool_timeout_age = seconds_since_last_tool_timeout()
+        tool_timeouts = get_tool_timeout_count()
+        logger.info(
+            "stall: llm-stall %.1fs (tool_idle=%s tool_timeout_age=%s "
+            "tool_timeouts=%d task_id=%s)",
+            llm_stall,
+            f"{tool_idle:.1f}s" if tool_idle is not None else "n/a",
+            f"{tool_timeout_age:.1f}s" if tool_timeout_age is not None else "n/a",
+            tool_timeouts,
+            task_id,
+        )
+        return ("llm-stall", llm_stall)
+    return None
+
+
 async def handle_task(sender: str, text: str, attachments: list = None,
                       msg_timestamp: int = 0, queue_id: int | None = None):
     """Process a Signal message.  queue_id references the inbound_queue
@@ -1452,7 +1573,8 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         #        longer than this; past the cap the thread is abandoned and
         #        the user gets a "hit hard cap" message.
         #
-        # Progress signal is a two-tier check:
+        # Progress signal is a layered check (see ``_evaluate_stall``
+        # for the full tier list):
         #
         #   (1) Output-progress (PREFERRED, tighter) — "the task produced
         #       a user-visible partial result in the last N seconds".
@@ -1464,47 +1586,27 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         #       would.  Tasks using the ``research_orchestrator`` tool
         #       (or any tool that streams partials) get this.
         #
-        #   (2) LLM-activity fallback — "any LLM call returned
+        #   (2) Tool-activity (mid-tier) — "any tool entered or exited
+        #       in the last N seconds".  Distinguishes "LLM is genuinely
+        #       cycling through tools" (heartbeat fresh) from "LLM is
+        #       stuck without external action" (heartbeat stale or
+        #       never).  Drives the ``crew-zero-progress`` tier — kills
+        #       at 10 min when partials never appeared AND no tool
+        #       ran recently.  See ``app/tools_timeout.py`` for the
+        #       monkey-patch that ticks this on every BaseTool.run.
+        #
+        #   (3) LLM-activity fallback — "any LLM call returned
         #       (success or failure) in the last N seconds".  Used when
         #       the task isn't instrumented for partial output yet
         #       (backward compat: every existing tool still works, just
-        #       with the looser stall threshold).
+        #       with the looser stall threshold).  Cannot detect retry
+        #       loops (failures keep the heartbeat warm) — tier (2) is
+        #       the answer for that pattern.
         #
         # The context-var ``current_task_id`` is set here so tools can
         # record progress without having ``sender`` threaded through
         # every call signature.
-        from app.rate_throttle import seconds_since_last_llm_activity
-        from app.observability.task_progress import (
-            current_task_id,
-            output_progress_count,
-            reset_task,
-            seconds_since_last_output_progress,
-        )
-        # Phase E2: tool-activity heartbeat. A fourth diagnostic signal
-        # alongside output / zero-output / llm-activity. Logged on kill
-        # so we can distinguish "tool stuck mid-call" from "agent loop
-        # without progress". Does not change kill thresholds.
-        from app.tools_timeout import (
-            seconds_since_last_tool_activity,
-            seconds_since_last_tool_timeout,
-            get_tool_timeout_count,
-        )
-
-        _SOFT_TIMEOUT_SECS = 900         # 15 min — soft checkpoint
-        _HARD_TIMEOUT_SECS = 2700        # 45 min — absolute ceiling
-        _STALL_THRESHOLD_SECS = 240      # 4 min w/o LLM return (loose)
-        _OUTPUT_STALL_THRESHOLD_SECS = 300   # 5 min w/o partial result (tight)
-        # Past this elapsed wall-clock with ZERO output-progress events
-        # ever recorded, we kill even if the LLM is still cycling. This
-        # is the hallucination-loop catch: the LLM keeps "thinking"
-        # (writing self-reflection skills, meta-memory rows) but ships
-        # nothing the user can see. Before this, the task was allowed
-        # to run to the full hard cap (45 min) on the theory it might
-        # still produce a final blob — and in practice that never
-        # happened; it just ate budget and produced three useless
-        # "Still working" heartbeats.
-        _ZERO_OUTPUT_KILL_SECS = 1200    # 20 min elapsed + zero partials → kill
-        _PROGRESS_CHECK_EVERY = 30       # how often we re-check after soft
+        from app.observability.task_progress import current_task_id, reset_task
 
         _task_started_at = _time.monotonic()
         _ctx_token = current_task_id.set(str(sender or ""))
@@ -1513,61 +1615,14 @@ async def handle_task(sender: str, text: str, attachments: list = None,
         )
 
         def _stall_check() -> tuple[str, float] | None:
-            """Return (kind, seconds) if the task should be killed, else None.
+            """Delegate to the module-level :func:`_evaluate_stall`.
 
-            Tiered check in order of strictness:
-
-              * **output-stall**   — a tool recorded partial output
-                                     recently, then stopped.  Strict
-                                     5-min threshold; kills fast.
-              * **zero-output**    — task has been running > 20 min
-                                     and has NEVER recorded a partial
-                                     result.  Catches hallucination-
-                                     loops (LLM cycling, no deliverable).
-              * **llm-stall**      — loose fallback.  LLM activity
-                                     stopped entirely for 4+ min.
-                                     Catches hung threads / provider
-                                     outages.
+            See ``_evaluate_stall`` for the tier list and thresholds.
             """
-            task_id = str(sender or "")
-            elapsed = _time.monotonic() - _task_started_at
-            out_stall = seconds_since_last_output_progress(task_id)
-
-            if out_stall is not None:
-                # Instrumented path: a tool recorded a partial at some
-                # point.  Ignore LLM-activity — it's strictly looser.
-                if out_stall > _OUTPUT_STALL_THRESHOLD_SECS:
-                    return ("output-stall", out_stall)
-                return None
-
-            # Zero-output path: task has never emitted a partial.  If
-            # we're past the "any legitimate task would have said
-            # SOMETHING by now" threshold, kill.  Prevents the
-            # "hallucinate for 45 min, ship nothing" failure mode.
-            if elapsed > _ZERO_OUTPUT_KILL_SECS and output_progress_count(task_id) == 0:
-                return ("zero-output", elapsed)
-
-            # Loosest fallback: LLM heartbeat.  Catches hung threads
-            # when the task isn't output-instrumented.
-            llm_stall = seconds_since_last_llm_activity()
-            if llm_stall is not None and llm_stall > _STALL_THRESHOLD_SECS:
-                # Phase E2: enrich the kill diagnostic with tool-activity
-                # state. Helps distinguish "tool wedged mid-call" from
-                # "agent looped through tools without progress".
-                tool_idle = seconds_since_last_tool_activity()
-                tool_timeout_age = seconds_since_last_tool_timeout()
-                tool_timeouts = get_tool_timeout_count()
-                logger.info(
-                    "stall: llm-stall %.1fs (tool_idle=%s tool_timeout_age=%s "
-                    "tool_timeouts=%d task_id=%s)",
-                    llm_stall,
-                    f"{tool_idle:.1f}s" if tool_idle is not None else "n/a",
-                    f"{tool_timeout_age:.1f}s" if tool_timeout_age is not None else "n/a",
-                    tool_timeouts,
-                    task_id,
-                )
-                return ("llm-stall", llm_stall)
-            return None
+            return _evaluate_stall(
+                task_id=str(sender or ""),
+                elapsed_secs=_time.monotonic() - _task_started_at,
+            )
 
         try:
             # ── Phase 1: wait up to soft timeout ──
@@ -1658,7 +1713,21 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             except Exception:
                 logger.debug("result_cache.invalidate_by_task on TIMEOUT failed",
                              exc_info=True)
-            if "zero-output" in reason.lower():
+            if "crew-zero-progress" in reason.lower():
+                # Stricter sibling of zero-output: tool-activity heartbeat
+                # was stale alongside zero partials, so we killed at 10 min
+                # instead of 20. The signature is "stuck thinking, not
+                # acting" — provider retry-loop or a hung external call.
+                result = (
+                    "Sorry — your request ran for 10+ minutes without "
+                    "producing any partial result and without any tool "
+                    "activity in the last few minutes. This usually means "
+                    "a stuck retry loop (provider outage or credit "
+                    "exhausted) or a hung external call. Please try "
+                    "again — if it recurs, narrow the scope or break the "
+                    "request into smaller parts."
+                )
+            elif "zero-output" in reason.lower():
                 result = (
                     "Sorry — your request ran for 20+ minutes without "
                     "producing any partial result. This usually means the "
