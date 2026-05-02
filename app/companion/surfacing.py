@@ -46,15 +46,50 @@ class SurfaceDecision:
 def should_surface(idea: IdeaRecord, config: CompanionConfig, *,
                    now: float | None = None) -> SurfaceDecision:
     """Threshold + panel + cooldown check. Pure — does not write any state."""
+    from app.observability import valve_audit
+
     if not (idea.text or "").strip():
+        valve_audit.log_rejection(
+            filter_id="F8", callsite="app/companion/surfacing.py:50",
+            input_text=idea.text or "", reason="no_text",
+            extra={"workspace_id": idea.workspace_id},
+        )
         return SurfaceDecision(False, "no_text")
     if idea.novelty < config.novelty_threshold:
+        valve_audit.log_rejection(
+            filter_id="F8", callsite="app/companion/surfacing.py:52",
+            input_text=idea.text, reason="below_novelty",
+            score=float(idea.novelty), threshold=float(config.novelty_threshold),
+            extra={"workspace_id": idea.workspace_id, "quality": idea.quality,
+                   "panel_score": idea.panel_score},
+        )
         return SurfaceDecision(False, "below_novelty")
     if idea.quality < config.surface_threshold:
+        valve_audit.log_rejection(
+            filter_id="F8", callsite="app/companion/surfacing.py:54",
+            input_text=idea.text, reason="below_quality",
+            score=float(idea.quality), threshold=float(config.surface_threshold),
+            extra={"workspace_id": idea.workspace_id, "novelty": idea.novelty,
+                   "panel_score": idea.panel_score},
+        )
         return SurfaceDecision(False, "below_quality")
     if idea.panel_score < config.panel_threshold:
+        valve_audit.log_rejection(
+            filter_id="F8", callsite="app/companion/surfacing.py:56",
+            input_text=idea.text, reason="below_panel",
+            score=float(idea.panel_score), threshold=float(config.panel_threshold),
+            extra={"workspace_id": idea.workspace_id, "novelty": idea.novelty,
+                   "quality": idea.quality},
+        )
         return SurfaceDecision(False, "below_panel")
     if _recently_surfaced(idea.workspace_id, now=now):
+        # Cooldown is intentionally narrow (rate-limit, not quality) — log but
+        # treat as separate from substantive rejections at replay time.
+        valve_audit.log_rejection(
+            filter_id="F8", callsite="app/companion/surfacing.py:58",
+            input_text=idea.text, reason="cooldown",
+            extra={"workspace_id": idea.workspace_id},
+        )
         return SurfaceDecision(False, "cooldown")
     return SurfaceDecision(True, "ok")
 

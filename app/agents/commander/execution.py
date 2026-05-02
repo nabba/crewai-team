@@ -29,12 +29,25 @@ def _passes_quality_gate(result: str, crew_name: str) -> bool:
 
     Returns True if the result appears to be usable output.
     """
+    from app.observability import valve_audit
+
     if not result or len(result.strip()) < 20:
+        valve_audit.log_rejection(
+            filter_id="F4", callsite="app/agents/commander/execution.py:33",
+            input_text=result, reason="too_short",
+            score=float(len(result.strip()) if result else 0), threshold=20.0,
+            extra={"crew_name": crew_name},
+        )
         return False
 
     text = result.strip()
     for pattern in _QUALITY_FAILURE_PATTERNS:
         if pattern.match(text):
+            valve_audit.log_rejection(
+                filter_id="F4", callsite="app/agents/commander/execution.py:38",
+                input_text=text, reason="quality_failure_pattern",
+                extra={"crew_name": crew_name, "pattern": pattern.pattern},
+            )
             return False
 
     # Detect meta-commentary: model describing what it will do instead of doing it.
@@ -43,12 +56,24 @@ def _passes_quality_gate(result: str, crew_name: str) -> bool:
         for pattern in _META_COMMENTARY_PATTERNS:
             if pattern.search(text):
                 logger.info(f"quality_gate: meta-commentary detected ({len(text)} chars)")
+                valve_audit.log_rejection(
+                    filter_id="F4", callsite="app/agents/commander/execution.py:46",
+                    input_text=text, reason="meta_commentary",
+                    score=float(len(text)), threshold=400.0,
+                    extra={"crew_name": crew_name, "pattern": pattern.pattern},
+                )
                 return False
 
     # For coding tasks, expect at least a code block or code-like content
     if crew_name == "coding":
         has_code = "```" in text or "def " in text or "function " in text or "class " in text
         if not has_code and len(text) < 100:
+            valve_audit.log_rejection(
+                filter_id="F4", callsite="app/agents/commander/execution.py:52",
+                input_text=text, reason="coding_no_code_block",
+                score=float(len(text)), threshold=100.0,
+                extra={"crew_name": crew_name},
+            )
             return False
 
     return True

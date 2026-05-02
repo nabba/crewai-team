@@ -256,6 +256,19 @@ def detect_refusal(
     # Density check — how much of the text is actually refusal language?
     density = _refusal_density(text)
     if density < _MIN_DENSITY and not force:
+        # Borderline case: refusal phrase matched, but density too low.
+        # Logged for the valve audit — the filter MAY be too narrow here.
+        try:
+            from app.observability import valve_audit
+            valve_audit.log_rejection(
+                filter_id="F1", callsite="app/recovery/refusal_detector.py:259",
+                input_text=text, reason="density_below_threshold",
+                score=round(density, 4), threshold=_MIN_DENSITY,
+                extra={"category": category, "matched_phrase": phrase,
+                       "base_confidence": base_conf},
+            )
+        except Exception:
+            pass
         return None
 
     # Final confidence blends the strongest phrase's confidence with
@@ -273,6 +286,19 @@ def detect_refusal(
             "refusal_detector: confidence %.2f < threshold %.2f for %r — skipping",
             confidence, threshold, phrase,
         )
+        # Borderline case: refusal phrase + density passed, but composite
+        # confidence ended below threshold. Prime candidate for valve audit.
+        try:
+            from app.observability import valve_audit
+            valve_audit.log_rejection(
+                filter_id="F1", callsite="app/recovery/refusal_detector.py:276",
+                input_text=text, reason="confidence_below_threshold",
+                score=round(confidence, 3), threshold=round(threshold, 3),
+                extra={"category": category, "matched_phrase": phrase,
+                       "base_confidence": base_conf, "density": round(density, 4)},
+            )
+        except Exception:
+            pass
         return None
 
     return RefusalSignal(

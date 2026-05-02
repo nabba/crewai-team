@@ -1825,6 +1825,32 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         logger.debug("idle_scheduler: companion idle jobs skipped",
                      exc_info=True)
 
+    # ── Decentered reflection (no-self pass) ──────────────────────────────
+    # Complementary to the Narrative-Self track: clusters salience events
+    # by structural fingerprint and runs rolling-z anomaly detection on
+    # the V/A/C trace. Read-only — does not write to the experiential KB
+    # or mutate identity_claims.json. LIGHT — pure Python over JSONL.
+    def _decentered_pass() -> None:
+        try:
+            from app.affect.decentered import run_daily_pass
+            run_daily_pass()
+        except Exception:
+            logger.debug("idle_scheduler: decentered pass failed", exc_info=True)
+    jobs.append(("decentered-pass", _decentered_pass, JobWeight.LIGHT))
+
+    # ── Valve-audit replay (reducing-valve audit) ─────────────────────────
+    # Walks the prior day's valve_audit.jsonl, replays sampled rejections
+    # through a relaxed predicate (and optionally a second-opinion LLM)
+    # to detect filters that drop too aggressively. Cost-shed inside the
+    # job itself; LIGHT under normal load.
+    def _valve_audit_replay() -> None:
+        try:
+            from app.observability.valve_audit_replay import run_daily_replay
+            run_daily_replay()
+        except Exception:
+            logger.debug("idle_scheduler: valve-audit replay failed", exc_info=True)
+    jobs.append(("valve-audit-replay", _valve_audit_replay, JobWeight.LIGHT))
+
     return jobs
 
 
