@@ -353,7 +353,7 @@ _DESIGN_BACKSTORY = (
 
 
 def create_design_specialist(force_tier: str | None = None) -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="coding", force_tier=force_tier)
+    llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
     tools: list = []
 
     # Read-only tooling — design is a thinking phase, not a writing phase.
@@ -385,7 +385,7 @@ def create_design_specialist(force_tier: str | None = None) -> Agent:
 
 
 def create_execution_specialist(force_tier: str | None = None) -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="coding", force_tier=force_tier)
+    llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
     tools: list = []
     from app.tools.file_manager import file_manager
     from app.tools.attachment_reader import read_attachment
@@ -429,7 +429,7 @@ _DEBUG_BACKSTORY = (
 
 
 def create_debug_specialist(force_tier: str | None = None) -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="coding", force_tier=force_tier)
+    llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
     tools: list = []
     from app.knowledge_base.tools import KnowledgeSearchTool
     tools.append(KnowledgeSearchTool())
@@ -485,7 +485,7 @@ _CODE_COORD_BACKSTORY = compose_backstory("coder") + (
 
 
 def create_coding_coordinator(force_tier: str | None = None) -> Agent:
-    llm = create_specialist_llm(max_tokens=4096, role="coding", force_tier=force_tier)
+    llm = create_specialist_llm(max_tokens=8192, role="coding", force_tier=force_tier)
     tools: list = []
 
     from app.tools.memory_tool import create_memory_tools

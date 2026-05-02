@@ -2934,11 +2934,28 @@ class Commander:
             # below) must stay under 5 min for long crews — a known
             # limitation we accept for Week 1.  Week 2's lifecycle work
             # will add per-agent-step progress events.
+            # Week 1.5 fix: pass sender explicitly so we don't rely on
+            # current_task_id ContextVar inheritance (which seems to break
+            # when _handle_locked runs in a thread pool — verification on
+            # the 2026-05-02 18:07 dispatch showed _progress_count empty
+            # despite this code path executing).  Log on failure so a
+            # silent swallow doesn't hide the next regression.
+            _progress_tid = str(sender or "")
             try:
                 from app.observability.task_progress import record_output_progress
-                record_output_progress(note=f"crew dispatch: {crew_name}")
-            except Exception:
-                pass
+                record_output_progress(
+                    task_id=_progress_tid,
+                    note=f"crew dispatch: {crew_name}",
+                )
+                logger.info(
+                    "task_progress: crew dispatch %s tid=%s",
+                    crew_name, _progress_tid[-6:] or "(empty)",
+                )
+            except Exception as _prog_exc:
+                logger.warning(
+                    "task_progress emit failed at crew dispatch: %s",
+                    _prog_exc, exc_info=False,
+                )
             try:
                 if difficulty >= 5:
                     final_result, reflexion_exhausted = self._run_with_reflexion(
@@ -2956,9 +2973,19 @@ class Commander:
                 final_result = "Sorry, an internal error occurred while processing your request."
             try:
                 from app.observability.task_progress import record_output_progress
-                record_output_progress(note=f"crew complete: {crew_name}")
-            except Exception:
-                pass
+                record_output_progress(
+                    task_id=_progress_tid,
+                    note=f"crew complete: {crew_name}",
+                )
+                logger.info(
+                    "task_progress: crew complete %s tid=%s",
+                    crew_name, _progress_tid[-6:] or "(empty)",
+                )
+            except Exception as _prog_exc:
+                logger.warning(
+                    "task_progress emit failed at crew complete: %s",
+                    _prog_exc, exc_info=False,
+                )
 
             # S10: Run vetting + proactive scan in parallel (independent operations)
             # Skip proactive scan for easy tasks — saves 5-10s of LLM latency
@@ -3047,13 +3074,22 @@ class Commander:
             # Emit progress so the watchdog's output-stall timer resets
             # before critic/recovery/epistemic gates run their LLMs.
             # Week 1 audit fix for H5 (TIER_IMMUTABLE-safe path).
+            # Week 1.5: explicit task_id (sender) + log on failure.
             try:
                 from app.observability.task_progress import record_output_progress
                 record_output_progress(
-                    note=f"vetting complete: {crew_name} passed={_vet_passed}"
+                    task_id=_progress_tid,
+                    note=f"vetting complete: {crew_name} passed={_vet_passed}",
                 )
-            except Exception:
-                pass
+                logger.info(
+                    "task_progress: vetting complete %s passed=%s tid=%s",
+                    crew_name, _vet_passed, _progress_tid[-6:] or "(empty)",
+                )
+            except Exception as _prog_exc:
+                logger.warning(
+                    "task_progress emit failed at vetting complete: %s",
+                    _prog_exc, exc_info=False,
+                )
 
             # Retry on vetting failure at difficulty >= 7.  The original
             # crew produced something the vetting LLM flagged as
