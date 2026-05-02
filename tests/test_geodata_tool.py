@@ -184,19 +184,10 @@ class TestCDSE:
         assert sent_body["collections"] == ["SENTINEL-2"]
 
 
-# ── GEE curated catalogue ──────────────────────────────────────────
+# ── GEE provider (no curated discovery — delegated to dataset_search) ─
 
 
-class TestGEECurated:
-
-    def test_curated_list_is_nonempty_and_themed(self):
-        from app.tools.geodata_tool import gee_list_curated
-        out = gee_list_curated()
-        assert out["ok"] is True
-        assert out["count"] > 5
-        themes = {d["theme"] for d in out["datasets"]}
-        # At minimum, forest + land_cover + optical should be present.
-        assert {"forest", "land_cover", "optical"} <= themes
+class TestGEE:
 
     def test_query_aoi_without_ee_init_returns_error(self, monkeypatch):
         from app.tools import geodata_tool as gt
@@ -204,6 +195,26 @@ class TestGEECurated:
             out = gt.gee_query_aoi({"bbox": [10, 50, 11, 51], "geometry": {}, "name": "x"})
         assert out["ok"] is False
         assert "no creds" in out["error"]
+
+    def test_discover_does_not_enumerate_gee(self, monkeypatch):
+        # GEE catalog discovery is intentionally delegated to
+        # dataset_search; default discover_all should not call any GEE
+        # listing function.
+        from app.tools import geodata_tool as gt
+        with patch.object(gt, "gfw_list_datasets", return_value={"ok": True, "count": 0}), \
+             patch.object(gt, "cdse_list_collections", return_value={"ok": True, "count": 0}):
+            out = gt.discover_all()
+        assert "gee" not in out
+        assert set(out.keys()) == {"gfw", "cdse"}
+
+    def test_explicit_gee_request_returns_pointer(self, monkeypatch):
+        # If a caller insists on providers=['gee'], we surface a
+        # pointer to dataset_search rather than dropping silently.
+        from app.tools import geodata_tool as gt
+        out = gt.discover_all(providers=["gee"])
+        assert "gee" in out
+        assert out["gee"]["ok"] is False
+        assert "dataset_search" in out["gee"]["info"]
 
 
 # ── Parallel orchestrator ──────────────────────────────────────────

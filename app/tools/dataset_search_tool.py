@@ -328,7 +328,11 @@ def create_dataset_search_tools(agent_id: str = "researcher") -> list:
             "Returns markdown-formatted entries with: name, access "
             "pattern (GEE asset id, WFS URL, etc.), fast-use guidance, "
             "and caveats that matter (e.g. 'GEDI doesn't cover Estonia "
-            "north of 52°N')."
+            "north of 52°N').\n\n"
+            "After picking a dataset here, use `geodata_fetch` to "
+            "actually pull stats for an AOI (country / bbox / GeoJSON, "
+            "parallel multi-provider). Discovery → fetch is the "
+            "intended workflow."
         )
         args_schema: Type[BaseModel] = _DatasetSearchInput
 
