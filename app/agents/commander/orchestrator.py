@@ -3237,101 +3237,133 @@ class Commander:
                 and not getattr(self, "_vetting_retry_attempted", False)
             ):
                 self._vetting_retry_attempted = True
-                wrong_crew = _vetting_signals_wrong_crew(final_result, crew_name)
-                if wrong_crew:
-                    logger.warning(
-                        f"Vetting FAILED for {crew_name} at d={difficulty} — "
-                        f"verdict signals WRONG CREW (not just bad data); "
-                        f"asking commander to re-route"
-                    )
-                else:
-                    logger.warning(
-                        f"Vetting FAILED for {crew_name} at d={difficulty} — "
-                        f"retrying same crew once with reflexion hint"
-                    )
-                retry_task = _build_retry_task(
-                    original_task=d.get("task", user_input),
-                    issues=_vet_issues,
-                    wrong_crew=wrong_crew,
+
+                # ── Week 4 audit fix — single-decision retry logic ──
+                # Pre-Week-4 this block had nested if/else that picked
+                # between same-crew retry vs reroute via a keyword scan,
+                # then a fallback that ran the SAME failing crew if the
+                # reroute came up empty (Week 2.5 + 2.6 patched the
+                # specific loops, but the structural mess remained).
+                # Week 4 collapses every signal into ONE RetryDecision
+                # via decide_retry: capability-router (Week 3) is
+                # preferred; falls back to keyword scan; falls back to
+                # same-crew with reflexion hint.  Decision logged once
+                # with an explicit reason for telemetry mining.
+                from app.agents.commander.retry_decision import (
+                    decide_retry, build_retry_task, RetryAction,
                 )
-                try:
-                    if wrong_crew:
-                        # Re-route via commander.  Week 2.5 audit fix:
-                        # explicitly tell _route to exclude the failing
-                        # crew so fast-route / matrix / attachment-hint
-                        # short-circuits don't loop back to the same
-                        # crew.  Pre-fix, "create Estonia ... maps"
-                        # always matched fast-route → coding, so even
-                        # after a coding-crew vetting failure the reroute
-                        # immediately re-picked coding.  The post-filter
-                        # below is now a belt-and-braces against the LLM
-                        # router still picking the excluded crew.
-                        retry_decisions = self._route(
-                            user_input, sender, attachments=attachments,
-                            attachment_context=attachment_context,
-                            exclude_crew=crew_name,
+
+                def _capability_router_lookup(crew, task_text):
+                    """Capability-aware crew picker — used by
+                    decide_retry to find an alternative crew that
+                    actually has the required tools.  Beats the LLM
+                    router which kept picking the failing crew (see
+                    Week 2.5 verification dispatch v6)."""
+                    try:
+                        from app.agents.commander.capability_router import (
+                            categorize_task, find_crew_for_categories,
                         )
-                        retry_decisions = [
-                            rd for rd in (retry_decisions or [])
-                            if rd.get("crew") not in ("direct", crew_name)
-                        ]
-                        if retry_decisions:
-                            new_d = retry_decisions[0]
-                            new_crew = new_d.get("crew", crew_name)
-                            new_diff = new_d.get("difficulty", difficulty)
-                            new_task = new_d.get("task", retry_task)
+                        cats = categorize_task(task_text)
+                        if not cats:
+                            return None
+                        return find_crew_for_categories(
+                            cats, exclude=(crew, "direct"),
+                        )
+                    except Exception:
+                        return None
+
+                _decision = decide_retry(
+                    crew_name=crew_name,
+                    difficulty=difficulty,
+                    vet_passed=_vet_passed,
+                    vet_text=final_result,
+                    vet_issues=_vet_issues,
+                    attempt_count=0,
+                    capability_router=_capability_router_lookup,
+                    task_text=d.get("task", user_input),
+                )
+                logger.warning(
+                    "retry_decision: action=%s target=%s reason='%s'",
+                    _decision.action.value, _decision.target_crew,
+                    _decision.reason,
+                )
+
+                retry_task = build_retry_task(
+                    d.get("task", user_input), _vet_issues,
+                )
+
+                try:
+                    if _decision.action in (
+                        RetryAction.KEEP_ORIGINAL,
+                        RetryAction.DELIVER_WITH_NOTE,
+                    ):
+                        # Nothing more to retry.  KEEP_ORIGINAL fires
+                        # when vetting actually passed (defensive — we
+                        # only entered this block on failure, but
+                        # decide_retry could change its mind based on
+                        # disagreement signals later).  DELIVER_WITH_NOTE
+                        # fires when attempt_count >= 1 (loop guard);
+                        # not reachable in this block today since the
+                        # outer condition gates on
+                        # `not self._vetting_retry_attempted`.
+                        pass
+                    elif _decision.action == RetryAction.RETRY_DIFFERENT_CREW:
+                        _new_crew = _decision.target_crew or crew_name
+                        retry_result = self._run_crew(
+                            _new_crew, retry_task, difficulty=difficulty,
+                            conversation_history=_crew_history,
+                        )
+                        _retry_vet_tuple = vet_response_detailed(
+                            user_input, retry_result, _new_crew,
+                            difficulty, get_last_tier() or "unknown",
+                        )
+                        retry_vet = _retry_vet_tuple[0]
+                        retry_passed = _retry_vet_tuple[1]
+                        _retry_better = (
+                            retry_passed
+                            or len(retry_vet) > len(final_result) * 1.5
+                        )
+                        if _retry_better:
+                            final_result = retry_vet
+                            _vet_passed = retry_passed
+                            crew_name = _new_crew  # update for re-vet bookkeeping
                             logger.info(
-                                f"Re-routed: {crew_name} → {new_crew} "
-                                f"(d={new_diff}) after vetting flagged wrong crew"
+                                "retry: SUCCESS via different crew %s "
+                                "(passed=%s)",
+                                _new_crew, retry_passed,
                             )
-                            retry_result = self._run_crew(
-                                new_crew, new_task, difficulty=new_diff,
-                                conversation_history=_crew_history,
-                            )
-                            crew_name = new_crew  # update for re-vet bookkeeping
-                            difficulty = new_diff
                         else:
-                            # 2026-05-02 audit Week 2.6 — when re-route
-                            # produces no crew (LLM router stubbornly
-                            # picked the excluded crew + the post-filter
-                            # dropped it), DO NOT re-run the excluded
-                            # crew.  Pre-fix, this fallback called
-                            # _run_crew(crew_name=excluded, ...) which
-                            # negated Fix 3's whole purpose: same crew,
-                            # same retry task, same broken pattern, same
-                            # 180s timeouts.  Better: deliver the
-                            # original (failed) crew output as-is — the
-                            # critic + epistemic gates downstream will
-                            # add appropriate user-visible caveats.
-                            logger.warning(
-                                f"Reroute produced no usable crew (LLM router "
-                                f"picked '{crew_name}' or 'direct' only after "
-                                f"exclusion).  Delivering the original failed "
-                                f"output rather than re-running the excluded "
-                                f"crew — would have looped indefinitely."
+                            logger.info(
+                                "retry: different-crew %s did not improve; "
+                                "keeping original", _new_crew,
                             )
-                            retry_result = final_result
-                    else:
+                    else:  # RetryAction.RETRY_SAME_CREW
                         retry_result = self._run_crew(
                             crew_name, retry_task, difficulty=difficulty,
                             conversation_history=_crew_history,
                         )
-                    # Re-vet the retry
-                    _retry_vet_tuple = vet_response_detailed(
-                        user_input, retry_result, crew_name,
-                        difficulty, get_last_tier() or "unknown",
-                    )
-                    retry_vet = _retry_vet_tuple[0]
-                    retry_passed = _retry_vet_tuple[1]
-                    if retry_passed or len(retry_vet) > len(final_result) * 1.5:
-                        # Take the retry if it passed OR is substantially
-                        # more content than the original.
-                        final_result = retry_vet
-                        _vet_passed = retry_passed
-                        logger.info(
-                            f"Vetting retry {'passed' if retry_passed else 'longer'} — "
-                            f"using retry result"
+                        _retry_vet_tuple = vet_response_detailed(
+                            user_input, retry_result, crew_name,
+                            difficulty, get_last_tier() or "unknown",
                         )
+                        retry_vet = _retry_vet_tuple[0]
+                        retry_passed = _retry_vet_tuple[1]
+                        _retry_better = (
+                            retry_passed
+                            or len(retry_vet) > len(final_result) * 1.5
+                        )
+                        if _retry_better:
+                            final_result = retry_vet
+                            _vet_passed = retry_passed
+                            logger.info(
+                                "retry: SUCCESS via same crew with reflexion "
+                                "(passed=%s)", retry_passed,
+                            )
+                        else:
+                            logger.info(
+                                "retry: same-crew did not improve; "
+                                "keeping original",
+                            )
                 finally:
                     self._vetting_retry_attempted = False
 
