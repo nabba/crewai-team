@@ -33,6 +33,8 @@ class EventType(str, Enum):
     FEEDBACK = "feedback"
     ARCHIVED = "archived"
     APPROVED = "approved"
+    DOCUMENTED = "documented"  # Phase 8 — idea promoted to a document
+    WIKI_REGISTERED = "wiki_registered"  # Phase 9 — also in the workspace wiki
 
 
 @dataclass
