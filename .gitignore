@@ -16,6 +16,7 @@ workspace/skills/*.md
 # Anything tracked here MUST also have a corresponding regression test
 # in tests/ that asserts its presence.
 !workspace/skills/gee_batching_pattern.md
+!workspace/skills/gee_forest_metric_semantics.md
 # Versioned prompt registry — tracked for version history and rollback
 !workspace/prompts/
 __pycache__/
