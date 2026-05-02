@@ -104,6 +104,89 @@ _on_complete: List[CrewEventHandler] = []
 _on_fail: List[CrewEventHandler] = []
 
 
+# ── Vetting-outcome registry (Week 1 audit fix for H6) ─────────────
+#
+# `on_crew_completed` fires before the orchestrator runs vetting, so
+# handlers like `_handler_maybe_auto_skill` that need to know "did this
+# crew's output pass vetting?" can't read it from CrewEventContext at
+# fire time.  But the auto-skill handler runs in a daemon thread that
+# does an LLM distillation call (~10-30s), and by the time it gets to
+# integrate(), the orchestrator has typically finished vetting.  So we
+# use a shared in-process registry: orchestrator writes the outcome
+# after vetting, the handler reads it just before persisting the skill.
+#
+# Keyed by ``crew_name`` (not task_id) for two reasons:
+#   1. The orchestrator's task_id is the commander's row, while the
+#      auto-skill handler sees the per-crew lifecycle task_id.  These
+#      diverge and reconciling them needs orchestrator plumbing we're
+#      deferring to Week 2.
+#   2. The gateway typically processes one user request at a time, so
+#      "last vetting outcome for this crew_name within the TTL window"
+#      is a reliable proxy.
+#
+# Conservative default — if the outcome is unknown or stale when the
+# handler checks, treat as "not passed" and drop the draft.  This
+# stops failure-shaped outputs from polluting the experiential KB
+# even in race-condition cases.
+#
+# 5-minute TTL — vetting always completes within seconds; an entry
+# older than 5 min is from a different dispatch and shouldn't gate
+# anything.
+
+_VETTING_OUTCOMES_CAP = 64
+_VETTING_OUTCOMES_TTL_S = 300
+_vetting_outcomes: "OrderedDict[str, tuple[bool, float]]" = None  # type: ignore[assignment]
+
+
+def _vetting_dict() -> "OrderedDict[str, tuple[bool, float]]":
+    """Lazy-init the registry to keep import cost low."""
+    global _vetting_outcomes
+    if _vetting_outcomes is None:
+        from collections import OrderedDict
+        _vetting_outcomes = OrderedDict()
+    return _vetting_outcomes
+
+
+def set_vetting_outcome(crew_name: str, passed: bool) -> None:
+    """Record the vetting verdict for *crew_name*.  Called by the
+    orchestrator immediately after vetting completes (pass or fail).
+
+    Idempotent on re-call — last write wins, which is what we want
+    for retries and reroutes (the most recent verdict is the true one).
+    """
+    if not crew_name:
+        return
+    import time
+    d = _vetting_dict()
+    d[crew_name] = (bool(passed), time.monotonic())
+    d.move_to_end(crew_name)
+    while len(d) > _VETTING_OUTCOMES_CAP:
+        d.popitem(last=False)
+
+
+def get_vetting_outcome(crew_name: str) -> bool | None:
+    """Read the most recent vetting verdict for *crew_name*.  Returns
+    None when unknown (crew not yet vetted in this session, or entry
+    evicted by TTL/cap).
+
+    Callers that gate on this should treat None as "not passed" —
+    refusing to act on uncertainty is the conservative behaviour for
+    persistence sinks like auto-skill creation.
+    """
+    if not crew_name:
+        return None
+    import time
+    d = _vetting_dict()
+    entry = d.get(crew_name)
+    if entry is None:
+        return None
+    passed, recorded_at = entry
+    if time.monotonic() - recorded_at > _VETTING_OUTCOMES_TTL_S:
+        d.pop(crew_name, None)
+        return None
+    return passed
+
+
 def on_crew_started(fn: CrewEventHandler) -> CrewEventHandler:
     """Decorator: register ``fn`` to run when a crew starts."""
     _on_start.append(fn)

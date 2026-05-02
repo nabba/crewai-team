@@ -105,6 +105,12 @@ def _handler_maybe_auto_skill(ctx: CrewEventContext) -> None:
     """Threshold-gated auto-skill distillation.  Runs in a daemon
     thread so the slow LLM call to distill the skill doesn't block
     the crew from returning.
+
+    The task_id is forwarded so the daemon thread can check the
+    vetting outcome (recorded later by the orchestrator) before
+    persisting the distilled skill — Phase 3 of the 2026-05-02
+    audit found this handler was creating skills from FAILED
+    dispatches, polluting the experiential KB.
     """
     # Lazy import: base_crew owns the excluded-crews list + the LLM
     # that does the distillation.  Import here, not at module scope,
@@ -124,7 +130,7 @@ def _handler_maybe_auto_skill(ctx: CrewEventContext) -> None:
     threading.Thread(
         target=_bc._auto_create_skill,
         args=(ctx.crew_name, ctx.task_description or ctx.task_title,
-              ctx.outcome, tool_calls),
+              ctx.outcome, tool_calls, ctx.task_id),
         daemon=True,
         name=f"skill-{ctx.crew_name}",
     ).start()

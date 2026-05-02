@@ -58,7 +58,7 @@ def _get_LLM_class():
 
 def _cached_llm(
     model_id: str,
-    max_tokens: int = 4096,
+    max_tokens: int = 8192,
     *,
     sampling_key: str = "",
     llm_builder=None,
@@ -326,7 +326,7 @@ def create_commander_llm() -> LLM:
 
 
 def create_specialist_llm(
-    max_tokens: int = 4096,
+    max_tokens: int = 8192,
     role: str = "default",
     task_hint: str = "",
     force_tier: str | None = None,
@@ -350,6 +350,16 @@ def create_specialist_llm(
     When set, phase-dependent sampling parameters (temperature/top_p/min_p/
     presence_penalty) are applied. When None, legacy behavior is preserved
     byte-for-byte — including LLM cache identity.
+
+    ``max_tokens`` defaults to 8192 (Week 1 audit fix for H2).  Older
+    callers and the prior 4096 default were a leftover from when
+    frontier models capped completions at 4K.  All current premium
+    tiers (gpt-5.x, claude sonnet 4.6, kimi-k2.6, gemini 2.5) support
+    8K+ output, and the 2026-05-02 12:12 dispatch hit the 4K cap on
+    its design phase, producing a truncated multi-file project that
+    vetting (correctly) flagged as broken.  Callers that genuinely
+    need a smaller cap (e.g. ``role="synthesis"`` for tiny skill
+    distillations) still pass an explicit value.
     """
     # Q7: thread-local last model/tier tracking
     from app.llm_mode import get_mode

@@ -2924,6 +2924,21 @@ class Commander:
                     pass
 
             # L3: Use reflexion retry for medium+ difficulty tasks
+            #
+            # Emit progress around the crew run so the watchdog's tier-3
+            # zero-output backstop (1200s, never partial) doesn't kill
+            # legitimately-long pipelines.  Week 1 audit fix for H5;
+            # this is the safe path that doesn't touch TIER_IMMUTABLE
+            # main.py.  Each emission resets the tier-1 5-min timer too,
+            # so the gap between this emission and the next (post-vet
+            # below) must stay under 5 min for long crews — a known
+            # limitation we accept for Week 1.  Week 2's lifecycle work
+            # will add per-agent-step progress events.
+            try:
+                from app.observability.task_progress import record_output_progress
+                record_output_progress(note=f"crew dispatch: {crew_name}")
+            except Exception:
+                pass
             try:
                 if difficulty >= 5:
                     final_result, reflexion_exhausted = self._run_with_reflexion(
@@ -2939,6 +2954,11 @@ class Commander:
                 _dispatch_error = f"Crew {crew_name} failed: {_crew_exc}"
                 logger.error(_dispatch_error, exc_info=True)
                 final_result = "Sorry, an internal error occurred while processing your request."
+            try:
+                from app.observability.task_progress import record_output_progress
+                record_output_progress(note=f"crew complete: {crew_name}")
+            except Exception:
+                pass
 
             # S10: Run vetting + proactive scan in parallel (independent operations)
             # Skip proactive scan for easy tasks — saves 5-10s of LLM latency
@@ -3014,6 +3034,26 @@ class Commander:
                 "vetting", _vet_t0, crew=crew_name,
                 difficulty=difficulty, passed=_vet_passed,
             )
+            # Record outcome for downstream gates (Week 1 audit fix
+            # for H6: stops auto-skill from canonising failure-shaped
+            # outputs).  See app/crews/events.py:set_vetting_outcome.
+            try:
+                from app.crews.events import set_vetting_outcome
+                set_vetting_outcome(crew_name, bool(_vet_passed))
+            except Exception:
+                # Registry is best-effort; never let it break the
+                # delivery path.
+                pass
+            # Emit progress so the watchdog's output-stall timer resets
+            # before critic/recovery/epistemic gates run their LLMs.
+            # Week 1 audit fix for H5 (TIER_IMMUTABLE-safe path).
+            try:
+                from app.observability.task_progress import record_output_progress
+                record_output_progress(
+                    note=f"vetting complete: {crew_name} passed={_vet_passed}"
+                )
+            except Exception:
+                pass
 
             # Retry on vetting failure at difficulty >= 7.  The original
             # crew produced something the vetting LLM flagged as

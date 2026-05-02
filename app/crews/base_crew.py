@@ -81,6 +81,14 @@ _TOOL_PRIORITY_ORDER = (
     ("firecrawl_extract", 88),
     ("firecrawl_crawl", 86),
     ("firecrawl_map", 84),
+    # Google Earth Engine — server-side raster compute for satellite-
+    # imagery analysis (Hansen GFC, Sentinel-2/Landsat, NDVI, MODIS,
+    # GEDI lidar).  Same logic as firecrawl: without an explicit slot
+    # it defaults to priority 10 and the cap silently drops it (Phase 3
+    # of the 2026-05-02 audit caught this — coder had 35 tools, 25
+    # cap, GEE in the cull zone).  Pinned at 88 to survive alongside
+    # firecrawl_extract.
+    ("gee_run_script", 88),
     # Priority 80 — memory (one mem0 + one scoped-memory is enough)
     ("mem0_add", 80),
     ("mem0_search", 80),
@@ -385,12 +393,39 @@ def _estimate_tool_calls(result: str) -> int:
     return count
 
 
-def _auto_create_skill(crew_name: str, task: str, result: str, tool_calls: int) -> None:
-    """Background: distill a complex crew execution into a reusable skill."""
+def _auto_create_skill(
+    crew_name: str,
+    task: str,
+    result: str,
+    tool_calls: int,
+    task_id: str = "",
+) -> None:
+    """Background: distill a complex crew execution into a reusable skill.
+
+    Vetting-gated.  Phase 3 of the 2026-05-02 audit found this function
+    persists skills distilled from FAILED dispatches, polluting the
+    experiential KB and biasing future retrievals.  The fix: before
+    handing the draft to ``integrate``, check the vetting outcome the
+    orchestrator recorded for ``task_id`` via
+    ``app.crews.events.set_vetting_outcome``.
+
+    Outcome semantics:
+      * vetting passed   → integrate the draft (existing behaviour)
+      * vetting failed   → drop the draft (don't pollute the KB)
+      * outcome unknown  → drop the draft (conservative — refusing to
+                           act on uncertainty is the right default for
+                           a persistence sink)
+
+    Backward-compatible: callers that don't pass ``task_id`` get the
+    unknown-outcome path, which drops the draft.  This matches the
+    desired behaviour for legacy code that may have called this
+    function without telemetry — better to lose the skill than pollute.
+    """
     try:
         from app.llm_factory import create_specialist_llm
         from app.self_improvement.types import SkillDraft
         from app.self_improvement.integrator import integrate as integrate_draft
+        from app.crews.events import get_vetting_outcome
         import uuid
 
         llm = create_specialist_llm(max_tokens=800, role="synthesis")
@@ -403,6 +438,22 @@ def _auto_create_skill(crew_name: str, task: str, result: str, tool_calls: int) 
         )
         skill_text = str(llm.call(prompt)).strip()
         if not skill_text or len(skill_text) < 50:
+            return
+
+        # ── Vetting gate (Week 1 audit fix for H6) ──
+        # By the time the LLM call above finishes (~10-30s), the
+        # orchestrator has typically completed vetting and recorded
+        # the verdict via set_vetting_outcome(crew_name, passed).
+        # The registry is keyed by crew_name (not task_id) — see
+        # app/crews/events.py for why.  Any other state (failed /
+        # unknown) drops the draft to avoid KB pollution.
+        passed = get_vetting_outcome(crew_name) if crew_name else None
+        if passed is not True:
+            verdict = "failed" if passed is False else "unknown"
+            logger.info(
+                f"Auto-skill creation skipped: vetting {verdict} for "
+                f"{crew_name} (task_id={task_id or '(unset)'})"
+            )
             return
 
         lines = skill_text.strip().split("\n")
