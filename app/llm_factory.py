@@ -859,7 +859,21 @@ def _try_api(model_name: str, entry: dict, max_tokens: int, role: str, phase: st
         circuit_breaker.record_success("openrouter")
         logger.info(f"llm_factory: role={role} → API {model_name} (${entry['cost_output_per_m']:.2f}/Mo)")
         extra, key = _sampling(phase, "openrouter")
-        return _cached_llm(entry["model_id"], max_tokens=max_tokens,
+        # Ensure CrewAI's LLM dispatcher routes via OpenAI-compatible
+        # (litellm) — NOT its native Anthropic SDK provider — when we're
+        # talking to OpenRouter's base URL. CrewAI sees the model_id
+        # prefix and picks the provider; an `anthropic/...` model_id
+        # routes to AnthropicCompletion, which makes Anthropic-SDK
+        # `messages.create()` calls. Those calls against OpenRouter's
+        # endpoint return a payload the Anthropic SDK can't parse,
+        # surfacing as ``'str' object has no attribute 'content'``
+        # (2026-05-02 diagnosis from Ops anomaly dashboard). Prefixing
+        # `openrouter/` selects litellm's openrouter provider, which
+        # correctly hits OpenRouter's /chat/completions endpoint.
+        or_model_id = entry["model_id"]
+        if not or_model_id.startswith("openrouter/"):
+            or_model_id = f"openrouter/{or_model_id}"
+        return _cached_llm(or_model_id, max_tokens=max_tokens,
                            sampling_key=key,
                            base_url="https://openrouter.ai/api/v1", api_key=api_key, **extra)
     except Exception as exc:
