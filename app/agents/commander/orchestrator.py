@@ -2828,6 +2828,42 @@ class Commander:
                         if any(w in user_input.lower() for w in ("ütleb", "mida", "kas"))
                         else "Sorry, I couldn't produce a response. Please rephrase."
                     )
+
+                # ── Recovery loop on direct-route refusals (2026-05-02) ─
+                # Direct-route answers are produced by the commander LLM
+                # itself, not by a specialist crew. They USED to bypass
+                # the recovery hook entirely (which lived only on the
+                # post-crew path), so when the LLM said "I can't run
+                # this code" / "I cannot execute" the user got the
+                # refusal verbatim. Now we run the same maybe_recover
+                # check here — common failure mode is a missing
+                # capability that re_route or sandbox_execute can fix
+                # by dispatching to the coding crew. The _in_recovery
+                # ContextVar inside maybe_recover prevents recursion
+                # if the recovery itself produces another refusal.
+                try:
+                    from app.recovery import maybe_recover, is_enabled as _recov_enabled
+                    if _recov_enabled():
+                        _rec = maybe_recover(
+                            _direct_result, user_input, "direct",
+                            commander=self, difficulty=d.get("difficulty", 3),
+                            used_tier="direct",
+                            conversation_history=_crew_history,
+                        )
+                        if _rec.triggered and _rec.success and _rec.text:
+                            _direct_result = _rec.text
+                            if _rec.route_changed and _rec.note:
+                                _direct_result += f"\n\n_{_rec.note}_"
+                            logger.info(
+                                f"recovery: SUCCESS on direct-route via "
+                                f"{_rec.strategies_tried} (elapsed={_rec.elapsed_s:.1f}s)"
+                            )
+                except Exception:
+                    logger.debug(
+                        "recovery: direct-route hook raised — keeping original answer",
+                        exc_info=True,
+                    )
+
                 # Complete ticket for direct responses.  No crew ran, but the
                 # routing LLM call DID cost something — finalize the request
                 # tracker first so we can attribute that real cost to the

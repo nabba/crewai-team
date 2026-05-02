@@ -82,6 +82,38 @@ _FAST_ROUTE_PATTERNS = [
         r"^(?:write|create|build|implement|fix|debug|refactor)\s+(?:a |an |the )?(?:code|function|script|program|class|module|api|endpoint|test)",
         re.IGNORECASE,
     ), "coding", 5),
+    # Execution / pipeline intent → coding (the crew that has the
+    # sandbox + can actually run things). Without this catch the
+    # routing LLM frequently picked "direct" for "please execute the
+    # plan" / "run the scripts" / "produce the report" and the
+    # commander LLM then refused with "I can't execute code". The
+    # 2026-05-02 forest-deforestation thread had FIVE consecutive
+    # such refusals in one session — the request had genuine code
+    # intent that needed a crew with a sandbox, not a direct LLM
+    # answer about why running code is hard. Difficulty 7 because
+    # execution work is typically multi-step and benefits from
+    # premium-tier reasoning + the recovery loop's full strategy set.
+    (re.compile(
+        r"^(?:please\s+)?(?:execute|run|kick\s*off|launch)\s+(?:"
+        r"the\s+(?:plan|script|scripts?|pipeline|analysis|workflow)"
+        r"|this(?:\s+plan|\s+script|\s+analysis|\s+pipeline)?"
+        r"|it"
+        r"|in\s+(?:the|your)\s+sandbox"
+        r")",
+        re.IGNORECASE,
+    ), "coding", 7),
+    (re.compile(
+        r"^(?:please\s+)?(?:produce|compile|generate|build|create)\s+"
+        r"(?:me\s+)?(?:the\s+|a\s+|an\s+)?"
+        # Allow zero or more adjective/qualifier tokens between the
+        # article and the deliverable noun so "produce a deforestation
+        # report" / "generate annual maps" / "compile the year-by-year
+        # results" all match. Capped at 3 qualifier words to avoid
+        # runaway matching on unrelated long sentences.
+        r"(?:[\w-]+\s+){0,3}"
+        r"(?:report|output|results?|maps?|dataset|file)",
+        re.IGNORECASE,
+    ), "coding", 7),
     # Writing requests → writing, difficulty 3
     (re.compile(
         r"^(?:write|draft|compose|create)\s+(?:a |an |the )?(?:email|letter|report|summary|document|memo|message|post|article|blog)",
