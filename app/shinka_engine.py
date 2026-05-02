@@ -39,6 +39,36 @@ SHINKA_RESULTS_DIR = Path("/app/workspace/shinka_results")
 INITIAL_PY = SHINKA_DIR / "initial.py"
 EVALUATE_PY = SHINKA_DIR / "evaluate.py"
 
+# Backup signal for the engine selector when ROI recording fails.
+# days_since_engine_run consults BOTH the ROI ledger and this marker so
+# a recording bug can't lock the rotation rule in an infinite loop.
+ATTEMPT_MARKER_PATH = Path("/app/workspace/shinka_last_attempt.json")
+
+# ShinkaEvolve needs at least this many generations to produce any
+# proposals beyond the initial seed. Below this floor, the run completes
+# in seconds with zero LLM calls (observed in 2026-05-01 run that
+# produced 0 proposals at num_generations=1).
+_MIN_GENERATIONS = 5
+
+
+def _write_attempt_marker() -> None:
+    """Record that a shinka session is starting NOW.
+
+    Backup signal for ``evolution_roi.days_since_engine_run`` — if the ROI
+    ledger write fails downstream, the rotation rule still gets accurate
+    "shinka ran recently" information from this file. Best-effort: never
+    raises, never blocks the actual evolution session.
+    """
+    try:
+        ATTEMPT_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        ATTEMPT_MARKER_PATH.write_text(_json.dumps({
+            "engine": "shinka",
+            "ts": time.time(),
+        }))
+    except OSError as e:
+        logger.debug(f"shinka_engine: attempt marker write failed: {e}")
+
 
 @dataclass
 class ShinkaResult:
@@ -273,6 +303,16 @@ def run_shinka_session(
         api_budget = 5.0
         logger.info("shinka_engine: NORMAL posture")
 
+    # Apply the minimum-generations floor unconditionally — even in normal
+    # posture we may be called with max_iterations=2 from the idle scheduler,
+    # which is not enough for shinka to generate any proposals at all.
+    if num_generations < _MIN_GENERATIONS:
+        logger.info(
+            f"shinka_engine: lifting num_generations {num_generations} → {_MIN_GENERATIONS} "
+            f"(below minimum for proposal generation)"
+        )
+        num_generations = _MIN_GENERATIONS
+
     try:
         from shinka.core import ShinkaEvolveRunner, EvolutionConfig
         from shinka.launch import LocalJobConfig
@@ -332,6 +372,12 @@ def run_shinka_session(
             max_proposal_jobs=max_proposal_jobs,
             verbose=True,
         )
+
+        # Write the attempt marker BEFORE the run so even if shinka crashes,
+        # the engine selector knows shinka was tried recently and won't loop
+        # the forced-rotation rule. The ROI ledger remains the primary
+        # signal — this is just the fallback.
+        _write_attempt_marker()
 
         logger.info(f"shinka_engine: starting {num_generations} generations on {num_islands} islands")
         runner.run()
@@ -488,6 +534,11 @@ def _record_result(
     the forced-rotation rule firing every cycle. Diagnosed alongside
     the missing-deps issue.
     """
+    # results_ledger.record_experiment expects ``files_changed: list[str] | None``.
+    # Pre-2026-04-29 we passed a bare string here, which silently iterated
+    # the path's characters when joined — the row was malformed but didn't
+    # crash. Always pass a proper list now.
+    experiment_id = ""
     try:
         from app.results_ledger import record_experiment
         from app.experiment_runner import generate_experiment_id
@@ -499,14 +550,35 @@ def _record_result(
             metric_before=baseline,
             metric_after=after,
             status=status,
-            files_changed="workspace/shinka/initial.py",
+            files_changed=["workspace/shinka/initial.py"],
             detail=f"ShinkaEvolve delta={delta:+.4f}",
         )
+        logger.info(
+            f"shinka_engine: recorded {experiment_id} to results_ledger "
+            f"(status={status}, delta={delta:+.4f})"
+        )
     except Exception as e:
-        logger.warning(f"shinka_engine: results_ledger recording failed: {e}")
-        return
+        # Visible at WARNING level so silent failures surface in errors.jsonl.
+        # Falling through to the ROI ledger write is intentional: even if
+        # the results_ledger write fails, the ROI ledger should still
+        # record the attempt so the rotation rule has truthful signal.
+        logger.warning(
+            f"shinka_engine: results_ledger recording failed (engine={status}, "
+            f"delta={delta:+.4f}): {type(e).__name__}: {e}"
+        )
 
     # ── ROI ledger — what the engine selector rule 5 reads ────────────
+    # Always attempt this even if results_ledger above failed — the rotation
+    # rule depends on this signal, not on results_ledger.
+    if not experiment_id:
+        # Synthesize one so the ROI entry remains correlatable.
+        try:
+            from app.experiment_runner import generate_experiment_id
+            experiment_id = generate_experiment_id("shinka-evolve")
+        except Exception:
+            from datetime import datetime as _dt
+            experiment_id = f"exp_shinka_{int(_dt.now().timestamp())}"
+
     try:
         from app.evolution_roi import record_evolution_cost
         # Cost estimate: ShinkaEvolve sessions burn $1-5 of API budget
@@ -531,5 +603,12 @@ def _record_result(
             status=status,
             deployed=(status == "keep"),
         )
+        logger.info(
+            f"shinka_engine: recorded {experiment_id} to ROI ledger "
+            f"(cost=${cost_estimate}, delta={delta:+.4f})"
+        )
     except Exception as e:
-        logger.warning(f"shinka_engine: ROI recording failed: {e}")
+        logger.warning(
+            f"shinka_engine: ROI recording failed (engine=shinka, "
+            f"delta={delta:+.4f}): {type(e).__name__}: {e}"
+        )

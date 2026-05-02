@@ -2,64 +2,90 @@
 ShinkaEvolve evaluator for AndrusAI agent evolution.
 
 This evaluator is called by ShinkaEvolve for each candidate program.
-It imports the evolved code and runs the fixed test suite to measure fitness.
+It imports the evolved code, runs the fixed test suite, and writes
+metrics + correctness to the results directory for shinka to consume.
 
-The evaluator uses run_shinka_eval() which:
-  1. Imports the candidate program
-  2. Calls run_evaluation() from it
-  3. Validates the output
-  4. Saves metrics to results_dir
+Pre-2026-04-29 the validator rejected list outputs because it checked
+``isinstance(run_output, tuple)`` strictly. ShinkaEvolve serialises
+sub-process results through JSON IPC, which round-trips tuples to
+lists — so every initial-program evaluation came back as a list,
+failed validation, and shinka recorded 'Incorrect' with score 0.0.
+The fix accepts any 2-element sequence (tuple OR list).
 """
-import os
+from __future__ import annotations
+
 import argparse
-from typing import Any, Dict, List, Optional, Tuple
+import json
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Any, Optional, Sequence
 
 from shinka.core import run_shinka_eval
 
+logger = logging.getLogger(__name__)
 
-def validate_evaluation(
-    run_output: Tuple[float, dict],
-) -> Tuple[bool, Optional[str]]:
-    """Validate that the evolved program produces valid evaluation results.
+# A 2-element output is required: (score, details_dict).
+# After JSON IPC the tuple becomes a list, so we accept either.
+_ScoreDetails = Sequence  # tuple[float, dict] or list at runtime
 
-    Args:
-        run_output: (combined_score, details_dict) from run_evaluation()
+
+# ── Validation ───────────────────────────────────────────────────────────────
+
+def validate_evaluation(run_output: Any) -> tuple[bool, Optional[str]]:
+    """Validate that the evolved program produces a usable score + details.
+
+    Accepts any 2-element ordered container — JSON IPC turns tuples into
+    lists, so the historical strict ``isinstance(_, tuple)`` check rejected
+    every shinka-evaluated program.
 
     Returns:
         (is_valid, error_message)
     """
-    if not isinstance(run_output, tuple) or len(run_output) != 2:
-        return False, f"Expected (score, dict) tuple, got {type(run_output)}"
+    # Accept tuple or list, reject everything else
+    if not isinstance(run_output, (tuple, list)):
+        return False, f"Expected sequence of (score, details), got {type(run_output).__name__}"
+    if len(run_output) != 2:
+        return False, f"Expected length 2, got length {len(run_output)}"
 
-    score, details = run_output
+    score, details = run_output[0], run_output[1]
 
     if not isinstance(score, (int, float)):
-        return False, f"Score must be numeric, got {type(score)}"
+        return False, f"Score must be numeric, got {type(score).__name__}"
 
-    if not (0.0 <= score <= 1.0):
+    if not (0.0 <= float(score) <= 1.0):
         return False, f"Score {score} outside [0.0, 1.0] range"
 
     if not isinstance(details, dict):
-        return False, f"Details must be dict, got {type(details)}"
+        return False, f"Details must be dict, got {type(details).__name__}"
 
     return True, None
 
 
-def aggregate_metrics(
-    results: List[Tuple[float, dict]],
-) -> Dict[str, Any]:
-    """Aggregate evaluation results into ShinkaEvolve metrics format.
+def aggregate_metrics(results: list) -> dict[str, Any]:
+    """Aggregate evaluation results into ShinkaEvolve's metrics format.
 
-    Args:
-        results: List of (combined_score, details_dict) from run_evaluation()
-
-    Returns:
-        Dict with 'combined_score' (fitness) and 'public'/'private' metrics.
+    Each item in ``results`` is the (score, details) sequence returned by
+    ``run_evaluation``. ShinkaEvolve uses ``combined_score`` as the primary
+    fitness signal; ``public`` / ``private`` are surfaced in the dashboard
+    and run summary respectively.
     """
     if not results:
-        return {"combined_score": 0.0, "error": "No results"}
+        return {"combined_score": 0.0, "error": "No results", "public": {}, "private": {}}
 
-    score, details = results[0]
+    first = results[0]
+    if not isinstance(first, (tuple, list)) or len(first) != 2:
+        return {
+            "combined_score": 0.0,
+            "error": f"Malformed result: {type(first).__name__}",
+            "public": {},
+            "private": {},
+        }
+
+    score, details = first[0], first[1]
+    if not isinstance(details, dict):
+        details = {}
 
     return {
         "combined_score": float(score),
@@ -76,13 +102,29 @@ def aggregate_metrics(
     }
 
 
-def main(program_path: str, results_dir: str):
+# ── Diagnostic capture ───────────────────────────────────────────────────────
+
+def _write_diagnostic(results_dir: str, payload: dict) -> None:
+    """Persist a small JSON file capturing what we received from shinka.
+
+    Lets the next debugger see exactly what arrived without having to
+    re-run shinka. Best-effort; never raises.
+    """
+    try:
+        path = Path(results_dir) / "andrus_diagnostic.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, default=str))
+    except OSError:
+        pass
+
+
+def main(program_path: str, results_dir: str) -> tuple[dict, bool, Optional[str]]:
     """ShinkaEvolve evaluation entry point.
 
-    Args:
-        program_path: Path to the evolved program (candidate initial.py)
-        results_dir: Directory to save metrics.json and correct.json
+    Returns:
+        (metrics_dict, correct_flag, error_message_or_None)
     """
+    started_at = time.time()
     print(f"Evaluating program: {program_path}")
     print(f"Results dir: {results_dir}")
     os.makedirs(results_dir, exist_ok=True)
@@ -96,8 +138,19 @@ def main(program_path: str, results_dir: str):
         aggregate_metrics_fn=aggregate_metrics,
     )
 
+    # Always write a diagnostic — invaluable when shinka's own outputs are missing
+    _write_diagnostic(results_dir, {
+        "duration_s": round(time.time() - started_at, 2),
+        "program_path": program_path,
+        "correct": correct,
+        "error_msg": error_msg,
+        "metrics_keys": list(metrics.keys()) if isinstance(metrics, dict) else None,
+        "combined_score": metrics.get("combined_score") if isinstance(metrics, dict) else None,
+    })
+
     if correct:
-        print(f"Evaluation passed. Score: {metrics.get('combined_score', 0):.4f}")
+        score = metrics.get("combined_score", 0)
+        print(f"Evaluation passed. Score: {score:.4f}")
     else:
         print(f"Evaluation failed: {error_msg}")
 

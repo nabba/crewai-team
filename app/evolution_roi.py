@@ -348,19 +348,50 @@ def get_throttle_factor() -> float:
 
 # ── Engine activity tracking ────────────────────────────────────────────────
 
+# Backup signal files written by engines that may fail to record ROI.
+# The dynamic selector consults BOTH the ROI ledger and these markers so a
+# downstream recording bug can't lock the rotation rule in an infinite
+# "engine never ran" loop. Engines without a marker file are not affected —
+# the ROI ledger remains the primary signal.
+_ATTEMPT_MARKER_PATHS: dict[str, Path] = {
+    "shinka": Path("/app/workspace/shinka_last_attempt.json"),
+}
+
+
+def _read_attempt_marker(engine: str) -> float:
+    """Return the timestamp from the engine's backup attempt marker, or 0.0."""
+    path = _ATTEMPT_MARKER_PATHS.get(engine)
+    if not path or not path.exists():
+        return 0.0
+    try:
+        data = json.loads(path.read_text())
+        ts = float(data.get("ts", 0.0))
+        return ts if ts > 0 else 0.0
+    except (json.JSONDecodeError, OSError, ValueError, TypeError):
+        return 0.0
+
+
 def get_last_run_timestamp(engine: str) -> float:
     """Return the unix timestamp of the most recent run by this engine.
 
-    Returns 0.0 if the engine has never run. Used by the dynamic engine
+    Consults two signals in order, returning whichever is newer:
+
+      1. The ROI ledger entries tagged with this engine.
+      2. The engine-specific attempt marker file (only for engines that
+         maintain one — currently shinka).
+
+    Returns 0.0 if neither signal is present. Used by the dynamic engine
     selector to enforce minimum-interval rotation: if ShinkaEvolve hasn't
     been tried in N days, force a session so we get fresh ROI data.
     """
     with _ledger_lock:
         records = _load_ledger()
-    matches = [r for r in records if r.get("engine") == engine]
-    if not matches:
-        return 0.0
-    return max(r.get("timestamp", 0.0) for r in matches)
+    ledger_ts = max(
+        (r.get("timestamp", 0.0) for r in records if r.get("engine") == engine),
+        default=0.0,
+    )
+    marker_ts = _read_attempt_marker(engine)
+    return max(ledger_ts, marker_ts)
 
 
 def days_since_engine_run(engine: str) -> float:

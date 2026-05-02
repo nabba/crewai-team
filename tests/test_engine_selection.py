@@ -424,8 +424,14 @@ class TestShinkaRecordResultDualLedger:
         assert results_calls[0].get("status") == "keep"
 
     def test_results_ledger_failure_does_not_crash(self, monkeypatch):
-        """If the results ledger write fails, log + bail (don't try
-        ROI write either, since the experiment_id won't be valid)."""
+        """If the results ledger write fails, log + STILL record ROI.
+
+        Post-2026-04-29 contract change: the engine selector's rotation
+        rule (rule 5 in _select_evolution_engine) depends on ROI ledger
+        signal, so we cannot let a results_ledger failure also suppress
+        the ROI write. The two ledgers are intentionally independent —
+        either one going down must not break the other.
+        """
         def _boom(**kwargs):
             raise OSError("disk full")
 
@@ -444,4 +450,5 @@ class TestShinkaRecordResultDualLedger:
         from app.shinka_engine import _record_result
         # Must not raise
         _record_result(baseline=0.5, after=0.6, delta=0.1, status="keep")
-        assert roi_called["n"] == 0  # short-circuit after results failure
+        # ROI must still record — independence between the two ledgers.
+        assert roi_called["n"] == 1
