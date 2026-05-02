@@ -35,6 +35,10 @@ class EventType(str, Enum):
     APPROVED = "approved"
     DOCUMENTED = "documented"  # Phase 8 — idea promoted to a document
     WIKI_REGISTERED = "wiki_registered"  # Phase 9 — also in the workspace wiki
+    # Phase 11 — grand-task synthesis (12 h cadence)
+    GRAND_TASK_PROPOSED = "grand_task_proposed"
+    GRAND_TASK_ACCEPTED = "grand_task_accepted"
+    GRAND_TASK_REJECTED = "grand_task_rejected"
 
 
 @dataclass
