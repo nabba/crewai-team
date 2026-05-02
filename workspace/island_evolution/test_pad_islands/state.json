@@ -1,1 +1,0 @@
-{"role": "test_pad_islands", "epoch": 1, "islands": [{"island_id": 0, "generation": 1, "best_fitness": 0.5, "stagnation_count": 0, "population": [{"prompt_id": "x", "prompt_content": "pad test", "fitness": 0.5}]}]}

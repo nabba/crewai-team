@@ -1,1 +1,0 @@
-{"role": "test_old_format", "epoch": 5, "islands": [{"island_id": 0, "generation": 5, "best_fitness": 0.5, "stagnation_count": 2, "population": [{"prompt_id": "x", "fitness": 0.5, "generation": 5}]}]}
