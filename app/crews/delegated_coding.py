@@ -48,6 +48,7 @@ Do NOT write code yet — only the spec.
 
 {user_input}
 
+{tool_inventory_section}\
 Required sections (keep each short):
 1. Summary
 2. Assumptions / non-goals
@@ -58,6 +59,13 @@ Required sections (keep each short):
 7. Risks and mitigations
 
 If the task is trivial, say so and produce a one-line spec.
+
+CRITICAL — when the inventory above lists a specialist tool that fits the
+task (e.g. `gee_run_script` for satellite/forest/Hansen analysis,
+`firecrawl_extract` for structured web scraping), the spec MUST name it
+and follow the pattern in its description.  Do NOT propose writing a
+custom Python pipeline that re-implements what a registered tool does —
+the executor will get capped/timed-out and the user will get nothing.
 """
 
 _DELEGATED_CODING_TASK_TEMPLATE = """\
@@ -156,9 +164,17 @@ class DelegatedCodingCrew:
 
         try:
             designer = create_design_specialist(force_tier=force_tier)
+            # 2026-05-02 audit Week 2 — inject the executor + designer's
+            # actual tool inventory into the design prompt so the spec
+            # explicitly references registered specialist tools (e.g.
+            # gee_run_script with the documented frequencyHistogram
+            # pattern) instead of proposing a re-implementation.
+            executor = create_execution_specialist(force_tier=force_tier)
+            inventory_section = _render_tool_inventory_section(designer, executor)
             design_task = Task(
                 description=_DESIGN_TASK_TEMPLATE.format(
                     user_input=wrap_user_input(task_description),
+                    tool_inventory_section=inventory_section,
                 ),
                 expected_output=(
                     "A concise technical specification covering the seven required sections."
@@ -180,3 +196,77 @@ class DelegatedCodingCrew:
             # Graceful degradation — never let the design phase break the run.
             logger.warning(f"delegated_coding: design phase failed, proceeding without spec: {exc}")
             return ""
+
+
+def _render_tool_inventory_section(*agents) -> str:
+    """Render a Markdown bullet list of unique tools attached to the
+    given agents, with category-grouped headings and the first 100 chars
+    of each tool's description.
+
+    Returns an empty string when no tools are attached (graceful no-op).
+    Used by ``_maybe_run_design_phase`` to inject the executor + designer
+    tool inventory into the design prompt — closes the loop where the
+    design LLM was producing specs that ignored registered specialist
+    tools.  See PHASE_4_recommendation_memo.md (Shift 1) for context.
+    """
+    seen: dict[str, object] = {}
+    for agent in agents:
+        for t in (getattr(agent, "tools", None) or []):
+            name = getattr(t, "name", "")
+            if name and name not in seen:
+                seen[name] = t
+    if not seen:
+        return ""
+
+    # Group by an inferred "category bucket" purely from name conventions.
+    # We don't read the registry's category field directly here because
+    # not every tool is registered yet — Week 2 only annotates ~10 of the
+    # ~45 tool sources.  This bucketer is a close-enough fallback.
+    def _bucket(n: str) -> str:
+        n = n.lower()
+        if n.startswith("gee_") or "earth_engine" in n:
+            return "Geospatial / satellite"
+        if n.startswith("firecrawl_") or n in ("web_search", "web_fetch"):
+            return "Web research / scraping"
+        if n.startswith("browser_"):
+            return "Browser automation"
+        if n in ("execute_code", "run_python") or "sandbox" in n or "bridge" in n:
+            return "Code execution"
+        if n in ("file_manager", "read_attachment", "ocr_extract_text"):
+            return "Files & attachments"
+        if n.startswith("memory_") or n.startswith("scoped_memory_") or n.startswith("mem0_"):
+            return "Memory"
+        if "knowledge" in n or "search_journal" in n or "research_knowledge" in n:
+            return "Knowledge bases"
+        if n.startswith("generate_") or "wiki_" in n:
+            return "Output generation"
+        return "Other"
+
+    grouped: dict[str, list] = {}
+    for name, t in seen.items():
+        grouped.setdefault(_bucket(name), []).append((name, t))
+
+    lines = ["## Tools available to designer + executor (use these — do not re-implement):", ""]
+    # Stable display order — most-likely-needed buckets first.
+    for bucket in (
+        "Code execution", "Geospatial / satellite", "Web research / scraping",
+        "Browser automation", "Files & attachments", "Knowledge bases",
+        "Memory", "Output generation", "Other",
+    ):
+        items = grouped.get(bucket)
+        if not items:
+            continue
+        lines.append(f"### {bucket}")
+        for name, t in sorted(items):
+            desc = (getattr(t, "description", "") or "").strip()
+            # First sentence or 100 chars, whichever is shorter — keeps
+            # the prompt budget focused on actionable info.
+            desc = " ".join(desc.split())
+            first_period = desc.find(".")
+            if 30 < first_period < 200:
+                desc = desc[: first_period + 1]
+            else:
+                desc = desc[:200]
+            lines.append(f"- `{name}` — {desc}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
