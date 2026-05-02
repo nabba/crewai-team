@@ -54,6 +54,13 @@ RUN pip install --no-cache-dir --no-deps \
 # Chromium + its system libs are large; build skips the fonts pack to save space.
 RUN playwright install --with-deps chromium || true
 
+# Download the spaCy English model used by mem0's NLP enrichment
+# (lemmatization for BM25 + named-entity extraction). The
+# `mem0ai[nlp]` extra in requirements.txt installs spaCy itself, but
+# the model has to be downloaded separately. ~12 MB compressed,
+# ~50 MB uncompressed; one-shot cost at image build.
+RUN python -m spacy download en_core_web_sm || true
+
 # Copy application code
 COPY app/ app/
 
