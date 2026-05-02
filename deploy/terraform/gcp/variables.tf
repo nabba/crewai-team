@@ -125,3 +125,33 @@ variable "cloudsql_high_availability" {
   type        = bool
   default     = null
 }
+
+# ── External Secrets Operator (Phase C2 opt-in) ──────────────────────
+variable "use_external_secrets" {
+  description = <<-EOT
+    Use External Secrets Operator (ESO) to sync the gateway env Secret
+    from GCP Secret Manager into the cluster, instead of Terraform
+    writing a ``kubernetes_secret`` directly.
+
+    Default false preserves the v1 behaviour. When true:
+      * Terraform NO LONGER creates ``kubernetes_secret.botarmy_env``.
+      * Terraform creates a ``ClusterSecretStore`` backed by GCP Secret
+        Manager and an ``ExternalSecret`` that ESO reconciles into the
+        same Secret name the chart references.
+      * The ESO controller must already be installed in the cluster.
+      * Workload Identity bind: link the external-secrets KSA to a GSA
+        with ``roles/secretmanager.secretAccessor`` on this secret.
+        See deploy/HARDENING.md.
+
+    Rotation becomes: update Secret Manager → ESO syncs within
+    ``external_secret_refresh_interval``. No ``terraform apply``.
+  EOT
+  type    = bool
+  default = false
+}
+
+variable "external_secret_refresh_interval" {
+  description = "How often ESO re-syncs from GCP Secret Manager. Ignored when use_external_secrets=false."
+  type        = string
+  default     = "5m"
+}

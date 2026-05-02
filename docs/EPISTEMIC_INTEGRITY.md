@@ -279,6 +279,31 @@ dashboard-react/src/components/
     └── EpistemicSettings.tsx
 ```
 
+### Auth perimeter on the FastAPI surface
+
+The `/epistemic/*` router (in `api.py`) attaches a router-level
+FastAPI dependency from `app/control_plane/auth_dep.py`:
+
+```python
+router = APIRouter(prefix="/epistemic",
+                   dependencies=[Depends(require_gateway_auth)])
+```
+
+When `GATEWAY_AUTH_REQUIRED=1` (helm default in K8s), every route —
+including the four mutating routes `POST /overrides`,
+`POST /tuning/proposals/{id}/accept|reject`, `POST /tuning/run` —
+requires `Authorization: Bearer <gateway-secret>`. Default-OFF in
+laptop dev preserves the existing developer experience.
+
+**Internal Python callers** of `record_override()`, the post-hoc
+detectors, the calibration probe, etc., DO NOT pass through this
+dependency — the auth boundary is HTTP, not function calls. The
+self-evolution chain, SubIA hooks, and idle-job consumers all keep
+their existing direct-call semantics.
+
+See [`docs/CONTROL_PLANES.md` → "Gateway HTTP auth"](CONTROL_PLANES.md#gateway-http-auth-perimeter)
+for the full configuration matrix.
+
 ---
 
 ## 4. The Claim Ledger

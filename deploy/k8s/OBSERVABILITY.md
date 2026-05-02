@@ -99,6 +99,56 @@ metric is two lines (define the counter/histogram), one call site
 (`.inc()` / `.observe(...)`), and an update to the dashboard JSON if you
 want it visualised.
 
+### Idle scheduler observability — `GET /api/cp/idle/jobs`
+
+A separate, JSON-shaped introspection endpoint (added 2026-05) closes
+the gap between Prometheus metrics and "what's the background scheduler
+actually doing right now?". Returns:
+
+```json
+{
+  "scheduler_enabled": true,
+  "scheduler_idle": false,
+  "jobs": {
+    "evolution": {
+      "failure_count": 0,
+      "in_cooldown": false,
+      "cooldown_until_ts": null,
+      "seconds_since_last_success": 1832.4,
+      "seconds_since_last_failure": null,
+      "currently_running": false
+    },
+    "belief-outbox-neo4j":  { ... },
+    "belief-outbox-chroma": { ... },
+    "dlq-drain":            { ... },
+    "trajectory-tips":      { ... }
+  },
+  "inbound_dlq": {
+    "backend": "memory",
+    "redis_url_configured": false,
+    "memory_capacity": 200,
+    "max_age_seconds": 1800,
+    "depth": 0
+  }
+}
+```
+
+Auth-gated by the dashboard router (Bearer token required when
+`GATEWAY_AUTH_REQUIRED=1`). Useful for:
+
+* Confirming a job hasn't been parked in cooldown for hours
+* Watching `belief-outbox-{neo4j,chroma}` actually run when memory
+  stores diverge
+* Confirming the inbound DLQ is using the expected backend after a
+  Redis flip
+* Spotting `currently_running: true` on a job that should have
+  finished — paired with `seconds_since_last_success` it tells you
+  if the job is genuinely stuck
+
+The data is read-only; there is no `POST` companion. To pause the
+scheduler use the existing Firestore kill switch
+(`config/background_tasks.enabled`).
+
 ### Tier labelling
 
 The `tier` label on `llm_requests_total` resolves through

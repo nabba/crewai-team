@@ -279,13 +279,26 @@ def list_idle_jobs():
     cooldown_until_ts, seconds_since_last_success/failure, and
     currently_running. Read-only; calling this never affects the
     scheduler's behaviour.
+
+    The ``inbound_dlq`` block reports the load-shed dead-letter
+    queue's active backend (memory or redis) and current depth, so
+    the React pane has a single endpoint for "what's happening in
+    the background?" without making operators inspect env vars.
     """
     from app.idle_scheduler import get_job_snapshot, is_enabled, is_idle
-    return {
+    out: dict = {
         "scheduler_enabled": is_enabled(),
         "scheduler_idle": is_idle(),
         "jobs": get_job_snapshot(),
     }
+    try:
+        from app.dead_letter_inbound import backend_info as _dlq_info
+        out["inbound_dlq"] = _dlq_info()
+    except Exception:
+        # DLQ module is optional from the dashboard's POV — never block
+        # the snapshot if the import or backend probe fails.
+        pass
+    return out
 
 # ── Governance ───────────────────────────────────────────────────────────────
 

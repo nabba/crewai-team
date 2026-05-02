@@ -373,6 +373,48 @@ deviations on total error rate. Anomalies persist to
 `control_plane.error_anomalies` with open / acknowledged / resolved
 lifecycle. See [`docs/ERROR_MONITOR.md`](docs/ERROR_MONITOR.md).
 
+### Hardening pass — May 2026
+
+A subsequent post-program audit (recorded in [`PROGRAM.md` §11](./PROGRAM.md#11-2026-05-hardening-pass-post-program-remediation))
+landed eight phases of perimeter hardening and observability without
+changing any subsystem semantics:
+
+- **Gateway HTTP auth** — `/api/cp/*` and `/epistemic/*` mutating
+  routes require `Authorization: Bearer <gateway-secret>` when
+  `GATEWAY_AUTH_REQUIRED=1`. **Default ON in K8s, OFF on laptop dev.**
+  Internal Python callers bypass — auth boundary is HTTP, not
+  function calls. ([`app/control_plane/auth_dep.py`](./app/control_plane/auth_dep.py))
+- **Phase-1 shim migration closed** — every importer of the
+  `app.consciousness.*` / `app.self_awareness.*` aliases moved to
+  canonical `app.subia.*` paths (40 files, 132 substitutions). The 35
+  shim files remain as harmless DeprecationWarning-emitting aliases.
+- **Idle scheduler observability** — `GET /api/cp/idle/jobs` returns a
+  per-job snapshot (failure_count, in_cooldown, last-success/failure
+  ages, currently_running). Closes the prior gap where ~100
+  background jobs ran invisibly to the dashboard.
+- **Memory consistency** — three new idle jobs reconcile the three
+  memory stores: `belief-outbox-neo4j` (Postgres → Neo4j),
+  `belief-outbox-chroma` (Postgres → ChromaDB), `dlq-drain` (replays
+  load-shed messages). All eventually consistent with crash-safe
+  watermarks.
+- **K8s deploy hardening** — NetworkPolicy egress allow-list **enabled
+  by default** with a permissive HTTPS-only seed; tighten by replacing
+  the CIDR with provider blocks or a Squid proxy. ESO opt-in via
+  Terraform `var.use_external_secrets` for AWS + GCP modules. Optional
+  Redis-backed inbound DLQ via `REDIS_DLQ_URL` for multi-pod deploys.
+  See [`deploy/HARDENING.md`](./deploy/HARDENING.md).
+- **`PromotionRequest.__post_init__` validation** — the bridge between
+  `eval_sandbox` and `governance.evaluate_promotion()` now rejects
+  malformed payloads at construction (None / out-of-range / wrong type)
+  rather than letting them poison the audit trail.
+- **DLQ for load-shedding** — over-capacity messages are buffered to a
+  bounded in-process deque (or shared Redis list when configured) and
+  replayed when capacity returns, instead of being silently dropped.
+
+**Tier-3 protected modules** (eval functions, safety guardian, IMMUTABLE
+tier rules, governance gates) are exactly where they were before. The
+remediation sat strictly outside the safety perimeter.
+
 ---
 
 ## Tech stack

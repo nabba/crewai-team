@@ -24,6 +24,10 @@ class CreateWorkspaceRequest(BaseModel):
     project_id: str
     capacity: int = 3
     display_name: str = ""
+    # Companion Layer (Phase 0+): optional seed for the workspace's idle
+    # contemplation loop. None means the Companion still runs in
+    # synthesis-mode (grand-task auto-derived from conversation/tasks).
+    seed_prompt: str | None = None
 
 
 # ── List all workspaces ──────────────────────────────────────────────────────
@@ -128,13 +132,29 @@ def create_workspace(req: CreateWorkspaceRequest):
     # /api/cp/projects list uses.
     cp_project: dict | None = None
     cp_error: str | None = None
+    # Build initial config_json so the seed prompt lands atomically with
+    # project creation. If the project already exists this is ignored —
+    # editing the seed afterwards uses the dedicated /api/cp/reverie endpoint
+    # (Phase 4); we don't silently overwrite an existing seed here.
+    initial_config: dict = {}
+    if req.seed_prompt:
+        try:
+            from app.companion.config import CompanionConfig
+            initial_config["companion"] = CompanionConfig(
+                seed_prompt=req.seed_prompt
+            ).clamp().to_dict()
+        except Exception as exc:
+            logger.warning("workspace_api: companion config build failed: %s", exc)
     try:
         from app.control_plane.projects import get_projects
         projects = get_projects()
         # Idempotent lookup by name first so a second submit doesn't bomb.
         cp_project = projects.get_by_name(raw_name)
         if not cp_project:
-            cp_project = projects.create(raw_name, mission="", description="")
+            cp_project = projects.create(
+                raw_name, mission="", description="",
+                config=initial_config or None,
+            )
     except Exception as exc:
         cp_error = str(exc)
         logger.warning("workspace_api: control-plane project create failed: %s", exc)
@@ -157,6 +177,7 @@ def create_workspace(req: CreateWorkspaceRequest):
         "control_plane_project": cp_project,
         "control_plane_error": cp_error,
         "created": True,
+        "seed_prompt": req.seed_prompt,
     }
 
 

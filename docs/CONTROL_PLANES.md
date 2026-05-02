@@ -190,6 +190,82 @@ Background jobs. Non-blocking, cooperative, interruptible.
 
 **Key files:** `app/idle_scheduler.py`, `app/main.py` (lifespan), `app/firebase/listeners.py`
 
+### Idle scheduler snapshot
+
+`GET /api/cp/idle/jobs` (added 2026-05) returns a JSON snapshot of every
+known idle job — `failure_count`, `in_cooldown`, `cooldown_until_ts`,
+`seconds_since_last_success`, `seconds_since_last_failure`,
+`currently_running` — plus the inbound DLQ backend (memory or Redis)
+and depth. Read-only; calling it never affects scheduling. Closes the
+prior gap where ~100 background jobs ran invisibly to the dashboard.
+
+```bash
+curl -s -H "Authorization: Bearer $GATEWAY_SECRET" \
+     http://localhost:8765/api/cp/idle/jobs | jq .
+# { "scheduler_enabled": true,
+#   "scheduler_idle": false,
+#   "jobs": { "evolution": {"failure_count":0, "in_cooldown":false, ...}, ... },
+#   "inbound_dlq": {"backend":"memory","depth":0, ...} }
+```
+
+Tunables (lifted to module constants in `app/idle_scheduler.py` so
+operators don't have to read the body of `_run_single_job`):
+
+| Constant | Default | Purpose |
+|---|---|---|
+| `IDLE_DELAY_SECONDS` | 30 | Wait after last user task before background work resumes |
+| `INTER_JOB_PAUSE_SECONDS` | 2 | Cool-down between consecutive idle-job iterations |
+| `MAX_CONSECUTIVE_FAILURES` | 3 | Skip-cooldown trigger |
+| `JOB_COOLDOWN_AFTER_FAILURES_S` | 3600 | How long a failing job is parked |
+| `TRAINING_LOOP_INTERVAL_S` | 3600 | Cadence of the training-pipeline loop |
+
+### Inbound load-shed DLQ
+
+When `handle_task` is at capacity (inflight ≥ `load_shed_threshold`),
+the message is buffered in `app/dead_letter_inbound.py` instead of
+dropped. The `dlq-drain` LIGHT idle job replays buffered messages
+when capacity returns; messages older than 30 min are dropped.
+
+Two backends, swappable at module-import time:
+
+* **In-process deque** (default) — bounded at 200 messages, lost on
+  pod restart. Correct for single-pod deploys.
+* **Redis-backed list** — opt-in via `REDIS_DLQ_URL` (e.g.
+  `redis://botarmy-redis:6379/0`). Multi-pod deployments share one
+  queue; pod restarts no longer lose buffered messages. Falls back
+  to in-process silently if Redis is unreachable.
+
+Backend status is surfaced via `/api/cp/idle/jobs.inbound_dlq`.
+
+## Gateway HTTP auth (perimeter)
+
+`/api/cp/*` and `/epistemic/*` mutating routes attach a router-level
+FastAPI dependency from `app/control_plane/auth_dep.py`:
+
+```python
+router = APIRouter(prefix="/api/cp",
+                   dependencies=[Depends(require_gateway_auth)])
+```
+
+The dependency reads `GATEWAY_AUTH_REQUIRED` (a typed Pydantic field
+in `app/config.py`, also readable via `os.environ.get`):
+
+| State | Behaviour |
+|---|---|
+| Unset / `0` / `false` (laptop dev) | Pass-through; preserves the local-dev UX |
+| `1` / `true` / `yes` / `on` (K8s default) | `Authorization: Bearer <gateway_secret>` required, validated via constant-time `hmac.compare_digest()` |
+| Enforced + secret empty | 503 `auth misconfigured` (operator error, not request error) |
+
+The React dashboard reads `VITE_GATEWAY_SECRET` at build time and
+attaches the header to every request. Internal Python callers of
+`record_override()`, `evaluate_promotion()`, etc., DO NOT pass through
+the dependency — the auth boundary is HTTP, not function calls.
+
+**Operational defaults**: Helm sets `gateway.authRequired: "true"` so
+K8s deployments are always authenticated. See
+[`deploy/HARDENING.md`](../deploy/HARDENING.md) §1 for the full
+rollout playbook.
+
 ## Adaptation Path
 
 Continuous improvement. Triggered by feedback, scheduled, or manual.

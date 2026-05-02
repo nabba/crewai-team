@@ -509,6 +509,31 @@ GATED → IMMUTABLE  demotion (quarantine):
 The MORE restrictive of static and dynamic always wins — graduation never
 relaxes static guarantees, only tightens unstable files.
 
+`_load_history()` is schema-tolerant (post-2026-05): a single
+malformed entry in `workspace/tier_history.json` is logged and
+skipped, the rest of the history loads. Previously a single missing
+field could wipe the whole map at startup.
+
+### Promotion request validation — `app/governance.py::PromotionRequest`
+
+Every improvement system (evolution, modification engine, training
+pipeline, ATLAS) constructs a `PromotionRequest` before calling
+`evaluate_promotion()`. Since 2026-05, the dataclass enforces strict
+shape via `__post_init__`:
+
+| Field | Constraint |
+|---|---|
+| `system` / `target` / `proposed_by` | Non-empty strings |
+| `quality_score` / `safety_score` | Floats in [0.0, 1.0] (ints accepted, coerced) |
+| `metrics` / `baseline_scores` / `artifacts` | Dicts |
+
+A violation raises `ValueError` at construction with a precise message
+— catching the silent-None / wrong-type class of bug at the bridge
+layer instead of letting it create malformed audit rows downstream.
+The IMMUTABLE-protected `experiment_runner.py` and `governance.py`
+gate evaluators are unchanged; the validation lives in the dataclass
+itself, which is invoked by every caller.
+
 ---
 
 ## 7. Code Quality Enforcement

@@ -165,6 +165,81 @@ The dashboard React client (`dashboard-react/src/api/client.ts`) reads
 when running the dashboard against a K8s deploy you set that env var in your
 build pipeline.
 
+## NetworkPolicy egress allow-list
+
+Two NetworkPolicies ship in the chart:
+
+1. **`<release>-internal-only`** — restricts ingress to the data pods
+   (postgres, neo4j, chromadb). Only the gateway pod can talk to them.
+   Always rendered.
+2. **`<release>-gateway-egress`** — restricts the gateway pod's
+   *outbound* traffic to kube-dns, sibling pods, and an explicit
+   allow-list. Gated by `networkPolicy.egressAllowlist.enabled`.
+
+Default since 2026-05: `enabled: true` with a permissive HTTPS-only
+seed (`ipBlocks: ["0.0.0.0/0"], port: 443`). Net result: all HTTPS
+egress allowed (so LLM providers and Firecrawl keep working out of
+the box), all non-HTTPS exfiltration paths (telnet, raw sockets,
+plain HTTP, DNS-over-X) dropped.
+
+Tighten by replacing `0.0.0.0/0` with provider CIDRs or — strongly
+recommended for production — a Squid (or HAProxy) proxy ClusterIP
+with FQDN ACLs:
+
+```yaml
+networkPolicy:
+  egressAllowlist:
+    enabled: true
+    fqdnSupport: false   # set true on Cilium / Calico-NetworkSet CNIs
+    external:
+      - ipBlocks: ["10.0.42.5/32"]   # Squid proxy ClusterIP
+        ports:
+          - { protocol: TCP, port: 3128 }
+```
+
+Opt out (dev clusters that want zero egress restriction):
+
+```yaml
+networkPolicy:
+  egressAllowlist:
+    enabled: false
+```
+
+Full operator playbook: [`deploy/HARDENING.md`](../HARDENING.md) §2.
+
+## Multi-pod inbound DLQ (optional)
+
+When the gateway is at capacity (`inflight ≥ load_shed_threshold`),
+overflowing messages are buffered to `app/dead_letter_inbound.py` and
+replayed by the `dlq-drain` LIGHT idle job once capacity returns —
+instead of being dropped.
+
+Two backends:
+
+* **In-process deque** (default) — bounded at 200 messages, lost on
+  pod restart. Correct for single-pod replicas (`replicas: 1`).
+* **Redis-backed list** — opt-in. When you scale to multiple replicas,
+  set on the gateway pod:
+
+```bash
+REDIS_DLQ_URL=redis://botarmy-redis:6379/0
+REDIS_DLQ_KEY=botarmy:dlq:inbound        # default — change to share with siblings
+REDIS_DLQ_CAPACITY=1000                  # default
+```
+
+Verify the active backend:
+
+```bash
+GATEWAY_SECRET=$(kubectl -n botarmy get secret botarmy-env \
+    -o jsonpath='{.data.GATEWAY_SECRET}' | base64 -d)
+kubectl -n botarmy port-forward svc/botarmy-botarmy-gateway 8765:8765 &
+curl -s -H "Authorization: Bearer $GATEWAY_SECRET" \
+     http://127.0.0.1:8765/api/cp/idle/jobs | jq .inbound_dlq
+# { "backend": "memory", "depth": 0, "memory_capacity": 200, ... }   # or "backend": "redis"
+```
+
+Full DLQ documentation: [`deploy/HARDENING.md`](../HARDENING.md) §5.
+
 ## What's intentionally not here yet
 
 These are tracked in `INSTALL.md` and require separate design work:
@@ -173,8 +248,12 @@ These are tracked in `INSTALL.md` and require separate design work:
    and Aura DB for Neo4j over running them in-cluster. Set
    `postgres.enabled: false` (TODO: add the toggle) and point the gateway env at
    the managed endpoints via the `botarmy-env` secret.
-2. **External Secrets Operator** — replace the `botarmy-env` Secret with
-   ExternalSecret + AWS Secrets Manager / GCP Secret Manager.
+2. **External Secrets Operator (ESO)** — *now opt-in via Terraform.*
+   Set `use_external_secrets = true` in `terraform.tfvars` (AWS or
+   GCP) and the module flips from `kubernetes_secret` to
+   `ClusterSecretStore` + `ExternalSecret`. The ESO controller still
+   needs to be installed out-of-band, plus the IRSA / Workload-Identity
+   bind. Full walkthrough: [`deploy/HARDENING.md`](../HARDENING.md) §3.
 3. **Sandbox replacement** — the local stack uses a docker-socket proxy + a
    sandbox image. In k8s the equivalent is a Job-spawning controller that
    runs each sandboxed call as a short-lived Pod with a tight
