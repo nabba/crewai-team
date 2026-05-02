@@ -105,12 +105,19 @@ _FAST_ROUTE_PATTERNS = [
     (re.compile(
         r"^(?:please\s+)?(?:produce|compile|generate|build|create)\s+"
         r"(?:me\s+)?(?:the\s+|a\s+|an\s+)?"
-        # Allow zero or more adjective/qualifier tokens between the
-        # article and the deliverable noun so "produce a deforestation
-        # report" / "generate annual maps" / "compile the year-by-year
-        # results" all match. Capped at 3 qualifier words to avoid
-        # runaway matching on unrelated long sentences.
-        r"(?:[\w-]+\s+){0,3}"
+        # Allow adjective/qualifier tokens between the article and the
+        # deliverable noun so "produce a deforestation report" /
+        # "generate annual maps" / "compile the year-by-year results"
+        # all match.  2026-05-02 audit (Week 1.6): bumped from 3 → 10
+        # after the 19:06 dispatch — "create Estonia deforestation
+        # and forest age maps per year since 2012" — has six qualifier
+        # words ("Estonia deforestation and forest age maps") and was
+        # falling through to the LLM router, which over-picked "direct"
+        # and answered the user inline instead of dispatching to coding.
+        # 10 still won't match a long unrelated sentence (the regex is
+        # anchored to ^ and bounded by the deliverable noun) but
+        # comfortably covers realistic action-request phrasings.
+        r"(?:[\w-]+\s+){0,10}"
         r"(?:report|output|results?|maps?|dataset|file)",
         re.IGNORECASE,
     ), "coding", 7),
