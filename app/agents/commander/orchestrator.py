@@ -2693,6 +2693,20 @@ class Commander:
 
     def _handle_locked(self, user_input: str, sender: str = "",
                        attachments: list = None) -> str:
+        # 2026-05-02 audit Week 2.6 — re-bind current_task_id from sender.
+        # main.py:1510 sets the ContextVar in handle_task's asyncio scope,
+        # but commander.handle is invoked via run_in_executor(_commander_pool,
+        # …) which doesn't propagate ContextVars to a custom thread-pool
+        # executor.  Re-binding here means downstream code paths like
+        # _run_crew (Week 2.5 Fix 2) see the right tid via current_task_id
+        # .get() — verified by the Week 2.5 dispatch v6 logging tid=(empty)
+        # for _run_crew's emission while _handle_locked's own emission saw
+        # tid=100500 (because it passed sender explicitly).
+        try:
+            from app.observability.task_progress import current_task_id
+            current_task_id.set(str(sender or ""))
+        except Exception:
+            pass
         lower = user_input.lower().strip()
 
         # Pre-process attachments into a text context block
@@ -3223,12 +3237,26 @@ class Commander:
                             crew_name = new_crew  # update for re-vet bookkeeping
                             difficulty = new_diff
                         else:
-                            # Re-route fell through to direct/same-crew —
-                            # fall back to same-crew retry path.
-                            retry_result = self._run_crew(
-                                crew_name, retry_task, difficulty=difficulty,
-                                conversation_history=_crew_history,
+                            # 2026-05-02 audit Week 2.6 — when re-route
+                            # produces no crew (LLM router stubbornly
+                            # picked the excluded crew + the post-filter
+                            # dropped it), DO NOT re-run the excluded
+                            # crew.  Pre-fix, this fallback called
+                            # _run_crew(crew_name=excluded, ...) which
+                            # negated Fix 3's whole purpose: same crew,
+                            # same retry task, same broken pattern, same
+                            # 180s timeouts.  Better: deliver the
+                            # original (failed) crew output as-is — the
+                            # critic + epistemic gates downstream will
+                            # add appropriate user-visible caveats.
+                            logger.warning(
+                                f"Reroute produced no usable crew (LLM router "
+                                f"picked '{crew_name}' or 'direct' only after "
+                                f"exclusion).  Delivering the original failed "
+                                f"output rather than re-running the excluded "
+                                f"crew — would have looped indefinitely."
                             )
+                            retry_result = final_result
                     else:
                         retry_result = self._run_crew(
                             crew_name, retry_task, difficulty=difficulty,
