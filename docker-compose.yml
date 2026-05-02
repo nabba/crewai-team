@@ -90,6 +90,11 @@ services:
       # Signal socket mount disabled — forwarder.py runs on host and bridges via HTTP
       # - ${SIGNAL_SOCKET_PATH}:${SIGNAL_SOCKET_PATH}
       - ${SIGNAL_ATTACHMENT_PATH:-/dev/null}:/app/attachments:ro
+      # Service-account credentials (read-only). Mounted as a directory
+      # so multiple credential files (GEE, future GCP services) can
+      # share the same path without per-secret bind lines. Files inside
+      # are gitignored — see .gitignore "secrets/" rule.
+      - ./secrets:/app/secrets:ro
       # Firebase service-account mount retired — observability migrated to
       # Postgres (observability_snapshots) + /api/cp/* endpoints.
       # Set FIREBASE_ENABLED=1 and restore this line to re-enable Firestore.

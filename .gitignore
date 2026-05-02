@@ -1,6 +1,12 @@
 .env
 .env.*
 !.env.example
+# Service-account JSON / API keys / GEE credentials — NEVER commit
+secrets/
+secrets/*
+*.pem
+*-credentials.json
+*-service-account.json
 workspace/memory/
 workspace/output/
 workspace/affect/

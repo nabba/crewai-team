@@ -43,6 +43,14 @@ def create_coder(force_tier: str | None = None) -> Agent:
     with optional_tool_group("coder", "wiki"):
         from app.tools.wiki_tool_registry import create_wiki_tools
         tools.extend(create_wiki_tools("read", "write"))
+    # Google Earth Engine — satellite-imagery analysis for forest /
+    # land-use questions. Tool only registers when
+    # GOOGLE_APPLICATION_CREDENTIALS points at a readable service-
+    # account JSON; otherwise create_gee_tools returns []. See
+    # app/tools/gee_tool.py + .env.example for the setup walkthrough.
+    with optional_tool_group("coder", "gee"):
+        from app.tools.gee_tool import create_gee_tools
+        tools.extend(create_gee_tools("coder"))
     # Forge generator — only exposed when both TOOL_FORGE_ENABLED and
     # TOOL_FORGE_AGENT_GENERATION_ENABLED are set. Lets Coder register a new
     # sandboxed tool through the audit pipeline. Tool lands in SHADOW at best;
