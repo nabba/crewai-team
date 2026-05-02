@@ -14,8 +14,15 @@ import {
 import { crewIcon, crewLabel } from '../crews';
 import { SnapshotExplorer } from './SnapshotExplorer';
 import { ErrorMonitor } from './ErrorMonitor';
+import { CompanionTab } from './CompanionTab';
 
-type OpsTab = 'monitor' | 'errors' | 'anomalies' | 'deploys' | 'observability';
+type OpsTab =
+  | 'monitor'
+  | 'errors'
+  | 'anomalies'
+  | 'deploys'
+  | 'observability'
+  | 'companion';
 
 // Port of the old dashboard's "Errors & Self-Healing", "🛡️ Anomaly Detection"
 // and "🏗️ Self-Deploy Pipeline" cards — grouped as tabs on a single page.
@@ -287,6 +294,7 @@ export function OpsPage() {
     { key: 'anomalies', label: 'Anomaly Detection', icon: '🛡️', count: counts.anomalies },
     { key: 'deploys', label: 'Self-Deploy Pipeline', icon: '🏗️', count: counts.deploys },
     { key: 'observability', label: 'Observability Snapshots', icon: '📊', count: counts.observability },
+    { key: 'companion', label: 'Workspace Companion', icon: '🌀', count: 0 },
   ];
 
   return (
@@ -322,6 +330,7 @@ export function OpsPage() {
         {tab === 'anomalies' && <AnomaliesTab />}
         {tab === 'deploys' && <DeploysTab />}
         {tab === 'observability' && <SnapshotExplorer />}
+        {tab === 'companion' && <CompanionTab />}
       </div>
     </div>
   );
