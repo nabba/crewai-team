@@ -118,6 +118,15 @@ def _get_config() -> dict:
             "config": {
                 "connection_string": pg_url,
                 "collection_name": "crewai_memories",
+                # The system pins ALL embeddings to 768-dim
+                # (Ollama nomic-embed-text). mem0's pgvector default is
+                # 1536 (matching OpenAI's text-embedding-3-small) — we
+                # MUST override or every insert fails with
+                # "expected 1536 dimensions, not 768". The 768 value
+                # mirrors ``settings.embedding_dimension`` and the
+                # embedder's actual output dim — see
+                # app/memory/chromadb_manager.py:_EMBED_DIM.
+                "embedding_model_dims": s.embedding_dimension,
             },
         },
         "llm": llm_config,
