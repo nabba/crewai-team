@@ -142,14 +142,103 @@ def _ensure_initialised() -> tuple[bool, str | None]:
         return False, msg
 
 
+def _make_render_map(rendered_paths: list[str]):
+    """Build the ``render_map`` helper that the user-script can call.
+
+    Renders an ``ee.Image`` to a PNG via Earth Engine's thumbnail API
+    (synchronous, no async export task) and saves to
+    ``workspace/output/maps/``.  Up to ~1024×1024 dimensions per call
+    (EE thumbnail limit).
+
+    Returns the absolute path of the rendered file.  Each render is
+    appended to ``rendered_paths`` so the wrapper can include them in
+    the result summary that goes back to the agent.
+
+    The closure captures ``rendered_paths`` so we can collect every
+    map produced during a single ``gee_run_script`` call without
+    requiring the user-script to track them.
+    """
+    import urllib.request
+    import urllib.error
+    from datetime import datetime
+
+    def render_map(
+        image,
+        region=None,
+        name: str = "map",
+        vis_params: dict | None = None,
+        dimensions: int = 768,
+        format: str = "png",
+    ) -> str:
+        """Render *image* to a PNG and return the saved file path.
+
+        Parameters
+        ----------
+        image : ee.Image
+            What to render.  Should already be ``.clip(region)``-ed
+            for best results.
+        region : ee.Geometry | None
+            AOI for the thumbnail.  Defaults to ``image.geometry()``
+            when None.
+        name : str
+            Filename prefix (no extension).  Sanitised + timestamped.
+        vis_params : dict | None
+            Standard EE visualisation params (e.g. ``min, max, palette,
+            bands, gamma``).  Merged into the thumbnail request.
+        dimensions : int
+            Max edge in pixels.  EE caps at ~1024.  Default 768.
+        format : str
+            "png" (default) or "jpg".
+        """
+        out_dir = Path("/app/workspace/output/maps")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build thumbnail request
+        params: dict[str, Any] = dict(vis_params or {})
+        params.setdefault("dimensions", dimensions)
+        params.setdefault("format", format)
+        if region is not None:
+            params["region"] = region
+        try:
+            url = image.getThumbURL(params)
+        except Exception as exc:
+            raise RuntimeError(f"render_map: getThumbURL failed: {exc}") from exc
+
+        # Sanitise filename
+        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)[:80] or "map"
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        out_path = out_dir / f"{ts}_{safe}.{format}"
+
+        # Fetch + save
+        try:
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                data = resp.read()
+            out_path.write_bytes(data)
+        except (urllib.error.URLError, OSError) as exc:
+            raise RuntimeError(
+                f"render_map: failed to fetch thumbnail at {url[:120]}...: {exc}"
+            ) from exc
+
+        rendered_paths.append(str(out_path))
+        logger.info(
+            "render_map: wrote %s (%d bytes) for %s",
+            out_path.name, len(data), name,
+        )
+        return str(out_path)
+
+    return render_map
+
+
 def _run_user_script(script: str, timeout_s: int = 60) -> dict[str, Any]:
     """Execute the user's GEE Python snippet.
 
-    Returns ``{ok, stdout, result, error}``:
+    Returns ``{ok, stdout, result, error, rendered_maps}``:
       * ``ok``: True if the script ran without uncaught exception.
       * ``stdout``: anything the script ``print()``-ed.
       * ``result``: value of the script's ``result`` variable (if any).
       * ``error``: short exception message when ``ok=False``, else None.
+      * ``rendered_maps``: list of file paths the script produced via
+        the ``render_map(...)`` helper (Week 5 audit fix for H10).
 
     The sandbox dict pre-loads ``ee`` and a couple of common helpers so
     short snippets stay short. Heavy clients (geemap, etc.) can be
@@ -158,12 +247,17 @@ def _run_user_script(script: str, timeout_s: int = 60) -> dict[str, Any]:
     import ee
 
     # Pre-populated namespace — keeps short scripts short.
+    rendered_paths: list[str] = []
     sandbox: dict[str, Any] = {
         "ee": ee,
         # Common AOI helpers
         "estonia": ee.FeatureCollection("FAO/GAUL/2015/level0").filter(
             ee.Filter.eq("ADM0_NAME", "Estonia"),
         ),
+        # Synchronous PNG renderer — see _make_render_map for the
+        # signature.  Closes over rendered_paths so every saved map
+        # is included in the result summary.
+        "render_map": _make_render_map(rendered_paths),
         "result": None,
     }
     stdout = StringIO()
@@ -175,6 +269,7 @@ def _run_user_script(script: str, timeout_s: int = 60) -> dict[str, Any]:
             "ok": False,
             "stdout": stdout.getvalue(),
             "result": None,
+            "rendered_maps": rendered_paths,
             "error": f"{type(exc).__name__}: {exc}",
         }
 
@@ -198,6 +293,7 @@ def _run_user_script(script: str, timeout_s: int = 60) -> dict[str, Any]:
         "ok": True,
         "stdout": stdout.getvalue(),
         "result": serialised,
+        "rendered_maps": rendered_paths,
         "error": None,
     }
 
@@ -268,6 +364,20 @@ def create_gee_tools(agent_id: str = "coder") -> list:
             "hist = loss.updateMask(loss.gt(0)).reduceRegion(\n"
             "    reducer=ee.Reducer.frequencyHistogram(), ...\n"
             ").get('lossyear').getInfo()\n\n"
+            "MAP RENDERING — the sandbox pre-loads a render_map(image, "
+            "region, name, vis_params) helper that synchronously saves "
+            "an ee.Image as a PNG to workspace/output/maps/.  Use this "
+            "when the user asks for VISUAL maps (not just statistics):\n"
+            "  png = render_map(\n"
+            "      image=loss.updateMask(loss).clip(estonia.geometry()),\n"
+            "      region=estonia.geometry(),\n"
+            "      name='estonia_loss_2012_2024',\n"
+            "      vis_params={'palette': ['red'], 'min': 0, 'max': 1},\n"
+            "      dimensions=768,\n"
+            "  )\n"
+            "Each call is one round-trip (EE thumbnail API, ~5-15s).  "
+            "PNG paths are returned in the result and listed in the "
+            "tool output as 'rendered maps'.\n\n"
             "Useful patterns: Hansen 'lossyear' band for year-by-year "
             "deforestation, ee.ImageCollection.filterDate for time-range "
             "queries, .clip(estonia.geometry()) for country-scoped work."
@@ -293,7 +403,22 @@ def create_gee_tools(agent_id: str = "coder") -> list:
                     lines.append(f"\n--- stdout ---\n{out['stdout'].rstrip()}")
                 if out["result"] is not None:
                     lines.append(f"\n--- result ---\n{json.dumps(out['result'], indent=2, default=str)[:4000]}")
+                rendered = out.get("rendered_maps") or []
+                if rendered:
+                    lines.append(
+                        f"\n--- rendered maps ({len(rendered)}) ---\n"
+                        + "\n".join(f"  {p}" for p in rendered[:32])
+                    )
                 return "\n".join(lines)
-            return f"GEE script failed: {out['error']}\n\n--- stdout ---\n{out['stdout']}"
+            # Failure path — still surface any maps rendered before the
+            # exception (some succeed, some fail mid-script).
+            err_msg = f"GEE script failed: {out['error']}\n\n--- stdout ---\n{out['stdout']}"
+            rendered = out.get("rendered_maps") or []
+            if rendered:
+                err_msg += (
+                    f"\n\n--- partial maps rendered before failure ({len(rendered)}) ---\n"
+                    + "\n".join(f"  {p}" for p in rendered[:32])
+                )
+            return err_msg
 
     return [GeeRunScriptTool()]
