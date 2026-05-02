@@ -1,0 +1,26 @@
+{
+  "reflection_id": "cogito_20260502_074051",
+  "timestamp": "2026-05-02T07:40:51.774790+00:00",
+  "self_model_stale": false,
+  "discrepancies": [
+    {
+      "type": "memory_neo4j_error",
+      "detail": "{neo4j_code: Neo.ClientError.Security.Unauthorized} {message: The client is unauthorized due to authentication failure.} {gql_status: 50N42} {gql_status_description: error: general processing exceptio",
+      "severity": "medium"
+    }
+  ],
+  "failure_patterns": [],
+  "observations": [
+    "Agent 'desktop' has no versioned prompt",
+    "Agent 'devops' has no versioned prompt",
+    "Agent 'financial_analyst' has no versioned prompt",
+    "Agent 'pim' has no versioned prompt",
+    "Agent 'reasoning_methods' has no versioned prompt",
+    "Agent 'repo_analyst' has no versioned prompt",
+    "Agent 'introspector' has no versioned prompt",
+    "Empty ChromaDB collections: reflections_researcher, experiential, tensions, reflections_critic, episteme, unresolved_tensions, reflections_coder, commander, healing_knowledge, coding, aesthetic_patterns, experiential_journal, episteme_research, reflections_writer, aesthetics"
+  ],
+  "improvement_proposals": [],
+  "overall_health": "degraded",
+  "narrative": ""
+}

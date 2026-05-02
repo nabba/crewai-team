@@ -2,9 +2,10 @@
   "id": 780,
   "title": "Auditor: 1 code issues",
   "type": "code",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-25T00:00:25.648914+00:00",
   "applied_at": null,
   "dirname": "780_Auditor__1_code_issues",
-  "resolution_target": ""
+  "resolution_target": "",
+  "rejected_at": "2026-05-02T21:49:05.777498+00:00"
 }

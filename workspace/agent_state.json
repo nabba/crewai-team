@@ -72,13 +72,13 @@
     "last_task_at": "2026-04-22T21:04:26.066798+00:00"
   },
   "coding": {
-    "tasks_completed": 23,
+    "tasks_completed": 25,
     "tasks_failed": 2,
-    "success_rate": 0.92,
-    "avg_confidence": 0.6019,
+    "success_rate": 0.9259,
+    "avg_confidence": 0.6015,
     "by_difficulty": {
       "7": {
-        "completed": 6,
+        "completed": 8,
         "failed": 1
       },
       "5": {
@@ -98,8 +98,8 @@
         "failed": 1
       }
     },
-    "streak": 1,
-    "last_task_at": "2026-04-26T21:25:17.660231+00:00"
+    "streak": 3,
+    "last_task_at": "2026-05-02T22:02:27.882265+00:00"
   },
   "pim": {
     "tasks_completed": 18,

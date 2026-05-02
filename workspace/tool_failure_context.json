@@ -1,77 +1,5 @@
 [
   {
-    "task_hash": "b006f46b5bd127d0",
-    "task": "Research sales leaders and LinkedIn URLs for 25 Payment Service Providers",
-    "failure_count": 3,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146515.7793574,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "f25b4bb9ac19985d",
-    "task": "Research sales/revenue/commercial leadership contacts for a list of 25 PSP companies and return name",
-    "failure_count": 1,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146771.3345177,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "f25b4bb9ac19985d",
-    "task": "Research sales/revenue/commercial leadership contacts for a list of 25 PSP companies and return name",
-    "failure_count": 2,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146771.5493534,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "f25b4bb9ac19985d",
-    "task": "Research sales/revenue/commercial leadership contacts for a list of 25 PSP companies and return name",
-    "failure_count": 3,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146771.7850173,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "f25b4bb9ac19985d",
-    "task": "Research sales/revenue/commercial leadership contacts for a list of 25 PSP companies and return name",
-    "failure_count": 4,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146772.0104966,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "f25b4bb9ac19985d",
-    "task": "Research sales/revenue/commercial leadership contacts for a list of 25 PSP companies and return name",
-    "failure_count": 5,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146772.185486,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "586bdbd6cb382331",
-    "task": "Research the following topic for the user:\n\n<user_request>\n<reference_data>\nThe following is backgro",
-    "failure_count": 1,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146834.6119864,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "586bdbd6cb382331",
-    "task": "Research the following topic for the user:\n\n<user_request>\n<reference_data>\nThe following is backgro",
-    "failure_count": 2,
-    "last_tool": "browser_fetch",
-    "last_error": "Browser init failed: BrowserType.launch: Executable doesn't exist at /home/appuser/.cache/ms-playwri",
-    "ts": 1777146834.8177562,
-    "replan_suggested": false
-  },
-  {
     "task_hash": "586bdbd6cb382331",
     "task": "Research the following topic for the user:\n\n<user_request>\n<reference_data>\nThe following is backgro",
     "failure_count": 3,
@@ -447,6 +375,78 @@
     "last_tool": "file_manager",
     "last_error": "Error: Cannot write to 'app/agents/coder.py'. Writable directories: output, proposals, skills",
     "ts": 1777363236.6511512,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "eb7879089ec49c08",
+    "task": "Execute the provided Estonia deforestation and forest age map generation script using the gee_run_sc",
+    "failure_count": 1,
+    "last_tool": "gee_run_script",
+    "last_error": "GEE script failed: AttributeError: 'ComputedObject' object has no attribute 'map'\n\n--- stdout ---\n\n\n",
+    "ts": 1777758997.155888,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "2cbaa01ec3726c1b",
+    "task": "Produce a TECHNICAL SPECIFICATION for the following coding task.\nDo NOT write code yet \u2014 only the sp",
+    "failure_count": 1,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: README_EstoniaForestMaps.md.  Tip: use action='list' to enumerate available f",
+    "ts": 1777759102.2767465,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "5d5673be691b5a3f",
+    "task": "Implement the following coding task.\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibili",
+    "failure_count": 1,
+    "last_tool": "delegate_work_to_coworker",
+    "last_error": "Error: tool 'Delegate work to coworker' timed out after 180s. The underlying call did not return in ",
+    "ts": 1777759134.7406225,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "5d5673be691b5a3f",
+    "task": "Implement the following coding task.\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibili",
+    "failure_count": 2,
+    "last_tool": "gee_run_script",
+    "last_error": "GEE script failed: AttributeError: 'ComputedObject' object has no attribute 'map'\n\n--- stdout ---\n\n\n",
+    "ts": 1777759180.3191056,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "eb7879089ec49c08",
+    "task": "Execute the provided Estonia deforestation and forest age map generation script using the gee_run_sc",
+    "failure_count": 2,
+    "last_tool": "gee_run_script",
+    "last_error": "Error: tool 'gee_run_script' timed out after 180s. The underlying call did not return in time \u2014 most",
+    "ts": 1777759217.8180754,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "0a7c3efe82cb1aa8",
+    "task": "Implement the following coding task.\n\n<user_request>\n<reference_data>\nThe following is background re",
+    "failure_count": 1,
+    "last_tool": "gee_run_script",
+    "last_error": "GEE script failed: AttributeError: 'Number' object has no attribute 'where'\n\n--- stdout ---\n",
+    "ts": 1777759245.7510035,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "0a7c3efe82cb1aa8",
+    "task": "Implement the following coding task.\n\n<user_request>\n<reference_data>\nThe following is background re",
+    "failure_count": 2,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: output/estonia_forest_age_distribution.csv.  Tip: use action='list' to enumer",
+    "ts": 1777759261.3564086,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "0a7c3efe82cb1aa8",
+    "task": "Implement the following coding task.\n\n<user_request>\n<reference_data>\nThe following is background re",
+    "failure_count": 3,
+    "last_tool": "gee_run_script",
+    "last_error": "GEE script failed: AttributeError: 'Number' object has no attribute 'where'\n\n--- stdout ---\n",
+    "ts": 1777759310.6656487,
     "replan_suggested": false
   }
 ]
