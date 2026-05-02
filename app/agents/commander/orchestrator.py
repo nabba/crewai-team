@@ -16,7 +16,7 @@ from pathlib import Path
 
 from app.agents.commander.routing import (
     _is_introspective, _try_fast_route, _recover_truncated_routing,
-    ROUTING_PROMPT, COMMANDER_BACKSTORY, _load_skill_names,
+    ROUTING_PROMPT, COMMANDER_BACKSTORY, build_routing_prompt, _load_skill_names,
     maybe_promote_to_creative,
     _TEMPORAL_PATTERN, _INSTANT_REPLIES, _FAST_ROUTE_PATTERNS,
 )
@@ -742,8 +742,12 @@ class Commander:
         # temporal/spatial context. Short follow-ups ("what is listed?") need
         # conversation context to be high-salience for the routing LLM.
         # Temporal narrative (seasons, nature) is reference-only and goes last.
+        # Week 3 audit fix: build routing prompt with auto-populated
+        # crew catalog (capabilities derived from the declarative tool
+        # registry).  Per-call so tool registration changes since the
+        # last dispatch are reflected without restart.
         prompt = (
-            f"{ROUTING_PROMPT}\n\n"
+            f"{build_routing_prompt()}\n\n"
             f"{history_block}"
             f"{attachment_context}"
             f"User request:\n\n{wrap_user_input(user_input)}\n\n"
@@ -2992,6 +2996,56 @@ class Commander:
                         logger.info(f"ATLAS: learning plan queued ({len(plan.steps)} steps) for: {user_input[:60]}")
                 except Exception:
                     pass
+
+            # ── Capability precondition (Week 3 audit fix) ──────────
+            #
+            # Between routing decision and dispatch, run a small LLM
+            # classifier to figure out which capability categories the
+            # task plausibly needs, then check the routed crew has them
+            # via the Week 2 declarative tool registry.  When the check
+            # fails, escalate to a crew that DOES have the categories
+            # rather than dispatching to a crew that's missing tools.
+            #
+            # Skipped for "direct" (no crew) and for crews not in the
+            # CREW_TO_AGENTS map (capability info unavailable).  Failure
+            # here never blocks dispatch — we log loudly and proceed
+            # with the original choice as the conservative fallback.
+            try:
+                from app.agents.commander.capability_router import (
+                    precondition_check, find_crew_for_categories,
+                )
+                _passed, _required, _missing = precondition_check(
+                    crew_name, d.get("task", user_input),
+                )
+                if not _passed and _required:
+                    _alt_crew = find_crew_for_categories(
+                        _required, exclude=(crew_name, "direct"),
+                    )
+                    if _alt_crew:
+                        logger.warning(
+                            "capability_router: routed crew '%s' missing %s; "
+                            "escalating to '%s' which has the required categories %s",
+                            crew_name, _missing, _alt_crew, _required,
+                        )
+                        # Mutate the decision so subsequent code uses
+                        # the better-fitting crew.  difficulty + task
+                        # carry over unchanged.
+                        d["crew"] = _alt_crew
+                        crew_name = _alt_crew
+                    else:
+                        logger.warning(
+                            "capability_router: routed crew '%s' missing %s "
+                            "and no alternative crew has the required %s; "
+                            "dispatching anyway (best-effort)",
+                            crew_name, _missing, _required,
+                        )
+            except Exception as _cap_exc:
+                # Capability router is best-effort; never block dispatch.
+                logger.debug(
+                    "capability_router: precondition check raised %s; "
+                    "dispatching with original routing",
+                    _cap_exc, exc_info=False,
+                )
 
             # L3: Use reflexion retry for medium+ difficulty tasks
             #
