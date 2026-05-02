@@ -53,6 +53,7 @@ The honest design pattern when *"forest age"* is requested without further quali
 1. Ask the user (if conversation allows): *"Stand age (biological) or regrowth age (years since last disturbance)?"*
 2. If you can't ask, default to the conservative: produce **both** outputs side-by-side, clearly labelled. Stand age via Besnard (or RMK if Estonia-specific) and regrowth age via Hansen. A two-column table is much clearer than one ambiguous column.
 3. NEVER set intact-forest pixels to `age = 0` in a "regrowth age" map — use `masked` or `null` or an explicit sentinel like `-1` with documentation. Setting to zero is a known footgun (the 2026-05-02 dispatch did exactly this and the user immediately spotted the conflation).
+4. When delivering the visual maps: use the `render_map(image, region, name, vis_params, ...)` helper inside `gee_run_script` (added 2026-05-03, audit H10 — see `gee_batching_pattern.md`).  Use a sequential palette (`viridis` / `magma` / white-to-green) for age maps; binary (`palette=['white', 'red']`) for deforestation masks; encode the metric in the filename (`stand_age_*.png` vs `regrowth_age_*.png`) so downstream consumers don't confuse them.
 
 # Other shorthand traps
 

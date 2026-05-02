@@ -420,6 +420,43 @@ def select_model(
     mode = get_mode()
     default_model = get_default_for_role(role, mode)
 
+    # Step 2b — Output-ceiling check (2026-05-03 audit cleanup, item 5).
+    # When the caller passes expected_output_tokens, swap out a default
+    # whose model can't deliver that many tokens.  Pre-fix the H2 clamp
+    # (PR #30) caught the ceiling at the LLM constructor and silently
+    # truncated; here we catch it at the SELECTOR so a high-output task
+    # doesn't get routed to a low-ceiling model in the first place.
+    # Cheaper than retry-after-truncation.
+    if expected_output_tokens > 4096:
+        try:
+            from app.llm_factory import model_max_output_tokens
+            default_entry_for_cap = get_model(default_model)
+            default_mid = (default_entry_for_cap or {}).get("model_id", default_model)
+            if model_max_output_tokens(default_mid) < expected_output_tokens:
+                # Walk the catalog for a candidate with sufficient ceiling
+                # whose tier the current mode allows.  First match wins;
+                # caller's tier preferences (force_tier etc.) get applied
+                # downstream so this is just a "ceiling sufficiency" filter.
+                for cand_name, cand_entry in CATALOG.items():
+                    if cand_name == default_model:
+                        continue
+                    cand_mid = cand_entry.get("model_id", cand_name)
+                    if model_max_output_tokens(cand_mid) >= expected_output_tokens \
+                            and _tier_allowed(cand_entry.get("tier", ""), settings):
+                        logger.info(
+                            "llm_selector: output-ceiling swap — role=%s "
+                            "expected_output=%d, default %s ceiling=%d, "
+                            "swapping to %s ceiling=%d",
+                            role, expected_output_tokens, default_model,
+                            model_max_output_tokens(default_mid),
+                            cand_name, model_max_output_tokens(cand_mid),
+                        )
+                        default_model = cand_name
+                        break
+        except Exception:
+            # Selector is best-effort; never block the call
+            pass
+
     # Step 3: Task-specific overrides
     task_type = detect_task_type(role, task_hint)
 
