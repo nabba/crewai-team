@@ -49,15 +49,27 @@ class PromotionResult:
     workspace_id: str
     formats: dict[str, str] = field(default_factory=dict)  # fmt → path
     error: str | None = None
+    # Phase 9: cross-layer wiki/Mem0 publication outcome (when wiki=True)
+    wiki_page: str | None = None
+    system_wiki_page: str | None = None
+    mem0_id: str | None = None
+    wiki_errors: list[str] = field(default_factory=list)
 
 
 def promote(workspace_id: str, idea_id: str, *,
-            formats: tuple[str, ...] | list[str] = ("md",)) -> PromotionResult:
+            formats: tuple[str, ...] | list[str] = ("md",),
+            publish_wiki: bool = True) -> PromotionResult:
     """Generate document files + emit DOCUMENTED event.
 
     ``formats`` may include "md", "docx", "pdf". md is always generated
     even when not requested (canonical). Failures of docx/pdf rendering
     are logged and skipped — the user still gets the markdown.
+
+    When ``publish_wiki`` is True (default), the polished idea is also
+    registered in the workspace wiki + Mem0 + system wiki via
+    ``app.companion.wiki.publish_to_wiki``. Failures of any wiki layer
+    are logged and listed in ``wiki_errors`` — the document files
+    still land regardless.
     """
     idea = _idea_store.find_by_id(workspace_id, idea_id)
     if idea is None:
@@ -80,8 +92,24 @@ def promote(workspace_id: str, idea_id: str, *,
             paths[fmt] = str(rendered)
 
     _emit_documented_event(workspace_id, idea_id, paths)
-    return PromotionResult(idea_id=idea_id, workspace_id=workspace_id,
-                            formats=paths)
+
+    result = PromotionResult(idea_id=idea_id, workspace_id=workspace_id,
+                              formats=paths)
+
+    if publish_wiki:
+        try:
+            from app.companion.wiki import publish_to_wiki
+            wr = publish_to_wiki(workspace_id, idea_id)
+            result.wiki_page = wr.wiki_page
+            result.system_wiki_page = wr.system_wiki_page
+            result.mem0_id = wr.mem0_id
+            result.wiki_errors = list(wr.errors)
+        except Exception as exc:
+            logger.debug(
+                "companion.document_pipeline: wiki publish raised: %s", exc)
+            result.wiki_errors.append(f"publish_raised: {type(exc).__name__}")
+
+    return result
 
 
 def list_formats(workspace_id: str, idea_id: str) -> dict[str, str]:

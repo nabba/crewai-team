@@ -62,6 +62,60 @@ class WikiResult:
     errors: list[str] = field(default_factory=list)
 
 
+def list_pages(workspace_id: str) -> list[dict]:
+    """List wiki pages for one workspace.
+
+    Each entry is ``{idea_id, filename, path, title}``. Title is best-effort
+    parsed from the page's first ``# ...`` heading; idea_id is the
+    filename prefix before the first hyphen.
+    """
+    safe_ws = _safe_path_token(workspace_id)
+    ws_dir = _WORKSPACE_WIKI_DIR / safe_ws
+    if not ws_dir.exists():
+        return []
+    out: list[dict] = []
+    for p in sorted(ws_dir.iterdir()):
+        if not p.is_file() or p.suffix != ".md" or p.name == _INDEX_FILENAME:
+            continue
+        idea_id = p.stem.split("-", 1)[0]
+        title = _read_first_heading(p) or p.stem
+        out.append({
+            "idea_id": idea_id,
+            "filename": p.name,
+            "path": str(p),
+            "title": title,
+        })
+    return out
+
+
+def find_page(workspace_id: str, idea_id: str) -> Path | None:
+    """Locate a wiki page by idea_id. Returns the Path or None."""
+    safe_ws = _safe_path_token(workspace_id)
+    safe_id = _safe_path_token(idea_id)
+    ws_dir = _WORKSPACE_WIKI_DIR / safe_ws
+    if not ws_dir.exists():
+        return None
+    # Prefer exact prefix match; fall back to fuzzy contains for old slugs.
+    for p in ws_dir.iterdir():
+        if p.is_file() and p.suffix == ".md" and p.stem.startswith(safe_id):
+            return p
+    for p in ws_dir.iterdir():
+        if p.is_file() and p.suffix == ".md" and safe_id in p.stem:
+            return p
+    return None
+
+
+def _read_first_heading(path: Path) -> str | None:
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith("# "):
+                    return line[2:].strip()
+    except Exception:
+        return None
+    return None
+
+
 def publish_to_wiki(workspace_id: str, idea_id: str) -> WikiResult:
     """Register a polished idea in workspace wiki + Mem0 + system wiki."""
     idea = _idea_store.find_by_id(workspace_id, idea_id)

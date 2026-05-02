@@ -15,10 +15,18 @@ def tmp_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     docs = tmp_path / "docs"
     ideas = tmp_path / "ideas"
     events = tmp_path / "events"
+    ws_wiki = tmp_path / "ws_wiki"
+    sys_wiki = tmp_path / "sys_wiki"
     monkeypatch.setattr(_dp, "_DOCUMENTS_DIR", docs)
     monkeypatch.setattr(_is, "_IDEAS_DIR", ideas)
     monkeypatch.setattr(_is, "_index_chromadb", lambda r: None)
     monkeypatch.setattr(_ev, "_EVENTS_DIR", events)
+    # Phase 9: promote() now also publishes to the wiki by default. Isolate
+    # workspace + system wiki dirs and block real Mem0 calls.
+    from app.companion import wiki as _wiki
+    monkeypatch.setattr(_wiki, "_WORKSPACE_WIKI_DIR", ws_wiki)
+    monkeypatch.setattr(_wiki, "_SYSTEM_WIKI_DIR", sys_wiki)
+    monkeypatch.setattr(_wiki, "_invoke_mem0_add", lambda *a, **kw: None)
     return tmp_path
 
 

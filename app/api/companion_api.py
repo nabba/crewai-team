@@ -275,3 +275,37 @@ def download_document_artifact(workspace_id: str, idea_id: str, format: str):
                     f"POST /promote/{workspace_id}/{idea_id} first",
         )
     return FileResponse(str(p), filename=f"{idea_id}.{format}")
+
+
+# ── Phase 9: workspace wiki ────────────────────────────────────────────────
+
+@router.get("/wiki/{workspace_id}")
+def list_workspace_wiki(workspace_id: str):
+    """List wiki pages for one workspace.
+
+    Returns the per-page metadata; the page bodies are fetched separately
+    via ``GET /wiki/{workspace_id}/{idea_id}`` so React only loads bodies
+    on demand.
+    """
+    from app.companion import wiki as _wiki
+    pages = _wiki.list_pages(workspace_id)
+    return {
+        "workspace_id": workspace_id,
+        "count": len(pages),
+        "pages": pages,
+    }
+
+
+@router.get("/wiki/{workspace_id}/{idea_id}")
+def read_workspace_wiki_page(workspace_id: str, idea_id: str):
+    """Return one wiki page's raw markdown body (with YAML frontmatter)."""
+    from fastapi.responses import PlainTextResponse
+    from app.companion import wiki as _wiki
+    page = _wiki.find_page(workspace_id, idea_id)
+    if page is None or not page.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"wiki page not found for {idea_id}; promote the idea "
+                    "first via POST /promote/{workspace_id}/{idea_id}",
+        )
+    return PlainTextResponse(page.read_text(), media_type="text/markdown")
