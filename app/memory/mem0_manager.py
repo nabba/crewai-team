@@ -12,6 +12,7 @@ All functions degrade gracefully: if Mem0 is unavailable (postgres/neo4j down,
 mem0 disabled), they return empty results and log warnings.
 """
 import logging
+import os
 import re
 import threading
 
@@ -69,6 +70,48 @@ def _get_config() -> dict:
     if not pg_url:
         raise ValueError("mem0: MEM0_POSTGRES_PASSWORD not set — cannot connect to postgres")
 
+    # ── LLM provider selection ────────────────────────────────────────
+    # mem0's litellm provider has an unconditional pre-flight gate at
+    # mem0/llms/litellm.py:70:
+    #     if not litellm.supports_function_calling(model): raise
+    # This fires even when the actual extraction call only uses
+    # response_format={"type":"json_object"} (no tools). For local
+    # Ollama models, litellm's static registry doesn't list function-
+    # calling support — so EVERY mem0 fact-extraction with an Ollama
+    # model raised "does not support function calling" and got logged
+    # as a WARNING, even though the underlying model (Qwen3.5) supports
+    # tools natively.
+    #
+    # Fix (2026-05-02): when the configured model is an Ollama tag
+    # (``ollama/...`` or ``ollama_chat/...``), switch to mem0's native
+    # ollama provider, which has no such gate. Non-Ollama configs
+    # (e.g. claude/openai via LiteLLM) keep the original path.
+    raw_model = s.mem0_llm_model or ""
+    if raw_model.startswith(("ollama/", "ollama_chat/")):
+        bare_model = raw_model.split("/", 1)[1]
+        # Ollama base URL — mirror the discovery path's resolution
+        ollama_base = (
+            os.environ.get("OLLAMA_BASE_URL")
+            or os.environ.get("OLLAMA_HOST")
+            or "http://host.docker.internal:11434"
+        )
+        llm_config = {
+            "provider": "ollama",
+            "config": {
+                "model": bare_model,
+                "temperature": 0.1,
+                "ollama_base_url": ollama_base,
+            },
+        }
+    else:
+        llm_config = {
+            "provider": "litellm",
+            "config": {
+                "model": raw_model,
+                "temperature": 0.1,
+            },
+        }
+
     config = {
         "vector_store": {
             "provider": "pgvector",
@@ -77,13 +120,7 @@ def _get_config() -> dict:
                 "collection_name": "crewai_memories",
             },
         },
-        "llm": {
-            "provider": "litellm",
-            "config": {
-                "model": s.mem0_llm_model,
-                "temperature": 0.1,
-            },
-        },
+        "llm": llm_config,
         "embedder": {
             "provider": "huggingface",
             "config": {
