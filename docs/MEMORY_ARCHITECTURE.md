@@ -710,7 +710,7 @@ on top of the raw search. The full chain — applied in order — is:
 | Layer | What it does | Why |
 |-------|--------------|-----|
 | 1. **Subject-less message detection** | If the message is short and composed entirely of filler/pronoun/generic-execution tokens (`"execute the plan"`, `"run it"`, `"produce the report"`), substitute the last 3 user lines from the conversation history as the retrieval query. If no history exists, return empty (no skills injected). | Short subject-less queries embed to a near-uniform direction — every skill in the index is roughly equidistant. Returning the top-N degenerates to "whichever skill happened to be closest to that direction at index time". The May 2026 weather-vs-forest contamination incident was exactly this. |
-| 2. **Quality filter** | Drop records whose `topic` contains placeholder markers (`****`, `_____`, `<redacted>`, `[REDACTED]`). | Auto-skill-creation paths sometimes leak the editor's redaction sentinels into topic strings. Those records are low-quality artifacts and should never surface as authoritative knowledge. |
+| 2. **Quality filter** | Drop records whose `topic` contains placeholder markers (`****`, `_____`, `<redacted>`, `[REDACTED]`). | Auto-skill-creation paths can leak Markdown-bold delimiters or redaction sentinels into the topic field. The signature pattern is `**** <name>`, produced when an LLM emits `**Topic:** <name>` and the topic extractor strips the literal substring `Topic:` from `**Topic:**` — leaving the surrounding `**` `**` joined as `****`. Same-shape patterns also appear from explicit `<redacted>`/`[REDACTED]` markers. Those records are low-quality artifacts and should never surface as authoritative knowledge. As of this writing the source has been closed (see §6.7.2) so the filter is defense-in-depth, not load-bearing. |
 | 3. **Semantic distance gate** | Drop records whose cosine distance exceeds `_SKILL_DISTANCE_CEILING` (default 0.55). | Even the top-N includes weak matches when the index has nothing closer. The ceiling is intentionally tighter than the novelty `OVERLAP→ADJACENT` cutoff (0.55) because skill *injection* into a crew prompt is high-bar — the LLM weights `RELEVANT KNOWLEDGE` blocks heavily, so a weak match becomes a strong steer. |
 | 4. **Conditional activation** | Honour `requires_mode` / `requires_tier` / `fallback_for_mode` / `requires_tools` predicates via `SkillRecord.matches_context`. | Phase 3 of the overhaul. Skills tagged `requires_mode="local"` should not surface in cloud-mode runs, etc. |
 
@@ -725,6 +725,45 @@ Layer 1 can consult it (`orchestrator._run_crew_inner` →
 `_ctx_pool.submit(_load_relevant_skills, crew_task, 3, conversation_history)`).
 Without that arg the loader degrades to "skip on subject-less" rather
 than "recover topic from history" — never to "guess".
+
+#### 6.7.2 Write-side guard and source fix (May 2026 follow-up)
+
+The four retrieval-side defences above keep contaminated records from
+reaching agents, but the index continues to accumulate them on every
+auto-skill creation cycle. A May 2 smoke run found four active records
+whose topics started with `****`, including the two that triggered the
+2026-05-02 cross-topic contamination incident. To stop the gate from
+being load-bearing for this class of bug, two upstream changes ship as
+the source-fix complement:
+
+| Layer | Module | What it does |
+|-------|--------|--------------|
+| **0a. Write-path guard** | `app/self_improvement/integrator.py` (`_topic_has_placeholder_marker`) | `integrate(draft)` rejects drafts whose topic contains any `_PLACEHOLDER_TOPIC_MARKERS` entry (the same five strings as the retrieval-side gate) **before** the novelty check, KB write, or record persist. Logs a `WARNING` so the upstream Learner is auditable. The markers are duplicated rather than imported to keep `app.self_improvement` free of upward dependencies on `app.agents.commander` — both definitions are pinned in lockstep by `tests/test_skill_retrieval_contamination.py::test_topic_helper_matches_retrieval_side_definition`. |
+| **0b. Topic extractor fix** | `app/crews/base_crew.py` (`_extract_auto_skill_topic`) | The actual root cause. The Learner's "1. Topic (one line)" prompt elicits `**Topic:** Foo`-style replies, and the previous extractor was `lines[0].replace("Topic:", "")` — which strips the literal `Topic:` substring from `**Topic:**` and leaves the bold delimiters joined as `**** Foo`. The new extractor strips the `Topic:` label together with any surrounding bold/italic markers, then peels residual `*`/`_`/`#` characters off both ends. |
+
+**Operator sweep.** `scripts/archive_placeholder_skills.py` enumerates
+the active SkillRecord index and sets `status="archived"` on every
+record whose topic carries a placeholder marker. `provenance.gap_id` /
+`created_from_gap` is preserved so the audit trail back to the
+originating gap stays intact. Defaults to dry-run; pass `--apply` to
+mutate. Must run inside the gateway container — chromadb is not
+reachable from the host:
+
+```sh
+docker exec -it crewai-team-gateway-1 \
+    python /app/scripts/archive_placeholder_skills.py --apply
+```
+
+**Why the layering matters.** The retrieval-side gate (Layers 1–4
+above) and the write-side guard (Layer 0) are intentionally
+independent. If an upstream change accidentally regresses the topic
+extractor again, the index will start accumulating placeholder records
+silently — but the retrieval-side filter still keeps them off
+production traffic. Conversely, if a future agent-context refactor
+breaks Layer 2, the integrator will already be refusing the records,
+so nothing contaminated is in the index for retrieval to surface. The
+two layers must agree on the canonical placeholder set; the test pin
+catches any drift.
 
 ### 6.8 Disk mirror (back-compat)
 

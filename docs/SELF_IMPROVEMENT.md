@@ -759,6 +759,20 @@ plan" recover topic from the conversation history rather than running
 a raw embedding search — live in
 [MEMORY_ARCHITECTURE.md §6.7.1](MEMORY_ARCHITECTURE.md#671-retrieval-api-and-contamination-defences-may-2026).
 
+The Integrator's `integrate(draft)` pipeline mirrors the retrieval-side
+quality filter at the write path: drafts whose topic carries any
+placeholder marker (`****`, `_____`, `<redacted>`, `[REDACTED]`) are
+rejected before novelty / classification / KB write, and a `WARNING`
+is logged so the upstream Learner is auditable. The mirror was added
+after a May 2 smoke run found four active placeholder records — the
+retrieval-side filter was suppressing them at injection time, but the
+index kept growing. The actual source — `_auto_create_skill` stripping
+`Topic:` from a `**Topic:** Foo` LLM reply and leaving `**** Foo` —
+was fixed in the same change. See
+[MEMORY_ARCHITECTURE.md §6.7.2](MEMORY_ARCHITECTURE.md#672-write-side-guard-and-source-fix-may-2026-follow-up)
+for the full layering rationale and the operator sweep script
+(`scripts/archive_placeholder_skills.py`).
+
 ---
 
 ## 11. Observability & Dashboard
