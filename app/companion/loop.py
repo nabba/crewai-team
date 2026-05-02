@@ -66,11 +66,13 @@ def companion_tick() -> None:
 def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
     """Idle-scheduler job tuples — appended in ``_default_jobs()``.
 
-    Three jobs:
+    Four jobs:
       - ``companion-tick``       — MEDIUM, the ideation cycle
       - ``companion-ingest``     — LIGHT,  fetches external sources daily
       - ``companion-grand-task`` — MEDIUM, 12 h workspace-grand-task synthesis
+      - ``companion-xworkspace`` — LIGHT,  cross-workspace transfer proposals
     """
+    from app.companion import cross_workspace as _xw
     from app.companion import grand_task as _grand_task
     from app.companion import ingest as _ingest
     from app.idle_scheduler import JobWeight
@@ -78,4 +80,5 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         ("companion-tick", companion_tick, JobWeight.MEDIUM),
         *_ingest.get_idle_jobs(),
         *_grand_task.get_idle_jobs(),
+        *_xw.get_idle_jobs(),
     ]

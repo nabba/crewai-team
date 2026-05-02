@@ -16,19 +16,22 @@ def tmp_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return tmp_path
 
 
-def test_get_idle_jobs_includes_tick_ingest_grand_task():
-    """Phase 11: the loop registers three jobs (tick + ingest + grand-task)."""
+def test_get_idle_jobs_includes_all_four_jobs():
+    """Phase 13: the loop registers four jobs (tick + ingest + grand-task +
+    cross-workspace)."""
     jobs = _loop.get_idle_jobs()
     names = [j[0] for j in jobs]
     assert "companion-tick" in names
     assert "companion-ingest" in names
     assert "companion-grand-task" in names
+    assert "companion-xworkspace" in names
 
     from app.idle_scheduler import JobWeight
     by_name = {j[0]: j[2] for j in jobs}
     assert by_name["companion-tick"] == JobWeight.MEDIUM
     assert by_name["companion-ingest"] == JobWeight.LIGHT
     assert by_name["companion-grand-task"] == JobWeight.MEDIUM
+    assert by_name["companion-xworkspace"] == JobWeight.LIGHT
 
 
 def test_idle_scheduler_default_jobs_includes_companion():
@@ -40,6 +43,7 @@ def test_idle_scheduler_default_jobs_includes_companion():
     assert "companion-tick" in names
     assert "companion-ingest" in names
     assert "companion-grand-task" in names
+    assert "companion-xworkspace" in names
 
 
 def test_tick_with_no_workspaces_is_noop(tmp_state_dir):

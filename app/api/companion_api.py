@@ -361,3 +361,53 @@ def reject_grand_task(workspace_id: str, proposal_id: str,
         raise HTTPException(status_code=404, detail="proposal not found")
     return {"ok": True, "workspace_id": workspace_id,
             "proposal_id": proposal_id}
+
+
+# ── Phase 13: cross-workspace transfer ─────────────────────────────────────
+
+class DismissKernelRequest(BaseModel):
+    """Optional reason body for ``POST /xworkspace/.../dismiss``."""
+    reason: str = ""
+
+
+@router.get("/xworkspace/{workspace_id}/inbox")
+def list_xworkspace_inbox(workspace_id: str):
+    """List undecided cross-workspace kernel proposals for one workspace."""
+    from app.companion import cross_workspace as _xw
+    proposals = _xw.inbox(workspace_id)
+    return {
+        "workspace_id": workspace_id,
+        "count": len(proposals),
+        "proposals": [
+            {
+                "kernel_id": p.kernel_id,
+                "source_workspace_id": p.source_workspace_id,
+                "source_idea_id": p.source_idea_id,
+                "text": p.text[:1000],
+                "relevance_score": p.relevance_score,
+                "ts": p.ts,
+            }
+            for p in proposals
+        ],
+    }
+
+
+@router.post("/xworkspace/{workspace_id}/inbox/{kernel_id}/accept")
+def accept_xworkspace_kernel(workspace_id: str, kernel_id: str):
+    """Accept a cross-workspace kernel — feeds context into next N cycles."""
+    from app.companion import cross_workspace as _xw
+    if not _xw.accept(workspace_id, kernel_id):
+        raise HTTPException(status_code=404, detail="kernel not found")
+    return {"ok": True, "workspace_id": workspace_id,
+            "kernel_id": kernel_id}
+
+
+@router.post("/xworkspace/{workspace_id}/inbox/{kernel_id}/dismiss")
+def dismiss_xworkspace_kernel(workspace_id: str, kernel_id: str,
+                                req: DismissKernelRequest):
+    """Dismiss a cross-workspace kernel — won't be re-proposed."""
+    from app.companion import cross_workspace as _xw
+    if not _xw.dismiss(workspace_id, kernel_id, reason=req.reason):
+        raise HTTPException(status_code=404, detail="kernel not found")
+    return {"ok": True, "workspace_id": workspace_id,
+            "kernel_id": kernel_id}

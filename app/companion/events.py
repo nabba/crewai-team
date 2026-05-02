@@ -39,6 +39,10 @@ class EventType(str, Enum):
     GRAND_TASK_PROPOSED = "grand_task_proposed"
     GRAND_TASK_ACCEPTED = "grand_task_accepted"
     GRAND_TASK_REJECTED = "grand_task_rejected"
+    # Phase 13 — cross-workspace transfer
+    CROSS_WORKSPACE_INBOX = "cross_workspace_inbox"
+    CROSS_WORKSPACE_ACCEPTED = "cross_workspace_accepted"
+    CROSS_WORKSPACE_DISMISSED = "cross_workspace_dismissed"
 
 
 @dataclass
