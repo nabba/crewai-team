@@ -233,6 +233,7 @@ _BOOTSTRAP_CATALOG: dict[str, dict] = {
         "tier": "premium", "provider": "anthropic",
         "model_id": "anthropic/claude-sonnet-4-6",
         "context": 1_000_000, "multimodal": True,
+        "max_output_tokens": 64_000,
         "cost_input_per_m": 1.00, "cost_output_per_m": 5.00,
         "tool_use_reliability": 0.95,
         "supports_tools": True,
@@ -247,6 +248,7 @@ _BOOTSTRAP_CATALOG: dict[str, dict] = {
         "tier": "budget", "provider": "openrouter",
         "model_id": "openrouter/deepseek/deepseek-chat",
         "context": 128_000, "multimodal": False,
+        "max_output_tokens": 8_192,
         "cost_input_per_m": 0.28, "cost_output_per_m": 0.42,
         "tool_use_reliability": 0.82,
         "supports_tools": True,
@@ -263,6 +265,7 @@ _BOOTSTRAP_CATALOG: dict[str, dict] = {
         # 256k native context window (Qwen3.5 family).  We cap usage via
         # num_ctx at runtime; the catalog records the model ceiling.
         "context": 262_144, "multimodal": True,
+        "max_output_tokens": 8_192,
         "cost_input_per_m": 0.0, "cost_output_per_m": 0.0,
         # Bumped from 0.70 (qwen3:30b-a3b) — Qwen3.5 has stronger tools
         # support advertised on the model card; mem0 function-calling

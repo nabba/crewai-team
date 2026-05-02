@@ -56,6 +56,98 @@ def _get_LLM_class():
     return LLM
 
 
+# ── Model output-token ceilings (2026-05-03 audit fix for H2) ───────
+#
+# Some models silently cap completion at 4096 regardless of what we
+# request — `z-ai/glm-4.7` was the verified offender during the
+# 2026-05-02 Estonia v7 dispatch (we sent max_tokens=8192, the API
+# returned completion_tokens=4096, the script truncated mid-word).
+#
+# Resolution order in `model_max_output_tokens`:
+#   1. Explicit `max_output_tokens` field on the catalog entry
+#   2. Family-based heuristic (covers models we haven't catalogued yet)
+#   3. Conservative default 4096
+#
+# `_clamp_max_tokens` then takes min(requested, model_ceiling) so we
+# never request more than the model can actually deliver.
+
+# Family heuristics — keys are case-insensitive substrings of model_id;
+# first match wins; lookups stop after the first hit.  Conservative
+# numbers from each provider's published completion ceilings as of
+# 2026-05.  When in doubt, prefer LOWER (safer to under-request than
+# get silently capped).
+_MODEL_FAMILY_OUTPUT_LIMITS: tuple[tuple[str, int], ...] = (
+    ("claude-opus", 64_000),     # Anthropic Opus 4.x
+    ("claude-sonnet", 64_000),   # Anthropic Sonnet 4.x
+    ("claude-haiku", 64_000),    # Anthropic Haiku 4.x
+    ("claude", 64_000),          # any Claude (fallback within family)
+    ("gpt-5", 16_000),           # OpenAI GPT-5.x
+    ("gpt-4o", 16_000),          # OpenAI GPT-4o
+    ("gpt-4-turbo", 16_000),
+    ("gemini-2.5", 64_000),      # Google Gemini 2.5
+    ("gemini", 8_192),           # older Gemini
+    ("kimi", 8_192),             # Moonshot Kimi K2.x
+    ("moonshot", 8_192),
+    ("glm-4.7", 4_096),          # GLM 4.7 verified 4K-capped (Estonia v7)
+    ("glm-4", 4_096),            # GLM 4.x family — assume same ceiling
+    ("minimax", 8_192),
+    ("qwen", 8_192),             # Qwen 3.x family
+    ("deepseek", 8_192),         # DeepSeek V3.x
+    ("gemma", 8_192),
+    ("llama", 4_096),            # Meta Llama family — conservative
+    ("mistral", 4_096),          # Mistral family — conservative
+)
+
+_MODEL_OUTPUT_DEFAULT = 4_096
+
+
+def model_max_output_tokens(model_id: str) -> int:
+    """Return the practical max completion tokens for *model_id*.
+
+    Checks the catalog entry first (preferred), falls back to family
+    heuristics, falls back to a conservative 4096 default.  The family
+    heuristics let us add new models without immediately needing to
+    catalog them — they get a reasonable ceiling out of the box.
+    """
+    if not model_id:
+        return _MODEL_OUTPUT_DEFAULT
+    # Check catalog by model_id substring match — entries are keyed by
+    # short name (e.g. "claude-sonnet-4.6") with a separate model_id
+    # field, so we walk and match.
+    try:
+        from app.llm_catalog import CATALOG
+        for entry in CATALOG.values():
+            if entry.get("model_id") == model_id:
+                cap = entry.get("max_output_tokens")
+                if isinstance(cap, int) and cap > 0:
+                    return cap
+                break  # found the model but no cap declared — fall through
+    except Exception:
+        pass  # catalog import path issue — fall through to family check
+
+    mid = model_id.lower()
+    for substr, cap in _MODEL_FAMILY_OUTPUT_LIMITS:
+        if substr in mid:
+            return cap
+    return _MODEL_OUTPUT_DEFAULT
+
+
+def _clamp_max_tokens(model_id: str, requested: int) -> int:
+    """Clamp requested max_tokens to the model's actual ceiling.
+
+    Logs a warning when the request exceeds the model ceiling so the
+    over-request shows up in the logs (helps catch spec drift).
+    """
+    ceiling = model_max_output_tokens(model_id)
+    if requested > ceiling:
+        logger.info(
+            "max_tokens clamp: model=%s requested=%d ceiling=%d (clamping)",
+            model_id, requested, ceiling,
+        )
+        return ceiling
+    return requested
+
+
 def _cached_llm(
     model_id: str,
     max_tokens: int = 8192,
@@ -96,6 +188,15 @@ def _cached_llm(
     and whichever built first would lock the cache shape.  Tagging by
     ``builder.__qualname__`` keeps the namespaces independent.
     """
+    # 2026-05-03 audit fix for H2 — clamp the requested max_tokens to
+    # the model's actual completion ceiling.  Some providers silently
+    # cap (e.g. glm-4.7 at 4096 regardless of request) which produced
+    # mid-word truncation in the 2026-05-02 Estonia v7 dispatch.  The
+    # clamp keeps our cache key honest (different model with different
+    # ceiling = different cache entry) and makes over-requests visible
+    # in the logs.
+    max_tokens = _clamp_max_tokens(model_id, max_tokens)
+
     base_url = kwargs.get("base_url", "")
     builder_tag = llm_builder.__qualname__ if llm_builder is not None else "default"
     key = (builder_tag, model_id, max_tokens, base_url or "default", sampling_key)
