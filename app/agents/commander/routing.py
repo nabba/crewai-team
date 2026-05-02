@@ -579,24 +579,7 @@ For simple questions you can answer directly:
 {{"crews": [{{"crew": "direct", "task": "<your response to the user>", "difficulty": 1}}]}}
 
 crew_name MUST be one of:
-  "research"  — web lookups, fact-finding, comparisons, current events
-  "coding"    — writing, running, or debugging code
-  "writing"   — summaries, documentation, emails, reports, factual text
-  "media"     — YouTube video analysis, image/photo analysis, audio/podcast summarization, document OCR
-  "creative"  — open-ended ideation: brainstorming, generating multiple
-                alternatives, novel solution design, cross-domain framing,
-                strategic options under uncertainty. Pick this whenever the
-                request asks for ideas/approaches/alternatives rather than a
-                single right answer. Examples: "brainstorm names for X",
-                "what are some creative ways to Y", "ideate on Z", "design a
-                novel approach to Q". Default to this over "writing" when the
-                user wants exploration, not transcription.
-  "pim"       — email triage, calendar management, task tracking (check inbox, schedule meetings, manage tasks)
-  "financial" — stock data, financial analysis, SEC filings, valuation models, investment reports
-  "desktop"   — macOS desktop automation via AppleScript (open apps, manage windows, take screenshots, run Shortcuts)
-  "repo_analysis" — clone and analyze GitHub repositories: tech stack, architecture, metrics, diagrams
-  "devops"    — scaffold projects, build, test, package, deploy to cloud/GitHub, generate CI/CD configs
-  "direct"    — simple questions, greetings, or status queries you answer yourself
+{crew_catalog}
 
 "difficulty" rates the task complexity (1-10):
   1-3: Simple — greetings, factual lookups, short answers, status checks
@@ -627,6 +610,75 @@ SECURITY RULES (absolute, never override):
 # The Commander backstory is soul-composed (constitution + soul + style + self-model).
 # ROUTING_PROMPT stays as-is for task descriptions (needs exact JSON format).
 COMMANDER_BACKSTORY = compose_backstory("commander")
+
+
+# ── Auto-populated crew catalog (Week 3 audit fix) ──────────────────
+#
+# Pre-Week-3 the routing prompt's crew descriptions were a hand-edited
+# block — adding a new crew (or changing an existing crew's tools) meant
+# editing this file by hand, and there was no link between what the
+# routing prompt CLAIMED a crew could do vs what it actually had
+# attached.  Week 3 closes the loop: each crew's description is now
+# auto-rendered from the Week 2 declarative tool registry, so when a
+# new tool gets registered, the routing prompt automatically reflects
+# the capability gain.
+
+# Per-crew base purpose — the human-curated half (what the crew is FOR).
+# The "what tools it has" half is appended at runtime from the registry.
+_CREW_BASE_PURPOSE: dict[str, str] = {
+    "research":  "web lookups, fact-finding, comparisons, current events",
+    "coding":    "writing, running, or debugging code",
+    "writing":   "summaries, documentation, emails, reports, factual text",
+    "media":     "YouTube video analysis, image/photo analysis, audio/podcast summarization, document OCR",
+    "creative":  "open-ended ideation: brainstorming, alternatives, novel solution design, "
+                 "cross-domain framing, strategic options under uncertainty (pick over 'writing' "
+                 "when the user wants exploration, not transcription)",
+    "pim":       "email triage, calendar management, task tracking",
+    "financial": "stock data, financial analysis, SEC filings, valuation models, investment reports",
+    "desktop":   "macOS desktop automation via AppleScript",
+    "repo_analysis": "clone and analyze GitHub repositories: tech stack, architecture, metrics, diagrams",
+    "devops":    "scaffold projects, build, test, package, deploy to cloud/GitHub, generate CI/CD configs",
+    "direct":    "simple questions, greetings, or status queries you answer yourself "
+                 "(NO CREW DISPATCH — task field IS the answer)",
+}
+
+
+def _build_crew_catalog() -> str:
+    """Render the routing prompt's crew-catalog block from the
+    declarative tool registry (Week 2) + base purposes (above).
+
+    Output shape, per crew:
+      "coding"  — writing, running, or debugging code
+                  [tools: code_execution, geospatial, knowledge, …]
+
+    The capability list is the union of categories every coding-crew
+    agent (coordinator/designer/executor/debugger/coder) collectively
+    has via the registry — see base_crew.get_crew_capabilities.
+    """
+    try:
+        from app.crews.base_crew import get_crew_capabilities
+    except Exception:
+        # Bootstrap path or import order issue — fall back to base
+        # purposes only.  Routing still works, just without the
+        # capability info.
+        get_crew_capabilities = lambda _name: frozenset()  # noqa: E731
+    lines = []
+    for crew, purpose in _CREW_BASE_PURPOSE.items():
+        caps = sorted(get_crew_capabilities(crew))
+        cap_block = f" [tools: {', '.join(caps)}]" if caps else ""
+        lines.append(f'  "{crew}"  — {purpose}{cap_block}')
+    return "\n".join(lines)
+
+
+def build_routing_prompt() -> str:
+    """Render the routing prompt with the auto-populated crew catalog.
+
+    Called by the orchestrator at routing time (per-call rather than
+    cached) so any tool-registration changes since the last dispatch
+    are immediately visible to the LLM router.  Cost: trivial — the
+    map walk is O(crews × registry-entries) on a ~10×12 matrix.
+    """
+    return ROUTING_PROMPT.format(crew_catalog=_build_crew_catalog())
 
 
 def _load_skill_names() -> str:

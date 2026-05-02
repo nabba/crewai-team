@@ -210,6 +210,82 @@ def assemble_tools(
     return out
 
 
+# ── Crew → capability surfacing (Week 3 audit fix) ──────────────────
+#
+# Maps each user-facing crew name to the set of agent IDs that compose
+# it.  The Week 2 registry stores tools keyed by intended_agents (the
+# fine-grained agent role), but commander routing + capability checks
+# work at the crew level.  This map is the bridge.
+#
+# Adding a new agent to a crew?  Update the set here AND the relevant
+# crew implementation — both are intentionally explicit so the
+# capability surface stays auditable.
+
+CREW_TO_AGENTS: dict[str, frozenset[str]] = {
+    "coding":   frozenset({"coder", "coordinator", "designer", "executor", "debugger"}),
+    "research": frozenset({"researcher", "web_specialist", "document_specialist", "synthesis_specialist"}),
+    "writing":  frozenset({"writer"}),
+    "media":    frozenset({"media_analyst"}),
+    "creative": frozenset({"creative", "writer", "researcher"}),  # creative is a multi-agent dialectic
+    "pim":      frozenset({"pim"}),
+    "financial": frozenset({"financial_analyst"}),
+    "desktop":  frozenset({"desktop"}),
+    "repo_analysis": frozenset({"repo_analyst"}),
+    "devops":   frozenset({"devops"}),
+    # "direct" is intentionally absent — it's the commander LLM
+    # answering inline, not a crew with tools.
+}
+
+
+# Short human-readable descriptions of each tool category — used by
+# the routing prompt's auto-generated crew capability list and by the
+# task → required-categories classifier.  Keeping these inline rather
+# than per-tool so the routing-prompt size stays bounded.
+CAPABILITY_DESCRIPTIONS: dict[str, str] = {
+    "memory":         "remembers facts across turns",
+    "filesystem":     "reads/writes local files",
+    "code_execution": "runs Python in a sandbox",
+    "geospatial":     "satellite imagery + GEE analysis (Hansen, Sentinel, MODIS)",
+    "web_research":   "search engines + URL fetch",
+    "scrape":         "structured scraping of public data sources (Firecrawl)",
+    "knowledge":      "enterprise + research KBs, journal, episteme",
+    "introspection":  "tensions, experiential history",
+    "media":          "PDFs, OCR, YouTube transcripts, images",
+    "document_gen":   "produces Word/PDF/HTML reports",
+    "delegation":     "asks specialist sub-agents",
+}
+
+
+def get_crew_capabilities(crew_name: str) -> frozenset[str]:
+    """Return the set of category names that *crew_name* can reach via
+    its agents' attached tools.
+
+    Walks the registered tool factories and collects every category
+    whose ``intended_agents`` overlaps the crew's agent set (or matches
+    the universal "*" wildcard).  Result is computed each call (cheap —
+    the registry has ~12 entries) and is therefore always current with
+    respect to runtime tool registration.
+
+    Returns an empty frozenset for unknown crew names — callers should
+    treat that as "capability information unavailable, proceed with
+    legacy logic" rather than "crew has nothing".
+    """
+    agents = CREW_TO_AGENTS.get(crew_name)
+    if agents is None:
+        return frozenset()
+    cats: set[str] = set()
+    for entry in _REGISTERED_TOOL_FACTORIES:
+        intended = entry["intended_agents"]
+        if "*" in intended or any(a in intended for a in agents):
+            cats.add(entry["category"])
+    return frozenset(cats)
+
+
+def get_all_crew_capabilities() -> dict[str, frozenset[str]]:
+    """Return the full crew → capabilities map for every registered crew."""
+    return {crew: get_crew_capabilities(crew) for crew in CREW_TO_AGENTS}
+
+
 # Ordered priority list for tool capping (highest = drop last).
 # When an agent's tool count exceeds MAX_TOOLS_PER_AGENT (default 18, max
 # 20 due to Anthropic's strict-tools limit), tools with lower priority
