@@ -1,12 +1,12 @@
 {
-  "cognitive_energy": 0.5403,
-  "frustration": 0.1225,
-  "confidence": 0.8723,
-  "curiosity": 0.8187,
-  "tasks_since_rest": 279,
+  "cognitive_energy": 0.5841,
+  "frustration": 0.0823,
+  "confidence": 0.8877,
+  "curiosity": 0.8895,
+  "tasks_since_rest": 281,
   "consecutive_failures": 0,
-  "last_updated": "2026-04-28T06:56:10.897162+00:00",
-  "task_failure_pressure": 0.1225,
-  "exploration_bonus": 0.8187,
-  "resource_budget": 0.5403
+  "last_updated": "2026-05-02T22:02:27.889971+00:00",
+  "task_failure_pressure": 0.0823,
+  "exploration_bonus": 0.8895,
+  "resource_budget": 0.5841
 }

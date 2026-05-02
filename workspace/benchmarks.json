@@ -2479,5 +2479,23 @@
     "metadata": {
       "crew": "pim"
     }
+  },
+  {
+    "ts": "2026-05-02T22:02:21.956911+00:00",
+    "metric": "task_completion_time",
+    "value": 263.75886649399763,
+    "metadata": {
+      "crew": "coding",
+      "mode": "delegated"
+    }
+  },
+  {
+    "ts": "2026-05-02T22:02:22.229466+00:00",
+    "metric": "task_completion_time",
+    "value": 502.68107364402385,
+    "metadata": {
+      "crew": "coding",
+      "mode": "delegated"
+    }
   }
 ]

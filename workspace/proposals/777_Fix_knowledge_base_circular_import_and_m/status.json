@@ -2,7 +2,7 @@
   "id": 777,
   "title": "Fix knowledge_base circular import and missing config module",
   "type": "code",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-24T13:08:09.437980+00:00",
   "applied_at": null,
   "dirname": "777_Fix_knowledge_base_circular_import_and_m",
@@ -19,5 +19,6 @@
       "COMPILE OK: app/knowledge_base/config.py",
       "COMPILE OK: app/knowledge_base/vectorstore.py"
     ]
-  }
+  },
+  "rejected_at": "2026-05-02T21:49:05.660907+00:00"
 }

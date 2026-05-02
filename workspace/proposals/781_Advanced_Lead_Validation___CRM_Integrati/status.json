@@ -2,9 +2,10 @@
   "id": 781,
   "title": "Advanced Lead Validation & CRM Integration Workflow",
   "type": "skill",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-25T19:23:43.470262+00:00",
   "applied_at": null,
   "dirname": "781_Advanced_Lead_Validation___CRM_Integrati",
-  "resolution_target": ""
+  "resolution_target": "",
+  "rejected_at": "2026-05-02T21:49:05.866935+00:00"
 }

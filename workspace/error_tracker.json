@@ -81,7 +81,7 @@
   },
   "pim:RuntimeError": {
     "attempts": 1,
-    "resolved": false,
+    "resolved": true,
     "last_attempt": "2026-04-28T07:00:15.218892+00:00",
     "fixes_applied": [
       "The error is a credit limitation on OpenRouter preventing the request of 4096 max_tokens. Lower the `max_tokens` parameter in the LLM configuration to 3000 or less to fit within the available credit b"

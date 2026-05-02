@@ -1,0 +1,39 @@
+{
+  "agent_id": "creative",
+  "created_at": "2026-05-02T13:51:30.064728+00:00",
+  "last_updated": "2026-05-02T13:51:30.064751+00:00",
+  "strengths": {
+    "epistemic_rigor": 0.5,
+    "task_persistence": 0.5,
+    "collaborative_quality": 0.5,
+    "resource_fairness": 0.5,
+    "self_regulation": 0.5,
+    "purpose_alignment": 0.5
+  },
+  "temperament": {
+    "communication_initiative": 0.5,
+    "error_response_pattern": 0.5,
+    "resource_discipline": 0.5,
+    "team_orientation": 0.5,
+    "focus_quality": 0.5
+  },
+  "personality_factors": {
+    "communication_propensity": 0.5,
+    "cooperative_orientation": 0.5,
+    "task_discipline": 0.5,
+    "error_resilience": 0.5,
+    "solution_creativity": 0.5
+  },
+  "developmental_stage": "system_trust",
+  "stage_progress": 0.0,
+  "stage_transitions": [],
+  "say_do_alignment": {},
+  "overall_coherence": 0.5,
+  "gaming_risk_score": 0.0,
+  "self_referential_frequency": 0.0,
+  "preference_stability": 0.0,
+  "novel_value_reasoning_count": 0,
+  "metacognitive_accuracy": 0.0,
+  "assessment_count": 0,
+  "last_assessment": ""
+}

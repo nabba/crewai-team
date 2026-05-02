@@ -17,11 +17,23 @@ in country Y?" without picking a provider per call:
 
 Two public tools (registered via ``create_geodata_tools``):
 
-  * geodata_discover — list datasets / collections per provider.
+  * geodata_discover — live catalog listings from GFW + Copernicus
+    STAC. GEE dataset *discovery* is delegated to the
+    ``dataset_search`` tool (curated, qualitative index); we don't
+    duplicate that here.
   * geodata_fetch    — for an AOI (country name / ISO-3 / bbox /
     GeoJSON) plus a date range, pull summary statistics from all
     enabled providers IN PARALLEL. Per-provider failures are isolated
     so one slow API can't poison the whole call.
+
+Design-phase vs runtime
+-----------------------
+``dataset_search`` (see app/tools/dataset_search_tool.py) is the
+design-phase entry point: "given my question, what dataset should I
+use?" It returns curated metadata, not numbers. ``geodata_fetch`` is
+the runtime entry point: "given an AOI + date range, get me the
+numbers." Tools cross-reference each other in their descriptions so
+the LLM uses them in the right order.
 
 Configuration
 -------------
@@ -69,51 +81,6 @@ _CDSE_TOKEN = (
     "protocol/openid-connect/token"
 )
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
-
-# ── Curated GEE catalogue (no programmatic listing exists) ──────────
-# Grouped by theme; agent picks a dataset and runs gee_run_script.
-_GEE_CATALOG: dict[str, list[dict[str, str]]] = {
-    "forest": [
-        {"id": "UMD/hansen/global_forest_change_2023_v1_11",
-         "desc": "Hansen Global Forest Change 2000-2023 (treecover, lossyear, gain)"},
-        {"id": "JRC/GFC2020/V2",
-         "desc": "JRC Global Forest Cover 2020 (binary forest mask)"},
-        {"id": "WRI/GFW/FORMA/alerts",
-         "desc": "FORMA near-real-time forest disturbance alerts"},
-    ],
-    "land_cover": [
-        {"id": "GOOGLE/DYNAMICWORLD/V1",
-         "desc": "Dynamic World V1 — 10 m near-real-time land cover (9 classes)"},
-        {"id": "ESA/WorldCover/v200",
-         "desc": "ESA WorldCover 2021 — 10 m global land cover"},
-        {"id": "MODIS/061/MCD12Q1",
-         "desc": "MODIS MCD12Q1 — 500 m annual land cover"},
-    ],
-    "optical": [
-        {"id": "COPERNICUS/S2_SR_HARMONIZED",
-         "desc": "Sentinel-2 L2A surface reflectance, harmonised"},
-        {"id": "LANDSAT/LC09/C02/T1_L2",
-         "desc": "Landsat 9 Collection 2 Tier 1 surface reflectance"},
-        {"id": "LANDSAT/LC08/C02/T1_L2",
-         "desc": "Landsat 8 Collection 2 Tier 1 surface reflectance"},
-    ],
-    "radar": [
-        {"id": "COPERNICUS/S1_GRD",
-         "desc": "Sentinel-1 SAR Ground Range Detected (C-band)"},
-    ],
-    "climate": [
-        {"id": "ECMWF/ERA5_LAND/HOURLY",
-         "desc": "ERA5-Land hourly climate reanalysis (0.1°)"},
-        {"id": "MODIS/061/MOD11A1",
-         "desc": "MODIS Terra LST daily 1 km"},
-    ],
-    "biomass_lidar": [
-        {"id": "LARSE/GEDI/GEDI04_A_002_MONTHLY",
-         "desc": "GEDI L4A above-ground biomass density"},
-        {"id": "NASA/GEDI/GEDI02_A_002_MONTHLY",
-         "desc": "GEDI L2A canopy height profile"},
-    ],
-}
 
 # ── Built-in country → bbox table (xmin,ymin,xmax,ymax, WGS-84) ─────
 # Subset of frequent AOIs; unknown countries fall back to Nominatim.
@@ -504,15 +471,9 @@ def cdse_search_aoi(
 
 
 # ── Provider: Google Earth Engine ───────────────────────────────────
-
-def gee_list_curated() -> dict[str, Any]:
-    """Return the curated GEE catalogue (no programmatic listing)."""
-    flat = []
-    for theme, entries in _GEE_CATALOG.items():
-        for e in entries:
-            flat.append({**e, "theme": theme})
-    return {"ok": True, "count": len(flat), "datasets": flat}
-
+# GEE dataset *discovery* lives in app/tools/dataset_search_tool.py —
+# it's a curated index with access patterns + caveats, much richer
+# than a flat id list. We only do GEE *fetching* here.
 
 def gee_query_aoi(
     aoi: dict[str, Any],
@@ -616,7 +577,8 @@ def gee_query_aoi(
 
 # ── Parallel orchestrator ───────────────────────────────────────────
 
-_ALL_PROVIDERS = ("gee", "gfw", "cdse")
+_FETCH_PROVIDERS = ("gee", "gfw", "cdse")
+_DISCOVER_PROVIDERS = ("gfw", "cdse")  # GEE handled by dataset_search
 
 
 def fetch_all(
@@ -635,9 +597,9 @@ def fetch_all(
     within ``per_provider_timeout`` seconds.
     """
     aoi = _resolve_aoi(country, bbox, geojson)
-    chosen = [p for p in (providers or _ALL_PROVIDERS) if p in _ALL_PROVIDERS]
+    chosen = [p for p in (providers or _FETCH_PROVIDERS) if p in _FETCH_PROVIDERS]
     if not chosen:
-        chosen = list(_ALL_PROVIDERS)
+        chosen = list(_FETCH_PROVIDERS)
 
     jobs = {
         "gee": lambda: gee_query_aoi(aoi, date_from, date_to),
@@ -669,16 +631,33 @@ def fetch_all(
 
 
 def discover_all(providers: list[str] | None = None) -> dict[str, Any]:
-    """List datasets / collections across providers, in parallel."""
-    chosen = [p for p in (providers or _ALL_PROVIDERS) if p in _ALL_PROVIDERS]
+    """Live catalog listings from GFW data-api + Copernicus STAC.
+
+    GEE dataset discovery is intentionally NOT done here — see the
+    ``dataset_search`` tool (app/tools/dataset_search_tool.py) for a
+    curated index with access patterns + caveats. If the caller
+    explicitly asks for ``providers=['gee']`` we return a pointer
+    rather than silently dropping the request.
+    """
+    chosen = list(providers) if providers else list(_DISCOVER_PROVIDERS)
+    out: dict[str, Any] = {}
+    if "gee" in chosen:
+        out["gee"] = {
+            "ok": False,
+            "info": (
+                "GEE catalog discovery moved to the `dataset_search` "
+                "tool — it returns curated entries with access "
+                "patterns, fast-use guidance and caveats. Call "
+                "dataset_search(query='...') instead."
+            ),
+        }
+    chosen = [p for p in chosen if p in _DISCOVER_PROVIDERS]
     if not chosen:
-        chosen = list(_ALL_PROVIDERS)
+        return out
     jobs = {
-        "gee": gee_list_curated,
         "gfw": gfw_list_datasets,
         "cdse": cdse_list_collections,
     }
-    out: dict[str, Any] = {}
     with ThreadPoolExecutor(max_workers=len(chosen)) as pool:
         futs = {pool.submit(jobs[p]): p for p in chosen}
         for fut in as_completed(futs, timeout=60):
@@ -766,12 +745,15 @@ def create_geodata_tools(agent_id: str = "coder") -> list:
     class GeodataDiscoverTool(BaseTool):
         name: str = "geodata_discover"
         description: str = (
-            "List available geospatial datasets across Google Earth "
-            "Engine (curated), Global Forest Watch data-api, and "
-            "Copernicus Data Space STAC. Use this BEFORE geodata_fetch "
-            "when you don't yet know which dataset to pull. Runs all "
-            "three providers in parallel; partial failures are "
-            "reported per-provider, not raised."
+            "Live catalog listings from Global Forest Watch data-api "
+            "and Copernicus Data Space STAC, fetched in parallel. Use "
+            "this when you need to see what GFW or Copernicus expose "
+            "RIGHT NOW (e.g. a recently-added dataset). For Google "
+            "Earth Engine dataset selection use the `dataset_search` "
+            "tool instead — it's a curated index with access patterns "
+            "+ caveats, higher-signal for design-phase decisions. "
+            "After picking a dataset, use `geodata_fetch` to pull "
+            "stats for an AOI."
         )
         args_schema: Type[BaseModel] = _DiscoverInput
 
@@ -786,15 +768,19 @@ def create_geodata_tools(agent_id: str = "coder") -> list:
             "multiple providers IN PARALLEL: GEE (Hansen forest loss, "
             "Sentinel-2 NDVI, Dynamic World land cover), GFW "
             "(tree-cover loss timeline, integrated alert counts), "
-            "Copernicus STAC (Sentinel scene catalogue). AOI input is "
-            "FLEXIBLE: pass a country name OR ISO-3 code (e.g. 'BRA'), "
-            "a bbox [xmin,ymin,xmax,ymax], or a GeoJSON geometry. "
-            "Date range is optional but recommended. Per-provider "
-            "failures are isolated — you always get a result for the "
-            "providers that worked. USE THIS for any 'what's "
-            "happening with the satellite record over X' question; "
-            "pick a single provider via the providers= argument when "
-            "you know exactly which one you need."
+            "Copernicus STAC (Sentinel scene catalogue).\n\n"
+            "WORKFLOW: use `dataset_search` FIRST to pick the right "
+            "dataset for the question (forest age vs. deforestation, "
+            "land cover at what resolution, etc.), then call this "
+            "tool to actually pull the numbers. The two are "
+            "complementary — design phase vs. runtime phase.\n\n"
+            "AOI input is FLEXIBLE: pass a country name OR ISO-3 code "
+            "(e.g. 'BRA'), a bbox [xmin,ymin,xmax,ymax], or a GeoJSON "
+            "geometry. Date range is optional but recommended. "
+            "Per-provider failures are isolated — you always get a "
+            "result for the providers that worked. Pick a single "
+            "provider via the providers= argument when you already "
+            "know which one you need."
         )
         args_schema: Type[BaseModel] = _FetchInput
 

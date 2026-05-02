@@ -2,9 +2,10 @@
   "id": 771,
   "title": "Advanced Tool Selection and Workflow Design",
   "type": "skill",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-23T11:19:38.882760+00:00",
   "applied_at": null,
   "dirname": "771_Advanced_Tool_Selection_and_Workflow_Des",
-  "resolution_target": ""
+  "resolution_target": "",
+  "rejected_at": "2026-05-02T21:49:05.158465+00:00"
 }

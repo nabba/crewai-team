@@ -2,9 +2,10 @@
   "id": 770,
   "title": "API Integration Best Practices",
   "type": "skill",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-23T01:40:41.018282+00:00",
   "applied_at": null,
   "dirname": "770_API_Integration_Best_Practices",
-  "resolution_target": ""
+  "resolution_target": "",
+  "rejected_at": "2026-05-02T21:49:05.021159+00:00"
 }

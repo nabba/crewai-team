@@ -1,0 +1,13 @@
+[
+  {
+    "timestamp": 1777750870.1719165,
+    "experiment_id": "exp_202605021941_8771",
+    "engine": "avo",
+    "cost_usd": 0.1,
+    "delta": 0.0,
+    "status": "discard",
+    "attributed_improvement": null,
+    "deployed": false,
+    "rolled_back": false
+  }
+]

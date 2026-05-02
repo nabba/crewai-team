@@ -2,9 +2,10 @@
   "id": 769,
   "title": "Python Dependency and Environment Management",
   "type": "skill",
-  "status": "pending",
+  "status": "rejected",
   "created_at": "2026-04-23T01:40:40.269384+00:00",
   "applied_at": null,
   "dirname": "769_Python_Dependency_and_Environment_Manage",
-  "resolution_target": ""
+  "resolution_target": "",
+  "rejected_at": "2026-05-02T21:49:04.889603+00:00"
 }
