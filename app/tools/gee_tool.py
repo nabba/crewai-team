@@ -142,6 +142,38 @@ def _ensure_initialised() -> tuple[bool, str | None]:
         return False, msg
 
 
+def _format_rendered_maps(paths: list[str], *, label: str = "rendered maps") -> str:
+    """Format rendered_paths as a vetting-friendly block.
+
+    Pre-fix the output looked like:
+      --- rendered maps (4) ---
+        /app/workspace/output/maps/20260502T215631_estonia_age_2024.png
+        ...
+
+    Vetting LLMs saw the absolute container paths as URL-shaped
+    strings and flagged them as "hallucinated URLs" (false positive
+    on the 2026-05-02 v8 dispatch).  This helper rewrites them as:
+      --- [gee_render] rendered maps (4) ---
+        workspace/output/maps/20260502T215631_estonia_age_2024.png
+        ...
+
+    The `[gee_render]` marker is a stable string vetting can
+    pattern-match to recognise legitimate file artifacts; the
+    relative paths look like file paths, not URLs.  Container
+    prefix /app/ is stripped so the path is portable.
+    """
+    rels = []
+    for p in paths[:32]:
+        # Strip /app/ prefix for portability + non-URL appearance
+        if p.startswith("/app/"):
+            rels.append(p[len("/app/"):])
+        else:
+            rels.append(p)
+    body = "\n".join(f"  {r}" for r in rels)
+    extra = f"  ... and {len(paths) - 32} more" if len(paths) > 32 else ""
+    return f"\n--- [gee_render] {label} ({len(paths)}) ---\n{body}{extra}"
+
+
 def _make_render_map(rendered_paths: list[str]):
     """Build the ``render_map`` helper that the user-script can call.
 
@@ -350,34 +382,49 @@ def create_gee_tools(agent_id: str = "coder") -> list:
             "to download imagery yourself; Google's compute does the "
             "heavy lifting and returns aggregated numbers / vector "
             "summaries.\n\n"
+            "ALWAYS use the LATEST Hansen GFC version: "
+            "`UMD/hansen/global_forest_change_2024_v1_12` (covers "
+            "loss through 2024).  Older snapshots (v1_11/2023, "
+            "v1_10/2022) miss the most recent year and EE will "
+            "warn you that they're DEPRECATED.  When in doubt, "
+            "search the EE catalog or use dataset_search.\n\n"
             "CRITICAL — round-trip rule: every .getInfo() is a "
             "synchronous network call to Google (~30s each). Aggregate "
-            "server-side, then pull ONCE. For per-year/per-class/"
-            "per-region values use ee.Reducer.frequencyHistogram, "
-            "ee.Reducer.group, or map a reducer over an "
-            "ee.FeatureCollection — NEVER a Python for-loop with "
-            ".getInfo() inside.\n\n"
-            "# BAD (13 round-trips, times out at 240s):\n"
+            "server-side, then pull ONCE.\n\n"
+            "TWO LOOP DISTINCTIONS — they look similar but behave "
+            "very differently:\n"
+            "  COMPUTE-loop in Python (with .getInfo() inside) = BAD "
+            "— each iteration is a 30s round-trip, N years = N×30s, "
+            "blows the 180s tool budget.  Replace with a single "
+            "server-side reducer.\n"
+            "  RENDER-loop in Python (with render_map() inside) = OK "
+            "— each iteration is a separate EE thumbnail call (~5-15s), "
+            "12 years = ~60-180s total, fits the budget.  Use this "
+            "when the user asks for per-year visual maps.\n\n"
+            "# BAD compute-loop (13 round-trips, times out at 180s):\n"
             "for yr in range(12, 25):\n"
             "    out[yr] = mask.eq(yr).reduceRegion(...).getInfo()\n\n"
-            "# GOOD (1 round-trip, ~110s):\n"
+            "# GOOD compute (1 round-trip, ~110s):\n"
             "hist = loss.updateMask(loss.gt(0)).reduceRegion(\n"
             "    reducer=ee.Reducer.frequencyHistogram(), ...\n"
             ").get('lossyear').getInfo()\n\n"
+            "# GOOD render-loop (12 thumbnails, ~120s, one PNG per year):\n"
+            "for yr in range(12, 25):\n"
+            "    render_map(\n"
+            "        image=loss_year.eq(yr).updateMask(loss_year.eq(yr)),\n"
+            "        region=estonia.geometry(),\n"
+            "        name=f'estonia_loss_{2000+yr}',\n"
+            "        vis_params={'palette': ['red'], 'min': 0, 'max': 1},\n"
+            "    )\n\n"
             "MAP RENDERING — the sandbox pre-loads a render_map(image, "
             "region, name, vis_params) helper that synchronously saves "
             "an ee.Image as a PNG to workspace/output/maps/.  Use this "
-            "when the user asks for VISUAL maps (not just statistics):\n"
-            "  png = render_map(\n"
-            "      image=loss.updateMask(loss).clip(estonia.geometry()),\n"
-            "      region=estonia.geometry(),\n"
-            "      name='estonia_loss_2012_2024',\n"
-            "      vis_params={'palette': ['red'], 'min': 0, 'max': 1},\n"
-            "      dimensions=768,\n"
-            "  )\n"
+            "when the user asks for VISUAL maps (not just statistics).  "
             "Each call is one round-trip (EE thumbnail API, ~5-15s).  "
             "PNG paths are returned in the result and listed in the "
-            "tool output as 'rendered maps'.\n\n"
+            "tool output as 'rendered maps' with a `[gee_render]` "
+            "marker so downstream consumers (vetting, critic) "
+            "recognise them as legitimate file artifacts.\n\n"
             "Useful patterns: Hansen 'lossyear' band for year-by-year "
             "deforestation, ee.ImageCollection.filterDate for time-range "
             "queries, .clip(estonia.geometry()) for country-scoped work."
@@ -405,19 +452,15 @@ def create_gee_tools(agent_id: str = "coder") -> list:
                     lines.append(f"\n--- result ---\n{json.dumps(out['result'], indent=2, default=str)[:4000]}")
                 rendered = out.get("rendered_maps") or []
                 if rendered:
-                    lines.append(
-                        f"\n--- rendered maps ({len(rendered)}) ---\n"
-                        + "\n".join(f"  {p}" for p in rendered[:32])
-                    )
+                    lines.append(_format_rendered_maps(rendered))
                 return "\n".join(lines)
             # Failure path — still surface any maps rendered before the
             # exception (some succeed, some fail mid-script).
             err_msg = f"GEE script failed: {out['error']}\n\n--- stdout ---\n{out['stdout']}"
             rendered = out.get("rendered_maps") or []
             if rendered:
-                err_msg += (
-                    f"\n\n--- partial maps rendered before failure ({len(rendered)}) ---\n"
-                    + "\n".join(f"  {p}" for p in rendered[:32])
+                err_msg += "\n\n" + _format_rendered_maps(
+                    rendered, label="partial maps rendered before failure",
                 )
             return err_msg
 
