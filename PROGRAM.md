@@ -209,3 +209,40 @@ TIER_IMMUTABLE edits (5 files) were operator-approved.
 **Verification:** 114 / 191 / 275 tests pass on the targeted SubIA + epistemic + integrity batches across the phases. SubIA Phase-3 integrity manifest verifies clean post-migration. Internal Python callers of every API still work; only HTTP-perimeter callers see the new auth (and only when `GATEWAY_AUTH_REQUIRED=1`).
 
 **Operator notes** for the public-facing path: see [`deploy/HARDENING.md`](deploy/HARDENING.md) (gateway auth, NetworkPolicy egress, ESO, etcd encryption, Redis DLQ — five layers in dependency order).
+
+---
+
+## 12. 2026-05 Workspace Companion (parallel track)
+
+A per-workspace idle-time contemplation system shipped on top of the
+SubIA + Affect + Memory infrastructure as a separate concern. The
+Companion gives each workspace a "co-worker" that thinks during idle
+windows, surfaces unique ideas via Signal + React on a 4 h cooldown,
+takes thumbs-up/down feedback, promotes approved ideas to md/docx/pdf
+documents, and registers them across **four memory layers**
+(workspace wiki + Mem0 + system wiki + ChromaDB) at once. Two-gate
+hybrid model lets `GLOBAL_META`-safe kernels propose to relevant peer
+workspaces without leaking workspace-specific details.
+
+| Phase | Theme | Commits |
+|---|---|---|
+| 0+1 | Workspace seed + idle loop skeleton | `b7e13bd` |
+| 2 | Cycle wiring + WorkspaceKB + affect bridge | `e7aed1d` |
+| 3 | Idea store + scoring + lineage persistence | `ee52611` |
+| 4 | Surfacing + feedback intake + event log + react API | `ddb3cc1` |
+| 5 | Reflexion: feedback shapes the next cycle's prompt | `d5479ac` |
+| 6 | External sources + auto-suggest + daily ingestion | `1335825` |
+| 6.5 | Config endpoint — recover seed/budget editability | `6f6de8b` |
+| 7a/b | Five-persona critic panel + integration | `27c6bd9` + `914fe2e` |
+| 8a/b | Document maturation pipeline (md / docx / pdf) | `26ac696` + `fa8c3b2` |
+| 9a/b | Workspace wiki + Mem0 + system-wiki cross-layer registration | `262e264` + `31e924d` |
+| 10 | React `/cp/ops/Companion` tab + API client | `b21cb81` |
+| 11a/b | Grand-task synthesis (12 h cadence) | `827a647` + `f6be025` |
+| 12 | Per-workspace MAP-Elites diversity hook | `8a6a51b` |
+| 13 | Cross-workspace transfer (hybrid model) | `2656ed2` |
+| 4.5 + 9.5 + 10.5 | Production wire-ups (router, signal, mem0) | `e2e89e4` |
+| Merge | `f862c9e` (Workspace Companion → main) | — |
+
+**313 backend tests** in `tests/test_companion_*.py`; React UI verified
+on the preview server. Full design + API surface + operational guide:
+[`docs/COMPANION_LAYER.md`](docs/COMPANION_LAYER.md).

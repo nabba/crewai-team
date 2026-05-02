@@ -358,6 +358,25 @@ Phases 0 through 16a shipped. Each phase shipped behind green tests and is indep
 
 **~897 SubIA-relevant tests green** at Phase 16a. **126 test files** in [`tests/`](./tests/) total.
 
+### Workspace Companion — May 2026
+
+A separate per-workspace idle-time contemplation system shipped on top of
+the existing infrastructure. Lives in [`app/companion/`](./app/companion/);
+React tab on `/cp/ops`. The user provides an overarching seed prompt;
+during idle windows the Companion runs the [Creative MAS](./app/crews/creative_crew.py)
+pipeline against the workspace's accumulated context, scores outputs across
+four dimensions (novelty, quality, transferability, 5-persona critic
+panel), surfaces only ideas that clear thresholds via Signal + React,
+takes thumbs-up/down feedback, promotes approved ideas to md/docx/pdf
+documents and registers them across **four memory layers** at once
+(workspace wiki + Mem0 + system wiki + ChromaDB). Cross-workspace
+transfer is hybrid — abstract `GLOBAL_META` kernels propose to peers under
+two safety gates (sanitiser + relevance) — so Estonian forests stays
+focused but a structural insight from KaiCart can still flow through.
+**313 backend tests** across 23 test files in
+[`tests/test_companion_*.py`](./tests/). Full design + API surface +
+operational guide in [`docs/COMPANION_LAYER.md`](./docs/COMPANION_LAYER.md).
+
 ### Operational reliability — May 2026
 
 Outside the SubIA roadmap, a separate reliability pass squashed nine
