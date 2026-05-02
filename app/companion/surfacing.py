@@ -119,15 +119,59 @@ def _recently_surfaced(workspace_id: str, *, now: float | None = None) -> bool:
 
 
 def _send_signal(text: str, workspace_id: str) -> bool:
-    """Stub for Signal outbound send. Phase 4.5 wires real enqueue.
+    """Outbound to Signal via ``conversation_store.enqueue_outbound``.
 
-    Returns True if the message was queued for delivery, False otherwise.
-    Phase 4 just logs at INFO so operators can verify formatting; the
-    real wire-up uses ``conversation_store.enqueue_outbound`` once we
-    know the per-workspace recipient (Phase 4.5).
+    Recipient resolution priority:
+      1. ``CompanionConfig.signal_recipient`` for the workspace
+      2. ``COMPANION_SIGNAL_RECIPIENT`` env var (operator default)
+      3. None — falls back to logging the would-send text so operators
+         can verify formatting before configuring outbound.
+
+    Returns True iff the message was queued. Failures (recipient
+    unset, queue insert error, conversation_store unavailable) are
+    logged + swallowed so the SURFACED event still records the attempt
+    (cooldown counts; operator can retry once delivery is configured).
     """
-    logger.info(
-        "companion.surfacing: would send to Signal (workspace=%s):\n%s",
-        workspace_id, text,
-    )
-    return True
+    recipient = _resolve_recipient(workspace_id)
+    if not recipient:
+        logger.info(
+            "companion.surfacing: would send to Signal (workspace=%s; "
+            "set COMPANION_SIGNAL_RECIPIENT or workspace.signal_recipient "
+            "to enable):\n%s",
+            workspace_id, text[:500],
+        )
+        return False
+    try:
+        return _enqueue_outbound(recipient, text)
+    except Exception as exc:
+        logger.warning(
+            "companion.surfacing: enqueue_outbound raised for %s: %s",
+            workspace_id, exc,
+        )
+        return False
+
+
+def _resolve_recipient(workspace_id: str) -> str | None:
+    """Per-workspace override → env-var operator default → None."""
+    try:
+        from app.companion.config import load
+        cfg = load(workspace_id)
+        if cfg is not None:
+            cfg_recipient = getattr(cfg, "signal_recipient", None)
+            if cfg_recipient:
+                return str(cfg_recipient)
+    except Exception:
+        pass
+    import os
+    env_recipient = os.environ.get("COMPANION_SIGNAL_RECIPIENT")
+    return env_recipient or None
+
+
+def _enqueue_outbound(recipient: str, text: str) -> bool:
+    """Indirection over ``conversation_store.enqueue_outbound`` for testability.
+
+    Returns True iff the outbound queue accepted the row.
+    """
+    from app.conversation_store import enqueue_outbound
+    queue_id = enqueue_outbound(recipient, message=text)
+    return queue_id is not None

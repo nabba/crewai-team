@@ -55,6 +55,10 @@ class CompanionConfig:
     quiet_hours_start: int = DEFAULT_QUIET_HOURS_START
     quiet_hours_end: int = DEFAULT_QUIET_HOURS_END
     sources: list[dict] = field(default_factory=list)
+    # Phase 4.5 production wire-up: Signal recipient for surfacing cards.
+    # None falls back to the env var COMPANION_SIGNAL_RECIPIENT; if both
+    # are unset, surface() logs the would-send text instead of queuing.
+    signal_recipient: str | None = None
 
     def clamp(self) -> "CompanionConfig":
         self.daily_budget_usd = _clamp(self.daily_budget_usd,

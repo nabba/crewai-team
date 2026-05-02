@@ -142,3 +142,60 @@ def test_compose_card_truncates_long_text(tmp_events_dir):
     text = _surf.compose_card(_idea(text=long), _cfg())
     assert len(text) < len(long) + 500
     assert text.count("...") >= 1
+
+
+# ── Signal outbound wiring (Phase 4.5) ─────────────────────────────────────
+
+def test_send_signal_logs_when_no_recipient(monkeypatch, tmp_events_dir):
+    """No env var, no workspace override → log + return False."""
+    monkeypatch.delenv("COMPANION_SIGNAL_RECIPIENT", raising=False)
+    with patch("app.companion.config.load", lambda ws: None):
+        assert _surf._send_signal("hello", "ws-1") is False
+
+
+def test_send_signal_uses_env_var_recipient(monkeypatch, tmp_events_dir):
+    """Env var set + no workspace override → enqueue_outbound called with env."""
+    monkeypatch.setenv("COMPANION_SIGNAL_RECIPIENT", "+15551234567")
+    captured: list = []
+
+    def _fake_enqueue(recipient, text):
+        captured.append((recipient, text))
+        return True
+
+    with patch("app.companion.config.load", lambda ws: None), \
+         patch("app.companion.surfacing._enqueue_outbound", _fake_enqueue):
+        assert _surf._send_signal("hello", "ws-1") is True
+    assert captured == [("+15551234567", "hello")]
+
+
+def test_send_signal_workspace_override_wins(monkeypatch, tmp_events_dir):
+    """Per-workspace signal_recipient takes precedence over env var."""
+    monkeypatch.setenv("COMPANION_SIGNAL_RECIPIENT", "+15550000000")
+    cfg = CompanionConfig(signal_recipient="+15559999999").clamp()
+    captured: list = []
+
+    with patch("app.companion.config.load", lambda ws: cfg), \
+         patch("app.companion.surfacing._enqueue_outbound",
+               lambda r, t: captured.append((r, t)) or True):
+        assert _surf._send_signal("hi", "ws-1") is True
+    assert captured == [("+15559999999", "hi")]
+
+
+def test_send_signal_absorbs_enqueue_failure(monkeypatch, tmp_events_dir):
+    monkeypatch.setenv("COMPANION_SIGNAL_RECIPIENT", "+15550000000")
+
+    def _broken(r, t):
+        raise RuntimeError("queue down")
+
+    with patch("app.companion.config.load", lambda ws: None), \
+         patch("app.companion.surfacing._enqueue_outbound", _broken):
+        assert _surf._send_signal("hi", "ws-1") is False
+
+
+def test_send_signal_returns_false_when_queue_returns_falsy(
+        monkeypatch, tmp_events_dir):
+    monkeypatch.setenv("COMPANION_SIGNAL_RECIPIENT", "+15550000000")
+    with patch("app.companion.config.load", lambda ws: None), \
+         patch("app.companion.surfacing._enqueue_outbound",
+               lambda r, t: False):
+        assert _surf._send_signal("hi", "ws-1") is False

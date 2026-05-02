@@ -1975,6 +1975,14 @@ try:
 except Exception:
     logger.debug("Workspace API not available", exc_info=True)
 
+# ── Workspace Companion API (idle ideation, surfacing, wiki, etc.) ───────────
+try:
+    from app.api.companion_api import router as companion_router
+    app.include_router(companion_router)
+    logger.info("Workspace Companion API mounted at /api/cp/companion/")
+except Exception:
+    logger.debug("Workspace Companion API not available", exc_info=True)
+
 # ── Control Plane API routes ─────────────────────────────────────────────
 try:
     from app.control_plane.dashboard_api import router as cp_router

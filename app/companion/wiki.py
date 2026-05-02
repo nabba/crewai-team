@@ -279,44 +279,32 @@ def _compose_mem0_fact(workspace_id: str,
 
 def _invoke_mem0_add(workspace_id: str, idea: _idea_store.IdeaRecord,
                      fact: str, metadata: dict) -> str | None:
-    """Indirection over the Mem0 add call.
+    """Indirection over ``app.memory.mem0_manager.store_memory``.
 
-    Tries to import a Mem0 manager and call ``add``. Mem0 client signatures
-    vary across versions; we accept either a dict result with an ``id`` /
-    nested ``results[0].id``, or an object with an ``id`` attribute. Any
-    failure logs and returns None — the rest of the wiki publication still
-    proceeds, and the workspace wiki / system wiki land regardless.
+    Mem0 returns a result whose shape varies across versions; we accept
+    a dict-with-``id``, a dict-with-``results[0].id``, or an object with
+    an ``.id`` attribute. None when Mem0 is unconfigured / unreachable —
+    the workspace wiki + system wiki land regardless.
+
+    The workspace_id rides as ``agent_id`` so per-workspace retrieval
+    via ``search_agent`` stays scoped; the fact text itself names the
+    workspace + idea_id so cross-workspace ``search_shared`` calls can
+    still find the insight by content.
     """
     try:
-        from app.memory.mem0_manager import get_mem0_manager
+        from app.memory.mem0_manager import store_memory
     except Exception:
         return None
+    enriched_metadata = dict(metadata or {})
+    enriched_metadata.setdefault("kind", "companion_polished_idea")
     try:
-        mem0 = get_mem0_manager()
-    except Exception as exc:
-        logger.debug("companion.wiki: get_mem0_manager failed: %s", exc)
-        return None
-    if mem0 is None:
-        return None
-    try:
-        result = mem0.add(
-            fact,
-            user_id=f"workspace:{workspace_id}",
-            metadata=metadata,
+        result = store_memory(
+            text=fact,
+            agent_id=f"workspace:{workspace_id}",
+            metadata=enriched_metadata,
         )
-    except TypeError:
-        # Some Mem0 versions take ``messages=[...]`` instead of a string.
-        try:
-            result = mem0.add(
-                messages=[{"role": "assistant", "content": fact}],
-                user_id=f"workspace:{workspace_id}",
-                metadata=metadata,
-            )
-        except Exception as exc:
-            logger.debug("companion.wiki: mem0 add (messages) failed: %s", exc)
-            return None
     except Exception as exc:
-        logger.debug("companion.wiki: mem0 add failed: %s", exc)
+        logger.debug("companion.wiki: store_memory raised: %s", exc)
         return None
     return _extract_mem0_id(result)
 

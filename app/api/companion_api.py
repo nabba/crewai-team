@@ -193,6 +193,7 @@ class UpdateConfigRequest(BaseModel):
     panel_threshold: float | None = None
     quiet_hours_start: int | None = None
     quiet_hours_end: int | None = None
+    signal_recipient: str | None = None
 
 
 @router.get("/config/{workspace_id}")

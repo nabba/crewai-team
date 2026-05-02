@@ -179,6 +179,49 @@ def test_extract_mem0_id_handles_none():
     assert _w._extract_mem0_id({"no_id": "x"}) is None
 
 
+# ── Mem0 wiring (Phase 4.5 follow-up) ──────────────────────────────────────
+
+def test_invoke_mem0_add_calls_store_memory_with_workspace_agent_id(monkeypatch):
+    """Real wire-up: store_memory called with text, workspace-scoped
+    agent_id, and metadata enriched with the kind tag."""
+    captured: dict = {}
+
+    def _fake_store(text, agent_id=None, metadata=None):
+        captured["text"] = text
+        captured["agent_id"] = agent_id
+        captured["metadata"] = dict(metadata or {})
+        return {"id": "rec_xyz_42"}
+
+    import app.memory.mem0_manager as _mm
+    monkeypatch.setattr(_mm, "store_memory", _fake_store)
+    rec = _is.IdeaRecord(workspace_id="ws-1", text="content")
+
+    rid = _w._invoke_mem0_add("ws-1", rec, "the fact",
+                              {"source": "companion"})
+    assert rid == "rec_xyz_42"
+    assert captured["text"] == "the fact"
+    assert captured["agent_id"] == "workspace:ws-1"
+    assert captured["metadata"]["source"] == "companion"
+    assert captured["metadata"]["kind"] == "companion_polished_idea"
+
+
+def test_invoke_mem0_add_returns_none_when_store_raises(monkeypatch):
+    def _broken(*a, **kw):
+        raise RuntimeError("mem0 down")
+
+    import app.memory.mem0_manager as _mm
+    monkeypatch.setattr(_mm, "store_memory", _broken)
+    rec = _is.IdeaRecord(workspace_id="ws-1", text="content")
+    assert _w._invoke_mem0_add("ws-1", rec, "fact", {}) is None
+
+
+def test_invoke_mem0_add_returns_none_when_store_returns_none(monkeypatch):
+    import app.memory.mem0_manager as _mm
+    monkeypatch.setattr(_mm, "store_memory", lambda *a, **kw: None)
+    rec = _is.IdeaRecord(workspace_id="ws-1", text="content")
+    assert _w._invoke_mem0_add("ws-1", rec, "fact", {}) is None
+
+
 def test_slugify_safe():
     assert _w._slugify("Hello World!") == "hello-world"
     assert _w._slugify("A " * 100).startswith("a")
