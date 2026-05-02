@@ -568,11 +568,19 @@ class Commander:
 
     def _route(self, user_input: str, sender: str,
                attachment_context: str = "",
-               attachments: list | None = None) -> list[dict]:
+               attachments: list | None = None,
+               exclude_crew: str | None = None) -> list[dict]:
         """Classify the request and return a list of {crew, task, difficulty} dicts.
 
         Tries fast keyword-based routing first (free, instant).
         Falls back to Opus LLM routing for complex/ambiguous requests.
+
+        ``exclude_crew`` (Week 2.5 audit fix): when set, the router skips
+        any short-circuit (fast-route, attachment hint, matrix-research)
+        whose result matches the excluded crew name, falling through to
+        the LLM router instead.  Used by the post-vetting reroute path
+        so a "WRONG CREW" verdict on the coding crew doesn't loop back
+        to the coding crew via fast-route catching the same prompt.
         """
         # ── Attachment-shape routing (CRITICAL HINT) ────────────────────
         # A PDF / spreadsheet / CSV attachment combined with "merge /
@@ -584,13 +592,20 @@ class Commander:
         # PDF with no read_attachment in its active toolset.
         hinted = _try_attachment_hint_route(user_input, attachments or [])
         if hinted is not None:
-            logger.info(
-                "attachment_hint_route: forcing crew=%s (text=%r, "
-                "attachment_types=%s)",
-                hinted[0].get("crew"), user_input[:80],
-                [a.get("contentType", "?") for a in (attachments or [])],
-            )
-            return hinted
+            if exclude_crew and hinted[0].get("crew") == exclude_crew:
+                logger.info(
+                    "attachment_hint_route would have picked %s but it's "
+                    "excluded; falling through to LLM router",
+                    exclude_crew,
+                )
+            else:
+                logger.info(
+                    "attachment_hint_route: forcing crew=%s (text=%r, "
+                    "attachment_types=%s)",
+                    hinted[0].get("crew"), user_input[:80],
+                    [a.get("contentType", "?") for a in (attachments or [])],
+                )
+                return hinted
 
         # ── Matrix-research forcing (2026-04-26) ───────────────────────────
         # When the prompt looks like "find/research/populate <fields>
@@ -600,12 +615,26 @@ class Commander:
         # tool-call template into the task body.
         matrix_route = _try_matrix_research_route(user_input, attachments or [])
         if matrix_route is not None:
-            return matrix_route
+            if exclude_crew and matrix_route[0].get("crew") == exclude_crew:
+                logger.info(
+                    "matrix_research_route would have picked %s but it's "
+                    "excluded; falling through to LLM router",
+                    exclude_crew,
+                )
+            else:
+                return matrix_route
 
         # ── Fast-path: skip Opus call for obvious request types ──────────
         fast = _try_fast_route(user_input, bool(attachment_context))
         if fast is not None:
-            return fast
+            if exclude_crew and fast[0].get("crew") == exclude_crew:
+                logger.info(
+                    "fast_route would have picked %s but it's excluded "
+                    "(post-vetting reroute); falling through to LLM router",
+                    exclude_crew,
+                )
+            else:
+                return fast
 
         # S4/S1: Routing needs history + Mem0 context for classification.
         # Run both lookups in parallel — they're independent I/O operations.
@@ -949,6 +978,33 @@ class Commander:
         # budget-tier model that quits too early on hard lookups.
         from app.llm_selector import set_active_difficulty, reset_active_difficulty
         _diff_token = set_active_difficulty(difficulty)
+
+        # 2026-05-02 audit Week 2.5 — progress marker on EVERY crew run.
+        # Week 1.5 H5 emitted only at the outer dispatch boundary in
+        # _handle_locked, so the reroute-retry path didn't reset the
+        # output-stall watchdog timer.  Verification dispatch v5 died
+        # at 15:00 with "no progress for 440s" because the retry never
+        # emitted.  Lifting the call here covers first attempt, reroutes,
+        # reflexion retries, and parallel multi-crew dispatches with one
+        # change.  Uses the current_task_id ContextVar (set by main.py's
+        # handle_task to str(sender)) — same key the watchdog reads.
+        try:
+            from app.observability.task_progress import (
+                record_output_progress, current_task_id,
+            )
+            record_output_progress(
+                note=f"crew run start: {crew_name} d={difficulty}",
+            )
+            logger.info(
+                "task_progress: crew run start %s d=%s tid=%s",
+                crew_name, difficulty,
+                (current_task_id.get() or "")[-6:] or "(empty)",
+            )
+        except Exception as _prog_exc:
+            logger.warning(
+                "task_progress emit failed at _run_crew start: %s",
+                _prog_exc, exc_info=False,
+            )
 
         try:
             return self._run_crew_inner(
@@ -3132,12 +3188,20 @@ class Commander:
                 )
                 try:
                     if wrong_crew:
-                        # Re-route via commander. We don't pass the original
-                        # crew so it'll genuinely re-decide. The user's
-                        # task is preserved verbatim so context is intact.
+                        # Re-route via commander.  Week 2.5 audit fix:
+                        # explicitly tell _route to exclude the failing
+                        # crew so fast-route / matrix / attachment-hint
+                        # short-circuits don't loop back to the same
+                        # crew.  Pre-fix, "create Estonia ... maps"
+                        # always matched fast-route → coding, so even
+                        # after a coding-crew vetting failure the reroute
+                        # immediately re-picked coding.  The post-filter
+                        # below is now a belt-and-braces against the LLM
+                        # router still picking the excluded crew.
                         retry_decisions = self._route(
                             user_input, sender, attachments=attachments,
                             attachment_context=attachment_context,
+                            exclude_crew=crew_name,
                         )
                         retry_decisions = [
                             rd for rd in (retry_decisions or [])

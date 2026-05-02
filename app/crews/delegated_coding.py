@@ -74,6 +74,7 @@ Implement the following coding task.
 {user_input}
 
 {design_spec_section}\
+{tool_inventory_section}\
 Process:
 1. Write the code yourself (you have file_manager + memory tools).
 2. Delegate to the Execution Specialist to RUN the code and capture real output.
@@ -85,6 +86,17 @@ OUTPUT RULES:
  - Return ONLY the final deliverable — working code plus actual execution output.
  - Do NOT narrate your delegation steps.
  - Save the final code to a file via file_manager if appropriate.
+
+CRITICAL — when the inventory above lists a specialist tool that fits
+the task (e.g. `gee_run_script` for satellite/forest/Hansen analysis,
+`firecrawl_extract` for web scraping), CALL IT directly via the
+Execution Specialist.  Do NOT write a custom Python pipeline that
+re-implements what a registered tool does — the executor's per-tool
+budget is 180s, and a naive Python loop calling Earth Engine per-year
+will burn that budget on every iteration.  Read each tool's
+description carefully — many tools document the FAST pattern explicitly
+(e.g. `gee_run_script` shows `# GOOD` single-call frequencyHistogram
+vs `# BAD` per-year loop).  Follow the FAST pattern exactly.
 """
 
 
@@ -123,10 +135,23 @@ class DelegatedCodingCrew:
                 if design_spec
                 else ""
             )
+            # 2026-05-02 audit Week 2.5 — also inject the tool inventory
+            # into the implementation prompt.  Week 2 only injected it
+            # into the design phase; verification dispatch v5 showed the
+            # design spec correctly named gee_run_script, but the
+            # implementation/executor still wrote slow per-year loops
+            # because its prompt didn't carry the same nudge.  Same
+            # helper, called over (coordinator + executor + debugger)
+            # so the implementation prompt sees every tool the team
+            # collectively has.
+            impl_inventory = _render_tool_inventory_section(
+                coordinator, executor, debugger
+            )
             task = Task(
                 description=_DELEGATED_CODING_TASK_TEMPLATE.format(
                     user_input=wrap_user_input(task_description),
                     design_spec_section=spec_section,
+                    tool_inventory_section=impl_inventory,
                 ),
                 expected_output=(
                     "Working code with real execution output, saved to a file if appropriate."
