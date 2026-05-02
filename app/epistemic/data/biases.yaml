@@ -76,6 +76,23 @@ biases:
     corrective_action: hedge_or_verify
     blocking: false
 
+  - id: causal_layer_overreach
+    name: "Causal layer overreach"
+    description: |
+      Claim is interventional (L2 — "doing X changes Y") or
+      counterfactual (L3 — "if X had been different, Y would have
+      been ...") in shape, but cites no controlled-intervention
+      evidence (ablation, A/B test, do-intervention). The Pearl
+      Causal Hierarchy Theorem says you cannot infer L2/L3 from L1
+      alone — observational correlation, no matter how strong, does
+      not establish causation. Seed scenario: the Self-Improver
+      narrative summarizing daily experiments without attaching the
+      experiment_runner span as evidence.
+    severity: medium
+    detector: realtime
+    corrective_action: hedge_or_verify
+    blocking: false
+
   - id: defending_periphery
     name: "Defending the periphery"
     description: |

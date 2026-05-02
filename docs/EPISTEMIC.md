@@ -103,11 +103,11 @@ SELF_REFLECTION.md       ← narrative companion (story, walkthroughs, glossary)
 | **Mode** | Observe-mode — `EPISTEMIC_BLOCKING_MODE=<unset>`. Detectors fire and persist; the gate runs but never blocks delivery. |
 | **Phases shipped** | 0 (foundation) → 7 (orchestrator gate) + autotuner |
 | **Database tables** | 7 (`epistemic_claims`, `epistemic_bias_matches`, `epistemic_pushback_events`, `epistemic_incidents`, `epistemic_peer_reviews`, `epistemic_overrides`, `epistemic_tuning_proposals`) |
-| **Migrations** | 026–032 |
-| **Bias library** | 8 named biases (4 realtime + 4 post-hoc) |
+| **Migrations** | 026–032, 035 (PCH layer columns) |
+| **Bias library** | 9 named biases (5 realtime + 4 post-hoc) |
 | **Verifier registry** | 10 starter shapes |
 | **Reference panel** | 12 canonical scenarios — must stay 100% green to promote new vocabulary |
-| **Python tests** | 310 / 310 passing in 0.63s |
+| **Python tests** | 329 passing |
 | **TypeScript build** | clean |
 | **Dashboard** | `/cp/epistemic` — 8 sub-panels |
 | **Cron jobs** | post-mortem at 04:40 Helsinki (after affect's daily reflection at 04:30) |
@@ -198,7 +198,7 @@ docker compose up -d --force-recreate gateway
         │                      │
 ┌───────▼──────────────────────▼────────────┐
 │ detectors/{realtime,posthoc}.py           │
-│   8 biases (4 realtime + 4 posthoc)       │
+│   9 biases (5 realtime + 4 posthoc)       │
 └──┬──────────────┬─────────────────┬───────┘
    │              │                 │
 ┌──▼──┐    ┌──────▼──────┐   ┌──────▼──────────┐

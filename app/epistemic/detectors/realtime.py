@@ -5,11 +5,13 @@ registered with :func:`app.epistemic.registry.register`. The meta-hook
 isolates per-detector failures (one buggy detector cannot poison the
 others) and persists matches via :mod:`app.epistemic.span_writer`.
 
-Phase 2 ships four realtime detectors:
+Realtime detectors:
   * :class:`InferenceAsFactDetector` (the canonical bias)
   * :class:`RegisterConfidenceMismatchDetector` (felt-vs-stated)
   * :class:`DestructiveWithoutRecheckDetector` (irreversible-action gate)
   * :class:`RecommendationWithoutMeasurementDetector` (measure-first rule)
+  * :class:`CausalLayerOverreachDetector` (Pearl L2/L3 without controlled
+    evidence — Causal Hierarchy Theorem)
 
 Performance contract: each detector's ``detect()`` call MUST run in
 < 5 ms p95. The meta-hook target is < 50 ms p95 across all detectors
@@ -25,7 +27,14 @@ from typing import Iterable
 from app.epistemic.biases import BIAS_LIBRARY, BiasMatch
 from app.epistemic.detectors import Detector, register_realtime
 from app.epistemic.grounding import factual_grounding
-from app.epistemic.ledger import Claim, Ledger, Register, VerificationStatus
+from app.epistemic.ledger import (
+    CAUSAL_EVIDENCE_KINDS_L2,
+    Claim,
+    Ledger,
+    PchLayer,
+    Register,
+    VerificationStatus,
+)
 from app.epistemic.registry import register as register_claim_hook
 
 logger = logging.getLogger(__name__)
@@ -290,6 +299,114 @@ class RecommendationWithoutMeasurementDetector(Detector):
         )
 
 
+# Patterns that mark a statement as a causal/interventional claim
+# ("doing X changes Y" — Pearl L2). Conservative on purpose: false
+# positives here mean the gate fires on observational claims, which
+# is more annoying than dangerous. Word boundaries keep "improved"
+# from matching inside "unimproved".
+_L2_KEYWORDS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"\b(?:improved|caused|reduced|increased|decreased|sped\s*up|slowed\s*down)\b",
+        re.IGNORECASE,
+    ),
+    # "made the build faster" / "made X better" — allow multiple words
+    # between "made" and the adjective so multi-word objects match.
+    re.compile(
+        r"\bmade\s+(?:\w+\s+){1,5}?(?:better|worse|faster|slower)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bproduced\s+(?:meaningful|measurable|real|the)\s+(?:improvements?|gains?|wins?|deltas?)\b",
+        re.IGNORECASE,
+    ),
+)
+
+# Patterns that mark a statement as a counterfactual (Pearl L3).
+_L3_KEYWORDS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bwould\s+have\s+\w+", re.IGNORECASE),
+    re.compile(r"\bif\s+\w+\s+had\b", re.IGNORECASE),
+    re.compile(r"\bcounterfactually\b", re.IGNORECASE),
+    re.compile(r"\bhad\s+we\s+\w+", re.IGNORECASE),
+)
+
+
+def _infer_pch_layer(statement: str) -> PchLayer:
+    """Infer the Pearl Causal Hierarchy layer from a claim's text.
+
+    Order matters: L3 wins over L2 (counterfactual is strictly more
+    expressive than interventional). L1 is the default.
+    """
+    if any(p.search(statement) for p in _L3_KEYWORDS):
+        return "L3"
+    if any(p.search(statement) for p in _L2_KEYWORDS):
+        return "L2"
+    return "L1"
+
+
+def _has_l2_grade_evidence(claim: Claim) -> bool:
+    """Does this claim cite L2-grade (controlled-intervention) evidence?
+
+    True if any tag in :data:`Claim.causal_evidence_kinds` is in
+    :data:`CAUSAL_EVIDENCE_KINDS_L2`. The detector treats this as
+    the explicit "I ran the experiment" affirmation; statement-level
+    heuristics never grant L2 evidence on their own.
+    """
+    return any(
+        kind in CAUSAL_EVIDENCE_KINDS_L2
+        for kind in claim.causal_evidence_kinds
+    )
+
+
+class CausalLayerOverreachDetector(Detector):
+    """Pearl Causal Hierarchy — claim asserts L2/L3 with no controlled evidence.
+
+    The Causal Hierarchy Theorem says you cannot infer layer i from
+    layer i-1 alone: L2 ("doing X changes Y") cannot be derived from
+    L1 ("X correlates with Y") without a controlled intervention.
+    This detector fires when an agent's claim is causal in shape
+    (interventional or counterfactual) but the claim cites no
+    L2-grade evidence — a controlled experiment, ablation, or
+    do-intervention.
+
+    Inferred layer = explicit ``claim.pch_layer`` if set, else the
+    layer inferred from the statement text. Fires when inferred layer
+    is L2 or L3 and :func:`_has_l2_grade_evidence` is False.
+
+    Seed scenario: the Self-Improver narrative emitting "yesterday's
+    experiments produced K meaningful improvements" without attaching
+    the experiment_runner span as evidence. The narrative path emits
+    explicit ``causal_evidence_kinds=("controlled_experiment",)`` to
+    avoid the false positive.
+    """
+
+    bias_id = "causal_layer_overreach"
+
+    def detect(
+        self,
+        ledger: Ledger,
+        *,
+        claim: Claim | None = None,
+    ) -> Iterable[BiasMatch]:
+        if claim is None:
+            return
+        inferred = claim.pch_layer or _infer_pch_layer(claim.statement)
+        if inferred == "L1":
+            return
+        if _has_l2_grade_evidence(claim):
+            return
+        yield BiasMatch(
+            bias_id=self.bias_id,
+            matched_claim_ids=(claim.claim_id,),
+            severity=BIAS_LIBRARY.get(self.bias_id).severity,
+            detail={
+                "inferred_layer": inferred,
+                "agent_role": claim.agent_role,
+                "explicit_layer": claim.pch_layer is not None,
+                "reason": "no controlled-intervention evidence on the claim",
+            },
+        )
+
+
 # ── Detector instantiation & registration ──────────────────────────
 # Done at import time. Importing ``app.epistemic.detectors.realtime``
 # attaches the meta-hook to the claim ledger; that's the explicit
@@ -300,6 +417,7 @@ INFERENCE_AS_FACT = register_realtime(InferenceAsFactDetector())
 REGISTER_CONFIDENCE_MISMATCH = register_realtime(RegisterConfidenceMismatchDetector())
 DESTRUCTIVE_WITHOUT_RECHECK = register_realtime(DestructiveWithoutRecheckDetector())
 RECOMMENDATION_WITHOUT_MEASUREMENT = register_realtime(RecommendationWithoutMeasurementDetector())
+CAUSAL_LAYER_OVERREACH = register_realtime(CausalLayerOverreachDetector())
 
 
 @register_claim_hook

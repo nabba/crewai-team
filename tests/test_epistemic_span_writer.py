@@ -98,7 +98,8 @@ class TestPersistClaim(unittest.TestCase):
             # the load-bearing fields rather than every column.
             (claim_id, task_id, span_id, agent_role, statement,
              status, register, evidence_json, verifier_json,
-             load_bearing, tags_json, superseded_by, created_at) = params
+             load_bearing, tags_json, superseded_by,
+             pch_layer, causal_evidence_kinds_json, created_at) = params
 
             self.assertEqual(claim_id, c.claim_id)
             self.assertEqual(task_id, "task_abc")
@@ -109,6 +110,8 @@ class TestPersistClaim(unittest.TestCase):
             self.assertEqual(register, "declarative")
             self.assertTrue(load_bearing)
             self.assertIsNone(superseded_by)
+            self.assertIsNone(pch_layer)
+            self.assertEqual(json.loads(causal_evidence_kinds_json), [])
             self.assertIsInstance(created_at, datetime)
 
             evidence = json.loads(evidence_json)

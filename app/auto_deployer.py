@@ -165,6 +165,19 @@ TIER_IMMUTABLE = frozenset({
     "app/forge/integrity.py",
     "app/forge/cron.py",
     "app/forge/generator_tool.py",
+    # Epistemic Integrity Layer — evaluation infrastructure. The
+    # detector predicates, claim schema, calibration logic, and bias
+    # vocabulary all define the gates that judge Self-Improver output.
+    # Letting the Self-Improver edit them = it can weaken its own
+    # eval criteria. This is the same invariant the constitution and
+    # eval_sandbox protect.
+    "app/epistemic/ledger.py",
+    "app/epistemic/biases.py",
+    "app/epistemic/calibration.py",
+    "app/epistemic/detectors/__init__.py",
+    "app/epistemic/detectors/realtime.py",
+    "app/epistemic/detectors/posthoc.py",
+    "app/epistemic/data/biases.yaml",
 })
 
 # ── TIER_GATED (~25 files — evolution engine + soul prompts) ────────────────

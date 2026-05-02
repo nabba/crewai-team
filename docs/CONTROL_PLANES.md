@@ -44,6 +44,16 @@ Signal CLI → forwarder.py → /signal/inbound → handle_task() → Commander.
 
 **Key files:** `app/agents/commander/orchestrator.py`, `app/agents/commander/routing.py`, `app/agents/commander/commands.py`, `app/crews/*.py`, `app/vetting.py`
 
+**Specialist tools worth knowing about** (full inventory lives in
+each crew's agent file under `app/agents/`):
+
+| Tool | Crew | Reference |
+|---|---|---|
+| `gee_run_script` (Google Earth Engine) | coder | [`docs/GEE.md`](GEE.md) |
+| `forge_register_tool` (sandboxed tool generation) | coder | [`docs/FORGE.md`](FORGE.md) |
+| `rank_emails` / `check_email` (PIM) | pim | inline in [`app/tools/email_tools.py`](../app/tools/email_tools.py) |
+| `recovery_loop` strategies (refusal handling) | all | [`docs/RECOVERY_LOOP.md`](RECOVERY_LOOP.md) |
+
 ### Deterministic command surface
 
 `try_command()` in `commands.py` runs *before* LLM routing. Matched

@@ -83,6 +83,85 @@ class TestCreateGeeTools:
         assert tools[0].name == "gee_run_script"
 
 
+# ── Tool-description guidance (regression guard) ────────────────────
+#
+# The coding crew, on 2026-05-02, hit a 240s tool timeout writing a
+# naive per-year `for yr in range(...): ... .getInfo()` loop for an
+# Estonia deforestation aggregation. The fix was to push the round-trip
+# warning + a worked good/bad pattern into the BaseTool description so
+# the LLM sees it before it writes the script. These tests pin the
+# guidance in place — if a future refactor strips the warning, this
+# fails fast instead of silently regressing crew behavior.
+
+
+class TestToolDescriptionGuidance:
+
+    def _get_tool(self, monkeypatch, tmp_path):
+        # Guidance tests need the actual BaseTool subclass, so crewai
+        # must be importable. Skip cleanly on dev laptops that lack it
+        # (CI / the sandbox container have it installed).
+        pytest.importorskip("crewai.tools")
+        sa = tmp_path / "sa.json"
+        sa.write_text(json.dumps({
+            "type": "service_account",
+            "project_id": "test-proj",
+            "client_email": "test@test.iam.gserviceaccount.com",
+            "private_key": "fake",
+        }))
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(sa))
+        from app.tools.gee_tool import create_gee_tools
+        tools = create_gee_tools()
+        assert tools, "create_gee_tools() returned [] despite crewai being installed"
+        return tools[0]
+
+    def test_description_warns_about_round_trips(self, monkeypatch, tmp_path):
+        tool = self._get_tool(monkeypatch, tmp_path)
+        desc = tool.description.lower()
+        # The warning must be explicit — not just "be efficient".
+        assert "round-trip" in desc
+        assert "getinfo()" in desc
+        # And it must name a fast primitive so the LLM has somewhere to go.
+        assert "frequencyhistogram" in desc
+
+    def test_description_shows_bad_then_good(self, monkeypatch, tmp_path):
+        tool = self._get_tool(monkeypatch, tmp_path)
+        desc = tool.description
+        # Both labels must appear, in order, so the LLM sees the
+        # contrast rather than just one or the other.
+        bad_idx = desc.find("# BAD")
+        good_idx = desc.find("# GOOD")
+        assert bad_idx != -1, "description missing '# BAD' anti-pattern label"
+        assert good_idx != -1, "description missing '# GOOD' pattern label"
+        assert bad_idx < good_idx, "anti-pattern must come before fix"
+
+    def test_script_field_steers_toward_lazy_result(self, monkeypatch, tmp_path):
+        """The wrapper calls .getInfo() once on `result`. The field
+        description should tell the LLM that — otherwise it'll call
+        .getInfo() itself and may do so in a loop."""
+        tool = self._get_tool(monkeypatch, tmp_path)
+        schema = tool.args_schema.model_fields["script"]
+        field_desc = schema.description.lower()
+        assert "wrapper" in field_desc
+        assert "once" in field_desc
+
+    def test_skill_file_present(self):
+        """The handwritten batching-pattern skill must exist in
+        workspace/skills/ so it gets indexed into ChromaDB by the
+        idle skill-indexer (idle_scheduler.py:_index_skills)."""
+        from pathlib import Path
+        # tests/ sits under crewai-team/, skill lives at
+        # crewai-team/workspace/skills/gee_batching_pattern.md
+        skill = Path(__file__).resolve().parent.parent / "workspace" / "skills" / "gee_batching_pattern.md"
+        assert skill.exists(), f"missing skill file: {skill}"
+        body = skill.read_text()
+        # Sanity-check the load-bearing markers — the rule, an
+        # anti-pattern label, and a fix label.
+        assert "round-trip" in body.lower()
+        assert "BAD" in body
+        assert "GOOD" in body
+        assert "frequencyHistogram" in body
+
+
 # ── _ensure_initialised caching ─────────────────────────────────────
 
 

@@ -60,9 +60,10 @@ def persist_claim(claim: Claim) -> None:
             INSERT INTO control_plane.epistemic_claims
                    (claim_id, task_id, span_id, agent_role, statement,
                     status, register, evidence, verifying_action,
-                    load_bearing, tags, superseded_by, created_at)
+                    load_bearing, tags, superseded_by,
+                    pch_layer, causal_evidence_kinds, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
-                    %s, %s::jsonb, %s, %s)
+                    %s, %s::jsonb, %s, %s, %s::jsonb, %s)
             ON CONFLICT (claim_id) DO UPDATE SET
                 status        = EXCLUDED.status,
                 superseded_by = EXCLUDED.superseded_by,
@@ -83,6 +84,8 @@ def persist_claim(claim: Claim) -> None:
                 claim.load_bearing,
                 json.dumps(list(claim.tags)),
                 claim.superseded_by,
+                claim.pch_layer,
+                json.dumps(list(claim.causal_evidence_kinds)),
                 claim.created_at,
             ),
         )
@@ -106,7 +109,8 @@ def load_ledger_for_task(task_id: str) -> Ledger:
             """
             SELECT claim_id, task_id, span_id, agent_role, statement,
                    status, register, evidence, verifying_action,
-                   load_bearing, tags, superseded_by, created_at
+                   load_bearing, tags, superseded_by,
+                   pch_layer, causal_evidence_kinds, created_at
               FROM control_plane.epistemic_claims
              WHERE task_id = %s
           ORDER BY created_at ASC, claim_id ASC
@@ -1162,7 +1166,8 @@ def lookup_claim(claim_id: str) -> Claim | None:
             """
             SELECT claim_id, task_id, span_id, agent_role, statement,
                    status, register, evidence, verifying_action,
-                   load_bearing, tags, superseded_by, created_at
+                   load_bearing, tags, superseded_by,
+                   pch_layer, causal_evidence_kinds, created_at
               FROM control_plane.epistemic_claims
              WHERE claim_id = %s
             """,
@@ -1220,5 +1225,7 @@ def _row_to_jsonable(row: dict[str, Any]) -> dict[str, Any]:
         "load_bearing": row["load_bearing"],
         "tags": row["tags"] or [],
         "superseded_by": row["superseded_by"],
+        "pch_layer": row.get("pch_layer"),
+        "causal_evidence_kinds": row.get("causal_evidence_kinds") or [],
         "created_at": row["created_at"],
     }

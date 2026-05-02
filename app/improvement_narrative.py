@@ -321,6 +321,103 @@ def _save_narrative(narrative: str, date_str: str) -> Path | None:
         return None
 
 
+# ── Epistemic claim emission ─────────────────────────────────────────────────
+
+def _emit_l2_narrative_claim(data: dict, date_str: str) -> None:
+    """Emit one L2-tagged Claim for the day's experiment-driven headline.
+
+    The narrative makes a Pearl-L2 (interventional) statement —
+    "yesterday's experiments produced K meaningful improvements" — and
+    that statement is grounded in real controlled interventions: the
+    keep gate inside ``app.experiment_runner`` (TIER_IMMUTABLE).
+    Tagging the claim ``causal_evidence_kinds=("controlled_experiment",)``
+    is what tells :class:`CausalLayerOverreachDetector` the L2 framing
+    is licensed.
+
+    A synthetic ``crew_tasks`` row keyed ``narrative_<date>`` is created
+    via :func:`app.control_plane.crew_tasks.start_task` so the claim's
+    ``task_id`` FK resolves and the BiasFeed dashboard can surface the
+    emission. The row is closed with :func:`complete_task` immediately
+    after emit — the narrative is a one-shot generation, not a
+    running task.
+
+    Best-effort: if the epistemic layer is disabled (default in dev) or
+    the DB is unreachable, every step degrades to DEBUG-logged no-ops
+    and narrative generation completes unaffected.
+    """
+    kept_meaningful = [
+        e for e in data.get("experiments", [])
+        if e.get("status") == "keep" and abs(e.get("delta", 0)) > 0.001
+    ]
+    if not kept_meaningful:
+        return
+
+    cumulative = sum(e.get("delta", 0) for e in kept_meaningful)
+    statement = (
+        f"Yesterday's experiments produced {len(kept_meaningful)} "
+        f"meaningful improvements (cumulative delta {cumulative:+.4f})"
+    )
+
+    try:
+        from app.epistemic import (
+            Claim,
+            Evidence,
+            Ledger,
+            Register,
+            VerificationStatus,
+        )
+        from app.control_plane.crew_tasks import complete_task, start_task
+
+        excerpt_lines = [
+            f"$ experiment_runner.kept_summary date={date_str}",
+            f"kept_meaningful={len(kept_meaningful)} cumulative_delta={cumulative:+.6f}",
+        ]
+        for e in sorted(
+            kept_meaningful, key=lambda x: -abs(x.get("delta", 0))
+        )[:3]:
+            excerpt_lines.append(
+                f"  {e.get('change_type', '?')} "
+                f"delta={e.get('delta', 0):+.6f} "
+                f"hyp={(e.get('hypothesis') or '?')[:60]}"
+            )
+
+        evidence = Evidence(
+            kind="tool_call",
+            source_ref=f"results.tsv:{date_str}",
+            excerpt="\n".join(excerpt_lines),
+            confidence=0.9,
+        )
+
+        task_id = f"narrative_{date_str}"
+        start_task(
+            task_id=task_id,
+            crew="self_improver",
+            summary=f"Daily improvement narrative for {date_str}",
+            project_id=None,
+        )
+
+        ledger = Ledger(task_id=task_id)
+        ledger.emit(Claim.new(
+            task_id=task_id,
+            agent_role="self_improver",
+            statement=statement,
+            status=VerificationStatus.VERIFIED,
+            register=Register.DECLARATIVE,
+            evidence=(evidence,),
+            load_bearing=True,
+            tags=("daily_narrative",),
+            pch_layer="L2",
+            causal_evidence_kinds=("controlled_experiment",),
+        ))
+
+        complete_task(
+            task_id=task_id,
+            result_preview=statement[:200],
+        )
+    except Exception as exc:
+        logger.debug(f"improvement_narrative: epistemic emit skipped: {exc}")
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def generate_daily_narrative() -> str:
@@ -332,6 +429,7 @@ def generate_daily_narrative() -> str:
         data["window_start"], tz=timezone.utc
     ).strftime("%Y-%m-%d")
     _save_narrative(narrative, date_str)
+    _emit_l2_narrative_claim(data, date_str)
 
     logger.info(f"improvement_narrative: generated {date_str} ({len(narrative)} chars)")
     return narrative

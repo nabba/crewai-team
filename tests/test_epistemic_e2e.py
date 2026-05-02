@@ -54,6 +54,7 @@ from app.epistemic.detectors import (  # noqa: E402
     register_realtime,
 )
 from app.epistemic.detectors.realtime import (  # noqa: E402
+    CAUSAL_LAYER_OVERREACH,
     DESTRUCTIVE_WITHOUT_RECHECK,
     INFERENCE_AS_FACT,
     REGISTER_CONFIDENCE_MISMATCH,
@@ -91,6 +92,7 @@ def _full_bootstrap():
     register_realtime(REGISTER_CONFIDENCE_MISMATCH)
     register_realtime(DESTRUCTIVE_WITHOUT_RECHECK)
     register_realtime(RECOMMENDATION_WITHOUT_MEASUREMENT)
+    register_realtime(CAUSAL_LAYER_OVERREACH)
     register_claim_hook(_realtime_meta_hook)
 
 

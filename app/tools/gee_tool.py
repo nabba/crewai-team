@@ -227,8 +227,10 @@ def create_gee_tools(agent_id: str = "coder") -> list:
                 "Python snippet to execute against Earth Engine. The "
                 "namespace pre-loads `ee` (the API) and `estonia` "
                 "(an AOI FeatureCollection for Estonia). Assign your "
-                "final value to a variable named `result` — its "
-                ".getInfo() output is returned to you."
+                "final value to a variable named `result` — the "
+                "wrapper calls .getInfo() on it ONCE for you, so "
+                "leaving it as an ee.Number/ee.Dictionary/ee.List is "
+                "preferred over calling .getInfo() yourself."
             ),
         )
         timeout_s: int = Field(
@@ -251,11 +253,24 @@ def create_gee_tools(agent_id: str = "coder") -> list:
             "for any geospatial analysis question — you do NOT need "
             "to download imagery yourself; Google's compute does the "
             "heavy lifting and returns aggregated numbers / vector "
-            "summaries. Useful patterns: Hansen 'lossyear' band for "
-            "year-by-year deforestation, ee.ImageCollection.filterDate "
-            "for time-range queries, ee.Reducer.sum/mean/histogram "
-            "for area aggregations, .clip(estonia.geometry()) for "
-            "country-scoped work."
+            "summaries.\n\n"
+            "CRITICAL — round-trip rule: every .getInfo() is a "
+            "synchronous network call to Google (~30s each). Aggregate "
+            "server-side, then pull ONCE. For per-year/per-class/"
+            "per-region values use ee.Reducer.frequencyHistogram, "
+            "ee.Reducer.group, or map a reducer over an "
+            "ee.FeatureCollection — NEVER a Python for-loop with "
+            ".getInfo() inside.\n\n"
+            "# BAD (13 round-trips, times out at 240s):\n"
+            "for yr in range(12, 25):\n"
+            "    out[yr] = mask.eq(yr).reduceRegion(...).getInfo()\n\n"
+            "# GOOD (1 round-trip, ~110s):\n"
+            "hist = loss.updateMask(loss.gt(0)).reduceRegion(\n"
+            "    reducer=ee.Reducer.frequencyHistogram(), ...\n"
+            ").get('lossyear').getInfo()\n\n"
+            "Useful patterns: Hansen 'lossyear' band for year-by-year "
+            "deforestation, ee.ImageCollection.filterDate for time-range "
+            "queries, .clip(estonia.geometry()) for country-scoped work."
         )
         args_schema: Type[BaseModel] = _GeeRunScriptInput
 

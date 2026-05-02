@@ -104,13 +104,14 @@ def _claim(**overrides) -> Claim:
 class TestBiasLibraryYAMLLoader(unittest.TestCase):
 
     def test_default_library_has_all_phase_2_biases(self):
-        # The shipped YAML must define all 8 biases.
+        # The shipped YAML must define all biases the detectors consume.
         ids = {d.id for d in BIAS_LIBRARY.all()}
         for required in (
             "inference_as_fact",
             "register_confidence_mismatch",
             "destructive_without_recheck",
             "recommendation_without_measurement",
+            "causal_layer_overreach",
             "defending_periphery",
             "coherence_bias",
             "tool_laziness",
@@ -120,12 +121,12 @@ class TestBiasLibraryYAMLLoader(unittest.TestCase):
 
     def test_realtime_phase_filter(self):
         realtime_ids = {d.id for d in BIAS_LIBRARY.all(phase=DetectorPhase.REALTIME)}
-        # Phase 2 ships 4 realtime biases.
         self.assertEqual(realtime_ids, {
             "inference_as_fact",
             "register_confidence_mismatch",
             "destructive_without_recheck",
             "recommendation_without_measurement",
+            "causal_layer_overreach",
         })
 
     def test_critical_severity_blocks_by_default(self):
@@ -494,6 +495,7 @@ class TestReferencePanel(unittest.TestCase):
         _reset_detectors()
         _reset_hooks()
         from app.epistemic.detectors.realtime import (
+            CAUSAL_LAYER_OVERREACH,
             DESTRUCTIVE_WITHOUT_RECHECK,
             INFERENCE_AS_FACT,
             RECOMMENDATION_WITHOUT_MEASUREMENT,
@@ -506,6 +508,7 @@ class TestReferencePanel(unittest.TestCase):
         register_realtime(REGISTER_CONFIDENCE_MISMATCH)
         register_realtime(DESTRUCTIVE_WITHOUT_RECHECK)
         register_realtime(RECOMMENDATION_WITHOUT_MEASUREMENT)
+        register_realtime(CAUSAL_LAYER_OVERREACH)
         register_claim_hook(_realtime_meta_hook)
 
     def test_load_panel_shipped_yaml_has_scenarios(self):

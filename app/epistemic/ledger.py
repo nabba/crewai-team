@@ -89,6 +89,28 @@ EvidenceKind = Literal[
 ]
 
 
+# Pearl Causal Hierarchy layer of a claim's content.
+#   L1 — observational ("X correlates with Y" / P(y|x))
+#   L2 — interventional ("doing X changes Y" / P(y|do(x)))
+#   L3 — counterfactual ("if X had been different, Y would have been ..." / P(y_x|x'))
+# A non-causal claim (e.g. "the file is missing") leaves this None.
+# The CausalLayerOverreachDetector fires when an inferred-or-explicit
+# layer ≥ L2 has no L2-grade evidence backing it.
+PchLayer = Literal["L1", "L2", "L3"]
+
+
+# Tags on `Claim.causal_evidence_kinds` that signal L2-grade evidence
+# was the basis for an L2/L3-tagged claim. Keep this set tight — it is
+# the exemption the detector consults to decide whether overreach is
+# happening. Adding to it weakens the gate.
+CAUSAL_EVIDENCE_KINDS_L2: frozenset[str] = frozenset({
+    "ablation",
+    "ab_test",
+    "do_intervention",
+    "controlled_experiment",
+})
+
+
 # ── Public types ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -169,6 +191,8 @@ class Claim:
     tags: tuple[str, ...] = ()
     span_id: int | None = None
     superseded_by: str | None = None
+    pch_layer: PchLayer | None = None
+    causal_evidence_kinds: tuple[str, ...] = ()
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
     )
@@ -182,6 +206,11 @@ class Claim:
                 "statement",
                 self.statement[: _MAX_STATEMENT_CHARS - len(_TRUNCATION_MARKER)]
                 + _TRUNCATION_MARKER,
+            )
+        if self.pch_layer is not None and self.pch_layer not in ("L1", "L2", "L3"):
+            raise ValueError(
+                f"Claim.pch_layer must be one of L1/L2/L3 or None, "
+                f"got {self.pch_layer!r}"
             )
 
     # ── Factories ────────────────────────────────────────────────────
@@ -200,6 +229,8 @@ class Claim:
         load_bearing: bool = False,
         tags: Iterable[str] = (),
         span_id: int | None = None,
+        pch_layer: PchLayer | None = None,
+        causal_evidence_kinds: Iterable[str] = (),
     ) -> "Claim":
         """Build a Claim with a freshly minted claim_id.
 
@@ -219,6 +250,8 @@ class Claim:
             load_bearing=load_bearing,
             tags=tuple(tags),
             span_id=span_id,
+            pch_layer=pch_layer,
+            causal_evidence_kinds=tuple(causal_evidence_kinds),
         )
 
     # ── Serialization ────────────────────────────────────────────────
@@ -257,6 +290,8 @@ class Claim:
             "tags": list(self.tags),
             "span_id": self.span_id,
             "superseded_by": self.superseded_by,
+            "pch_layer": self.pch_layer,
+            "causal_evidence_kinds": list(self.causal_evidence_kinds),
             "created_at": self.created_at.isoformat(),
         }
 
@@ -297,6 +332,8 @@ class Claim:
             tags=tuple(raw.get("tags", []) or []),
             span_id=raw.get("span_id"),
             superseded_by=raw.get("superseded_by"),
+            pch_layer=raw.get("pch_layer"),
+            causal_evidence_kinds=tuple(raw.get("causal_evidence_kinds", []) or []),
             created_at=_parse_iso(raw["created_at"]),
         )
 

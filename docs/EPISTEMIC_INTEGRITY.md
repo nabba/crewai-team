@@ -160,6 +160,20 @@ The post-Phase-7 follow-up that automates step 2 of the rollout (manual tuning o
   - `open_pr_for_proposal(proposal, dry_run=True)` — returns the git+gh command sequence the operator would run; `dry_run=False` raises `ProposalApplyError` (auto-execution intentionally NOT implemented — humans gate).
 - **React `TuningProposalsPanel`** — wired into `EpistemicPage`. Status filter (Open / Accepted / Rejected / All), per-proposal cards with kind-toned badges, expandable detail showing rationale + metric_evidence + YAML patch, accept/reject actions with optional operator note, "Run analysis" button.
 
+## PCH layer tagging ships
+
+A small but pointed extension that imports the **Pearl Causal Hierarchy** (Bareinboim & Yang R-130) into the claim ledger. Every claim can now declare which layer of causal reasoning its content sits at: L1 observational (`P(y|x)`), L2 interventional (`P(y|do(x))`), or L3 counterfactual (`P(yₓ|x')`). The Causal Hierarchy Theorem says you cannot infer layer i from layer i-1 alone — without a controlled intervention, an "X improved Y" claim is L1 dressed up as L2.
+
+- **`Claim` schema** gains two fields: `pch_layer: Literal["L1","L2","L3"] | None` and `causal_evidence_kinds: tuple[str, ...]`. `CAUSAL_EVIDENCE_KINDS_L2` is a frozenset of the kinds that count as controlled-intervention evidence: `{"ablation","ab_test","do_intervention","controlled_experiment"}`. Default is `None` / empty tuple — non-causal claims leave both fields untouched.
+- **Migration `035_epistemic_pch_layer.sql`** — adds the two columns + a partial index on `(task_id, pch_layer)` where layer is L2 or L3 (the audit query for "every causal claim this task made"). Existing rows stay NULL; 7-day retention via the crew_tasks CASCADE rolls them out naturally.
+- **`CausalLayerOverreachDetector`** — fifth realtime detector. Inferred layer = explicit `claim.pch_layer` if set, else the layer inferred from the statement text via `_L2_KEYWORDS` and `_L3_KEYWORDS` regexes. Fires when inferred ≥ L2 AND the claim cites no entry from `CAUSAL_EVIDENCE_KINDS_L2`. Severity `medium`, observe-mode only — see the autotune-driven 2-week revisit for the severity-tuning loop.
+- **Bias library** — new `causal_layer_overreach` entry in `data/biases.yaml`. Detector phase: realtime. Corrective action: `hedge_or_verify`.
+- **Self-Improver narrative emission** — `app/improvement_narrative.py::_emit_l2_narrative_claim` now constructs and closes a synthetic `crew_tasks` row (`narrative_<date>`) via `start_task` / `complete_task`, then emits an explicit L2-tagged claim with `causal_evidence_kinds=("controlled_experiment",)`. The claim's evidence is a `tool_call` excerpt from `experiment_runner.kept_summary` so the detector recognizes it as licensed. Persistence is best-effort; in-memory detector dispatch always runs.
+- **TIER_IMMUTABLE expansion** — seven `app/epistemic/...` paths added to `app/auto_deployer.py::TIER_IMMUTABLE` (`ledger.py`, `biases.py`, `calibration.py`, `detectors/{__init__,realtime,posthoc}.py`, `data/biases.yaml`). These define the gates the Self-Improver is judged against; letting Self-Improver edit them would let it weaken its own eval criteria. Same boundary the constitution and `eval_sandbox` already protect; this closes a real gap.
+- **Tests** — new `tests/test_epistemic_pch_layer.py` (19 tests: round-trip serialization, layer inference heuristic, detector positive/negative cases, narrative emission integration, synthetic task row creation). Existing `test_epistemic_phase2.py`, `test_epistemic_e2e.py`, `test_epistemic_span_writer.py` updated to register the new detector and the two new positional INSERT params.
+
+The path-3 text-extraction emission also benefits: any agent output of the shape "X improved Y" or "had we Z, W would have been ..." that gets captured as a Claim will run through this detector. The narrative path is the canonical well-formed example — it tags the claim explicitly and ships the evidence; everything else gets caught.
+
 ## Test counts
 
 | Layer | File | Tests |
@@ -177,9 +191,10 @@ The post-Phase-7 follow-up that automates step 2 of the rollout (manual tuning o
 | Phase 7 | `test_epistemic_phase7.py` | 30 |
 | End-to-end | `test_epistemic_e2e.py` | 8 |
 | Autotune | `test_epistemic_autotune.py` | 34 |
-| **Total** | | **310** |
+| PCH layer | `test_epistemic_pch_layer.py` | 19 |
+| **Total** | | **329** |
 
-`pytest tests/test_epistemic_*.py` — 310 passed in 0.63s.
+`pytest tests/test_epistemic_*.py` — 329 passed.
 
 A subsystem that gives the agent system the same quality of self-reflection a senior aviation post-mortem does: structured trace of what happened, separation of evidence from inference, named cognitive failure modes, root cause vs enabling factors, concrete behavioral changes, and persistence into the self-evolution loop.
 
@@ -996,6 +1011,26 @@ biases:
         evidence:
           none_match: { kind: tool_call, tool_in_measurement_set: true }
 
+  - id: causal_layer_overreach
+    name: "Causal layer overreach"
+    description: |
+      Claim is interventional (L2) or counterfactual (L3) in shape but
+      cites no controlled-intervention evidence (ablation, A/B test,
+      do-intervention, controlled experiment). The Pearl Causal
+      Hierarchy Theorem says you cannot infer L2/L3 from L1 alone —
+      observational correlation, no matter how strong, does not
+      establish causation. Seed: the Self-Improver narrative
+      summarizing daily experiments without attaching the
+      experiment_runner span as evidence.
+    severity: medium
+    detector: realtime
+    signature:
+      type: ledger_predicate
+      conditions:
+        pch_layer_in: ["L2", "L3"]
+        causal_evidence_kinds:
+          none_in: ["ablation", "ab_test", "do_intervention", "controlled_experiment"]
+
   - id: anomaly_dismissal
     name: "Anomaly dismissal"
     description: |
@@ -1142,7 +1177,7 @@ def posthoc_detectors() -> list[Detector]:
     return list(_POSTHOC)
 ```
 
-### 7.2 Real-time detectors (4 starters)
+### 7.2 Real-time detectors (5 starters)
 
 ```python
 # app/epistemic/detectors/realtime.py

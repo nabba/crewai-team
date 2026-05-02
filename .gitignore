@@ -12,6 +12,10 @@ workspace/output/
 workspace/affect/
 workspace/skills/*.md
 !workspace/skills/learning_queue.md
+# Hand-authored skills that ship with the repo (NOT auto-generated).
+# Anything tracked here MUST also have a corresponding regression test
+# in tests/ that asserts its presence.
+!workspace/skills/gee_batching_pattern.md
 # Versioned prompt registry — tracked for version history and rollback
 !workspace/prompts/
 __pycache__/
