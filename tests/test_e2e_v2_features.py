@@ -312,6 +312,14 @@ class TestE2E_SkillConditionalFlow:
                         content_markdown="Always applies.",
                         kb="experiential"),
         ]
+        # Loader uses search_skills_scored (May 2026 contamination fix).
+        # Patch both the new and the legacy entry point so the test pins
+        # the conditional-activation behaviour regardless of which API
+        # the loader reaches for. Distance 0.10 keeps every record under
+        # the loader's _SKILL_DISTANCE_CEILING gate.
+        scored = [(s, 0.10) for s in skills]
+        monkeypatch.setattr("app.self_improvement.integrator.search_skills_scored",
+                            lambda _task, n=6: scored)
         monkeypatch.setattr("app.self_improvement.integrator.search_skills",
                             lambda _task, n=6: skills)
         monkeypatch.setattr("app.llm_mode.get_mode", lambda: "local")

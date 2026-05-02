@@ -689,6 +689,43 @@ Consolidator, and dashboard read this collection. The KB-specific
 stores hold the actual content; the index has a copy plus all the
 metadata needed for cross-KB queries.
 
+#### 6.7.1 Retrieval API and contamination defences (May 2026)
+
+```python
+search_skills(query, n=6) → list[SkillRecord]
+search_skills_scored(query, n=6) → list[(SkillRecord, cosine_distance)]
+```
+
+Both functions semantically search the index using the query's embedding
+against `hnsw:space=cosine`. Distances live in `[0, ~2]`: 0 = identical,
+~1 = orthogonal, >1 = anti-correlated. The `_scored` variant is the one
+to prefer when the caller needs to gate on closeness; the unscored
+function is kept for the recovery `skill_chain` strategy and for
+backward compatibility.
+
+The orchestrator's pre-task context loader (`_load_relevant_skills` in
+`app/agents/commander/context.py`) layers four contamination defences
+on top of the raw search. The full chain — applied in order — is:
+
+| Layer | What it does | Why |
+|-------|--------------|-----|
+| 1. **Subject-less message detection** | If the message is short and composed entirely of filler/pronoun/generic-execution tokens (`"execute the plan"`, `"run it"`, `"produce the report"`), substitute the last 3 user lines from the conversation history as the retrieval query. If no history exists, return empty (no skills injected). | Short subject-less queries embed to a near-uniform direction — every skill in the index is roughly equidistant. Returning the top-N degenerates to "whichever skill happened to be closest to that direction at index time". The May 2026 weather-vs-forest contamination incident was exactly this. |
+| 2. **Quality filter** | Drop records whose `topic` contains placeholder markers (`****`, `_____`, `<redacted>`, `[REDACTED]`). | Auto-skill-creation paths sometimes leak the editor's redaction sentinels into topic strings. Those records are low-quality artifacts and should never surface as authoritative knowledge. |
+| 3. **Semantic distance gate** | Drop records whose cosine distance exceeds `_SKILL_DISTANCE_CEILING` (default 0.55). | Even the top-N includes weak matches when the index has nothing closer. The ceiling is intentionally tighter than the novelty `OVERLAP→ADJACENT` cutoff (0.55) because skill *injection* into a crew prompt is high-bar — the LLM weights `RELEVANT KNOWLEDGE` blocks heavily, so a weak match becomes a strong steer. |
+| 4. **Conditional activation** | Honour `requires_mode` / `requires_tier` / `fallback_for_mode` / `requires_tools` predicates via `SkillRecord.matches_context`. | Phase 3 of the overhaul. Skills tagged `requires_mode="local"` should not surface in cloud-mode runs, etc. |
+
+Layer 1 is the decisive guard for the production failure mode. Layer 3
+is the safety net for non-subject-less queries that still happen to
+have only orthogonal matches. The two compose: subject-less recovery
+swaps in the conversation topic, then the distance gate validates the
+recovered query produces tight matches before anything is injected.
+
+The orchestrator threads `conversation_history` into the loader so
+Layer 1 can consult it (`orchestrator._run_crew_inner` →
+`_ctx_pool.submit(_load_relevant_skills, crew_task, 3, conversation_history)`).
+Without that arg the loader degrades to "skip on subject-less" rather
+than "recover topic from history" — never to "guess".
+
 ### 6.8 Disk mirror (back-compat)
 
 ```python

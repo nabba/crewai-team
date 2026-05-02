@@ -993,7 +993,9 @@ class Commander:
         elif difficulty <= 2:
             context = _temporal_prefix
         else:
-            f_skills = _ctx_pool.submit(_load_relevant_skills, crew_task)
+            f_skills = _ctx_pool.submit(
+                _load_relevant_skills, crew_task, 3, conversation_history
+            )
             f_memory = _ctx_pool.submit(_load_relevant_team_memory, crew_task)
             f_kb = _ctx_pool.submit(_load_knowledge_base_context, crew_task)
             f_policies = _ctx_pool.submit(_load_policies_for_crew, crew_task, crew_name)

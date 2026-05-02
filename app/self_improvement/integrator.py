@@ -300,11 +300,41 @@ def list_records(
         return []
 
 
-def search_skills(query: str, n: int = 6) -> list[SkillRecord]:
-    """Semantic search over active SkillRecords.
+def _record_from_doc(doc: str) -> Optional[SkillRecord]:
+    try:
+        d = json.loads(doc)
+        return SkillRecord(
+            id=d["id"], topic=d["topic"],
+            content_markdown=d.get("content_markdown", ""),
+            kb=d["kb"], status=d.get("status", "active"),
+            superseded_by=d.get("superseded_by", ""),
+            usage_count=int(d.get("usage_count", 0)),
+            last_used_at=d.get("last_used_at", ""),
+            provenance=d.get("provenance", {}),
+            created_at=d.get("created_at", ""),
+            requires_mode=d.get("requires_mode", ""),
+            requires_tier=d.get("requires_tier", ""),
+            fallback_for_mode=d.get("fallback_for_mode", ""),
+            requires_tools=d.get("requires_tools", []),
+        )
+    except Exception:
+        return None
 
-    Falls back to list_records() when the collection does not support
-    `query()` (e.g. during unit tests using a stub).
+
+def search_skills_scored(query: str, n: int = 6) -> list[tuple[SkillRecord, float]]:
+    """Semantic search returning (record, cosine_distance) pairs.
+
+    The records collection uses `hnsw:space=cosine` (see
+    `_get_records_collection`), so distance is in [0, ~2]: 0 = identical,
+    ~1 = orthogonal, >1 = anti-correlated. Callers gate on this distance
+    to suppress weak surface-keyword matches — without that gate, a
+    short subject-less query like "execute the plan" pulls the top-N
+    nearest skills regardless of how irrelevant they actually are
+    (the May 2026 weather-vs-forest contamination incident).
+
+    Falls back to `list_records()` (with distance 0.0) when the collection
+    is a stub without `.query()` support, matching the prior `search_skills`
+    behaviour during unit tests.
     """
     col = _get_records_collection()
     if col is None:
@@ -312,34 +342,34 @@ def search_skills(query: str, n: int = 6) -> list[SkillRecord]:
     try:
         if hasattr(col, "query"):
             from app.memory.chromadb_manager import embed
-            res = col.query(query_embeddings=[embed(query)], n_results=n)
+            res = col.query(
+                query_embeddings=[embed(query)],
+                n_results=n,
+                include=["documents", "distances"],
+            )
             docs = res.get("documents", [[]])[0]
+            dists = res.get("distances", [[]])[0]
+            if not dists:
+                dists = [0.0] * len(docs)
         else:
-            return list_records(limit=n)
+            return [(r, 0.0) for r in list_records(limit=n)]
     except Exception:
-        return list_records(limit=n)
+        return [(r, 0.0) for r in list_records(limit=n)]
 
-    out: list[SkillRecord] = []
-    for doc in docs:
-        try:
-            d = json.loads(doc)
-            out.append(SkillRecord(
-                id=d["id"], topic=d["topic"],
-                content_markdown=d.get("content_markdown", ""),
-                kb=d["kb"], status=d.get("status", "active"),
-                superseded_by=d.get("superseded_by", ""),
-                usage_count=int(d.get("usage_count", 0)),
-                last_used_at=d.get("last_used_at", ""),
-                provenance=d.get("provenance", {}),
-                created_at=d.get("created_at", ""),
-                requires_mode=d.get("requires_mode", ""),
-                requires_tier=d.get("requires_tier", ""),
-                fallback_for_mode=d.get("fallback_for_mode", ""),
-                requires_tools=d.get("requires_tools", []),
-            ))
-        except Exception:
-            continue
+    out: list[tuple[SkillRecord, float]] = []
+    for doc, dist in zip(docs, dists):
+        rec = _record_from_doc(doc)
+        if rec is not None:
+            out.append((rec, float(dist)))
     return out
+
+
+def search_skills(query: str, n: int = 6) -> list[SkillRecord]:
+    """Semantic search over active SkillRecords (distances discarded).
+
+    Prefer `search_skills_scored` when callers need to gate on distance.
+    """
+    return [rec for rec, _ in search_skills_scored(query, n=n)]
 
 
 def update_record(record: SkillRecord) -> bool:

@@ -461,8 +461,13 @@ match might exist for any task.
 #### Search
 
 Reuses `app.self_improvement.integrator.search_skills(query, n=3)` —
-the same retrieval the rest of the system uses, so a skill written
-months ago is reachable when its topic matches a current prompt.
+the same underlying index the orchestrator pre-task loader queries
+(via `search_skills_scored`). The pre-task loader layers four
+contamination defences on top — see *MEMORY_ARCHITECTURE.md §6.7.1
+Retrieval API and contamination defences* — but the recovery flow's
+`skill_chain` strategy uses the unscored convenience wrapper because
+it's invoked on demand for an explicit recovery query, not on every
+crew dispatch.
 
 Score threshold `_MIN_RELEVANCE_SCORE = 0.55`. Below that, "best
 match" is treated as "no match" so we don't apply an irrelevant skill.

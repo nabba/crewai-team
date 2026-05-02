@@ -1,18 +1,153 @@
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 
-def _load_relevant_skills(task: str, n: int = 3) -> str:
+# ── Skill-retrieval contamination defences (May 2026) ───────────────────────
+
+# Auto-generated skills sometimes leak the editor's redaction markers into
+# their topic strings. They tend to be low-quality ("**** Reliable Weather
+# Forecast Retrieval") and should never surface as authoritative knowledge,
+# regardless of how well their text happens to embed.
+_SKILL_PLACEHOLDER_MARKERS: tuple[str, ...] = (
+    "****", "_____", "<redacted>", "[REDACTED]", "[redacted]",
+)
+
+# Cosine distance ceiling for skill matches. The records collection uses
+# `hnsw:space=cosine` (see `integrator._get_records_collection`); distances
+# beyond this threshold are essentially orthogonal and were the dominant
+# source of cross-topic contamination ("execute the plan" matching weather
+# skills inside a forest-monitoring conversation, May 2026 incident). This
+# is intentionally tighter than the novelty OVERLAP→ADJACENT cutoff (0.55)
+# from `app.self_improvement.novelty` — skill injection is high-bar.
+_SKILL_DISTANCE_CEILING: float = 0.55
+
+# Subject-less message tokens — a message composed (almost) entirely of
+# these carries no retrieval signal of its own and must inherit topic
+# from history, or the loader returns "" rather than guess.
+_SUBJECTLESS_TOKENS: frozenset[str] = frozenset({
+    # determiners / pronouns / fillers
+    "the", "a", "an", "this", "that", "these", "those",
+    "it", "them", "him", "her", "us", "we", "i", "you",
+    # generic execution verbs
+    "execute", "run", "do", "make", "produce", "generate", "create",
+    "go", "start", "continue", "proceed", "finish", "complete",
+    "ahead", "now", "again", "next", "then",
+    # generic payload nouns when subject is implicit
+    "plan", "report", "task", "result", "output", "thing", "stuff",
+    "answer", "response", "step",
+    # courtesy / acknowledgement
+    "please", "ok", "okay", "yes", "no", "thanks", "thank",
+    # connectives
+    "and", "or", "to", "with", "of", "for", "on",
+})
+
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+
+
+def _tokens(text: str) -> list[str]:
+    return [t.lower() for t in _WORD_RE.findall(text or "")]
+
+
+def _is_subjectless_message(text: str) -> bool:
+    """True for messages composed entirely of filler / generic-execution
+    tokens, i.e. messages that carry no topical retrieval signal.
+
+    Match: "execute the plan", "run it", "produce the report",
+    "do it now", "ok go ahead", "please continue",
+    "please execute the plan and produce the report".
+
+    No-match: "produce the forest report", "run the deforestation
+    analysis", "execute the GEE script for Estonia". A single content
+    word disqualifies — the test is intentionally narrow so that any
+    on-topic noun (forest, GEE, deforestation) keeps the surface query.
+
+    No length cap: if every token is in the vocabulary, the message is
+    subject-less regardless of length. The vocabulary is curated to
+    exclude content nouns, so a long message naturally fails the all-
+    tokens check unless it really is filler.
+    """
+    toks = _tokens(text)
+    if not toks:
+        return False
+    return all(t in _SUBJECTLESS_TOKENS for t in toks)
+
+
+def _extract_recent_topic(conversation_history: str, max_chars: int = 600) -> str:
+    """Pull a topic-bearing string out of recent user turns.
+
+    Concatenates up to the last 3 ``User:`` lines so the embedder has
+    real content to work with when the current message is subject-less.
+    Assistant turns are ignored — they can be verbose tangents and bias
+    retrieval toward the system's own past confusions.
+    """
+    if not conversation_history:
+        return ""
+    user_lines: list[str] = []
+    for line in conversation_history.split("\n"):
+        if line.startswith("User:"):
+            payload = line[len("User:"):].strip()
+            if payload:
+                user_lines.append(payload)
+    if not user_lines:
+        return ""
+    blob = " ".join(user_lines[-3:])
+    return blob[:max_chars]
+
+
+def _is_low_quality_skill_topic(topic: str) -> bool:
+    if not topic:
+        return True
+    return any(marker in topic for marker in _SKILL_PLACEHOLDER_MARKERS)
+
+
+def _load_relevant_skills(
+    task: str, n: int = 3, conversation_history: str = "",
+) -> str:
     """Load skill summaries with conditional activation + progressive disclosure.
 
-    1. Prefer the SkillRecord index (Phase 3 overhaul) — it carries conditional
-       activation metadata (requires_mode / requires_tier / fallback_for_mode)
-       so we filter out skills that don't apply to the current runtime.
-    2. Fall back to the legacy ChromaDB 'skills' / 'team_shared' collections
-       when the index is empty (unfiltered).
+    Layered defences against cross-topic contamination (May 2026):
+
+      1. **Subject-less message detection** — short generic messages
+         ("execute the plan", "run it") substitute the recent
+         conversation topic as the retrieval query, or skip entirely
+         when no history is available. Without this guard every skill
+         in the index is roughly equidistant from the message and an
+         arbitrary one wins.
+      2. **Quality filter** — auto-generated skills with placeholder
+         markers (****, _____, <redacted>) in the topic are dropped
+         even if they're a top-N semantic match.
+      3. **Semantic distance gate** — records beyond
+         ``_SKILL_DISTANCE_CEILING`` cosine distance are dropped even
+         if they're a top-N match. Safety net for non-subject-less
+         queries that still happen to surface weak matches.
+
+    Source preference:
+      1. Prefer the SkillRecord index (Phase 3 overhaul) — carries the
+         conditional activation metadata (requires_mode / requires_tier
+         / fallback_for_mode) used by ``matches_context``.
+      2. Fall back to the legacy ChromaDB 'skills' / 'team_shared'
+         collections when the index is empty. The fallback gets the
+         quality filter only — the legacy ``retrieve()`` doesn't expose
+         distances, so the semantic gate can't run there.
     """
     try:
+        # Layer 1: subject-less message → switch to recent conversation
+        # topic, or skip retrieval entirely if there's no history to
+        # recover from.
+        effective_query = task
+        if _is_subjectless_message(task):
+            recovered = _extract_recent_topic(conversation_history)
+            if not recovered:
+                logger.debug(
+                    "_load_relevant_skills: subjectless message with no "
+                    "conversation history; skipping retrieval to avoid "
+                    "arbitrary matches"
+                )
+                return ""
+            effective_query = recovered
+
         try:
             from app.llm_mode import get_mode
             current_mode = get_mode()
@@ -26,11 +161,17 @@ def _load_relevant_skills(task: str, n: int = 3) -> str:
 
         summaries: list[str] = []
 
-        # Primary: SkillRecord index (Phase 3+ overhaul)
+        # Primary: SkillRecord index (Phase 3+ overhaul) with score gate.
         try:
-            from app.self_improvement.integrator import search_skills
-            records = search_skills(task, n=n * 2)  # Over-fetch for filtering
-            for rec in records:
+            from app.self_improvement.integrator import search_skills_scored
+            scored = search_skills_scored(effective_query, n=n * 2)
+            for rec, dist in scored:
+                # Layer 3: distance gate
+                if dist > _SKILL_DISTANCE_CEILING:
+                    continue
+                # Layer 2: quality filter
+                if _is_low_quality_skill_topic(rec.topic):
+                    continue
                 if not rec.matches_context(current_mode, current_cost):
                     continue
                 # Progressive disclosure Level 1: summary only (~100 tokens)
@@ -41,15 +182,17 @@ def _load_relevant_skills(task: str, n: int = 3) -> str:
         except Exception:
             pass
 
-        # Fallback: legacy ChromaDB (no conditional filtering)
+        # Fallback: legacy ChromaDB (quality filter only — no distances).
         if not summaries:
             from app.memory.chromadb_manager import retrieve
-            relevant = retrieve("skills", task, n=n)
+            relevant = retrieve("skills", effective_query, n=n)
             if not relevant:
-                relevant = retrieve("team_shared", task, n=n)
+                relevant = retrieve("team_shared", effective_query, n=n)
             for doc in (relevant or []):
                 lines = doc.strip().split("\n")
                 title = lines[0][:80] if lines else "skill"
+                if _is_low_quality_skill_topic(title):
+                    continue
                 summary = (lines[1] if len(lines) > 1 else "")[:120]
                 summaries.append(f"- {title}: {summary}")
 

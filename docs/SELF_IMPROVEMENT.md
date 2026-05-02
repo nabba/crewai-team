@@ -748,6 +748,17 @@ Two background jobs:
 Both run weekly as HEAVY idle jobs, propose changes via `app/proposals.py`
 (never modify directly).
 
+### Skill retrieval ranking — pre-task context loader
+
+Crew dispatch reads from the same `skill_records` index but applies a
+4-layer contamination defence (subject-less detection, quality filter,
+semantic distance gate, conditional activation) before injecting any
+`RELEVANT KNOWLEDGE` block into the agent's prompt. The full ranking
+semantics — including why short generic messages like "execute the
+plan" recover topic from the conversation history rather than running
+a raw embedding search — live in
+[MEMORY_ARCHITECTURE.md §6.7.1](MEMORY_ARCHITECTURE.md#671-retrieval-api-and-contamination-defences-may-2026).
+
 ---
 
 ## 11. Observability & Dashboard
