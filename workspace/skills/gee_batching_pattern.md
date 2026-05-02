@@ -108,9 +108,27 @@ result = loss_only.reduceRegion(
 
 Server-side aggregation has limits — `frequencyHistogram` blows up if there are millions of distinct values. For genuinely large discrete domains, *export* to a Drive/GCS asset (asynchronous, not subject to the 240 s budget) instead of trying to pull the whole result through `.getInfo()`. But this is rare; for the questions the crew actually gets (per-year, per-class, per-region), one round-trip is achievable.
 
+# Companion: visual map output
+
+When the user asks for *visual* maps (PNG/JPG inline) and not just statistics, use the **`render_map(image, region, name, vis_params, dimensions, format)`** helper that the `gee_run_script` sandbox pre-loads (added 2026-05-03, audit H10).  Each call is one round-trip via the EE thumbnail API (~5–15 s); the PNG saves to `workspace/output/maps/` with a sanitised + timestamped filename, and the path is appended to a per-call list that the wrapper surfaces in the tool output as a "rendered maps" section.
+
+```python
+loss = ee.Image("UMD/hansen/global_forest_change_2024_v1_12") \
+    .select("loss").clip(estonia.geometry())
+png = render_map(
+    image=loss.updateMask(loss),                # show only loss pixels
+    region=estonia.geometry(),
+    name="estonia_total_loss_2001_2024",
+    vis_params={"palette": ["red"], "min": 0, "max": 1},
+    dimensions=768,
+)
+```
+
+For a per-year report: call `render_map` in a Python loop (one PNG per year is one round-trip — total 12-24 s for a 12-year report, well under the 240 s tool budget).  Combine with the single `frequencyHistogram` call above for the statistics, and the deliverable is complete in one `gee_run_script` invocation.
+
 # Reference
 
 * Empirical timing data, Estonia 24-year deforestation aggregation, 2026-05-02:
   - Naive per-year loop: ≥240 s (timed out)
   - Single `frequencyHistogram`: 109 s (returned `{2012: ..., ..., 2024: ...}`)
-* Tool source: `app/tools/gee_tool.py` — see the `gee_run_script` description for the inline rule.
+* Tool source: `app/tools/gee_tool.py` — see the `gee_run_script` description for the inline rule + `render_map` signature.

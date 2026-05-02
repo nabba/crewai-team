@@ -1062,6 +1062,34 @@ def _register_builtin_tool_factories() -> None:
         priority=35,
     )
 
+    # Forge — agent-driven tool generation (H9 audit fix).  The forge
+    # subsystem lets a coding agent design + register a new tool when
+    # the existing inventory doesn't cover a need.  Returns None when
+    # FORGE_AGENT_GENERATION_ENABLED is unset or governance is paused
+    # — wrap in a list so assemble_tools' uniform shape (list of tools)
+    # is preserved and a None return degrades to []. Without this
+    # registration, the user's stated wish "if needed creates new
+    # tools" was structurally impossible because no dispatch-handling
+    # agent had forge_create_tool attached.
+    register_tool_factory(
+        lambda agent_id="coder": _safe_forge_tool(),
+        category="delegation",
+        intended_agents=_CODING_AGENTS,
+        priority=50,
+    )
+
+
+def _safe_forge_tool() -> list:
+    """Wrap forge.get_forge_generator_tool to return [] on None or
+    failure — matches the (factory → list) shape assemble_tools
+    expects."""
+    try:
+        from app.forge.generator_tool import get_forge_generator_tool
+        tool = get_forge_generator_tool()
+        return [tool] if tool is not None else []
+    except Exception:
+        return []
+
 
 def _safe_call(modpath: str, attr: str, *args) -> list:
     """Invoke a tool factory in the safest possible way.  Used by
