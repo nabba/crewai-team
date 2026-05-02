@@ -309,3 +309,55 @@ def read_workspace_wiki_page(workspace_id: str, idea_id: str):
                     "first via POST /promote/{workspace_id}/{idea_id}",
         )
     return PlainTextResponse(page.read_text(), media_type="text/markdown")
+
+
+# ── Phase 11: grand-task synthesis ─────────────────────────────────────────
+
+class RejectProposalRequest(BaseModel):
+    """Optional reason body for ``POST /grand-task/.../reject``."""
+    reason: str = ""
+
+
+@router.get("/grand-task/{workspace_id}/proposals")
+def list_grand_task_proposals(workspace_id: str, limit: int = 20):
+    """Return recent grand-task proposals for the workspace, newest first."""
+    from app.companion import grand_task as _gt
+    proposals = _gt.list_proposals(workspace_id, limit=max(1, min(limit, 100)))
+    return {
+        "workspace_id": workspace_id,
+        "count": len(proposals),
+        "proposals": [
+            {
+                "proposal_id": p.proposal_id,
+                "text": p.text,
+                "rationale": p.rationale,
+                "superseded_seed": p.superseded_seed,
+                "ts": p.ts,
+            }
+            for p in proposals
+        ],
+    }
+
+
+@router.post("/grand-task/{workspace_id}/{proposal_id}/accept")
+def accept_grand_task(workspace_id: str, proposal_id: str):
+    """Accept a proposal — rotates the workspace seed_prompt."""
+    from app.companion import grand_task as _gt
+    if not _gt.accept(workspace_id, proposal_id):
+        raise HTTPException(
+            status_code=404,
+            detail="proposal not found or seed save failed",
+        )
+    return {"ok": True, "workspace_id": workspace_id,
+            "proposal_id": proposal_id}
+
+
+@router.post("/grand-task/{workspace_id}/{proposal_id}/reject")
+def reject_grand_task(workspace_id: str, proposal_id: str,
+                       req: RejectProposalRequest):
+    """Reject a proposal — records reason for the next synthesis cycle."""
+    from app.companion import grand_task as _gt
+    if not _gt.reject(workspace_id, proposal_id, reason=req.reason):
+        raise HTTPException(status_code=404, detail="proposal not found")
+    return {"ok": True, "workspace_id": workspace_id,
+            "proposal_id": proposal_id}
