@@ -16,8 +16,12 @@ Endpoints under ``/api/cp/companion/*``:
     GET  /config/{workspace_id}                — read CompanionConfig
     POST /config/{workspace_id}                — patch seed/budget/thresholds
 
-Phase 9 (Wiki) will add document/wiki endpoints; Phase 13 (cross-workspace)
-adds inbox endpoints. To enable in production:
+  Phase 8 (documents)
+    POST /promote/{workspace_id}/{idea_id}     — promote idea to document
+    GET  /document/{workspace_id}/{idea_id}    — list available formats
+    GET  /document/{workspace_id}/{idea_id}/{format} — download artifact
+
+Phase 13 (cross-workspace) adds inbox endpoints. To enable in production:
 ``app.include_router(companion_router)`` next to the other CP routers in
 ``app/main.py``.
 """
@@ -217,3 +221,57 @@ def update_companion_config(workspace_id: str, req: UpdateConfigRequest):
     if not _save(workspace_id, cfg):
         raise HTTPException(status_code=500, detail="failed to save config")
     return {"ok": True, "workspace_id": workspace_id, "config": cfg.to_dict()}
+
+
+# ── Phase 8: documents ─────────────────────────────────────────────────────
+
+class PromoteRequest(BaseModel):
+    """Body for ``POST /promote/{workspace_id}/{idea_id}``."""
+    formats: list[str] = ["md"]
+
+
+@router.post("/promote/{workspace_id}/{idea_id}")
+def promote_idea(workspace_id: str, idea_id: str, req: PromoteRequest):
+    """Generate document files for one idea (md canonical, docx/pdf optional)."""
+    from app.companion import document_pipeline as _dp
+    result = _dp.promote(workspace_id, idea_id,
+                          formats=tuple(req.formats or ["md"]))
+    if result.error:
+        code = 404 if "not found" in result.error else 500
+        raise HTTPException(status_code=code, detail=result.error)
+    return {
+        "ok": True,
+        "workspace_id": workspace_id,
+        "idea_id": idea_id,
+        "formats": result.formats,
+    }
+
+
+@router.get("/document/{workspace_id}/{idea_id}")
+def list_document_artifacts(workspace_id: str, idea_id: str):
+    """List which formats are already on disk for one idea."""
+    from app.companion import document_pipeline as _dp
+    formats = _dp.list_formats(workspace_id, idea_id)
+    return {
+        "workspace_id": workspace_id,
+        "idea_id": idea_id,
+        "formats": formats,
+    }
+
+
+@router.get("/document/{workspace_id}/{idea_id}/{format}")
+def download_document_artifact(workspace_id: str, idea_id: str, format: str):
+    """Download one artifact as a file."""
+    from fastapi.responses import FileResponse
+    from app.companion import document_pipeline as _dp
+    p = _dp.path_for(workspace_id, idea_id, format)
+    if p is None:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown format: {format}")
+    if not p.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"document not found in format {format}; run "
+                    f"POST /promote/{workspace_id}/{idea_id} first",
+        )
+    return FileResponse(str(p), filename=f"{idea_id}.{format}")
