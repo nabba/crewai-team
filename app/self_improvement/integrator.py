@@ -49,6 +49,36 @@ from app.self_improvement.types import GapStatus
 logger = logging.getLogger(__name__)
 
 
+# ── Placeholder-topic guard (May 2026) ──────────────────────────────────────
+
+# Some Learner / auto-skill paths produce topics carrying redaction or
+# Markdown-bold leakage (e.g. an LLM emitting "**Topic:** Foo", whose label
+# strip leaves "**** Foo"). These records were the source of the May 2026
+# cross-topic contamination incident.
+#
+# A retrieval-side gate in app/agents/commander/context.py
+# (_is_low_quality_skill_topic / _SKILL_PLACEHOLDER_MARKERS) filters them at
+# injection time, but this lower-layer guard rejects them at the write path
+# so the index stops accumulating them. Defense-in-depth is intentional —
+# the markers are duplicated rather than imported to keep self_improvement
+# free of upward dependencies on agents.commander. Both definitions are
+# pinned by tests/test_skill_retrieval_contamination.py.
+_PLACEHOLDER_TOPIC_MARKERS: tuple[str, ...] = (
+    "****", "_____", "<redacted>", "[REDACTED]", "[redacted]",
+)
+
+
+def _topic_has_placeholder_marker(topic: str) -> bool:
+    """True when a draft topic carries an LLM redaction/leakage artifact.
+
+    Returns True for empty topics as well — an Integrator entry without a
+    topic is unusable downstream regardless of how clean the content is.
+    """
+    if not topic or not topic.strip():
+        return True
+    return any(marker in topic for marker in _PLACEHOLDER_TOPIC_MARKERS)
+
+
 # ── KB routing ───────────────────────────────────────────────────────────────
 
 KB_CHOICES = ("episteme", "experiential", "aesthetics", "tensions")
@@ -415,6 +445,20 @@ def integrate(
     """
     if not draft.content_markdown.strip():
         logger.debug("integrate: empty draft, rejecting")
+        return None
+
+    # 0. Placeholder-topic guard — drop drafts whose topic carries the LLM
+    #    redaction / Markdown-bold leakage markers that surfaced in the
+    #    May 2026 cross-topic contamination incident. Runs before the
+    #    novelty check so we don't burn an embedding call on a record we
+    #    are about to throw away. The retrieval-side gate in
+    #    app/agents/commander/context.py is the second line of defence.
+    if _topic_has_placeholder_marker(draft.topic):
+        logger.warning(
+            "integrate: rejecting draft '%s' — topic carries placeholder "
+            "marker (gap=%s, draft=%s); fix the upstream Learner",
+            draft.topic[:120], draft.created_from_gap, draft.id,
+        )
         return None
 
     # 1. Content-level novelty check (decisive — Layer 2 of the Gate).
