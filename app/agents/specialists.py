@@ -35,6 +35,40 @@ def _safe(factory, *args, **kwargs):
         return []
 
 
+# ── Domain-tool stop-gap (Week 1 audit fix — replaces ad-hoc holes) ─
+#
+# Phase 3 of the 2026-05-02 deep audit found that none of the four
+# delegated_coding specialists (designer/coordinator/executor/debugger)
+# had `gee_run_script` attached, despite the routing prompt explicitly
+# naming GEE for satellite-imagery tasks.  Root cause: the standalone
+# `coder` agent factory wires GEE in directly; the specialist factories
+# were a separate code path that never got the import.
+#
+# This helper is the stop-gap.  Week 2 of the audit ships a declarative
+# tool-registry mechanism (`assemble_tools(agent_id, categories=...)`)
+# that supersedes both this helper and the rest of the open-coded tool
+# wiring across the four specialist factories.  When that lands, this
+# helper and its callers can be deleted in one PR.
+#
+# Until then: every coding-crew specialist gets the same domain tools.
+def _extend_specialist_domain_tools(tools: list) -> None:
+    """Append cross-specialist domain tools (geospatial, etc.) to *tools*.
+
+    Each domain tool source is wrapped in `_safe` — missing dependencies
+    or unconfigured services degrade silently rather than killing the
+    crew.  Order matches priority: most-likely-needed last so cap-by-
+    priority dropping kicks in on less-needed tools first.
+    """
+    # Geospatial — `gee_run_script` for Google Earth Engine.  Returns []
+    # when GOOGLE_APPLICATION_CREDENTIALS is unset (the standalone case
+    # at agent factory startup), so this is safe to call unconditionally.
+    tools.extend(_safe(
+        lambda: __import__(
+            "app.tools.gee_tool", fromlist=["create_gee_tools"]
+        ).create_gee_tools("coder")
+    ))
+
+
 # ── Web specialist ───────────────────────────────────────────────────
 # Handles: web search, page fetch, youtube transcripts, browser
 # navigation, firecrawl scraping, MCP-served web tools.
@@ -332,6 +366,7 @@ def create_design_specialist(force_tier: str | None = None) -> Agent:
     tools.extend(create_scoped_memory_tools("coder"))
     tools.extend(create_mem0_tools("coder"))
     tools.extend([file_manager, read_attachment])
+    _extend_specialist_domain_tools(tools)
 
     return Agent(
         role="Design Specialist",
@@ -365,6 +400,7 @@ def create_execution_specialist(force_tier: str | None = None) -> Agent:
         tools.extend(_safe(
             lambda m=mod, f=fn, a=args: __import__(m, fromlist=[f]).__dict__[f](*a),
         ))
+    _extend_specialist_domain_tools(tools)
 
     return Agent(
         role="Execution Specialist",
@@ -420,6 +456,7 @@ def create_debug_specialist(force_tier: str | None = None) -> Agent:
     # Web search — for known-error patterns ("stack trace ...")
     from app.tools.web_search import web_search
     tools.append(web_search)
+    _extend_specialist_domain_tools(tools)
 
     return Agent(
         role="Debug Specialist",
@@ -460,6 +497,7 @@ def create_coding_coordinator(force_tier: str | None = None) -> Agent:
     tools.extend(create_scoped_memory_tools("coder"))
     tools.extend(create_mem0_tools("coder"))
     tools.extend([file_manager, read_attachment])
+    _extend_specialist_domain_tools(tools)
 
     return Agent(
         role="Coding Coordinator",

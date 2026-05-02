@@ -70,11 +70,23 @@ def get_active_difficulty() -> int | None:
 # the cost mode picks". Tighter thresholds for research because real
 # research requires multi-step persistence that budget-tier models give
 # up on too quickly (the 2026-04-25 gemma-4-31b-it research-at-d8 case).
+#
+# 2026-05-02 audit (H4): synthesis added.  The orchestrator's vetting
+# + critic + reflexion paths and base_crew's auto-skill distillation
+# all call create_specialist_llm(role="synthesis") without passing
+# force_tier.  Without an explicit floor, synthesis falls to budget-
+# tier (gemma-4-31b-it at $0.40/Mo) regardless of how premium the
+# parent crew was.  The 2026-05-02 12:12 dispatch ran a force_tier=
+# premium coding crew through a budget-tier synthesis LLM that mangled
+# the tool-call summary into "malformed tool invocation leakage" —
+# vetting then flagged the whole thing as failed and rerouted.  The
+# floor below makes synthesis match the crew's quality bar.
 _ROLE_DIFFICULTY_TIER_FLOOR: dict[str, list[tuple[int, str]]] = {
     # Sorted descending by difficulty so the first match wins.
-    "research": [(8, "premium"), (7, "mid")],
-    "writing":  [(9, "premium")],
-    "coding":   [(9, "premium"), (7, "mid")],
+    "research":  [(8, "premium"), (7, "mid")],
+    "writing":   [(9, "premium")],
+    "coding":    [(9, "premium"), (7, "mid")],
+    "synthesis": [(8, "premium"), (7, "mid")],
 }
 
 

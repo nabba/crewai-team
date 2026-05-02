@@ -174,7 +174,13 @@ class TestAutoCreateSkill:
         base_crew._auto_create_skill("coding", "task", "result", 6)
         assert integrate_calls == []  # short text rejected
 
-    def test_auto_skill_integrates_long_output(self, monkeypatch):
+    def test_auto_skill_integrates_long_output_when_vetting_passed(self, monkeypatch):
+        # 2026-05-02 audit (H6): _auto_create_skill is now vetting-gated.
+        # Set the outcome to True to mirror the orchestrator's behaviour
+        # after a successful crew run.
+        from app.crews.events import set_vetting_outcome
+        set_vetting_outcome("coding", True)
+
         llm = MagicMock()
         llm.call = MagicMock(return_value=(
             "Topic: How to use the caching layer\n"
@@ -203,6 +209,57 @@ class TestAutoCreateSkill:
         assert draft.topic.startswith("How to use the caching layer")
         assert draft.proposed_kb == "experiential"
         assert "coding" in draft.rationale
+
+    def test_auto_skill_dropped_when_vetting_failed(self, monkeypatch):
+        # H6: failed-vetting outcomes must not produce skills.
+        from app.crews.events import set_vetting_outcome
+        set_vetting_outcome("coding", False)
+
+        llm = MagicMock()
+        llm.call = MagicMock(return_value=(
+            "Topic: How to use the caching layer\n"
+            "When to use: every time\n"
+            "Procedure:\n1. Initialize\n2. Cache\n3. Evict\n"
+            "Pitfalls: races"
+        ))
+        monkeypatch.setattr(
+            "app.llm_factory.create_specialist_llm",
+            lambda **kw: llm,
+        )
+
+        drafts = []
+        monkeypatch.setattr(
+            "app.self_improvement.integrator.integrate",
+            lambda draft, **kw: drafts.append(draft) or MagicMock(),
+        )
+
+        base_crew._auto_create_skill("coding", "build a caching layer", "result", 6)
+        assert drafts == []  # vetting failed → no skill written
+
+    def test_auto_skill_dropped_when_vetting_unknown(self, monkeypatch):
+        # H6: conservative default — refusing to act on uncertainty.
+        # Use a unique crew name to avoid carryover from other tests.
+        llm = MagicMock()
+        llm.call = MagicMock(return_value=(
+            "Topic: Unique skill\n"
+            "When to use: never\n"
+            "Procedure:\n1. Step\n2. Step\n3. Step\n"
+            "Pitfalls: none"
+        ))
+        monkeypatch.setattr(
+            "app.llm_factory.create_specialist_llm",
+            lambda **kw: llm,
+        )
+
+        drafts = []
+        monkeypatch.setattr(
+            "app.self_improvement.integrator.integrate",
+            lambda draft, **kw: drafts.append(draft) or MagicMock(),
+        )
+
+        # Crew name that no other test set an outcome for
+        base_crew._auto_create_skill("never_vetted_crew_xyz", "t", "r", 6)
+        assert drafts == []  # unknown outcome → drop
 
     def test_auto_skill_silent_on_exception(self, monkeypatch):
         def boom(**kw):
