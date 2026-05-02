@@ -61,3 +61,10 @@ workspace/island_evolution/*/state.json
 workspace/checkpoints/
 workspace/cache/
 workspace/experiential/*/length.bin
+workspace/experiential/entries/
+workspace/manifests/
+workspace/narratives/
+workspace/proposals/*/status.json
+workspace/companion/
+workspace/knowledge_compactor_log.json
+workspace/evolution_roi.json

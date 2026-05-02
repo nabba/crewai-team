@@ -1,1 +1,0 @@
-{"task_id": "fd99bed675b30d01", "step_index": 0, "crew_name": "researcher", "task_description": "", "completed_steps": [], "intermediate_results": {}, "confidence_chain": [], "metadata": {"errors": ["hallucination detected: fabricated citation in research output"], "abort_reason": ""}, "timestamp": 1777195841.2628198}

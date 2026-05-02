@@ -1,1 +1,0 @@
-{"task_id": "5968dcd5632812c2", "step_index": 0, "crew_name": "pim", "task_description": "What events does the user have on Monday, April 20, 2026? Check the calendar and list all events.", "completed_steps": [], "intermediate_results": {}, "confidence_chain": [], "metadata": {"crew": "pim", "difficulty": 2, "duration_s": 25.756875095000396}, "timestamp": 1776551144.535256}
