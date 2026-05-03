@@ -14,8 +14,8 @@ a time, validated against a parity panel before flag goes default-on."
 |------:|-------|----|------|--------:|--------|
 | 1 (pilot) | introspector | #42 | `LOADABLE_INTROSPECTOR` | OFF | Phase 2 — opt-in shipped |
 | 2 | researcher | #44 | `LOADABLE_RESEARCHER` | OFF | Phase 4a — opt-in shipped |
-| 3 | **writer** | **THIS PR** | **`LOADABLE_WRITER`** | **OFF** | **Phase 4b — opt-in shipped** |
-| 4 | coder | next | `LOADABLE_CODER` | OFF | Phase 4c |
+| 3 | writer | #45 | `LOADABLE_WRITER` | OFF | Phase 4b — opt-in shipped |
+| 4 | **coder** | **THIS PR** | **`LOADABLE_CODER`** | **OFF** | **Phase 4c — opt-in shipped** |
 | 5 | commander (last) | next | `LOADABLE_COMMANDER` | OFF | Phase 4d |
 
 Order rationale: stakes ascend. Researcher's failure mode is "missed
@@ -189,6 +189,51 @@ export LOADABLE_AGENT_EXPERIMENTAL=1        # all migrated agents
 
 ---
 
+## 4c. Phase 4c — coder
+
+Coder is the highest-stakes Phase 4 migration. It executes code in
+the sandbox, calls Forge to generate new tools, and produces
+user-deliverable artifacts (PDFs over Signal). A migration
+regression here would be more visible than researcher / writer.
+
+The migration mirrors the Phase 4a/4b pattern exactly: dispatcher
++ legacy + loadable factories + failsafe fallback. Eager toolset
+mirrors legacy by construction; the only delta is the 2 binder
+control tools.
+
+Discoverable capabilities for coder (catalog tools NOT already
+eager):
+
+```python
+discoverable_capabilities=[
+    "fetches-geodata",      # → geodata_discover/fetch
+    "converts-currency",    # → currency_convert
+    "fetches-finance",      # → currency_rates / future
+]
+```
+
+Forge-bridged SHADOW/CANARY tools tagged `registers-tool` also
+surface here automatically (Phase 3 bridge), so the coder can
+pick up any operator-promoted Forge tool without an agent
+rewrite — closing a long-standing gap in the Forge → coder
+loop.
+
+Activation:
+
+```bash
+export LOADABLE_CODER=1                    # coder only
+export LOADABLE_AGENT_EXPERIMENTAL=1       # all migrated agents
+```
+
+Failsafe is especially important here: a Phase 4c bug must not
+break the user-facing PDF/Signal flow. The dispatcher's
+try/except catches any exception in `_build_loadable_coder` and
+falls back to `_legacy_create_coder`, so the worst case is "the
+experimental path is wasted this cycle" not "user can't get a
+report."
+
+---
+
 ## 5. Phase 4-X validation cycle
 
 Each agent migration in Phase 4 follows this operator-driven
@@ -266,7 +311,7 @@ and unset every per-agent flag set to `1`.
 | 2 — Pilot (introspector) (#42) | DONE |
 | 3 — Forge bridge (#43) | DONE |
 | 4a — Researcher migration (#44) | DONE |
-| **4b — Writer migration** | **THIS PR** |
-| 4c — Coder migration | Next |
-| 4d — Commander migration | After 4c |
+| 4b — Writer migration (#45) | DONE |
+| **4c — Coder migration** | **THIS PR** |
+| 4d — Commander migration | Next |
 | 5 — Drop `optional_tool_group` + legacy factories | After 4d soak |
