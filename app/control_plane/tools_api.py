@@ -124,6 +124,63 @@ def tool_drift():
     }
 
 
+# Phase 4d — names of agents that have been migrated through Phase 4
+# (each ships with a per-agent ``LOADABLE_<AGENT>`` env flag and a
+# failsafe fallback to the legacy CrewAI factory). Add here when a
+# new agent gets the dispatcher pattern. Order matches the Phase 4
+# migration sequence.
+_MIGRATED_AGENTS: tuple[str, ...] = (
+    "introspector",     # Phase 2 pilot
+    "researcher",       # Phase 4a
+    "writer",           # Phase 4b
+    "coder",            # Phase 4c
+)
+
+
+@router.get("/flags")
+def tool_flags():
+    """Phase 4d diagnostic: which migrated agents are using
+    LoadableAgent right now?
+
+    Resolution order (most-specific wins):
+      1. Per-agent env ``LOADABLE_<AGENT>=1/0``
+      2. Master env ``LOADABLE_AGENT_EXPERIMENTAL=1``
+      3. Default → legacy
+
+    The response shape lets the React control plane render a small
+    "agent flag matrix" — operators can see at a glance which agents
+    are running on the new path without `kubectl exec` to read env
+    vars.
+    """
+    from app.tool_runtime.feature_flags import (
+        explicit_flag_for, is_loadable_for, is_master_on,
+    )
+
+    master = is_master_on()
+    rows: list[dict] = []
+    for name in _MIGRATED_AGENTS:
+        explicit = explicit_flag_for(name)
+        effective = is_loadable_for(name)
+        if explicit is not None:
+            source = "per-agent override"
+        elif master:
+            source = "master flag"
+        else:
+            source = "default"
+        rows.append({
+            "agent": name,
+            "loadable": effective,
+            "source": source,
+            "explicit_flag": explicit,
+        })
+    return {
+        "master_flag": master,
+        "migrated_agents": rows,
+        "count_loadable": sum(1 for r in rows if r["loadable"]),
+        "count_legacy": sum(1 for r in rows if not r["loadable"]),
+    }
+
+
 @router.get("/{name}")
 def get_tool(name: str):
     """Return full detail for a single tool."""
