@@ -13,8 +13,8 @@ a time, validated against a parity panel before flag goes default-on."
 | Order | Agent | PR | Flag | Default | Status |
 |------:|-------|----|------|--------:|--------|
 | 1 (pilot) | introspector | #42 | `LOADABLE_INTROSPECTOR` | OFF | Phase 2 — opt-in shipped |
-| 2 | **researcher** | **THIS PR** | **`LOADABLE_RESEARCHER`** | **OFF** | **Phase 4a — opt-in shipped** |
-| 3 | writer | next | `LOADABLE_WRITER` | OFF | Phase 4b |
+| 2 | researcher | #44 | `LOADABLE_RESEARCHER` | OFF | Phase 4a — opt-in shipped |
+| 3 | **writer** | **THIS PR** | **`LOADABLE_WRITER`** | **OFF** | **Phase 4b — opt-in shipped** |
 | 4 | coder | next | `LOADABLE_CODER` | OFF | Phase 4c |
 | 5 | commander (last) | next | `LOADABLE_COMMANDER` | OFF | Phase 4d |
 
@@ -154,6 +154,41 @@ export LOADABLE_AGENT_EXPERIMENTAL=1
 
 ---
 
+## 4b. Phase 4b — writer
+
+Writer is single-path (no `light` variant). 30-44 tools across
+memory, scoped_memory, mem0, knowledge_base, philosophy_rag, fiction,
+experiential, aesthetics, document_generator, pdf_compose,
+signal_send_attachment, tool_search, bridge, wiki, blend, dialectics,
+tensions.
+
+The migration mirrors Phase 4a's pattern exactly: extract the legacy
+body to `_legacy_create_writer`, add `_build_loadable_writer` whose
+eager toolset mirrors legacy by construction, add a dispatcher
+`create_writer` that routes via `is_loadable_for("writer")` with
+failsafe fallback.
+
+Discoverable capabilities for writer:
+
+```python
+discoverable_capabilities=[
+    "executes-code",        # numeric/data appendices in reports
+    "fetches-geodata",      # geographic context for writing
+    "reads-satellite",      # factual basis for nature/place writing
+    "converts-currency",    # financial reports
+    "renders-chart",        # visualize data alongside prose
+]
+```
+
+Activation:
+
+```bash
+export LOADABLE_WRITER=1                    # writer only
+export LOADABLE_AGENT_EXPERIMENTAL=1        # all migrated agents
+```
+
+---
+
 ## 5. Phase 4-X validation cycle
 
 Each agent migration in Phase 4 follows this operator-driven
@@ -230,8 +265,8 @@ and unset every per-agent flag set to `1`.
 | 1c — Cache-cost gate (#41) | DONE |
 | 2 — Pilot (introspector) (#42) | DONE |
 | 3 — Forge bridge (#43) | DONE |
-| **4a — Researcher migration** | **THIS PR** |
-| 4b — Writer migration | Next |
-| 4c — Coder migration | After 4b |
+| 4a — Researcher migration (#44) | DONE |
+| **4b — Writer migration** | **THIS PR** |
+| 4c — Coder migration | Next |
 | 4d — Commander migration | After 4c |
 | 5 — Drop `optional_tool_group` + legacy factories | After 4d soak |
