@@ -51,6 +51,20 @@ def create_coder(force_tier: str | None = None) -> Agent:
     with optional_tool_group("coder", "gee"):
         from app.tools.gee_tool import create_gee_tools
         tools.extend(create_gee_tools("coder"))
+    # PDF composition + Signal delivery — closes the loop "agent
+    # produces a PDF" → "user opens the PDF on their phone."
+    # pdf_compose runs matplotlib + reportlab in-process and writes
+    # to /app/workspace/output/; signal_send_attachment maps those
+    # files to host paths and hands them to signal-cli. Pre-2026-05-03
+    # the agent had matplotlib + reportlab installed but no tool
+    # surface, so it wrote Python source as text and never actually
+    # delivered the PDF — that's the gap these two tools close.
+    with optional_tool_group("coder", "pdf"):
+        from app.tools.pdf_compose import create_pdf_tools
+        tools.extend(create_pdf_tools("coder"))
+    with optional_tool_group("coder", "signal_attachment"):
+        from app.tools.signal_attachment import create_signal_attachment_tools
+        tools.extend(create_signal_attachment_tools("coder"))
     # Forge generator — only exposed when both TOOL_FORGE_ENABLED and
     # TOOL_FORGE_AGENT_GENERATION_ENABLED are set. Lets Coder register a new
     # sandboxed tool through the audit pipeline. Tool lands in SHADOW at best;
