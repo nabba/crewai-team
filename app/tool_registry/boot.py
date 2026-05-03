@@ -84,10 +84,23 @@ def _import_subpackage(root_name: str) -> int:
     return count
 
 
-def boot_registry(*, snapshot_to_postgres: bool = True) -> ToolRegistry:
-    """One-shot boot: import every tool module, snapshot, detect drift.
+def boot_registry(
+    *,
+    snapshot_to_postgres: bool = True,
+    index_to_chromadb: bool = True,
+) -> ToolRegistry:
+    """One-shot boot: import every tool module, snapshot, detect drift,
+    re-index for semantic search.
 
     Returns the populated singleton. Safe to call multiple times.
+
+    Args:
+        snapshot_to_postgres: Mirror the registry to a Postgres table
+            (Phase 1a). Non-fatal on DB failure.
+        index_to_chromadb: Build / refresh the ChromaDB collection for
+            ``tool_search`` (Phase 1b). Idempotent — re-embeds only
+            tools whose description_hash changed. Non-fatal on
+            ChromaDB / embed-service failure.
     """
     registry = ToolRegistry.instance()
     pre_count = len(registry.all())
@@ -115,5 +128,21 @@ def boot_registry(*, snapshot_to_postgres: bool = True) -> ToolRegistry:
         drift = detect_drift(specs)
         log_drift(drift)
         snapshot(specs)
+
+    if index_to_chromadb:
+        # Phase 1b — semantic-search index for tool_search.
+        try:
+            from app.tool_registry.indexer import index_tools
+            reindexed, skipped = index_tools(specs)
+            if reindexed:
+                logger.info(
+                    "tool_registry boot: ChromaDB index updated "
+                    "(re-embedded %d, skipped %d unchanged).",
+                    reindexed, skipped,
+                )
+        except Exception as exc:
+            logger.debug(
+                "tool_registry boot: ChromaDB indexing skipped (%s)", exc,
+            )
 
     return registry

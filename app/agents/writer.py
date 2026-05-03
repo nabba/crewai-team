@@ -46,6 +46,10 @@ def create_writer(force_tier: str | None = None) -> Agent:
     with optional_tool_group("writer", "signal_attachment"):
         from app.tools.signal_attachment import create_signal_attachment_tools
         tools.extend(create_signal_attachment_tools("writer"))
+    # tool_search — discovery primitive (Phase 1b). Read-only.
+    with optional_tool_group("writer", "tool_search"):
+        from app.tools.tool_search import create_tool_search_tools
+        tools.extend(create_tool_search_tools("writer"))
     # Host Bridge tools (read/write host files for document output)
     with optional_tool_group("writer", "bridge"):
         from app.tools.bridge_tools import create_bridge_tools

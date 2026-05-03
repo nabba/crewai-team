@@ -376,3 +376,161 @@ working prototype that Phase 2 will promote.
 * **CI gate on PRODUCTION tier description drift.** A test that
   asserts no `changed` entries against a committed snapshot would
   catch silently-modified descriptions in PR review.
+
+---
+
+# Phase 1b — `tool_search` discovery primitive
+
+Shipped 2026-05-03 (this section appended to the same doc). Adds the
+agent-callable read-only discovery primitive that ranks the catalog
+by capability tag + ChromaDB semantic match, with the same 4-layer
+contamination defense as the skills-retrieval system.
+
+## 1b.1 Components added in this phase
+
+| Path | Role |
+|------|------|
+| `app/tool_registry/discovery.py` | `search_tools(intent, capabilities, ...)` — the ranker. Implements the 4 hard gates + 3 soft signals. |
+| `app/tool_registry/quarantine.py` | Read-only quarantine list at `workspace/tool_registry/quarantine.json`. Operator-edited; runtime filter for known-bad tools. |
+| `app/tool_registry/indexer.py` | ChromaDB indexer over tool descriptions. Cosine-space collection (matches the skills-retrieval calibration). Idempotent — re-embeds only on `description_hash` change. |
+| `app/tools/tool_search.py` | The agent-callable BaseTool. Calls `search_tools`, formats ranked output. Self-registered in the catalog. |
+| `app/agents/coder.py` + `app/agents/writer.py` | Wired in via `optional_tool_group("...", "tool_search")` — purely additive, agents can use it or ignore it. |
+| `tests/test_tool_search.py` | 22 unit tests including the Weather/Estonia regression analogue. |
+
+## 1b.2 The 4-layer defense (ported from skills retrieval)
+
+The May 2026 incident where a stale "Weather Forecast" skill matched
+on a subjectless "execute the plan" query and hijacked an Estonia
+deforestation request was a surface-keyword failure. The skills layer
+hardened against it with four independent gates; this phase ports the
+same discipline to tools.
+
+The 4 layers in `discovery.search_tools`, applied in order:
+
+| # | Layer | What it filters | Source of truth |
+|---|-------|-----------------|-----------------|
+| 0 | **Subjectless detection** | Bare imperative tokens ("ok", "go", "execute the plan") with no capability tags → empty list. | `_is_subjectless` token list, mirrors `app/agents/commander/context.py:53-74`. |
+| 1 | **Quarantine** | Tools listed in `workspace/tool_registry/quarantine.json` are filtered out entirely (no rank, no surface). | Operator-edited JSON file; mirrors `workspace/skills/_quarantine/`. |
+| 2 | **Tier gate** | Tools below the agent's authorized tier are filtered. PRODUCTION crews see PRODUCTION + IMMUTABLE only; SHADOW crews see everything. | `_tier_passes_gate` against `_TIER_RANK`. |
+| 3 | **Workspace gate** | Tools whose `workspace_scope` doesn't include `*` or the active workspace ID are filtered. | `spec.workspace_scope` declared at `@register_tool` time. |
+| 4 | **Distance gate** | ChromaDB cosine distance > `_DISTANCE_CEILING` (0.55, calibrated to match skills-retrieval) → match dropped. | `query_index` in `indexer.py`; cosine space pinned via `hnsw:space=cosine`. |
+
+Plus three **soft signals** that affect ranking, not membership:
+
+* **Capability exact-match boost** — tools declaring at least one of
+  the requested tags get a `+0.30` score bonus. Tuned so a perfect
+  tag match outranks a `0.40`-distance prose-only match.
+* **Tier rank** — within authorized tier, PRODUCTION outranks CANARY
+  outranks SHADOW.
+* **Loadability** — tools whose `guard()` returns False are visible
+  (the agent knows they exist) but ranked at `score * 0.5`.
+
+## 1b.3 ChromaDB indexing
+
+Collection: `tool_registry`. One document per tool. Doc text:
+
+```
+<name> [<capabilities>]
+<description>
+```
+
+Capability tags are inlined so a query like "render forest report PDF"
+hits both the prose AND the structured `renders-pdf` tag. Metadata
+includes `tier`, `lifecycle`, `capabilities_csv`, `workspace_scope_csv`,
+`description_hash`, `is_loadable`, `source_module`.
+
+The collection is created with `metadata={"hnsw:space": "cosine"}` so
+the `_DISTANCE_CEILING = 0.55` is calibrated correctly. Default L2
+distances would run 100×–1000× larger and never fall below the ceiling
+— this is the failure mode caught during the spike (initial L2-space
+collection had the right architecture but wrong space, all queries
+returned empty).
+
+Re-indexing is idempotent: at boot, `index_tools(specs)` compares each
+spec's `description_hash` against the stored value and skips unchanged
+entries. Cold start is cheap on warm ChromaDB caches.
+
+## 1b.4 The `tool_search` BaseTool
+
+Added to coder + writer alongside their existing toolsets via the
+standard `optional_tool_group` pattern. Args:
+
+```python
+tool_search(
+    intent: str = "",                 # natural-language query
+    capabilities: list[str] = [],     # optional tag filter / boost
+    limit: int = 5,                   # max ranked candidates
+)
+```
+
+Returns formatted ranked output — name, tier, score, capabilities,
+one-line `reason`, truncated description, loadability note. Example:
+
+```
+Found 3 matching tool(s) (highest-ranked first):
+
+  pdf_compose  [production]  score=0.92
+    capabilities: ['renders-pdf', 'renders-chart']
+    why: matches capability renders-pdf; semantic match (d=0.31)
+    Render a PDF report locally (matplotlib + reportlab) ...
+
+  signal_send_attachment  [production]  score=0.51
+    capabilities: ['sends-signal', 'delivers-attachment']
+    why: semantic match (d=0.49)
+    Send a Signal message with one or more file attachments ...
+```
+
+Phase 1b is **read-only** — `tool_search` reports candidates but does
+not auto-load them. Auto-load lands in Phase 2 with `LoadableAgent`
+(prototyped in `app/tool_runtime/`).
+
+## 1b.5 Quarantine list mechanism
+
+File path: `workspace/tool_registry/quarantine.json`. Schema:
+
+```json
+{
+  "quarantined": [
+    {"name": "broken_tool", "reason": "produces wrong CSV values", "since": "2026-05-..."},
+    ...
+  ]
+}
+```
+
+Re-read on every `quarantined_names()` call (small file, lookup is rare).
+Operator edits are picked up immediately on the next discovery query.
+Malformed JSON is treated as empty — operator-side bugs don't crash
+discovery.
+
+There is **no programmatic API** for agents to quarantine each other's
+tools. Quarantine is operator-only, same governance as `app/souls/`.
+
+## 1b.6 The Weather/Estonia regression test
+
+`tests/test_tool_search.py::TestWeatherEstoniaRegression` mirrors
+`tests/test_skill_retrieval_contamination.py::TestProductionRegression`
+for the tool layer. Three independent assertions:
+
+1. Subjectless query ("execute the plan") returns empty when no
+   capabilities are specified — Layer 0 defense.
+2. Explicit capability request (`renders-pdf`) still works — the
+   defense disables UNINTENTIONAL retrieval, not deliberate
+   capability lookups.
+3. A weak distance match (above the 0.55 ceiling) is filtered even
+   when the intent is non-subjectless — Layer 4 defense.
+
+## 1b.7 Future work (Phase 1c onwards)
+
+* **Annotate the remaining ~30 tools.** Phase 1a covered 11; this PR
+  doesn't expand the annotated set. Phase 1c includes a sweep of the
+  rest (memory, fiction, wiki, bridge, philosophy, aesthetic, tensions).
+* **Cache measurement gate (Phase 1c).** Empirical token-cost
+  measurement of LoadableAgent vs stock agent on a 5-iteration task
+  with 2 mid-task loads. Must hit ≤50% of stock tokens before Phase 2.
+* **Workspace propagation through the executor.** Phase 1b's tool_search
+  accepts a `workspace=` kwarg but the agent-side `_run` defaults it to
+  None — the workspace ID isn't yet propagated through CrewAI's tool
+  dispatch. Phase 2's LoadableAgent will close this loop.
+* **Recent-failure penalty.** Designed but not implemented — couples to
+  the error monitor. Tools with a high recent failure rate would be
+  ranked lower; lands when error_monitor exposes per-tool stats.
