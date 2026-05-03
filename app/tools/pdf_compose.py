@@ -364,3 +364,38 @@ def create_pdf_tools(agent_id: str = "coder") -> list:
             return "\n".join(lines)
 
     return [PdfComposeTool()]
+
+
+# ── Tool registry annotation ────────────────────────────────────────
+# Phase 1a passive registration. The legacy `create_pdf_tools()` factory
+# above keeps working unchanged; annotating below also lets the
+# registry know this tool exists for tool_search / LoadableAgent.
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    _PDF_COMPOSE_DESCRIPTION = (
+        "Render a PDF report locally (matplotlib + reportlab) from "
+        "data you've already collected with other tools. USE THIS "
+        "instead of writing Python source as the response text — the "
+        "script you provide RUNS HERE and produces a real .pdf file "
+        "the user can open. Pair with `signal_send_attachment` to "
+        "deliver the PDF over Signal.\n\n"
+        "Pre-loaded names: `plt`, `PdfPages`, `np`, `pd`, `csv`, "
+        "`json`, `reportlab`, `safe_output_path()`. See the tool's "
+        "args_schema for the full pattern."
+    )
+
+    @register_tool(
+        name="pdf_compose",
+        capabilities=["renders-pdf", "renders-chart"],
+        description=_PDF_COMPOSE_DESCRIPTION,
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+        # Tool always reachable — matplotlib/reportlab live in the image.
+        guard=lambda: True,
+    )
+    def _pdf_compose_registry_factory(agent_id: str = "coder"):
+        return create_pdf_tools(agent_id=agent_id)[0]
+except ImportError:
+    # tool_registry not yet imported during a partial-build; harmless.
+    pass

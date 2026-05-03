@@ -358,3 +358,47 @@ def create_currency_tools(agent_id: str) -> list:
                 return f"Error fetching ECB rates: {str(e)[:300]}"
 
     return [CurrencyConvertTool(), CurrencyRatesTool()]
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="currency_convert",
+        capabilities=["converts-currency", "fetches-finance"],
+        description=(
+            "Convert an amount between two currencies using ECB daily "
+            "reference rates (cached). Returns the converted amount + "
+            "the rate used. Use for any monetary calculation that "
+            "crosses a currency boundary."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _currency_convert_registry_factory(agent_id: str = "coder"):
+        tools = create_currency_tools(agent_id=agent_id)
+        for t in tools:
+            if t.name == "currency_convert":
+                return t
+        raise RuntimeError("currency_convert factory could not find tool")
+
+    @register_tool(
+        name="currency_rates",
+        capabilities=["fetches-finance"],
+        description=(
+            "List current ECB exchange rates for one or more "
+            "currencies. Useful as a reference / quick lookup; "
+            "for actual conversion use `currency_convert`."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _currency_rates_registry_factory(agent_id: str = "coder"):
+        tools = create_currency_tools(agent_id=agent_id)
+        for t in tools:
+            if t.name == "currency_rates":
+                return t
+        raise RuntimeError("currency_rates factory could not find tool")
+except ImportError:
+    pass

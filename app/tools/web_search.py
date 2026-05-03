@@ -222,3 +222,26 @@ def web_search(query: str) -> str:
         snippet = item.get("description") or "No description"
         lines.append(f"**{title}**\n{url}\n{snippet}\n")
     return "\n".join(lines)
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="web_search",
+        capabilities=["searches-web"],
+        description=(
+            "Search the public web with three-tier fallback: Brave → "
+            "SearxNG → DuckDuckGo. Returns top results as a formatted "
+            "markdown list (title, URL, snippet). Use this when you "
+            "need information beyond your training data — current "
+            "events, recent docs, freshly published research."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _web_search_registry_factory():
+        return web_search
+except ImportError:
+    pass

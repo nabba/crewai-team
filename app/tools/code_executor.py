@@ -120,3 +120,26 @@ def execute_code(language: str, code: str) -> str:
             pass
 
     return output[:4000]
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="execute_code",
+        capabilities=["executes-code"],
+        description=(
+            "Run Python code in the in-process sandbox. 512m RAM, 0.5 "
+            "CPU, 30s wall-clock, no network. Use this BEFORE "
+            "delivering code to the user — never deliver code you "
+            "haven't executed. Returns stdout/stderr (truncated to "
+            "4000 chars). Common languages: python, bash."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _execute_code_registry_factory():
+        return execute_code
+except ImportError:
+    pass
