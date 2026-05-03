@@ -65,6 +65,12 @@ def create_coder(force_tier: str | None = None) -> Agent:
     with optional_tool_group("coder", "signal_attachment"):
         from app.tools.signal_attachment import create_signal_attachment_tools
         tools.extend(create_signal_attachment_tools("coder"))
+    # tool_search — discovery primitive (Phase 1b). Lets the agent
+    # query the registry by capability tag + intent before assuming
+    # a tool exists. Read-only; Phase 2 promotes it to auto-load.
+    with optional_tool_group("coder", "tool_search"):
+        from app.tools.tool_search import create_tool_search_tools
+        tools.extend(create_tool_search_tools("coder"))
     # Forge generator — only exposed when both TOOL_FORGE_ENABLED and
     # TOOL_FORGE_AGENT_GENERATION_ENABLED are set. Lets Coder register a new
     # sandboxed tool through the audit pipeline. Tool lands in SHADOW at best;
