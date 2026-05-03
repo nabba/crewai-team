@@ -178,6 +178,11 @@ TIER_IMMUTABLE = frozenset({
     "app/epistemic/detectors/realtime.py",
     "app/epistemic/detectors/posthoc.py",
     "app/epistemic/data/biases.yaml",
+    # Capability vocabulary — the bounded namespace of "things tools
+    # can do". Same governance as souls/: discovery integrity depends
+    # on the set being human-curated. The Self-Improver cannot grow
+    # the vocabulary on its own; expansion requires a human PR.
+    "app/tool_registry/capabilities.py",
 })
 
 # ── TIER_GATED (~25 files — evolution engine + soul prompts) ────────────────

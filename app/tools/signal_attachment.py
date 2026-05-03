@@ -257,3 +257,50 @@ def create_signal_attachment_tools(agent_id: str = "coder") -> list:
             return "\n".join(lines)
 
     return [SignalSendAttachmentTool()]
+
+
+# ── Tool registry annotation ────────────────────────────────────────
+# Phase 1a passive registration. Guard delegates to the same env-var
+# checks as the legacy factory — without SIGNAL_OWNER_NUMBER and
+# WORKSPACE_HOST_PATH the tool is registered but not loadable.
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    def _signal_guard() -> bool:
+        try:
+            from app.config import get_settings
+            s = get_settings()
+            return bool(
+                getattr(s, "signal_owner_number", "").strip()
+                and getattr(s, "workspace_host_path", "").strip()
+            )
+        except Exception:
+            return False
+
+    _SIGNAL_DESCRIPTION = (
+        "Send a Signal message with one or more file attachments to "
+        "the configured owner. USE THIS to deliver PDFs / CSVs / "
+        "images / reports the agent has written to "
+        "/app/workspace/output/. The user receives the files as "
+        "Signal attachments they can open on their phone.\n\n"
+        "Recipient is HARD-PINNED to the configured Signal owner "
+        "number — there is no `to` parameter; do not try to specify "
+        "one. Files MUST live under /app/workspace/output/. Per-call "
+        "caps: 5 attachments, 25 MB total, 2000 chars body."
+    )
+
+    @register_tool(
+        name="signal_send_attachment",
+        capabilities=["sends-signal", "delivers-attachment"],
+        description=_SIGNAL_DESCRIPTION,
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+        guard=_signal_guard,
+    )
+    def _signal_send_attachment_registry_factory(agent_id: str = "coder"):
+        tools = create_signal_attachment_tools(agent_id=agent_id)
+        if not tools:
+            raise RuntimeError("signal_send_attachment factory returned empty list")
+        return tools[0]
+except ImportError:
+    pass

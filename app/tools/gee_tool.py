@@ -465,3 +465,36 @@ def create_gee_tools(agent_id: str = "coder") -> list:
             return err_msg
 
     return [GeeRunScriptTool()]
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    def _gee_guard() -> bool:
+        """True iff GOOGLE_APPLICATION_CREDENTIALS points at a readable file."""
+        import os
+        cred = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+        return bool(cred and os.path.isfile(cred))
+
+    @register_tool(
+        name="gee_run_script",
+        capabilities=["reads-satellite", "executes-earth-engine"],
+        description=(
+            "Execute a Python snippet against Google Earth Engine for "
+            "satellite-imagery analysis. ALWAYS use this for forest / "
+            "land-use / NDVI / GEDI / MODIS questions. CRITICAL: one "
+            "`.getInfo()` per script — server-side aggregate first, "
+            "single round-trip second. See docs/GEE.md."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+        guard=_gee_guard,
+    )
+    def _gee_run_script_registry_factory(agent_id: str = "coder"):
+        tools = create_gee_tools(agent_id=agent_id)
+        if not tools:
+            raise RuntimeError("gee_run_script factory returned empty list")
+        return tools[0]
+except ImportError:
+    pass

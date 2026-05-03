@@ -806,3 +806,48 @@ def create_geodata_tools(agent_id: str = "coder") -> list:
             return json.dumps(out, indent=2, default=str)[:12000]
 
     return [GeodataDiscoverTool(), GeodataFetchTool()]
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="geodata_discover",
+        capabilities=["fetches-geodata"],
+        description=(
+            "Discover curated geospatial datasets (Copernicus, GFW, "
+            "GEE catalog, etc.) by topic / region. Returns dataset "
+            "metadata including which provider hosts it. Pair with "
+            "`geodata_fetch` to actually pull the data."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _geodata_discover_registry_factory(agent_id: str = "coder"):
+        tools = create_geodata_tools(agent_id=agent_id)
+        for t in tools:
+            if t.name == "geodata_discover":
+                return t
+        raise RuntimeError("geodata_discover factory could not find tool")
+
+    @register_tool(
+        name="geodata_fetch",
+        capabilities=["fetches-geodata"],
+        description=(
+            "Fetch a curated geospatial dataset by ID + region + time "
+            "window. Multi-provider with per-provider fallback (GEE, "
+            "GFW, CDSE). Returns metadata + a small extracted summary "
+            "(JSON, capped at 12 KB)."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _geodata_fetch_registry_factory(agent_id: str = "coder"):
+        tools = create_geodata_tools(agent_id=agent_id)
+        for t in tools:
+            if t.name == "geodata_fetch":
+                return t
+        raise RuntimeError("geodata_fetch factory could not find tool")
+except ImportError:
+    pass

@@ -159,3 +159,26 @@ def file_manager(action: str, path: str = "", content: str = "") -> str:
             f"Error: Unknown action {action!r}. "
             f"Use 'read', 'write', or 'list'."
         )
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="file_manager",
+        capabilities=["reads-file", "writes-file"],
+        description=(
+            "Read, write, or list files in the workspace. Actions: "
+            "`read` (path required), `write` (path + content), "
+            "`list` (path = directory, defaults to "
+            "'output/responses/'). Path is relative to the workspace "
+            "root; absolute paths and traversal are sanitized."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _file_manager_registry_factory():
+        return file_manager
+except ImportError:
+    pass
