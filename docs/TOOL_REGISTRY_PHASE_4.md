@@ -15,8 +15,8 @@ a time, validated against a parity panel before flag goes default-on."
 | 1 (pilot) | introspector | #42 | `LOADABLE_INTROSPECTOR` | OFF | Phase 2 — opt-in shipped |
 | 2 | researcher | #44 | `LOADABLE_RESEARCHER` | OFF | Phase 4a — opt-in shipped |
 | 3 | writer | #45 | `LOADABLE_WRITER` | OFF | Phase 4b — opt-in shipped |
-| 4 | **coder** | **THIS PR** | **`LOADABLE_CODER`** | **OFF** | **Phase 4c — opt-in shipped** |
-| 5 | commander (last) | next | `LOADABLE_COMMANDER` | OFF | Phase 4d |
+| 4 | coder | #46 | `LOADABLE_CODER` | OFF | Phase 4c — opt-in shipped |
+| 5 | commander (does NOT migrate — see §4d) | **THIS PR** | (n/a) | (n/a) | **Phase 4d — diagnostics endpoint** |
 
 Order rationale: stakes ascend. Researcher's failure mode is "missed
 information"; writer's is "stilted prose"; coder's is "broken code";
@@ -234,6 +234,85 @@ report."
 
 ---
 
+## 4d. Phase 4d — Commander (architectural exception) + flags endpoint
+
+### Why Commander does NOT migrate
+
+The original Phase 0 plan listed Commander as the final Phase 4
+migration ("highest stakes — the routing brain"). On inspection,
+`Commander` (in `app/agents/commander/orchestrator.py`) is a
+**class-based orchestrator**, not a CrewAI Agent factory:
+
+* It has its own `self.llm` for routing decisions, used directly
+  via the LLM client — not as a `crewai.Agent` instance.
+* It holds `self.memory_tools` but doesn't pass them to a CrewAI
+  Agent's `tools=` list — they're invoked directly when the
+  orchestrator needs to record routing decisions.
+* The actual `crewai.Agent` instances Commander interacts with are
+  the OTHER agents (researcher / writer / coder), constructed by
+  the factories already migrated in Phases 4a-c.
+
+There is one `crewai.Agent` built in commander's territory — the
+"Commander (Synthesizer)" agent in `app/crews/creative_crew.py`
+— but it's constructed with `tools=[]`. LoadableAgent solves
+tool-cost overhead; with zero tools there's nothing to optimize.
+
+**Therefore Phase 4d does NOT migrate Commander.** The dispatcher
++ legacy + loadable factory pattern doesn't apply here. Documenting
+this explicitly closes the "commander migration" item from the
+Phase 0 plan.
+
+### What Phase 4d ships instead
+
+A **diagnostics endpoint** that lets operators see at a glance
+which migrated agents are running on which path:
+
+```
+GET /api/cp/tools/flags
+
+{
+  "master_flag": true,
+  "migrated_agents": [
+    {"agent": "introspector", "loadable": true,  "source": "master flag", "explicit_flag": null},
+    {"agent": "researcher",   "loadable": false, "source": "per-agent override", "explicit_flag": "0"},
+    {"agent": "writer",       "loadable": true,  "source": "master flag", "explicit_flag": null},
+    {"agent": "coder",        "loadable": true,  "source": "master flag", "explicit_flag": null}
+  ],
+  "count_loadable": 3,
+  "count_legacy": 1
+}
+```
+
+The endpoint reads the same env vars that the agent factories
+themselves consult, so what it shows IS what the agents do — no
+drift possible.
+
+This was deferred from Phase 4a as "Phase 4b territory"; it lands
+here as Phase 4d's deliverable.
+
+Use cases:
+* React control plane renders an "agent flag matrix" widget so
+  operators don't need `kubectl exec` to read env vars.
+* Pre-deploy sanity check: `curl /api/cp/tools/flags | jq` confirms
+  expected flag state before flipping master to default-on.
+* Post-incident triage: was researcher on legacy or loadable when
+  the regression happened? The endpoint answers in one query.
+
+### What's still left
+
+The original Phase 0 plan called for a "live parity verdict"
+on each migrated agent before flipping its flag default to ON.
+This is operator-driven (Phase 2.5 / Phase 4-X.5 cycles) and
+deferred to operator workflow, not blocking Phase 5.
+
+**Phase 5** (drop legacy factories) is now the next step. It
+consolidates: remove `_legacy_create_<agent>` once parity is
+validated, drop `optional_tool_group` (replaced by registry guards),
+clean up unused imports. Phase 5 is purely cleanup — no behavior
+change.
+
+---
+
 ## 5. Phase 4-X validation cycle
 
 Each agent migration in Phase 4 follows this operator-driven
@@ -312,6 +391,6 @@ and unset every per-agent flag set to `1`.
 | 3 — Forge bridge (#43) | DONE |
 | 4a — Researcher migration (#44) | DONE |
 | 4b — Writer migration (#45) | DONE |
-| **4c — Coder migration** | **THIS PR** |
-| 4d — Commander migration | Next |
-| 5 — Drop `optional_tool_group` + legacy factories | After 4d soak |
+| 4c — Coder migration (#46) | DONE |
+| **4d — Commander n/a + flags endpoint** | **THIS PR** |
+| 5 — Drop `optional_tool_group` + legacy factories | Next (post-soak) |
