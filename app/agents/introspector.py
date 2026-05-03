@@ -64,8 +64,14 @@ RULES:
 
 
 def _is_loadable_experimental() -> bool:
-    """Phase 2 opt-in gate. Default OFF — stock factory runs unchanged."""
-    return os.getenv("LOADABLE_AGENT_EXPERIMENTAL", "").strip() == "1"
+    """Phase 2 opt-in gate, refactored to share the per-agent flag
+    helper from Phase 4. Default OFF — stock factory runs unchanged.
+
+    Resolution: ``LOADABLE_INTROSPECTOR`` env wins if set; else master
+    ``LOADABLE_AGENT_EXPERIMENTAL`` decides.
+    """
+    from app.tool_runtime.feature_flags import is_loadable_for
+    return is_loadable_for("introspector")
 
 
 def _legacy_create_introspector() -> Agent:

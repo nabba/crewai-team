@@ -1,3 +1,23 @@
+"""researcher.py — Researcher agent (web + KB + Mem0 + episteme).
+
+Phase 4a migration target for the dynamic-tool-loading architecture.
+Migration is **opt-in via env flag**: ``LOADABLE_RESEARCHER=1`` (or
+the master ``LOADABLE_AGENT_EXPERIMENTAL=1``). Default behavior
+stays on the stock crewai.Agent path. Failsafe: experimental factory
+exception → fallback to legacy.
+
+Migration scope:
+  * The full path (``light=False``) — 30+ tools, where LoadableAgent
+    provides the most token-cost win — is the migration target.
+  * The light path (``light=True``) — 5-10 tools — stays on the
+    legacy factory unchanged. The cost overhead of the registry is
+    not worth it for the light path's already-small tool surface.
+
+Per-agent flag resolution (see app/tool_runtime/feature_flags.py):
+  ``LOADABLE_RESEARCHER`` overrides ``LOADABLE_AGENT_EXPERIMENTAL``
+  when set. So an operator running with ``LOADABLE_AGENT_EXPERIMENTAL=1``
+  can keep researcher on stock by setting ``LOADABLE_RESEARCHER=0``.
+"""
 import logging
 
 from crewai import Agent
@@ -49,12 +69,43 @@ _COMPACT_RESEARCHER_BACKSTORY = (
 def create_researcher(force_tier: str | None = None, light: bool = False, task_id: str = "") -> Agent:
     """Create a researcher agent.
 
+    Phase 4a: dispatches between legacy (stock CrewAI) and LoadableAgent
+    based on ``LOADABLE_RESEARCHER`` (or master ``LOADABLE_AGENT_EXPERIMENTAL``)
+    env. Default OFF; light path always uses legacy regardless of the
+    flag (its small tool surface doesn't benefit from registry overhead).
+
     Args:
         force_tier: Override model tier selection.
         light: If True, use minimal tools and compact backstory (S8/S9).
                Used for difficulty ≤ 3 simple factual questions.
         task_id: If set, adds blackboard tools scoped to this task.
     """
+    # Light path: always legacy. The compact backstory + 5-10 tools
+    # already avoid the bloat that LoadableAgent solves for; running
+    # registry plumbing here would add overhead without payoff.
+    if light:
+        return _legacy_create_researcher(force_tier=force_tier, light=True, task_id=task_id)
+
+    # Full path: dispatch on flag.
+    from app.tool_runtime.feature_flags import is_loadable_for
+    if is_loadable_for("researcher"):
+        try:
+            agent = _build_loadable_researcher(force_tier=force_tier, task_id=task_id)
+            logger.info("researcher: built LoadableAgent (Phase 4a experimental path)")
+            return agent
+        except Exception as exc:
+            logger.warning(
+                "researcher: LoadableAgent path failed (%s) — falling back to legacy. "
+                "Set LOADABLE_RESEARCHER=0 to silence this until the issue is fixed.",
+                exc, exc_info=True,
+            )
+    return _legacy_create_researcher(force_tier=force_tier, light=False, task_id=task_id)
+
+
+def _legacy_create_researcher(force_tier: str | None = None, light: bool = False, task_id: str = "") -> Agent:
+    """Stock-CrewAI researcher — kept as the default path during
+    Phase 4a soak. Once the LoadableAgent variant is validated across
+    a parity panel, this becomes the fallback for outages."""
     # max_tokens = 8192 so the researcher can produce an extensive report
     # (the user often asks for "extensive document with numbers and
     # commentaries").  At 4096 the output was getting cut off mid-section
@@ -144,6 +195,105 @@ def create_researcher(force_tier: str | None = None, light: bool = False, task_i
         backstory=backstory,
         llm=llm,
         tools=tools,
+        max_execution_time=300,
+        verbose=True,
+    )
+
+
+def _build_loadable_researcher(
+    *, force_tier: str | None = None, task_id: str = "",
+) -> Agent:
+    """Phase 4a path — LoadableAgent backed by the tool registry.
+
+    Same backstory + LLM + per-agent tools as the legacy full path.
+    The 30+ existing tools stay as eager core (most are per-agent
+    state — filtered by ``collection="researcher"`` — and not yet
+    registry-annotated). The agent gains discoverable capabilities
+    via ``load_tool`` / ``tool_search`` for catalog tools the
+    researcher might want to pull on demand.
+
+    The eager set mirrors the legacy ``light=False`` build exactly,
+    so behavior parity is high — what changes is the *discoverability*
+    of additional tools and the cache cost of running this agent
+    (Phase 1c predicted ~33% of stock).
+    """
+    from app.tool_registry import Tier
+    from app.tool_runtime.factory import build_loadable_agent
+
+    llm = create_specialist_llm(max_tokens=8192, role="research", force_tier=force_tier)
+
+    # Mirror the full-path eager toolset.
+    memory_tools = create_memory_tools(collection="researcher")
+    scoped_tools = create_scoped_memory_tools("researcher")
+    mem0_tools = create_mem0_tools("researcher")
+    from app.episteme.tools import get_episteme_tools
+    from app.experiential.tools import get_experiential_tools
+
+    eager: list = [
+        web_search, web_fetch, get_youtube_transcript,
+        file_manager, read_attachment, KnowledgeSearchTool(),
+    ] + memory_tools + scoped_tools + mem0_tools \
+      + get_episteme_tools() + get_experiential_tools("researcher")
+
+    # Optional groups — preserve legacy graceful-degradation semantics.
+    with optional_tool_group("researcher", "firecrawl"):
+        from app.tools.firecrawl_tools import create_firecrawl_tools
+        fc_tools = create_firecrawl_tools()
+        if fc_tools:
+            eager.extend(fc_tools[:4])
+    with optional_tool_group("researcher", "composio"):
+        from app.tools.composio_tool import get_composio_tools
+        composio_tools = get_composio_tools()
+        if composio_tools:
+            eager.extend(composio_tools[:10])
+    with optional_tool_group("researcher", "bridge"):
+        from app.tools.bridge_tools import create_bridge_tools
+        bridge_tools = create_bridge_tools("researcher")
+        if bridge_tools:
+            eager.extend(bridge_tools)
+    with optional_tool_group("researcher", "wiki"):
+        from app.tools.wiki_tool_registry import create_wiki_tools
+        wiki_tools = create_wiki_tools("read", "write", "search", "slides")
+        if wiki_tools:
+            eager.extend(wiki_tools)
+    if task_id:
+        with optional_tool_group("researcher", "blackboard"):
+            from app.tools.blackboard_tool import create_blackboard_tools
+            eager.extend(create_blackboard_tools(task_id, "researcher"))
+    with optional_tool_group("researcher", "tensions"):
+        from app.tensions.tools import get_tension_tools
+        eager.extend(get_tension_tools("researcher"))
+    with optional_tool_group("researcher", "ocr"):
+        from app.tools.ocr_tool import create_ocr_tool
+        ocr = create_ocr_tool()
+        if ocr:
+            eager.append(ocr)
+    with optional_tool_group("researcher", "research_orchestrator"):
+        from app.tools.research_orchestrator import research_orchestrator
+        eager.append(research_orchestrator)
+
+    return build_loadable_agent(
+        role="Researcher",
+        goal="Find accurate, comprehensive information on any topic using web search, article reading, and YouTube transcripts.",
+        backstory=RESEARCHER_BACKSTORY,
+        llm=llm,
+        agent_id="researcher",
+        # Eager: every tool the legacy path would have surfaced.
+        # Phase 5 sweeps the per-agent tools into PER_AGENT registry
+        # entries and shrinks this list to ~5 universal tools.
+        core_tools=eager,
+        # Discoverable: catalog tools the researcher might want.
+        # Forge-bridged SHADOW/CANARY tools tagged ``registers-tool``
+        # also surface here, so the researcher can pick up any
+        # operator-promoted tool without an agent rewrite.
+        discoverable_capabilities=[
+            "renders-pdf",            # synthesize report PDFs
+            "sends-signal",            # deliver findings to the user
+            "renders-chart",           # visualize comparisons
+            "fetches-geodata",         # map / region queries
+            "executes-code",           # numeric processing of findings
+        ],
+        agent_tier=Tier.PRODUCTION,
         max_execution_time=300,
         verbose=True,
     )
