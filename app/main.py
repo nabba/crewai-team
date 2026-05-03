@@ -2052,10 +2052,29 @@ try:
 except Exception:
     logger.debug("Workspace Companion API not available", exc_info=True)
 
+# ── Tool Registry (Phase 1a) ─────────────────────────────────────────────
+# Boot the registry exactly once: imports every module under
+# tool_registry.boot.TOOL_MODULE_ROOTS so all @register_tool decorators
+# fire, then snapshots to Postgres + runs drift detection. Failures here
+# are non-fatal — the gateway continues without the registry; existing
+# agent factories don't depend on it (Phase 1a is purely additive).
+try:
+    from app.tool_registry.boot import boot_registry
+    _registry = boot_registry(snapshot_to_postgres=True)
+    logger.info(
+        "Tool Registry booted: %d tools registered.",
+        len(_registry.all()),
+    )
+except Exception:
+    logger.warning("Tool Registry boot failed — continuing without it", exc_info=True)
+
 # ── Control Plane API routes ─────────────────────────────────────────────
 try:
     from app.control_plane.dashboard_api import router as cp_router
     app.include_router(cp_router)
+    # Tool registry browser — read-only catalog view.
+    from app.control_plane.tools_api import router as tools_cp_router
+    app.include_router(tools_cp_router)
     logger.info("Control Plane API mounted at /api/cp/")
     # Ensure every project has default budget rows for the current period
     from app.control_plane.budgets import get_budget_enforcer as _get_be

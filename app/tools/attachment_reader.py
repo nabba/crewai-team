@@ -264,3 +264,25 @@ def read_attachment(filename: str, content_type: str = "") -> str:
     Returns extracted text content.
     """
     return extract_attachment(filename, content_type)
+
+
+# ── Tool registry annotation (Phase 1a, passive) ────────────────────
+try:
+    from app.tool_registry import Lifecycle, Tier, register_tool
+
+    @register_tool(
+        name="read_attachment",
+        capabilities=["reads-attachment"],
+        description=(
+            "Read user-provided attachments (PDF, DOCX, XLSX, images, "
+            "plain text) and return extracted text content. Use this "
+            "when the user uploads a file with their message and you "
+            "need to see what's in it."
+        ),
+        tier=Tier.PRODUCTION,
+        lifecycle=Lifecycle.SINGLETON,
+    )
+    def _read_attachment_registry_factory():
+        return read_attachment
+except ImportError:
+    pass
