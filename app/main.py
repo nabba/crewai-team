@@ -764,6 +764,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.debug("Phantom crew prune failed at startup", exc_info=True)
 
+    # ── Tool Registry: Forge bridge reconciliation loop (Phase 3) ─────
+    # Picks up Forge-tool tier transitions (SHADOW → CANARY → ACTIVE,
+    # demotions, KILLED removals) every 5 minutes. No-op when Forge is
+    # disabled; non-fatal on individual iteration failures.
+    try:
+        from app.tool_registry.forge_bridge import reconciliation_loop
+        asyncio.create_task(reconciliation_loop())
+    except Exception as exc:
+        logger.debug("Forge bridge reconciliation loop not started: %s", exc)
+
     logger.info("CrewAI Agent Team started")
     yield
     # ── Graceful shutdown: drain in-flight tasks before letting the
