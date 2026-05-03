@@ -88,9 +88,10 @@ def boot_registry(
     *,
     snapshot_to_postgres: bool = True,
     index_to_chromadb: bool = True,
+    sync_forge: bool = True,
 ) -> ToolRegistry:
     """One-shot boot: import every tool module, snapshot, detect drift,
-    re-index for semantic search.
+    re-index for semantic search, sync Forge-generated tools.
 
     Returns the populated singleton. Safe to call multiple times.
 
@@ -101,6 +102,9 @@ def boot_registry(
             ``tool_search`` (Phase 1b). Idempotent — re-embeds only
             tools whose description_hash changed. Non-fatal on
             ChromaDB / embed-service failure.
+        sync_forge: Pull Forge-generated tools (SHADOW/CANARY/ACTIVE)
+            into the in-memory registry (Phase 3). No-op when Forge
+            is disabled or unreachable.
     """
     registry = ToolRegistry.instance()
     pre_count = len(registry.all())
@@ -113,13 +117,28 @@ def boot_registry(
     # path that test setups + multi-import scenarios rely on.
     replayed = registry.replay_decorations()
 
+    # Phase 3: bridge Forge-generated tools into the registry. Each
+    # eligible Forge tool (SHADOW / CANARY / ACTIVE) becomes a
+    # ToolSpec with its corresponding Tier. No-op when Forge is
+    # disabled — the in-memory registry stays at the static set.
+    forge_synced = 0
+    if sync_forge:
+        try:
+            from app.tool_registry.forge_bridge import sync_forge_tools
+            forge_synced = sync_forge_tools()
+        except Exception as exc:
+            logger.debug(
+                "tool_registry boot: Forge sync failed (%s) — continuing", exc,
+            )
+
     specs = registry.all()
     new_specs = len(specs) - pre_count
     logger.info(
         "tool_registry boot: imported %d modules across %d roots; "
-        "replayed %d cached decorator specs; total %d (was %d).",
+        "replayed %d cached decorator specs; bridged %d Forge tools; "
+        "total %d (was %d).",
         total_imported, len(TOOL_MODULE_ROOTS),
-        replayed, len(specs), pre_count,
+        replayed, forge_synced, len(specs), pre_count,
     )
 
     if snapshot_to_postgres:

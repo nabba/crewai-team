@@ -97,6 +97,45 @@ class ToolRegistry:
                 spec.name, spec.tier.value, list(spec.capabilities),
             )
 
+    def replace_spec(self, spec: ToolSpec) -> None:
+        """Force-replace an existing spec (or insert if absent).
+
+        Used by the Forge bridge to update a tool's tier when Forge
+        graduates it (SHADOW → CANARY → ACTIVE). Bypasses register's
+        "keep the first" semantics — caller assumes responsibility
+        for verifying the replacement is intentional.
+
+        Also drops any cached SINGLETON / PER_AGENT instance for the
+        tool, since the new factory may have different runtime
+        behavior (e.g. a SHADOW Forge tool that was promoted to
+        ACTIVE no longer discards results).
+        """
+        with self._lock:
+            self._specs[spec.name] = spec
+            self._singleton_cache.pop(spec.name, None)
+            for key in [k for k in self._per_agent_cache if k[0] == spec.name]:
+                self._per_agent_cache.pop(key, None)
+            logger.info(
+                "ToolRegistry: replaced %r — now tier=%s capabilities=%s",
+                spec.name, spec.tier.value, list(spec.capabilities),
+            )
+
+    def unregister(self, name: str) -> bool:
+        """Remove a spec by name. Returns True if removed.
+
+        Used when a Forge tool transitions to KILLED / DEPRECATED —
+        it should disappear from agent discovery immediately.
+        """
+        with self._lock:
+            if name not in self._specs:
+                return False
+            del self._specs[name]
+            self._singleton_cache.pop(name, None)
+            for key in [k for k in self._per_agent_cache if k[0] == name]:
+                self._per_agent_cache.pop(key, None)
+            logger.info("ToolRegistry: unregistered %r", name)
+            return True
+
     # ── Read API ────────────────────────────────────────────────
 
     def get(self, name: str) -> ToolSpec | None:
