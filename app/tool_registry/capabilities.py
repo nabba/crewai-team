@@ -113,6 +113,15 @@ CAPABILITIES: Final[dict[str, dict[str, str]]] = {
         "records-tension": "Record a creative / structural tension in the tension graph.",
         "flags-aesthetic-pattern": "Flag a code/text pattern for the aesthetic library.",
     },
+
+    # ── observability: introspecting deployment / runtime state ─────
+    # Distinct from `governance` (which is about MODIFYING the system)
+    # — these are read-only system-state queries used to ground
+    # decisions in factual deployment context rather than LLM
+    # inference from conversation history.
+    "observability": {
+        "reads-deployment-state": "Read git head + gateway uptime + recent crew outcomes + tool-registry size.",
+    },
 }
 
 
