@@ -1,6 +1,7 @@
 """pim_agent.py — Personal Information Management agent (email, calendar, tasks)."""
 
 from crewai import Agent
+from app.agents._common import optional_tool_group
 from app.llm_factory import create_specialist_llm
 from app.tools.memory_tool import create_memory_tools
 from app.tools.scoped_memory_tool import create_scoped_memory_tools

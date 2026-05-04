@@ -15,6 +15,7 @@ import logging
 
 from crewai import Agent
 
+from app.agents._common import optional_tool_group
 from app.llm_factory import create_specialist_llm
 from app.souls.loader import compose_backstory
 
