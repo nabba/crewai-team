@@ -676,6 +676,24 @@ class Commander:
                 mem0_lines = []
                 logger.debug("Commander routing: Mem0 lookup timed out (first call may be slow)")
 
+        # Phase 5.2 — Layer 1: sanitize prior failure messages in
+        # conversation history so the routing LLM doesn't extrapolate
+        # "the crew is still broken" from a failure that has been
+        # resolved (gateway restart, recent successful run, etc).
+        # See app/agents/commander/routing_overrides.py.
+        try:
+            from app.agents.commander.routing_overrides import mark_stale_failures
+            from app.system_state import get_system_state
+            _state_for_routing = get_system_state()
+            history_text = mark_stale_failures(
+                history_text, system_state=_state_for_routing,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Commander routing: history sanitation skipped (%s)", exc,
+            )
+            _state_for_routing = None
+
         history_block = ""
         if history_text:
             history_block = (
@@ -870,6 +888,25 @@ class Commander:
             if d.get("crew") not in _VALID_CREWS:
                 logger.warning(f"Routing: invalid crew '{d.get('crew')}', defaulting to research")
                 d["crew"] = "research"
+
+        # Phase 5.2 — Layer 2: catch hallucinated "X is broken" refusals
+        # routed as crew=direct. When the LLM emits a direct response
+        # that mentions a crew name and contains refusal markers, it's
+        # extrapolating from stale failure context — override to a real
+        # dispatch and let the actual error or success surface. See
+        # app/agents/commander/routing_overrides.py.
+        try:
+            from app.agents.commander.routing_overrides import (
+                validate_routing_decision,
+            )
+            decisions = validate_routing_decision(
+                decisions, user_input,
+                system_state=_state_for_routing,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Commander routing: decision validator skipped (%s)", exc,
+            )
 
         # Ensure every decision has a difficulty score (default 5 if LLM omits it)
         for d in decisions:
