@@ -2085,6 +2085,10 @@ try:
     # Tool registry browser — read-only catalog view.
     from app.control_plane.tools_api import router as tools_cp_router
     app.include_router(tools_cp_router)
+    # System state — git head + gateway uptime + recent crew runs (Phase 5.1).
+    # Foundation for the routing fix (5.2) and change-request UI (5.3).
+    from app.control_plane.system_state_api import router as system_state_cp_router
+    app.include_router(system_state_cp_router)
     logger.info("Control Plane API mounted at /api/cp/")
     # Ensure every project has default budget rows for the current period
     from app.control_plane.budgets import get_budget_enforcer as _get_be

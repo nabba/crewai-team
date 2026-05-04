@@ -821,6 +821,14 @@ def run_single_agent_crew(
             verbose=settings.crew_verbose,
         )
 
+        # System-state observability: record crew outcomes into the
+        # in-memory ring buffer at app.system_state.crew_runs. The
+        # Commander routing layer (Phase 5.2) reads this to ground
+        # "is crew X currently working?" decisions in real outcomes
+        # rather than conversation-history inference.
+        import time as _time_mod
+        _crew_start = _time_mod.monotonic()
+
         try:
             result = str(crew.kickoff())
         except Exception as exc:
@@ -830,7 +838,27 @@ def run_single_agent_crew(
             # with the right task_id (so subsequent retries attach to
             # the same parent).
             diagnose_and_fix(crew_name, task_description, exc, task_id=_ctx.task_id)
+            try:
+                from app.system_state import record_crew_run
+                record_crew_run(
+                    crew_name, ok=False, error=str(exc),
+                    duration_s=_time_mod.monotonic() - _crew_start,
+                    task_id=_ctx.task_id,
+                )
+            except Exception:
+                pass  # observational; never block the failure path
             raise
+
+        # Crew completed normally — log the success.
+        try:
+            from app.system_state import record_crew_run
+            record_crew_run(
+                crew_name, ok=True,
+                duration_s=_time_mod.monotonic() - _crew_start,
+                task_id=_ctx.task_id,
+            )
+        except Exception:
+            pass
 
         # Tool-First enforcement: if the agent refused without calling tools, retry once
         # with an explicit nudge listing the tools it has.
