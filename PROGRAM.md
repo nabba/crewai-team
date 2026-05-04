@@ -279,3 +279,55 @@ rule the constitution and `eval_sandbox` already enforce.
 Full design notes: see `docs/EPISTEMIC_INTEGRITY.md` § "PCH layer
 tagging ships". Operator-side fields (migration list, bias count)
 updated in `docs/EPISTEMIC.md`.
+
+## 14. 2026-05 Tool Registry Program
+
+A multi-PR architectural rework that replaces the static
+`tools=[...]` agent constructor with a capability-typed registry +
+dynamic mid-iteration tool loading. Motivated by a 2026-05-03
+production failure (the coding crew wrote 200-line Python source
+as chat output and fabricated CSV values 40-75× off from real
+Hansen v1.12 data, because matplotlib + reportlab were installed
+but had no agent-visible tool surface). The fix turned into a
+broader program: the same gap existed for Forge-generated tools,
+the same token-bloat existed across all agents, and the same
+contamination failure modes that hurt the skills-retrieval layer
+were latent in tool retrieval.
+
+| Phase | Scope | PR | Doc |
+|------:|-------|----|-----|
+| 0 | Spike: LoadableAgent + ToolBinder + LoadableAgentExecutor; CrewAI 1.14.4 prompt-assembly internals mapped; token cost measured (12.5K stock vs 1.3K core) | n/a (in 1a) | `docs/TOOL_REGISTRY_PHASE_0.md` |
+| 1a | Registry foundation: `@register_tool` decorator, `ToolRegistry` singleton, capability vocabulary in TIER_IMMUTABLE, Postgres snapshot, drift detector, boot scan, `/api/cp/tools/*` read-only endpoint, 11 tools annotated | #39 | `docs/TOOL_REGISTRY.md` |
+| 1b | `tool_search` discovery primitive with the 4-layer contamination defense (subjectless detection, quarantine, tier gate, workspace gate, 0.55 cosine distance ceiling); ChromaDB indexer wired into boot | #40 | (Phase 1b section in `docs/TOOL_REGISTRY.md`) |
+| 1c | Empirical cache-cost gate: 5-iter task with 2 mid-task loads modeled under Anthropic prompt-cache pricing. Verdict GO @ 33.4% of stock tokens. | #41 | `docs/TOOL_REGISTRY_PHASE_1C.md` |
+| 2 | Pilot migration: introspector behind `LOADABLE_INTROSPECTOR=1`. Hybrid factory (`build_loadable_agent`), cache telemetry (`cache_creation_input_tokens` / `cache_read_input_tokens`), parity harness (`app/tool_runtime/parity.py`). Failsafe fallback to legacy on construction error. | #42 | `docs/TOOL_REGISTRY_PHASE_2.md` |
+| 3 | Forge bridge: read-only sync of Forge's `forge_tools` DB into the in-memory registry. Status mapping `SHADOW/CANARY/ACTIVE` → `Tier.SHADOW/CANARY/PRODUCTION`; CrewAI BaseTool wrapper proxies into `forge.runtime.dispatcher.invoke_tool`; SHADOW-tier result-discard preserved end-to-end. 5-min reconciliation loop in lifespan. | #43 | `docs/TOOL_REGISTRY_PHASE_3.md` |
+| 4a | Researcher migration. Per-agent flag (`LOADABLE_RESEARCHER`) overrides master. Light path always legacy. | #44 | `docs/TOOL_REGISTRY_PHASE_4.md` §4a |
+| 4b | Writer migration. | #45 | `docs/TOOL_REGISTRY_PHASE_4.md` §4b |
+| 4c | Coder migration. Forge-bridged tools surface here automatically, closing the "Forge generated, no agent calls" loop. | #46 | `docs/TOOL_REGISTRY_PHASE_4.md` §4c |
+| 4d | Commander architectural exception (it's a class-based orchestrator, not a CrewAI Agent factory) + `/api/cp/tools/flags` diagnostic endpoint. | #47 | `docs/TOOL_REGISTRY_PHASE_4.md` §4d |
+| 5 | Readiness work — `phase5_check` smoke-test CLI + per-agent rollout sequence doc (Stage 0→4). Default flips and legacy deletion gated on operator-side parity validation, deferred to per-agent follow-up PRs. | #48 | `docs/TOOL_REGISTRY_PHASE_5.md` |
+
+**End-state semantics:** every `@register_tool`-annotated tool
+(static + Forge-bridged) is discoverable via `tool_search`; agents
+on the LoadableAgent path get ~33% of stock token cost on
+representative workloads; the failsafe try/except → legacy path
+guarantees no production regression while operators validate.
+153 tests in the registry suite (registry + search + measure +
+phase 2 + forge bridge + phase 4a/b/c/d + phase 5 + pdf+signal).
+
+**Critical safety properties held:**
+- `app/tool_registry/capabilities.py` is in TIER_IMMUTABLE (same
+  governance as `app/souls/`). Self-Improver cannot grow the
+  vocabulary on its own; expansion requires a human PR.
+- Forge's state machine, schema, audit pipeline, and TIER_IMMUTABLE
+  files are READ-ONLY from the bridge's perspective. The bridge
+  reads `forge.registry.list_tools` and writes `ToolRegistry`; it
+  never modifies Forge's DB.
+- SHADOW-tier execution semantics preserved — the BaseTool wrapper
+  detects `mode=SHADOW` and discards the result before it reaches
+  the agent.
+
+Full architecture: `docs/TOOL_REGISTRY.md`. Per-phase memos
+referenced in the table above. Migration reverse-references in
+each agent's file (`_legacy_create_<agent>` + dispatcher pattern).

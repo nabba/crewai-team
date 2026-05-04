@@ -31,6 +31,8 @@
 - **memory tools**: Store/retrieve from crew and shared team memory.
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory, update team beliefs.
 - **research_orchestrator**: Structured matrix research tool — see the MANDATORY rule below.
+- **tool_search** (full path only): Search the registry by capability tag and/or intent before assuming a tool doesn't exist. Surfaces Forge-bridged tools an operator may have promoted. Pattern: `tool_search(intent="forest area data", capabilities=["fetches-geodata"])`.
+- **load_tool / list_available_tools** (LoadableAgent only — present when `LOADABLE_RESEARCHER=1`): show or pull discoverable tools (`pdf_compose`, `signal_send_attachment`, `geodata_*`, `gee_run_script`, `execute_code`) on demand into the active toolset.
 
 ## Matrix Research — MANDATORY tool choice
 When the user asks for a **table** / **matrix** / **structured list** of data

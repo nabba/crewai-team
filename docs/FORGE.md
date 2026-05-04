@@ -1368,8 +1368,48 @@ docker compose up -d gateway   # recreate to pick up env change
 - **Compositions are caller-declared.** The composition audit fires
   when caller code calls the audit endpoint with a list of tool_ids.
   There's no automatic "if a plan uses 2+ forged tools, force a
-  composition audit". Wiring this into the crew planner is part of the
-  Phase 3 spec but not yet implemented end-to-end.
+  composition audit". Wiring this into the crew planner is still
+  Phase 3.5 (planned).
+
+### Tool Registry bridge (LIVE — 2026-05-03)
+
+The "agents can't find Forge-generated tools" gap that was open for
+months is now closed by the tool-registry bridge in
+`app/tool_registry/forge_bridge.py` (Phase 3 of the tool-registry
+program; see [`TOOL_REGISTRY_PHASE_3.md`](TOOL_REGISTRY_PHASE_3.md)).
+
+What it does:
+
+* On gateway boot + every 5 minutes via a reconciliation loop, queries
+  Forge's `forge_tools` table for tools in `{SHADOW, CANARY, ACTIVE}`
+  status.
+* Maps each to the in-memory `ToolRegistry` at the corresponding
+  `Tier` (SHADOW/CANARY/PRODUCTION) — `DRAFT`, `QUARANTINED`,
+  `DEPRECATED`, `KILLED` are NOT bridged.
+* Wraps each in a CrewAI `BaseTool` whose `_run` method proxies into
+  `forge.runtime.dispatcher.invoke_tool`. **Every Forge safety
+  property is preserved**: killswitch, budget, capability audit, and
+  SHADOW-tier result-discard. The wrapper detects `mode=SHADOW` and
+  never exposes the actual result to the agent — returns a stub
+  message describing the SHADOW execution instead.
+* On status transitions (SHADOW → CANARY → ACTIVE), `replace_spec`
+  updates the registry tier and drops the cached SINGLETON instance
+  so the next agent call gets a wrapper at the new tier.
+* On `KILLED` / `DEPRECATED` (or row deletion), the bridge's
+  reconciliation loop unregisters the tool, removing it from agent
+  discovery within ≤5 min.
+
+Agents discover Forge tools through the standard `tool_search`
+primitive (Phase 1b of the tool-registry program). A SHADOW-tier
+tool only surfaces to crews authorized for SHADOW; a PRODUCTION
+crew calling `tool_search` won't see it. This is the same tier gate
+the registry's discovery layer applies to all tools.
+
+**Read-only on Forge's side.** The bridge reads from
+`forge.registry.list_tools` and writes to the in-memory
+`ToolRegistry`. Forge's state machine, schema, audit pipeline, and
+TIER_IMMUTABLE files are untouched — by design, since they're the
+gates Self-Improver is judged against.
 
 ### Roadmap
 

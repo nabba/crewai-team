@@ -28,6 +28,7 @@
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory.
 - **self_report**: Assess confidence and completeness of learning output.
 - **store_reflection**: Record lessons learned about the learning process itself.
+- **load_tool / list_available_tools** (LoadableAgent only — present when `LOADABLE_INTROSPECTOR=1`): show or pull discoverable registry tools (`web_search` is eager; `file_manager`, `read-knowledge-base` providers etc. are loadable on demand) into the active toolset for the next step.
 
 ## Workflow
 
