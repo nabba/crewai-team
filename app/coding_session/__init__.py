@@ -20,6 +20,10 @@ Public API::
         ReconcileReport, run_once,
     )
 """
+from app.coding_session.backends import (
+    BridgeWorktreeBackend,
+    LocalWorktreeBackend,
+)
 from app.coding_session.manager import (
     IllegalTransition,
     Manager,
@@ -43,6 +47,12 @@ from app.coding_session.reconciler import (
     ReconcileReport,
     run_once,
 )
+from app.coding_session.runner import (
+    ALLOWLIST,
+    RunResult,
+    check_allowlist,
+    run,
+)
 
 __all__ = [
     # models
@@ -55,4 +65,8 @@ __all__ = [
     "can_start_session", "can_write_bytes", "cap_run_timeout",
     # reconciler
     "ReconcileReport", "run_once",
+    # runner
+    "ALLOWLIST", "RunResult", "check_allowlist", "run",
+    # backends
+    "LocalWorktreeBackend", "BridgeWorktreeBackend",
 ]
