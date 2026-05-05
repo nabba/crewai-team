@@ -277,6 +277,41 @@ Auth: same `require_gateway_auth` dependency as the rest of `/cp/`.
 `is_protected` is included in every list/detail response so the React
 UI can flag TIER_IMMUTABLE paths visibly.
 
+### React UI (Phase 5.3b)
+
+The `/cp/changes` route surfaces the operator side:
+
+- **List view** — newest-first table of all change requests, filterable
+  by status (`pending`, `approved`, `applied`, `apply_failed`, `rejected`,
+  `rolled_back`, `tier_immutable_refused`, `timeout`). Each row shows
+  the path, requestor, status badge, `🛑 PROTECTED` flag for
+  TIER_IMMUTABLE paths, the reason (truncated), apply error if any,
+  and a short id.
+- **Detail drawer** — slides in from the right when a row is clicked.
+  Shows status, decision metadata (who/when/why), apply metadata
+  (branch, commit, PR URL with a click-through link), rollback metadata
+  (when/by/revert PR), the **full unified diff** with line-level
+  coloring (`+` green, `-` red, hunk headers blue, file headers grey),
+  and per-state action buttons:
+  - PENDING → `Approve + apply`, `Reject`
+  - APPLY_FAILED → `Retry apply` (also a manual reject path)
+  - APPLIED → `Roll back…` (with a confirmation step)
+  - TIER_IMMUTABLE_REFUSED → no actions; explicit "operator must edit
+    directly via PR" notice
+- **Polling** — list refetches every 8 s; detail every 5 s. The cache
+  invalidates immediately on mutation success.
+
+Files:
+
+```
+dashboard-react/src/types/changes.ts            # types matching backend
+dashboard-react/src/api/changes.ts              # react-query hooks
+dashboard-react/src/components/ChangesPage.tsx  # list + drawer + actions
+```
+
+Wired into `App.tsx` (`<Route path="/changes" />`) and `Layout.tsx`
+(nav item with ✏️ icon, between Governance and Org Chart).
+
 ---
 
 ## 9. Apply / rollback details
@@ -385,8 +420,6 @@ docs/
 
 ## 13. Open follow-ups
 
-- **Phase 5.3b — React UI** (consume the API endpoints; surface PENDING
-  requests in `/cp/`).
 - **Phase 5.4 — surface drift cleanup** (delegated coding specialists
   get bridge tools + `request_restricted_write` so they actually have
   the means to fix production code).
@@ -399,5 +432,9 @@ docs/
 - **Per-agent requestor identity** — `_run` currently records
   `requestor="agent"`. Phase 5.4 wiring can plumb the actual
   caller's `agent_id` from the BaseTool invocation context.
+- **Aggregated counts on the list view** — current `ChangesPage`
+  shows status counts of the *currently filtered* slice. A small
+  `/api/cp/changes/counts` endpoint would let it show all-status
+  counts at the top.
 
 See `PROGRAM.md` §16 for the full incident-driven program.
