@@ -279,3 +279,72 @@ rule the constitution and `eval_sandbox` already enforce.
 Full design notes: see `docs/EPISTEMIC_INTEGRITY.md` § "PCH layer
 tagging ships". Operator-side fields (migration list, bias count)
 updated in `docs/EPISTEMIC.md`.
+
+## 14. 2026-05 Tool Registry phases 1a–5 (recap)
+
+The bounded-capability tool registry program (Phases 0 → 5) shipped
+through April 2026 — register/load via `@register_tool`, capability
+vocabulary in TIER_IMMUTABLE, dynamic agent tool resolution, tier
+graduation, governance signoff. Detail: `docs/TOOL_REGISTRY.md`,
+`docs/TOOL_REGISTRY_PHASE_{0,1C,2,3,4,5}.md`.
+
+## 15. 2026-05-04 PIM incident (post-program remediation)
+
+A Coding-crew PR (#50) introduced `optional_tool_group` references
+in PIM agent without importing the helper. Production gateway hit
+`NameError` at PIM construction; user got "Crew pim failed" via Signal.
+After hot-deploying the import fix, the Commander still hallucinated
+"PIM is broken" three times in a row from stale conversation history
+— exposing four systemic issues:
+
+1. **Agent has no path to fix production code.** Coding crew is
+   sandboxed to `output/`, `skills/`, `proposals/`. Cannot patch
+   `app/agents/*.py`.
+2. **Commander LLM trusts stale failure context.** Routing prompt
+   sees the prior failure message and decides "still broken" without
+   verifying current state.
+3. **No deployment-state-aware routing.** Routing has no access to
+   `crew_runs` recent successes/failures.
+4. **Surface drift.** `dashboard-react/` operator surface lags
+   behind backend reality (no Phase 5 capability views, no
+   change-request panel).
+
+User reaction: *"I do not need quick solution. I need to make
+system working fully. So do not fix things instead of system. Do
+not create quick workarounds."*
+
+The remediation program splits into:
+
+| Phase | What | Status |
+| --- | --- | --- |
+| **5.1** | `app/system_state` foundation — readonly view over `crew_runs`, deployment state for the Commander | **shipped (PR #52)** |
+| **5.2** | Commander routing fix — two-layer defense: history sanitation + decision validator | **shipped (PR #53)** |
+| **5.3a** | Change-request backend — `request_restricted_write` agent tool, Signal 👍/👎 voting, React `/api/cp/changes/*` endpoints, hot-apply via bridge, auto-PR against main, rollback path | **shipped — see § 16** |
+| **5.3b** | React UI for change requests | pending |
+| **5.4** | Surface drift cleanup — coding specialists get bridge tools + `request_restricted_write`; `/cp/` shows phase-5 capability views | pending |
+
+## 16. 2026-05-04 Change-request system — Phase 5.3a
+
+The systemic fix for issue #1 above. Lets a coding (or any) agent
+propose a write to a restricted path and have it human-gated through
+Signal **and** React with idempotent transitions.
+
+| Component | What landed |
+|---|---|
+| Backend package | `app/change_requests/{models,validator,store,lifecycle,apply,signal}.py` — full state machine (`PENDING`→`APPROVED`/`REJECTED`/`TIER_IMMUTABLE_REFUSED`/`TIMEOUT`→`APPLIED`/`APPLY_FAILED`→`ROLLED_BACK`), JSONL persistence, hash-chained audit log mirroring Forge, `RLock` for save/index reentrancy. |
+| Validator | TIER_IMMUTABLE absolute (no human override path); allowed roots `app/` `tests/` `docs/` `dashboard-react/` `deploy/` `scripts/` `host_bridge/`; rejects path traversal, absolute paths, blocked patterns (`.env`, `secrets/`, `.git/`, ...), content > 1 MB. |
+| Agent tool | `app/tools/restricted_write_tool.py` — `request_restricted_write(path, new_content, old_content, reason)`. Returns sync after submission; reaction comes out-of-band. Registered as PRODUCTION/SINGLETON. |
+| Signal | `build_ask_body()` (header + diff truncated 2000 chars + 👍/👎 footer + id), `send_ask()` records the message timestamp, `find_request_by_signal_ts()` for the reaction handler. |
+| Reaction handler | `app/main.py` `/signal/inbound` block: 👍 → `approve` + `apply_change` ; 👎 → `reject`. Idempotent — second decision is a no-op. |
+| React API | `app/control_plane/changes_api.py` — `GET /api/cp/changes` (list, status filter), `GET /{id}`, `POST /{id}/{approve\|reject\|rollback\|retry-apply}`. `403` on TIER_IMMUTABLE approve attempt; `409` on wrong-state. Same `require_gateway_auth` as the rest of `/cp/`. |
+| Hot-apply | `apply.py` — bridge `write_file` + best-effort `importlib.reload` + git `branch + commit + push` + `gh pr create --base main`. Branch / sha / PR URL stored on the request. |
+| Rollback | bridge writes captured `old_content` back + module reload + `git revert <sha>` on a `revert/<id>` branch + push + revert PR. Operator merges to make rollback durable. |
+| Two-gate model | Gate 1 = approve (hot-applies + opens PR; reversible via Rollback). Gate 2 = operator merges PR (durable in `main`). CI auto-merge intentionally not wired. |
+| Tests | `tests/test_change_requests.py` — 40 tests, all pass. Covers validator, models, store + audit chain integrity, lifecycle transitions, HTTP API, Signal body shape, agent tool. |
+| Doc | `docs/CHANGE_REQUESTS.md`. |
+
+**Design boundary held:** TIER_IMMUTABLE files (security core, eval
+infra, governance, forge, souls, capabilities, ~95 paths in
+`app/auto_deployer.py`) are refused at validate time — never reach
+Signal/React, never have a human-override path. Same rule as the
+constitution and `eval_sandbox` already enforce.
