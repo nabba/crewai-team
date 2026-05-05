@@ -53,6 +53,11 @@ from app.coding_session.runner import (
     check_allowlist,
     run,
 )
+from app.coding_session.submit import (
+    ChangeRequestPort,
+    DefaultChangeRequestPort,
+    submit_session,
+)
 
 __all__ = [
     # models
@@ -69,4 +74,6 @@ __all__ = [
     "ALLOWLIST", "RunResult", "check_allowlist", "run",
     # backends
     "LocalWorktreeBackend", "BridgeWorktreeBackend",
+    # submit
+    "ChangeRequestPort", "DefaultChangeRequestPort", "submit_session",
 ]

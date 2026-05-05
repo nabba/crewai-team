@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 
 
 class WorktreeBackend(Protocol):
-    """Abstracts the git operations needed by the manager. Two
-    concrete implementations:
+    """Abstracts the git operations needed by the manager + submit.
+    Two concrete implementations:
 
       * ``LocalWorktreeBackend`` — runs ``subprocess.run`` directly
         (used in tests against a real local repo fixture).
@@ -61,7 +61,21 @@ class WorktreeBackend(Protocol):
         bridge so the operations run on the host (used in production
         — the gateway container can't run git directly against the
         host repo).
+
+    Three groups of operations:
+
+      * **Lifecycle** (``resolve_ref``, ``create_worktree``,
+        ``remove_worktree``) — used by the manager.
+      * **Read** (``list_changed_paths``, ``read_worktree_file``,
+        ``read_base_file``) — used by the submit module to compute
+        per-file diffs.
+
+    The split is intentional: the manager doesn't need read access;
+    the submit module doesn't need lifecycle; both share the same
+    backend instance so ops use the same git context.
     """
+
+    # ── Lifecycle ─────────────────────────────────────────────────
 
     def resolve_ref(self, ref: str) -> str:
         """Resolve a branch/tag/sha to a commit sha. Raises
@@ -75,6 +89,39 @@ class WorktreeBackend(Protocol):
         """Tear down a worktree. ``force=True`` is the default —
         the manager always wants the cleanup to succeed regardless of
         the worktree's dirty state."""
+
+    # ── Read (used by submit) ─────────────────────────────────────
+
+    def list_changed_paths(
+        self, *, worktree_path: str,
+    ) -> list[tuple[str, str]]:
+        """Return the list of paths modified inside the worktree
+        relative to its base sha, as ``(path, kind)`` tuples where
+        ``kind ∈ {"M", "A", "D", "R"}`` (modified, added, deleted,
+        renamed — same letters as ``git status --porcelain``).
+
+        Used by ``submit_session`` to discover what to file change
+        requests for. Empty list means a clean worktree (submit is
+        a no-op).
+        """
+
+    def read_worktree_file(
+        self, *, worktree_path: str, path: str,
+    ) -> str:
+        """Read the current content of ``worktree_path/path``.
+        Raises ``FileNotFoundError`` if the file doesn't exist
+        (e.g. it's a deletion case — submit handles that by reading
+        the base content and recording a delete)."""
+
+    def read_base_file(self, *, base_sha: str, path: str) -> str:
+        """Read the content of ``path`` at ``base_sha``. Used to
+        produce ``old_content`` for the change request — captures
+        the "before" the agent's edits.
+
+        Raises ``FileNotFoundError`` if ``path`` did not exist at
+        ``base_sha`` (i.e. the agent added a new file). The submit
+        module catches this and uses ``""`` for the new-file case.
+        """
 
 
 # ── Manager ─────────────────────────────────────────────────────────

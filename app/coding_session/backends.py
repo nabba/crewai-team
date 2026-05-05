@@ -132,6 +132,67 @@ class LocalWorktreeBackend:
                 f"remove={result.stderr!r} prune={prune.stderr!r}"
             )
 
+    # ── Read (for submit) ─────────────────────────────────────────
+
+    def list_changed_paths(
+        self, *, worktree_path: str,
+    ) -> list[tuple[str, str]]:
+        """Parse ``git status --porcelain`` output. Each line is
+        ``XY <path>`` where X = index status, Y = worktree status.
+        We classify by Y first (working-tree state), falling back
+        to X for staged-only changes.
+        """
+        result = subprocess.run(
+            [self.git, "status", "--porcelain", "-z"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            shell=False,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"git status failed: {(result.stderr or '').strip()}"
+            )
+        return _parse_porcelain_z(result.stdout or "")
+
+    def read_worktree_file(
+        self, *, worktree_path: str, path: str,
+    ) -> str:
+        """Read a file from the worktree. Plain filesystem read —
+        the worktree is a real directory."""
+        full = Path(worktree_path) / path
+        if not full.is_file():
+            raise FileNotFoundError(f"{path} not in worktree {worktree_path}")
+        return full.read_text(encoding="utf-8", errors="replace")
+
+    def read_base_file(self, *, base_sha: str, path: str) -> str:
+        """Read content via ``git show <sha>:<path>`` from the
+        repo root. Returns ``""`` is NOT correct here — if the
+        path didn't exist at ``base_sha``, git returns non-zero
+        and we raise ``FileNotFoundError`` for the caller to handle
+        (they'll use empty string for added-files)."""
+        # Note: git show prints the file content to stdout; for
+        # binary files this might not decode cleanly. The agent
+        # shouldn't be writing binary files via session_write
+        # (and the change-request validator caps at 1 MB anyway),
+        # but we use errors='replace' to keep Local + Bridge symmetric.
+        result = self._run(
+            [self.git, "show", f"{base_sha}:{path}"],
+            timeout=15,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            if "exists on disk, but not in" in stderr or "does not exist" in stderr or "Path" in stderr:
+                raise FileNotFoundError(
+                    f"{path} not in {base_sha[:8]}"
+                )
+            raise RuntimeError(
+                f"git show failed for {path}: {stderr}"
+            )
+        return result.stdout or ""
+
     # ── Internals ─────────────────────────────────────────────────
 
     def _run(
@@ -246,6 +307,75 @@ class BridgeWorktreeBackend:
                 f"remove={result.get('stderr')!r} prune={prune.get('stderr')!r}"
             )
 
+    # ── Read (for submit) ─────────────────────────────────────────
+
+    def list_changed_paths(
+        self, *, worktree_path: str,
+    ) -> list[tuple[str, str]]:
+        bridge = self._get_bridge()
+        # Run from inside the worktree directory; -z is parser-friendly.
+        # The bridge's working_dir parameter is the cwd for the command.
+        result = bridge.execute(
+            ["git", "status", "--porcelain", "-z"],
+            working_dir=worktree_path,
+            timeout=30,
+        ) or {}
+        if result.get("returncode", 0) != 0:
+            raise RuntimeError(
+                f"git status failed: "
+                f"{(result.get('stderr') or '').strip()}"
+            )
+        return _parse_porcelain_z(result.get("stdout") or "")
+
+    def read_worktree_file(
+        self, *, worktree_path: str, path: str,
+    ) -> str:
+        """Read file content via the bridge. Falls through to
+        ``cat`` so we don't need the bridge to expose a separate
+        read_file primitive."""
+        bridge = self._get_bridge()
+        # cat is on the runner allowlist for a reason — it's a safe
+        # read primitive across both interfaces.
+        full_path = str(Path(worktree_path) / path)
+        result = bridge.execute(
+            ["cat", full_path],
+            working_dir=worktree_path,
+            timeout=10,
+        ) or {}
+        if result.get("returncode", 0) != 0:
+            stderr = (result.get("stderr") or "").lower()
+            if "no such file" in stderr or "not a regular" in stderr:
+                raise FileNotFoundError(
+                    f"{path} not in worktree {worktree_path}"
+                )
+            raise RuntimeError(
+                f"cat failed for {path}: "
+                f"{(result.get('stderr') or '').strip()}"
+            )
+        return result.get("stdout") or ""
+
+    def read_base_file(self, *, base_sha: str, path: str) -> str:
+        bridge = self._get_bridge()
+        result = bridge.execute(
+            ["git", "show", f"{base_sha}:{path}"],
+            working_dir=self.repo_root,
+            timeout=15,
+        ) or {}
+        if result.get("returncode", 0) != 0:
+            stderr = (result.get("stderr") or "").strip()
+            if (
+                "exists on disk, but not in" in stderr
+                or "does not exist" in stderr
+                or "Path" in stderr
+            ):
+                raise FileNotFoundError(
+                    f"{path} not in {base_sha[:8]}"
+                )
+            raise RuntimeError(
+                f"git show failed for {path}: {stderr}"
+            )
+        return result.get("stdout") or ""
+
     # ── Internals ─────────────────────────────────────────────────
 
     def _get_bridge(self) -> Any:
@@ -277,3 +407,76 @@ class BridgeWorktreeBackend:
             argv, working_dir=self.repo_root, timeout=timeout,
         )
         return result or {}
+
+
+# ── Shared helpers ──────────────────────────────────────────────────
+
+
+def _parse_porcelain_z(stdout: str) -> list[tuple[str, str]]:
+    """Parse ``git status --porcelain=v1 -z`` output.
+
+    The ``-z`` form uses NUL terminators between entries (avoids
+    whitespace-quoting issues on paths with spaces). For renames the
+    entry is ``R<XY> <new>\\0<old>\\0`` — we emit the new path with
+    kind 'R'. For all other kinds, the entry is ``XY <path>\\0``.
+
+    Returns a list of ``(path, kind)`` where kind is normalized to
+    a single letter:
+        ``"M"`` modified
+        ``"A"`` added (untracked or staged-add)
+        ``"D"`` deleted
+        ``"R"`` renamed
+        ``"?"`` unknown / ignore
+    """
+    if not stdout:
+        return []
+
+    entries: list[tuple[str, str]] = []
+    parts = stdout.split("\0")
+    i = 0
+    while i < len(parts):
+        entry = parts[i]
+        if not entry:
+            i += 1
+            continue
+        # The first 2 chars are XY status, then a space, then the path.
+        # Format is `XY path` (3-char prefix at minimum).
+        if len(entry) < 4:
+            i += 1
+            continue
+        xy = entry[:2]
+        path = entry[3:]
+
+        kind = _classify_status(xy)
+        if kind == "R":
+            # Rename: next part is the OLD name. Skip it; we emit just
+            # the new path as a rename. Submit handles it as add+delete
+            # for v1 (rename detection is a follow-up).
+            entries.append((path, "R"))
+            i += 2  # consume both the new-path entry and the old-path
+            continue
+
+        entries.append((path, kind))
+        i += 1
+
+    return entries
+
+
+def _classify_status(xy: str) -> str:
+    """Reduce the 2-char ``XY`` git status code to a single letter
+    we care about. Untracked (``??``) is treated as added; ``!!``
+    (ignored) is excluded by the caller's ``--no-ignored``-equivalent
+    via not having ``--ignored`` set. Any unrecognized combo returns
+    ``"?"`` and the submit module will skip it."""
+    x, y = xy[0], xy[1]
+    if x == "R" or y == "R":
+        return "R"
+    if "??" == xy:
+        return "A"
+    if y == "M" or x == "M":
+        return "M"
+    if y == "A" or x == "A":
+        return "A"
+    if y == "D" or x == "D":
+        return "D"
+    return "?"

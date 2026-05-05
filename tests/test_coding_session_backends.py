@@ -216,6 +216,288 @@ class TestLocalRoundTrip:
         assert not wt1.exists() and not wt2.exists()
 
 
+# ── Local read methods (5.4-c additions) ────────────────────────────
+
+
+class TestLocalListChangedPaths:
+
+    def test_clean_worktree_returns_empty(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+
+        assert backend.list_changed_paths(worktree_path=str(wt)) == []
+
+    def test_modified_file(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+        (wt / "README.md").write_text("modified content\n")
+
+        changes = backend.list_changed_paths(worktree_path=str(wt))
+        assert ("README.md", "M") in changes
+
+    def test_added_untracked_file(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+        (wt / "new_file.py").write_text("# brand new\n")
+
+        changes = backend.list_changed_paths(worktree_path=str(wt))
+        assert ("new_file.py", "A") in changes
+
+    def test_deleted_file(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+        (wt / "README.md").unlink()
+
+        changes = backend.list_changed_paths(worktree_path=str(wt))
+        assert ("README.md", "D") in changes
+
+    def test_mixed_changes(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+
+        (wt / "README.md").write_text("changed\n")           # M
+        (wt / "added_a.py").write_text("a\n")                # A
+        (wt / "added_b.py").write_text("b\n")                # A
+        # Cannot delete README.md when it's already modified, so
+        # use a different one — but only README exists in the base.
+        # Test the M+A combo (which is enough for coverage).
+
+        changes = dict(backend.list_changed_paths(worktree_path=str(wt)))
+        assert changes.get("README.md") == "M"
+        assert changes.get("added_a.py") == "A"
+        assert changes.get("added_b.py") == "A"
+
+
+class TestLocalReadFiles:
+
+    def test_read_worktree_file(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+        (wt / "README.md").write_text("agent's edit\n")
+
+        content = backend.read_worktree_file(
+            worktree_path=str(wt), path="README.md",
+        )
+        assert content == "agent's edit\n"
+
+    def test_read_worktree_file_missing(
+        self, fixture_repo: Path, tmp_path: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        wt = tmp_path / "wt"
+        backend.create_worktree(worktree_path=str(wt), base_sha=sha)
+
+        with pytest.raises(FileNotFoundError):
+            backend.read_worktree_file(
+                worktree_path=str(wt), path="not-here.py",
+            )
+
+    def test_read_base_file(self, fixture_repo: Path) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        content = backend.read_base_file(base_sha=sha, path="README.md")
+        assert content == "hello\n"
+
+    def test_read_base_file_missing_raises_filenotfound(
+        self, fixture_repo: Path,
+    ) -> None:
+        from app.coding_session import LocalWorktreeBackend
+
+        backend = LocalWorktreeBackend(repo_root=fixture_repo)
+        sha = backend.resolve_ref("main")
+        with pytest.raises(FileNotFoundError):
+            backend.read_base_file(base_sha=sha, path="never-existed.py")
+
+
+# ── Porcelain parser unit tests ─────────────────────────────────────
+
+
+class TestPorcelainParser:
+
+    def test_empty(self) -> None:
+        from app.coding_session.backends import _parse_porcelain_z
+
+        assert _parse_porcelain_z("") == []
+
+    def test_modified(self) -> None:
+        from app.coding_session.backends import _parse_porcelain_z
+
+        result = _parse_porcelain_z(" M README.md\0")
+        assert result == [("README.md", "M")]
+
+    def test_added_untracked(self) -> None:
+        from app.coding_session.backends import _parse_porcelain_z
+
+        result = _parse_porcelain_z("?? new.py\0")
+        assert result == [("new.py", "A")]
+
+    def test_deleted(self) -> None:
+        from app.coding_session.backends import _parse_porcelain_z
+
+        result = _parse_porcelain_z(" D README.md\0")
+        assert result == [("README.md", "D")]
+
+    def test_rename_consumes_two_entries(self) -> None:
+        from app.coding_session.backends import _parse_porcelain_z
+
+        # Renamed file: "R " status, new path entry, then old path entry
+        result = _parse_porcelain_z("R  new.py\0old.py\0")
+        # We emit only the new path with R kind; old name is consumed
+        assert result == [("new.py", "R")]
+
+    def test_path_with_space(self) -> None:
+        """The -z form is what makes paths-with-spaces parseable."""
+        from app.coding_session.backends import _parse_porcelain_z
+
+        result = _parse_porcelain_z(" M file with space.py\0")
+        assert result == [("file with space.py", "M")]
+
+
+# ── Bridge backend read methods (5.4-c additions) ───────────────────
+
+
+class TestBridgeBackendReadMethods:
+
+    def _backend_with_fake(self, fake: _FakeBridge):
+        from app.coding_session import BridgeWorktreeBackend
+
+        backend = BridgeWorktreeBackend(
+            repo_root="/host/repo", agent_id="test-coding",
+        )
+        backend._bridge = fake
+        return backend
+
+    def test_list_changed_paths_argv(self) -> None:
+        fake = _FakeBridge()
+        fake.responses[("git", "status")] = {
+            "returncode": 0,
+            "stdout": " M app/foo.py\0?? new.py\0",
+            "stderr": "",
+        }
+        backend = self._backend_with_fake(fake)
+
+        changes = backend.list_changed_paths(worktree_path="/tmp/wt/sess1")
+
+        assert ("app/foo.py", "M") in changes
+        assert ("new.py", "A") in changes
+        assert fake.calls[0]["argv"] == [
+            "git", "status", "--porcelain", "-z",
+        ]
+        assert fake.calls[0]["working_dir"] == "/tmp/wt/sess1"
+
+    def test_list_changed_paths_failure_raises(self) -> None:
+        fake = _FakeBridge()
+        fake.responses[("git", "status")] = {
+            "returncode": 128,
+            "stderr": "fatal: not a git repository",
+        }
+        backend = self._backend_with_fake(fake)
+
+        with pytest.raises(RuntimeError, match="git status failed"):
+            backend.list_changed_paths(worktree_path="/tmp/wt/sess1")
+
+    def test_read_worktree_file(self) -> None:
+        fake = _FakeBridge()
+        # `cat <full_path>` — argv[1] is dynamic, so key by argv[0] only
+        fake.responses_by_exe["cat"] = {
+            "returncode": 0,
+            "stdout": "hello world\n",
+            "stderr": "",
+        }
+        backend = self._backend_with_fake(fake)
+
+        content = backend.read_worktree_file(
+            worktree_path="/tmp/wt/sess1", path="app/foo.py",
+        )
+        assert content == "hello world\n"
+        # First (and only) call: cat <full_path>
+        call = fake.calls[0]
+        assert call["argv"][0] == "cat"
+        assert "app/foo.py" in call["argv"][1]
+
+    def test_read_worktree_file_missing_raises_filenotfound(self) -> None:
+        fake = _FakeBridge()
+        fake.responses_by_exe["cat"] = {
+            "returncode": 1,
+            "stderr": "cat: nope.py: No such file or directory",
+        }
+        backend = self._backend_with_fake(fake)
+
+        with pytest.raises(FileNotFoundError):
+            backend.read_worktree_file(
+                worktree_path="/tmp/wt/sess1", path="nope.py",
+            )
+
+    def test_read_base_file(self) -> None:
+        fake = _FakeBridge()
+        fake.responses[("git", "show")] = {
+            "returncode": 0,
+            "stdout": "old content\n",
+            "stderr": "",
+        }
+        backend = self._backend_with_fake(fake)
+
+        content = backend.read_base_file(
+            base_sha="b" * 40, path="README.md",
+        )
+        assert content == "old content\n"
+        call = fake.calls[0]
+        assert call["argv"] == ["git", "show", f"{'b' * 40}:README.md"]
+        assert call["working_dir"] == "/host/repo"
+
+    def test_read_base_file_missing_raises_filenotfound(self) -> None:
+        fake = _FakeBridge()
+        fake.responses[("git", "show")] = {
+            "returncode": 128,
+            "stderr": "fatal: Path 'never.py' does not exist",
+        }
+        backend = self._backend_with_fake(fake)
+
+        with pytest.raises(FileNotFoundError):
+            backend.read_base_file(base_sha="b" * 40, path="never.py")
+
+
 # ── BridgeWorktreeBackend ───────────────────────────────────────────
 
 
@@ -224,12 +506,16 @@ class _FakeBridge:
 
     Records every ``execute`` call so the tests can assert exact argv
     shape; lets the test pre-program responses keyed on the first
-    two args of ``argv``.
+    two args of ``argv`` OR just the first arg (for commands like
+    ``cat`` whose argv[1] is dynamic).
     """
 
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.responses: dict[tuple[str, str], dict] = {}
+        # Coarser keying — by argv[0] only. Used for tests that don't
+        # care about argv[1] specifics (e.g. cat <dynamic-path>).
+        self.responses_by_exe: dict[str, dict] = {}
         self.unavailable = False
 
     def is_available(self) -> bool:
@@ -249,10 +535,15 @@ class _FakeBridge:
         })
         if not argv:
             return {"returncode": 1, "stderr": "empty argv", "stdout": ""}
+        # 1) Specific (argv[0], argv[1]) match
         key = (argv[0], argv[1] if len(argv) > 1 else "")
-        return self.responses.get(
-            key, {"returncode": 0, "stdout": "", "stderr": ""},
-        )
+        if key in self.responses:
+            return self.responses[key]
+        # 2) Coarse argv[0]-only match
+        if argv[0] in self.responses_by_exe:
+            return self.responses_by_exe[argv[0]]
+        # 3) Default: success with empty output
+        return {"returncode": 0, "stdout": "", "stderr": ""}
 
 
 class TestBridgeBackendArgvShape:
