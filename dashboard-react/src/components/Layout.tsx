@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { to: '/notes', label: 'Notes', icon: '📝', exact: false },
   { to: '/wiki', label: 'Wiki', icon: '📖', exact: false },
   { to: '/forge', label: 'Forge', icon: '🔨', exact: false },
+  { to: '/coding-sessions', label: 'Sessions', icon: '🧪', exact: false },
 ];
 
 export function Layout() {
