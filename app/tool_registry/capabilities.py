@@ -122,6 +122,35 @@ CAPABILITIES: Final[dict[str, dict[str, str]]] = {
     "observability": {
         "reads-deployment-state": "Read git head + gateway uptime + recent crew outcomes + tool-registry size.",
     },
+
+    # ── code-development: agent-driven code modification with a    ──
+    #    human gate. Phase 5.4 — see docs/CODING_SESSIONS.md.
+    #    "Coding sessions" are ephemeral worktrees where the agent
+    #    iterates (read/write/run pytest/lint/typecheck) before
+    #    submitting through the change-request system. The single
+    #    escape hatch from sandbox to production is `submit`, which
+    #    routes through the existing Phase 5.3a human gate. Reads
+    #    and runs inside a worktree are sandboxed (allowlist + CPU +
+    #    wallclock + output cap + optional netns).
+    "code-development": {
+        "reads-coding-session": (
+            "Read files inside an ephemeral coding-session worktree."
+        ),
+        "writes-coding-session": (
+            "Write files inside an ephemeral coding-session worktree. "
+            "Worktree is sandboxed; writes never reach the live tree. "
+            "Submission via session_submit goes through the change-request "
+            "human gate."
+        ),
+        "runs-coding-session": (
+            "Execute commands inside an ephemeral coding-session worktree. "
+            "Sandboxed to allowlist; no network; bounded CPU/time."
+        ),
+        "submits-coding-session": (
+            "Bundle a coding-session diff and file change requests through "
+            "the human gate. Single escape hatch from sandbox to production."
+        ),
+    },
 }
 
 

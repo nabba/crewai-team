@@ -53,6 +53,7 @@ from app.coding_session.runner import (
     check_allowlist,
     run,
 )
+from app.coding_session import runtime
 from app.coding_session.submit import (
     ChangeRequestPort,
     DefaultChangeRequestPort,
@@ -76,4 +77,6 @@ __all__ = [
     "LocalWorktreeBackend", "BridgeWorktreeBackend",
     # submit
     "ChangeRequestPort", "DefaultChangeRequestPort", "submit_session",
+    # runtime
+    "runtime",
 ]
