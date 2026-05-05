@@ -53,6 +53,20 @@ from app.self_improvement.metrics import (
     pipeline_funnel, topic_diversity, novelty_histogram, health_summary,
     trajectory_health_summary,
 )
+# Meta-agent layer (Hyperagents-inspired, bounded variant). Opt-in via
+# META_AGENT=1 / META_AGENT_<CREW>=1 — default OFF; failsafe falls back
+# to factory-default dispatch on any error in the meta-agent path.
+# See app.self_improvement.meta_agent.__init__ for the full design memo
+# (including the safety boundary that distinguishes this from the
+# editable-meta variant of Hyperagents).
+from app.self_improvement.meta_agent import (
+    AgentRecipe, RecipeOutcome, RecipeSelection,
+    is_meta_agent_enabled,
+    select_recipe, apply_recipe, record_outcome as record_recipe_outcome,
+    upsert_recipe, list_recipes, list_outcomes,
+    scan_for_policy_gaps, propose_immutable_amendment,
+    SELECTION_THRESHOLDS,
+)
 
 __all__ = [
     # types
@@ -79,4 +93,11 @@ __all__ = [
     # metrics (Phase 6)
     "pipeline_funnel", "topic_diversity", "novelty_histogram", "health_summary",
     "trajectory_health_summary",
+    # meta-agent layer (bounded Hyperagents variant — opt-in via META_AGENT=1)
+    "AgentRecipe", "RecipeOutcome", "RecipeSelection",
+    "is_meta_agent_enabled",
+    "select_recipe", "apply_recipe", "record_recipe_outcome",
+    "upsert_recipe", "list_recipes", "list_outcomes",
+    "scan_for_policy_gaps", "propose_immutable_amendment",
+    "SELECTION_THRESHOLDS",
 ]

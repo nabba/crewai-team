@@ -5,6 +5,8 @@ import {
   useOrgChartQuery,
   useDelegationSettingsQuery,
   useSetDelegationSetting,
+  useMetaAgentSettingsQuery,
+  useSetMetaAgentSetting,
 } from '../api/queries';
 import { CREW_REGISTRY, crewMeta, type CrewKind } from '../crews';
 
@@ -267,6 +269,148 @@ function DelegationPanel() {
   );
 }
 
+// ── Meta-Agent toggles ──────────────────────────────────────────────────────
+// When ON, run_single_agent_crew routes through the meta-agent selector —
+// picks a learned recipe (force_tier × extra_tools × task_hint) from
+// cross-run history and applies it as a bounded augmentation on top of the
+// existing agent factory.  Orthogonal to delegation; meta-agent fires only
+// on the single-agent dispatch path.
+
+const META_AGENT_DESCRIPTIONS: Record<string, string> = {
+  research:
+    'Learn which research recipe (LLM tier, task hint, extra tools) works best for similar topics across runs. UCB1 + similarity selection. Cold-start prefers factory defaults until the baseline arm has enough evidence.',
+  coding:
+    'Learn which coding recipe wins for similar tasks (e.g. premium tier for refactors, local tier for one-shot scripts). Bounded — never edits backstory or LLM rules.',
+  writing:
+    'Learn which writing recipe fits the task type (briefer prompt for posts, premium tier + extended deadline for long-form). Recipes never replace the writer factory; they augment it.',
+};
+
+function MetaAgentPanel() {
+  const { data, isLoading, error } = useMetaAgentSettingsQuery();
+  const setMut = useSetMetaAgentSetting();
+  const settings = data?.settings ?? {};
+  const masterEnvOn = data?.master_env_on ?? false;
+  const envOverrides = data?.env_overrides ?? {};
+  const noSettings = !isLoading && !error && Object.keys(settings).length === 0;
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-lg p-5">
+      <div className="mb-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-[#e2e8f0]">Meta-Agent</h2>
+          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-[#3b82f6]/20 text-[#60a5fa]">
+            EXPERIMENTAL
+          </span>
+        </div>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Cross-run recipe learning over force_tier × extra_tools × task_hint.
+          Bounded augmentation on top of the agent factory — never replaces it.
+          Orthogonal to delegation: only fires on the single-agent dispatch path.
+        </p>
+        {masterEnvOn && (
+          <p className="text-xs text-[#fbbf24] mt-2">
+            <strong>META_AGENT=1</strong> env var is set — all crews are forced
+            ON regardless of these toggles.
+          </p>
+        )}
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-24" />
+      ) : error ? (
+        <p className="text-xs text-[#f87171]">
+          Endpoint unavailable: <code>{(error as Error).message}</code>.
+          Restart the gateway to pick up the new <code>/api/cp/meta-agent</code> route.
+        </p>
+      ) : noSettings ? (
+        <p className="text-xs text-[#7a8599] italic">
+          No crews configured. The gateway may need to be restarted to register
+          the new endpoint.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {Object.entries(settings).map(([crew, enabled]) => {
+            const desc = META_AGENT_DESCRIPTIONS[crew] ?? '';
+            const pending = setMut.isPending && setMut.variables?.crew === crew;
+            const envOverride = envOverrides[crew];
+            const hasEnvOverride = envOverride !== undefined;
+            // Effective state: env override wins; otherwise master env wins;
+            // otherwise the JSON toggle.
+            const effectivelyOn = hasEnvOverride
+              ? envOverride === '1'
+              : masterEnvOn || enabled;
+            return (
+              <div
+                key={crew}
+                className={`flex items-start gap-3 p-3 rounded border ${
+                  effectivelyOn
+                    ? 'bg-[#60a5fa]/5 border-[#60a5fa]/30'
+                    : 'bg-[#0a0e14] border-[#1e2738]'
+                }`}
+              >
+                <button
+                  disabled={pending || hasEnvOverride}
+                  onClick={() => setMut.mutate({ crew, enabled: !enabled })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
+                    enabled ? 'bg-[#60a5fa]' : 'bg-[#1e2738]'
+                  } ${
+                    pending || hasEnvOverride
+                      ? 'cursor-not-allowed opacity-60'
+                      : 'cursor-pointer'
+                  }`}
+                  aria-label={`Toggle meta-agent for ${crew}`}
+                  title={
+                    hasEnvOverride
+                      ? `Locked by env: META_AGENT_${crew.toUpperCase()}=${envOverride}`
+                      : undefined
+                  }
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                      enabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-[#e2e8f0] capitalize">
+                      {crew}
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        effectivelyOn
+                          ? 'bg-[#60a5fa]/20 text-[#60a5fa]'
+                          : 'bg-[#1e2738] text-[#7a8599]'
+                      }`}
+                    >
+                      {effectivelyOn ? 'META-AGENT ON' : 'FACTORY DEFAULTS'}
+                    </span>
+                    {hasEnvOverride && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-[#fbbf24]/20 text-[#fbbf24]"
+                        title={`META_AGENT_${crew.toUpperCase()}=${envOverride}`}
+                      >
+                        ENV LOCK
+                      </span>
+                    )}
+                  </div>
+                  {desc && <p className="text-xs text-[#7a8599] mt-1">{desc}</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {setMut.isError && (
+        <p className="text-xs text-[#f87171] mt-2">
+          Failed to toggle: {(setMut.error as Error).message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function OrgChart() {
   const { data: agents, isLoading, error, refetch } = useOrgChartQuery();
   const roots = agents ? buildMergedTree(agents) : [];
@@ -308,6 +452,8 @@ export function OrgChart() {
       </div>
 
       <DelegationPanel />
+
+      <MetaAgentPanel />
     </div>
   );
 }

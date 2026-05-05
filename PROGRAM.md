@@ -279,3 +279,96 @@ rule the constitution and `eval_sandbox` already enforce.
 Full design notes: see `docs/EPISTEMIC_INTEGRITY.md` § "PCH layer
 tagging ships". Operator-side fields (migration list, bias count)
 updated in `docs/EPISTEMIC.md`.
+
+---
+
+## 14. 2026-05 Self-Healing Pass (mid-iteration tool repair + runbook dispatch)
+
+A two-track addition that closes the gap between the existing Recovery
+Loop (refusal-shaped *final answers*, post-vetting) and the Error
+Monitor (signature-grouped error *aggregates*, batch-detected). The
+gap was the *individual tool exception* during a CrewAI iteration —
+which today just becomes the next observation in the agent's loop —
+and the *aggregated pattern* once the monitor groups it — which today
+only surfaces to humans on `/cp/ops`. Both halves shipped together,
+both opt-in via env flag.
+
+| Component | What landed |
+|---|---|
+| **A — Tool Supervisor** | New `app/tool_runtime/supervisor.py`. Wraps every callable in CrewAI's `available_functions` (the dict `_handle_native_tool_calls` consumes). On exception: classify (`rate_limit | auth | network | timeout | schema | unknown`) → exp-backoff retry for transient classes → registry-driven substitute lookup via `ToolRegistry.filter(capabilities=spec.capabilities, tier_at_most=spec.tier)` → soft-fail with structured tool-result string (NOT raise). Audit actor `tool_supervisor`. ContextVar recursion guard mirrors the Recovery Loop's pattern. |
+| **A — wiring** | Four-site edit in `app/tool_runtime/loadable_executor.py` (lines 97, 121, 219, 244 — sync + async, initial + dirty re-render) calling `supervise_available_functions(...)`. No-op when `TOOL_SUPERVISOR_ENABLED` is unset (returns the original dict by identity). |
+| **B — Runbook Dispatcher** | Extension to `app/self_heal.py`: `register_runbook(name, pattern, handler)`, `maybe_run_runbook(anomaly)`, `RunbookResult` dataclass, `_runbook_log_only` reference handler. Dispatches a daemon thread when 7 safety gates pass (env flag, severity≠info, pattern match, handler exists, per-runbook enabled, recurrence ≥ N in 24h, success rate ≥ 50%). Concurrency cap of 1 runbook in flight (stricter than `diagnose_and_fix`'s diagnosis cap of 2). Audit actor `self_heal_runbook`. |
+| **B — wiring** | One-site edit in `app/observability/error_monitor.py:_record_anomaly` (after the `INSERT INTO control_plane.error_anomalies`). Wrapped in try/except so a runbook failure can never break anomaly recording. |
+| **State files** | `workspace/self_heal/runbook_settings.json` (per-runbook `enabled` flag + `min_recurrence`; missing entry defaults to disabled) and `workspace/self_heal/runbook_stats.json` (last 10 outcomes per runbook for success-rate gate). JSON, not Postgres — keeps cross-process visibility cheap and matches the recovery loop's `refusal_frequency.json` precedent. |
+| **Reference runbook** | `log_only` is auto-registered with a catch-all `.*` pattern and `enabled: true` in defaults. It logs the trigger and writes an outcome row but takes no other action — purpose is to verify the dispatch wiring end-to-end without changing system state. Operators replace or narrow it once real runbooks (`restart_pool`, `force_reconcile_outbox`, …) are registered from boot code. |
+| **Env flags** | `TOOL_SUPERVISOR_ENABLED` (default off; `=true` activates the wrapper, with `TOOL_SUPERVISOR_MAX_RETRIES=2`, `TOOL_SUPERVISOR_BACKOFF_MS=500`). `ERROR_RUNBOOKS_ENABLED` (default off; `=true` activates `maybe_run_runbook` post-INSERT). Both flipped to `true` in production `.env` on 2026-05-05 after the rebuild. Recovery Loop precedent — env flag is the kill switch. |
+| **Composition** | A and B are disjoint: A handles raised exceptions inside an iteration; B handles aggregated patterns from the monitor; the existing Recovery Loop continues to handle refusal-shaped final answers post-vetting. All three layers can fire on the same task. Substitute calls in A run un-supervised via a ContextVar guard, mirroring the Recovery Loop's `_in_recovery` pattern. |
+| **Tests** | New `tests/test_tool_supervisor.py` (20 tests) + `tests/test_self_heal_runbooks.py` (21 tests). Cover classify, retry, substitute (incl. recursion guard), audit emission, every gate of the runbook dispatcher, end-to-end happy path with handler execution + stats persistence, registration helpers. **41 new tests, all pass.** Pre-existing 26 recovery-loop tests still pass (composition is intact). 4 unrelated failures in `test_self_healing_comprehensive.py` (ThreadPoolExecutor naming audit on other files; not touched by this pass). |
+| **Documentation** | RECOVERY_LOOP.md gains §17 "Composition with the Tool Supervisor" + See-also entry. ERROR_MONITOR.md gains §11 "Runbook dispatch" (gates, audit actions, log_only, how to add a real runbook, constraints, code pointers) + architecture diagram updated to show the hook. CLAUDE.md gains a bullet under Architecture and a line under Operational Perimeter. |
+
+**Design boundary held:** runbook handlers are operator-authored and
+must NOT modify any path in `app/auto_deployer.TIER_IMMUTABLE` — see
+`CLAUDE.md` § "Critical Safety Invariant". The dispatcher itself
+makes no LLM calls and is pure Python, keeping remediation cheap,
+deterministic, and auditable. If a remediation needs reasoning, it
+should propose a code change via `app/proposals.py` (the same path
+`diagnose_and_fix` already uses for `fix_type=code`).
+
+**Verification on prod gateway** (post-rebuild, 2026-05-05):
+`supervisor.is_enabled() == True`, `runbooks_enabled() == True`,
+`log_only` registered, `error_monitor` warm-up back-filled 464 records
+across 51 signatures, no startup errors. Audit query
+`/api/cp/audit?actor=tool_supervisor` and
+`/api/cp/audit?actor=self_heal_runbook` are the two operational
+windows; expect first `dispatch.started` for `log_only` within hours
+of activation given the warm-up signature population.
+
+Full design notes: `docs/RECOVERY_LOOP.md` §17 (Tool Supervisor) and
+`docs/ERROR_MONITOR.md` §11 (Runbook dispatcher).
+
+---
+
+## 15. 2026-05 Meta-agent layer (Hyperagents bounded variant)
+
+A bounded port of **Hyperagents** (arXiv:2603.19461, Zhang et al.,
+Meta — March 2026). The paper proposes a self-referential agent that
+makes the meta-level modification procedure itself editable; we ship
+the **non-recursive layer only** because the editable-meta variant
+directly conflicts with the program's "evaluation lives at
+infrastructure level, never agent-modifiable" invariant (§7).
+
+The empirical benefit the paper reports — persistent recipe memory +
+performance tracking that **accumulate across runs** — survives the
+restriction. What does not survive is the recursive editing of the
+selector itself; that becomes operator-action-only via written
+amendment proposals.
+
+| Component | What landed |
+|---|---|
+| Package | `app/self_improvement/meta_agent/` (9 modules + `meta_agent_settings.py`). Re-exported from `app.self_improvement` so callers see one subsystem. |
+| Data model | `AgentRecipe` (id + crew + bounded knobs + denormalised counters), `RecipeOutcome` (append-only ledger), `RecipeSelection` (audit-trail summary). Persisted in Postgres + indexed in ChromaDB by `task_signature`. |
+| Selector | UCB1 × similarity argmax with ε-greedy explore. Thresholds (`similarity_tau=0.55`, `epsilon=0.10`, `ucb_c=1.4`) live as a module-level `SELECTION_THRESHOLDS` constant — same convention as `NOVELTY_THRESHOLDS`. The selector is part of the protected core. |
+| Bounded augmentation | Recipes adjust only `force_tier`, `extra_tools`, `task_hint`, `max_execution_time` — knobs the agent factory and `run_single_agent_crew` already expose. The factory itself (`create_coder` etc.) is unreachable. |
+| Wiring | `base_crew.run_single_agent_crew` gains ~50 lines behind `is_meta_agent_enabled(crew_name)`. Default OFF; failsafe falls back to factory defaults on any error. |
+| Feature flag | Three layers: `META_AGENT_<CREW>` env (ops override) → `META_AGENT` env (master) → JSON (`workspace/meta_agent_settings.json`, dashboard surface) → default OFF. |
+| HTTP API | `GET /api/cp/meta-agent` + `POST /api/cp/meta-agent/{crew}` in `dashboard_api.py`. GET surfaces `master_env_on` + `env_overrides` so the React panel can flag env-locked toggles. |
+| React surface | `OrgChart.tsx` gains a `MetaAgentPanel` next to `DelegationPanel`. Blue accent, `EXPERIMENTAL` badge, `ENV LOCK` indicator when env-overridden. |
+| Amendment flow | `policy_gap.py` + `amendment.py`. When a recipe with high success rate is blocked by an immutable rule, the meta-agent renders a Markdown proposal (diagnosis + suggested edit + risk + reversal plan) via `app.proposals.create_proposal` with `files=None`. **Operator-action-only — no code change auto-applies.** |
+| Operator hand-off | `workspace/proposals/meta_agent/AMENDMENT_protect_meta_agent.md` — proposes adding the meta-agent files themselves to `TIER_IMMUTABLE` for defense-in-depth. Apply by hand if you agree. |
+| Tests | `tests/test_meta_agent.py` — 32 tests covering types, feature flag, selector (cold-start + steady-state + ε-greedy), apply, policy_gap, amendment rendering, recorder. **All 32 green.** Existing `test_self_improvement_integration` + `test_plugin_registry` + `test_tool_first` (59 tests) confirm no regression in the base_crew path — **91 tests green total.** |
+
+**Design boundary held.** The selector's exploration constants, the
+recipe schema, and the bounded augmentation set are all infrastructure
+constants. The recipes the system can apply are bounded by the
+factory's existing parameters; the agent factory output is the floor;
+the meta-agent never edits its own selection logic. Same character of
+restriction the constitution and `eval_sandbox` already enforce.
+
+**Orthogonal to delegation.** Delegation splits one crew dispatch
+into Coordinator + specialists (~2× LLM calls, structural). The
+meta-agent picks a learned configuration for one agent (~1 extra
+embedding call, temporal). They can be on independently; meta-agent
+fires only on the single-agent dispatch path so when delegation is ON
+the meta-agent skips that crew.
+
+Full design notes: [`docs/META_AGENT_LAYER.md`](docs/META_AGENT_LAYER.md).

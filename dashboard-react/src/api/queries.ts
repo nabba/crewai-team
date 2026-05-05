@@ -240,6 +240,42 @@ export function useSetDelegationSetting() {
   });
 }
 
+// ── Meta-agent toggles (Org Chart page) ─────────────────────────────────────
+// When ON for a crew, run_single_agent_crew routes through the meta-agent
+// selector — picks a learned recipe from cross-run history, applies it as a
+// bounded augmentation. Orthogonal to delegation. See
+// app/self_improvement/meta_agent/.
+//
+// `master_env_on` and `env_overrides` reflect the env-var layer; when set,
+// the JSON toggle has no effect for that crew until the env var is unset.
+export interface MetaAgentSettings {
+  settings: Record<string, boolean>;
+  master_env_on: boolean;
+  env_overrides: Record<string, string>;
+}
+
+export function useMetaAgentSettingsQuery() {
+  return useQuery({
+    queryKey: ['meta-agent-settings'] as const,
+    queryFn: () => api<MetaAgentSettings>(endpoints.metaAgentSettings()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useSetMetaAgentSetting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ crew, enabled }: { crew: string; enabled: boolean }) =>
+      api<MetaAgentSettings & { crew: string; enabled: boolean }>(
+        endpoints.metaAgentCrew(crew),
+        { method: 'POST', body: JSON.stringify({ enabled }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['meta-agent-settings'] });
+    },
+  });
+}
+
 // ── Costs ───────────────────────────────────────────────────────────────────
 export function useDailyCostsQuery(days = 30, projectId?: string) {
   return useQuery({

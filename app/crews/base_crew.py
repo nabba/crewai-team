@@ -746,8 +746,62 @@ def run_single_agent_crew(
     from app.llm_mode import get_mode
     from app.crews.lifecycle import crew_lifecycle
 
+    # Meta-agent layer (opt-in, default OFF). When META_AGENT=1 (or
+    # META_AGENT_<CREW>=1), the selector picks a recipe to apply on top
+    # of the agent factory's output. The recipe is a BOUNDED augmentation
+    # — it can only adjust force_tier, extra_tools, task_template prefix,
+    # and max_execution_time. The factory itself is never replaced.
+    # Failsafe: any error in the meta-agent path falls through to the
+    # factory-default flow with no observable difference.
+    _meta_selection = None
+    _meta_aug = None
+    try:
+        from app.self_improvement.meta_agent.feature_flag import is_meta_agent_enabled
+        if is_meta_agent_enabled(crew_name):
+            from app.self_improvement.meta_agent.selector import select_recipe
+            from app.self_improvement.meta_agent.apply import apply_recipe
+            _meta_selection = select_recipe(
+                crew_name=crew_name,
+                task_description=task_description,
+            )
+            _meta_aug = apply_recipe(
+                crew_name=crew_name,
+                recipe=_meta_selection.chosen,
+            )
+    except Exception:
+        logger.debug(
+            "meta_agent: select/apply failed in run_single_agent_crew; "
+            "using factory defaults", exc_info=True,
+        )
+        _meta_selection = None
+        _meta_aug = None
+
     force_tier = difficulty_to_tier(difficulty, get_mode())
+    if _meta_aug is not None and _meta_aug.force_tier_override:
+        force_tier = _meta_aug.force_tier_override
+
+    if _meta_aug is not None and _meta_aug.task_template_prefix:
+        # Prepend the recipe's hint to the task template. The {user_input}
+        # placeholder still lives in the original template — we only
+        # prefix.
+        task_template = _meta_aug.task_template_prefix + task_template
+
+    if _meta_aug is not None and _meta_aug.extra_tools:
+        # Merge the recipe's resolved extra tools into the caller-supplied
+        # extra_tools channel. The existing dedup-by-name pass below
+        # handles overlap with plugin tools.
+        extra_tools = list(extra_tools or []) + list(_meta_aug.extra_tools)
+
     agent = create_agent_fn(force_tier=force_tier)
+
+    if _meta_aug is not None and _meta_aug.max_execution_time:
+        # Best-effort: not every agent class exposes this attribute.
+        try:
+            agent.max_execution_time = int(_meta_aug.max_execution_time)
+        except Exception:
+            logger.debug(
+                "meta_agent: agent.max_execution_time set failed", exc_info=True,
+            )
 
     # Inject plugin tools (MCP, browser, etc.) into the agent.
     # NOTE: The monkey-patched Agent.__init__ already injects these, so
@@ -847,6 +901,25 @@ def run_single_agent_crew(
                 )
             except Exception:
                 pass  # observational; never block the failure path
+            # Meta-agent: record the failed outcome before re-raising.
+            # Best-effort; never blocks the user-facing exception path.
+            if _meta_selection is not None:
+                try:
+                    from app.self_improvement.meta_agent.recorder import record_outcome
+                    record_outcome(
+                        selection=_meta_selection,
+                        crew_name=crew_name,
+                        task_id=_ctx.task_id,
+                        task_description=task_description,
+                        success=False,
+                        duration_s=_time_mod.monotonic() - _crew_start,
+                        error_signature=type(exc).__name__,
+                    )
+                except Exception:
+                    logger.debug(
+                        "meta_agent: record_outcome (fail path) raised",
+                        exc_info=True,
+                    )
             raise
 
         # Crew completed normally — log the success.
@@ -859,6 +932,24 @@ def run_single_agent_crew(
             )
         except Exception:
             pass
+
+        # Meta-agent: record the successful outcome. Failsafe.
+        if _meta_selection is not None:
+            try:
+                from app.self_improvement.meta_agent.recorder import record_outcome
+                record_outcome(
+                    selection=_meta_selection,
+                    crew_name=crew_name,
+                    task_id=_ctx.task_id,
+                    task_description=task_description,
+                    success=True,
+                    duration_s=_time_mod.monotonic() - _crew_start,
+                )
+            except Exception:
+                logger.debug(
+                    "meta_agent: record_outcome (success path) raised",
+                    exc_info=True,
+                )
 
         # Tool-First enforcement: if the agent refused without calling tools, retry once
         # with an explicit nudge listing the tools it has.

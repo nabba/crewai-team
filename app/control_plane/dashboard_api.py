@@ -364,6 +364,68 @@ def set_delegation_setting(crew: str, body: DelegationUpdate):
         raise HTTPException(500, f"delegation toggle failed: {exc}")
 
 
+# ── Meta-agent toggles (shown on Org Chart page) ─────────────────────────────
+# When ON for a crew, run_single_agent_crew routes through the meta-agent
+# selector — picks a learned recipe (force_tier × extra_tools × task_hint)
+# from cross-run history, applies it as a bounded augmentation, records the
+# outcome. Orthogonal to delegation: meta-agent fires only on the
+# single-agent dispatch path.  See app/self_improvement/meta_agent/.
+#
+# Resolution order (see feature_flag.is_meta_agent_enabled): per-crew
+# env override → master env → persisted JSON (this endpoint) → OFF.
+
+class MetaAgentUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/meta-agent")
+def get_meta_agent_settings():
+    """Return current meta-agent state for every supported crew.
+
+    Includes ``master_env_on`` and per-crew env overrides so the Org
+    Chart can render an "env override active" badge — the JSON toggle
+    has no effect when an env var is set.
+    """
+    try:
+        from app.self_improvement.meta_agent import (
+            meta_agent_settings, is_master_on, explicit_flag_for,
+        )
+        settings = meta_agent_settings.get_all()
+        env_overrides = {
+            crew: explicit_flag_for(crew)
+            for crew in settings
+            if explicit_flag_for(crew) is not None
+        }
+        return {
+            "settings": settings,
+            "master_env_on": is_master_on(),
+            "env_overrides": env_overrides,
+        }
+    except Exception as exc:
+        raise HTTPException(500, f"meta-agent settings unavailable: {exc}")
+
+
+@router.post("/meta-agent/{crew}")
+def set_meta_agent_setting(crew: str, body: MetaAgentUpdate):
+    """Enable or disable the meta-agent path for a specific crew.
+
+    Note: this writes to the JSON layer only. If a per-crew env
+    override is set, the JSON change has no effect until the env var
+    is unset. The GET response surfaces ``env_overrides`` so the UI
+    can flag this state.
+    """
+    try:
+        from app.self_improvement.meta_agent import meta_agent_settings
+        updated = meta_agent_settings.set_enabled(crew, body.enabled)
+        if crew not in updated:
+            raise HTTPException(404, f"unknown crew: {crew}")
+        return {"settings": updated, "crew": crew, "enabled": body.enabled}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"meta-agent toggle failed: {exc}")
+
+
 # ── System Health (aggregated from existing systems) ─────────────────────────
 
 @router.get("/health")

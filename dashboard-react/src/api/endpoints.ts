@@ -31,6 +31,8 @@ export const endpoints = {
   orgChart: () => `${CP}/org-chart`,
   delegationSettings: () => `${CP}/delegation`,
   delegationCrew: (crew: string) => `${CP}/delegation/${encodeURIComponent(crew)}`,
+  metaAgentSettings: () => `${CP}/meta-agent`,
+  metaAgentCrew: (crew: string) => `${CP}/meta-agent/${encodeURIComponent(crew)}`,
   costsDaily: (days = 30, projectId?: string) =>
     projectId
       ? `${CP}/costs/daily?days=${days}&project_id=${encodeURIComponent(projectId)}`
