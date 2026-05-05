@@ -86,23 +86,151 @@ def list_workspaces():
         logger.debug("workspace_api: CP reconcile skipped: %s", e)
 
     # 2. Snapshot the registry and enrich with display names.
+    #
+    # Defensive dedup: in some pre-restart states the in-memory ``_gates``
+    # registry ends up with two snapshots whose serialized project_ids
+    # collide — typically one freshly-reconciled gate (cycle 0, capacity
+    # 3, fallback display) plus one runtime-populated gate (cycle > 0,
+    # actual capacity, display from CP). The dashboard would render both
+    # as separate tabs, which is confusing.
+    #
+    # The fix: collapse by ``(project_id, display_name_resolved_to_real_name)``
+    # and keep the snapshot with the most signal — higher cycle wins,
+    # ties broken by larger active_count, then capacity. The "real name"
+    # is what _project_display_name resolves the pid to (e.g. "default"
+    # for the UUID 676a8f70-…); two snapshots that resolve to the same
+    # real name AND share their project_id are the same logical gate.
     try:
         workspaces = _list_ws()
         name_cache: dict[str, str] = {}
+
+        # Collect (key, display, snapshot) once per dict entry.
+        rows: list[tuple[str, str, dict]] = [
+            (pid, _project_display_name(pid, name_cache), snap)
+            for pid, snap in workspaces.items()
+        ]
+
+        # Dedup key: the resolved display name is the canonical
+        # identity. Two entries resolving to the same display (e.g.
+        # both "default") are the same project regardless of how they
+        # got into the registry.
+        best: dict[str, tuple[str, str, dict]] = {}
+        for pid, display, snap in rows:
+            key = display  # canonical identity
+            existing = best.get(key)
+            if existing is None:
+                best[key] = (pid, display, snap)
+                continue
+            # Pick the snapshot with more signal.
+            ex_pid, _ex_display, ex_snap = existing
+            new_score = (
+                int(snap.get("cycle", 0)),
+                int(snap.get("active_count", 0)),
+                int(snap.get("capacity", 0)),
+            )
+            ex_score = (
+                int(ex_snap.get("cycle", 0)),
+                int(ex_snap.get("active_count", 0)),
+                int(ex_snap.get("capacity", 0)),
+            )
+            if new_score > ex_score:
+                best[key] = (pid, display, snap)
+            # If the existing pid is a UUID but the new pid is also a
+            # UUID with same display, prefer whichever scored higher.
+            # We don't try to mutate _gates here — that's a separate
+            # cleanup concern; this endpoint is read-only.
+
+        deduped = [
+            {
+                "project_id": pid,
+                "display_name": display,
+                **snap,
+            }
+            for pid, display, snap in best.values()
+        ]
+
+        if len(deduped) < len(rows):
+            logger.info(
+                "workspace_api: deduped %d snapshots → %d workspaces "
+                "(stale duplicate gates in memory; restart gateway "
+                "or call /api/_workspaces_dedup to GC).",
+                len(rows), len(deduped),
+            )
+
         return {
-            "workspaces": [
-                {
-                    "project_id": pid,
-                    "display_name": _project_display_name(pid, name_cache),
-                    **snapshot,
-                }
-                for pid, snapshot in workspaces.items()
-            ],
-            "count": len(workspaces),
+            "workspaces": deduped,
+            "count": len(deduped),
         }
     except Exception as e:
         logger.warning(f"workspace_api: list failed: {e}")
         return {"workspaces": [], "count": 0}
+
+
+@router.post("/workspaces/_dedup")
+def dedup_workspace_registry():
+    """Prune duplicate-resolving gates from the in-memory ``_gates`` dict.
+
+    Operator-facing GC: when two gates resolve to the same display name
+    (e.g. an empty UUID-keyed gate from the API reconcile and a
+    populated name-keyed gate from a legacy code path), keep the one
+    with more signal and drop the other. Returns a summary of what
+    was removed.
+
+    Read-only API endpoints stay defensive (the list endpoint dedupes
+    in its serializer) — but this lets the operator actually clean
+    up the underlying registry without a gateway restart.
+    """
+    try:
+        from app.subia.scene.buffer import _gates, _gates_lock
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"buffer import failed: {exc}"
+        )
+
+    name_cache: dict[str, str] = {}
+    removed: list[dict] = []
+
+    with _gates_lock:
+        # Build groups keyed on resolved display name.
+        groups: dict[str, list[tuple[str, dict]]] = {}
+        for pid, gate in _gates.items():
+            display = _project_display_name(pid, name_cache)
+            snap = gate.get_snapshot()
+            groups.setdefault(display, []).append((pid, snap))
+
+        for display, members in groups.items():
+            if len(members) <= 1:
+                continue
+            # Keep the highest-signal entry; drop the rest.
+            members.sort(
+                key=lambda kv: (
+                    int(kv[1].get("cycle", 0)),
+                    int(kv[1].get("active_count", 0)),
+                    int(kv[1].get("capacity", 0)),
+                ),
+                reverse=True,
+            )
+            keeper_pid, keeper_snap = members[0]
+            for pid, snap in members[1:]:
+                _gates.pop(pid, None)
+                removed.append({
+                    "removed_pid": pid,
+                    "kept_pid": keeper_pid,
+                    "display": display,
+                    "removed_cycle": snap.get("cycle"),
+                    "kept_cycle": keeper_snap.get("cycle"),
+                })
+
+    if removed:
+        logger.info(
+            "workspace_api: deduped %d stale gates: %s",
+            len(removed),
+            ", ".join(
+                f"{r['display']!r} dropped {r['removed_pid']!r}"
+                for r in removed
+            ),
+        )
+    return {"removed": removed, "removed_count": len(removed)}
 
 
 # ── Create new workspace ─────────────────────────────────────────────────────
