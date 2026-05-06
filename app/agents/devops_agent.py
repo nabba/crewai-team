@@ -1,6 +1,7 @@
 """devops_agent.py — DevOps agent (build, test, deploy, CI/CD)."""
 
 from crewai import Agent
+from app.agents._common import optional_tool_group
 from app.llm_factory import create_specialist_llm
 from app.tools.code_executor import execute_code
 from app.tools.file_manager import file_manager
