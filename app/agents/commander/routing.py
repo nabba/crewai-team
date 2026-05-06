@@ -132,6 +132,29 @@ _FAST_ROUTE_PATTERNS = [
     (re.compile(r"^(?:check|read|send|reply|forward)\s+(?:my\s+)?(?:email|inbox|mail)", re.IGNORECASE), "pim", 3),
     (re.compile(r"^(?:check|show|create|schedule|cancel)\s+(?:my\s+)?(?:calendar|events?|meetings?|appointments?)", re.IGNORECASE), "pim", 3),
     (re.compile(r"^(?:add|create|show|list|complete|update|delete)\s+(?:a\s+)?tasks?", re.IGNORECASE), "pim", 2),
+    # Company dossier → company_dossier (matched BEFORE the financial
+    # rule because the financial rule matches the bare word
+    # "investment" and would otherwise capture "investment-grade
+    # report on X" before this more specific rule runs).
+    #
+    # Targets the "produce a structured report on one company" shape:
+    #   * "dossier for X" / "X dossier"
+    #   * "due diligence on X"
+    #   * "investment-grade overview/report/review of X"
+    #   * "company profile/review/report/overview of X"
+    #   * "investor report/brief on X"
+    # Does NOT match ad-hoc analyst queries (P/E, DCF, "what was X's
+    # earnings last quarter?") — those still route to ``financial``.
+    (re.compile(
+        r"(?:"
+        r"\bdossier\b"
+        r"|\bdue[\s-]+diligence\b"
+        r"|\binvestment[\s-]+grade\b"
+        r"|\b(?:company|investor|investment)[\s-]+(?:profile|overview|review|report|brief)\b"
+        r"|\b(?:profile|overview|review|report|brief)\s+of\s+(?:the\s+)?company\b"
+        r")",
+        re.IGNORECASE,
+    ), "company_dossier", 7),
     # Financial analysis → financial
     (re.compile(r"(?:stock|market|financial|investment|portfolio|SEC|earnings|valuation|DCF|P/E)", re.IGNORECASE), "financial", 6),
     # Desktop automation → desktop
@@ -505,7 +528,7 @@ def _recover_truncated_routing(raw: str) -> list[dict] | None:
 
         if matches:
             decisions = []
-            valid_crews = {"research", "coding", "writing", "media", "direct", "creative", "pim", "financial", "desktop", "repo_analysis", "devops"}
+            valid_crews = {"research", "coding", "writing", "media", "direct", "creative", "pim", "financial", "company_dossier", "desktop", "repo_analysis", "devops"}
             for crew, task, diff in matches:
                 if crew in valid_crews and task:
                     decisions.append({
@@ -635,6 +658,12 @@ _CREW_BASE_PURPOSE: dict[str, str] = {
                  "when the user wants exploration, not transcription)",
     "pim":       "email triage, calendar management, task tracking",
     "financial": "stock data, financial analysis, SEC filings, valuation models, investment reports",
+    "company_dossier": (
+        "investment-grade company DOSSIER: structured 10-15 page PDF with sourced "
+        "history, financials, market data, ownership, funding, and competitor comparison. "
+        "Pick over 'financial' when the user wants a complete report on one company "
+        "(due diligence, M&A targets, portfolio reviews) rather than ad-hoc analyst chat."
+    ),
     "desktop":   "macOS desktop automation via AppleScript",
     "repo_analysis": "clone and analyze GitHub repositories: tech stack, architecture, metrics, diagrams",
     "devops":    "scaffold projects, build, test, package, deploy to cloud/GitHub, generate CI/CD configs",

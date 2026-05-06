@@ -372,3 +372,57 @@ fires only on the single-agent dispatch path so when delegation is ON
 the meta-agent skips that crew.
 
 Full design notes: [`docs/META_AGENT_LAYER.md`](docs/META_AGENT_LAYER.md).
+
+---
+
+## 16. 2026-05 Company Dossier subsystem
+
+A deterministic pipeline that produces an investment-grade,
+source-attributed company report (10–15 page PDF) from a single
+natural-language request. Distinct from the open-ended `financial`
+crew (analyst chat, ad-hoc ratios) — the dossier subsystem scopes the
+LLM to **prose composition only** and treats a typed
+`CompanyDossier` as the contract between data and prose.
+
+The motivating problem: a typical "agent assembles a company report"
+flow hallucinates numbers, mixes incompatible metrics across peers,
+and produces output the reader can't audit. A typed structured
+dossier with per-field provenance + a strict-citation composer +
+post-composition fact-check pass closes all three gaps without
+removing the LLM from the prose-quality loop.
+
+| Component | What landed |
+|---|---|
+| Package | `app/dossier/` — schema, collector, peers, sections, compose, typeset, pipeline, tools (8 modules) + `app/dossier/adapters/` (7 modules: 6 free-tier adapters + base/registry). |
+| Schema | `CompanyDossier` (33 typed fields, each a `DossierField[T]` with `{value, source, confidence, as_of, conflicts}`); `Source`, `Confidence` (5-band, mapped to ledger evidence-confidence), `FieldStatus` (KNOWN / NOT_DISCLOSED / NOT_APPLICABLE / UNRESOLVED), `merge_field` reconciliation. |
+| Adapters (free) | `sec_edgar` (XBRL parsing → revenue, net income, EBITDA derived, employees), `wikidata` (search-entity + SPARQL → founding date, founders, HQ, ticker), `wikipedia` (description + milestone hints), `yfinance_market` (live valuation), `companies_house` (UK PSC + filings, requires API key), `web_fallback` (last-resort website + description). |
+| Collector | Parallel adapter dispatch with per-call timeout + circuit breaker + iterative ref enrichment (2 passes). Every populated field becomes a `Claim` in the per-task epistemic ledger when a `task_id` is supplied. |
+| Peer selection | SIC/NAICS-based via SEC search-index, intersect-of-two-methods design. Honest empty list when peer selection isn't reliable (private companies without classification). |
+| Composition | Section-by-section LLM call (8 standard sections + comparator); each section sees only its slice of the dossier; strict-citation prompt forbids inventing facts; deterministic slice-echo fallback when no LLM is available. |
+| Fact-check | Regex extraction over currency, percent, year, and comma-grouped integer tokens; verifies each against the section's slice; overlap handling so `$12.50` inside `$12.50B` isn't double-flagged. Catches the LLM-invents-a-number failure without trying to be clever about paraphrasing. |
+| Typesetter | ReportLab Platypus multi-page renderer (cover, TOC, sections with fact-check sidebars, source appendix table, coverage appendix). Reuses `pdf_compose._RL_PACK` cached imports. Output to `/app/workspace/output/` (overridable via `DOSSIER_OUTPUT_DIR`). |
+| Wiring | Crew `company_dossier` registered in `app/crews/registry.py`; tool `build_company_dossier` registered via `@register_tool` so it's visible in `tool_search`; commander fast-path regex matches `dossier`/`due diligence`/`investment-grade`/`company profile\|overview\|review\|report\|brief`; commander LLM-routing catalog includes the crew description; `app/main.py` imports `app.dossier` at boot for tool-registry visibility. |
+| Tests | `tests/test_dossier_*.py` — 5 files, ~70 tests covering schema invariants, collector + reconciliation + circuit breaker, fact-check correctness (correctly-quoted vs invented numbers), end-to-end pipeline with mocks, commander routing regression. **All green.** |
+
+**Reuse, not reinvention.** The collector's circuit-breaker pattern
+mirrors `research_orchestrator._DomainBreaker`; provenance flows
+through the existing `epistemic.Ledger`; PDF heavy imports come from
+`pdf_compose._RL_PACK`; the tool registers via the existing
+`@register_tool` decorator with capability tags
+`renders-pdf|renders-document|fetches-finance|searches-web` (no new
+capabilities added — this is business logic, not safety code, so the
+TIER_IMMUTABLE governance vocabulary doesn't need updating); the crew
+slots into the registry's `class_run_runner` pattern; LLM composition
+uses `create_specialist_llm` with `role="writing"`; progress streams
+over Signal via the existing `record_output_progress` +
+`signal_client`.
+
+**Coverage today (free-tier MVP).** Public US companies via SEC EDGAR
++ Wikidata + Wikipedia + yfinance hit ~30–50% field coverage. UK
+private companies via Companies House (with API key) ~25–40%.
+Long-tail private companies remain limited to description + website.
+Adding paid adapters (Crunchbase, SimilarWeb, Levels.fyi) is one new
+file per source — the schema fields exist; the merge layer wires them
+in by source priority.
+
+Full design notes: [`docs/COMPANY_DOSSIER.md`](docs/COMPANY_DOSSIER.md).
