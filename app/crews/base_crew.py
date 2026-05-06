@@ -15,6 +15,7 @@ Auto-Skill Creation:
 """
 
 import logging
+import re
 import threading
 import time as _time
 from pathlib import Path
@@ -635,6 +636,31 @@ def _estimate_tool_calls(result: str) -> int:
     return count
 
 
+_AUTO_SKILL_TOPIC_LABEL_RE = re.compile(
+    r"\*{0,2}\s*Topic\s*:\s*\*{0,2}\s*", re.IGNORECASE,
+)
+
+
+def _extract_auto_skill_topic(skill_text: str, fallback: str) -> str:
+    """Pull a clean topic line out of the Learner's free-form skill text.
+
+    The Learner is prompted for "1. Topic (one line)" and tends to reply
+    with Markdown-emphasized labels — "**Topic:** Foo", "## Topic: Foo",
+    or just "Topic: Foo". The original implementation did
+    ``lines[0].replace("Topic:", "")``, which on a "**Topic:** Foo" input
+    leaves the bold delimiters joined as ``**** Foo`` — the exact
+    placeholder pattern that triggered the May 2026 cross-topic
+    contamination incident.
+
+    Strip the label (with any surrounding bold markers) first, then peel
+    leftover Markdown emphasis / heading characters off both ends.
+    """
+    first_line = skill_text.strip().split("\n", 1)[0]
+    first_line = _AUTO_SKILL_TOPIC_LABEL_RE.sub("", first_line, count=1)
+    first_line = first_line.strip().strip("*_# ").strip()
+    return first_line[:100] or fallback[:80]
+
+
 def _auto_create_skill(
     crew_name: str,
     task: str,
@@ -698,8 +724,7 @@ def _auto_create_skill(
             )
             return
 
-        lines = skill_text.strip().split("\n")
-        topic = lines[0].replace("Topic:", "").replace("#", "").strip()[:100] or task[:80]
+        topic = _extract_auto_skill_topic(skill_text, fallback=task)
 
         draft = SkillDraft(
             id=f"auto_{uuid.uuid4().hex[:8]}",
