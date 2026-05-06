@@ -601,3 +601,166 @@ Open follow-ups (deferred):
   K8s (`unshare-n` with `CAP_SYS_ADMIN`, vs `firejail`, vs
   `bwrap`); the runtime hook is in place and defaults to `none`
   (relies on container egress policy).
+
+## 18. 2026-05 Brainstorm subsystem (interactive Q/A + multi-agent joint effort)
+
+**Trigger.** Operator request: "I want the system to be able to conduct
+different brainstorming and idea-creation techniques with me through Q/A
+sessions and input by me, and then write a final report. I want also a
+possibility where I can add 3–5 agents with high creativity enabled and
+run the brainstorm as a joint effort of all of us."
+
+The Creative MAS pipeline (`app/crews/creative_crew.py`) was already
+producing high-quality multi-agent ideation, but it ran end-to-end on a
+single task description with no human in the loop step-by-step. The
+brainstorm subsystem layers an interactive Q/A facilitator on top, reuses
+the creative-crew agent factories for team mode, and ships three surfaces
+(Signal slash command, CLI, React tab) that share one store.
+
+### 18.1 Architectural shape
+
+```
+                     ┌─────────────────────┐
+                     │ Three surfaces      │
+                     │  • Signal           │
+                     │  • python -m CLI    │
+                     │  • React /cp/...    │
+                     └──────────┬──────────┘
+                                ▼
+                     ┌─────────────────────┐
+                     │  Facilitator        │   surface-agnostic core
+                     │  (StepDelivery)     │
+                     └──────────┬──────────┘
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                 ▼
+        Techniques         Multi-agent        JSON store
+        (state machines)   (parallel seed +   workspace/
+                            react rounds)      brainstorm/
+                                ▼
+                       Writer agent → workspace/output/brainstorm/<id>.md
+                       (deterministic fallback when LLM unavailable)
+```
+
+### 18.2 Technique library
+
+Seven techniques shipped, each as a state machine declaring an ordered
+list of `Step` objects with prompt templates that interpolate `{topic}`:
+
+| Name             | Steps | Frame                                                  |
+|------------------|-------|--------------------------------------------------------|
+| `scamper`        | 7     | Substitute / Combine / Adapt / Modify / Put-to-other-use / Eliminate / Reverse |
+| `six_hats`       | 7     | de Bono's six hats bracketed by blue (open / close)    |
+| `how_might_we`   | 10    | Problem → user → insight → seed HMW → expand 3 ways → select → first solutions |
+| `reverse`        | 6     | How could we *cause* this? Then invert each failure    |
+| `crazy_8s`       | 10    | 8 ideas in 8 quick rounds + star-the-top-2             |
+| `rapid_ideation` | 7     | Three quantity bursts (obvious / constraint-flipped / different lens) → cluster → select |
+| `starbursting`   | 8     | Generate questions, not answers — Who/What/When/Where/Why/How |
+
+Adding a new technique is a single file plus a registry entry.
+
+### 18.3 Solo vs. team mode
+
+Per step, **solo mode** runs:
+
+```
+prompt → user types answer → next prompt
+```
+
+**Team mode** runs (per step):
+
+```
+gather_seed (4 agents in parallel)        ← anti-conformity prompt, no peer awareness
+prompt + agent seed cards shown to user
+user types answer
+gather_react (4 agents in parallel)        ← agents see user answer + each other's seeds
+react cards shown
+next prompt + new seed cards
+```
+
+Multi-agent rounds dispatch through `ThreadPoolExecutor` (creative_crew
+runs sequentially; the brainstorm path needs interactive UX). Per-agent
+failures are captured into `AgentResponse.error` and the round continues
+with the rest. A whole-round crash falls back to solo for that step.
+
+### 18.4 Agent roster reuse
+
+`multi_agent._build_creative_agent(role)` mirrors
+`creative_crew._make_agent` for the four creative-crew roles
+(researcher / writer / coder / critic) with the same heterogeneous LLM
+tier mapping (`local` / `mid` / `budget` / `premium`) and reasoning
+methods (`step_back` / `analogical_blending` / `compositional_cot` /
+`contrastive`). `max_execution_time` is tighter (180s vs 300s) and
+`max_tokens` is reduced (2048 vs 4096) for the interactive use case.
+
+### 18.5 Cost / budget
+
+For SCAMPER (7 steps) with 4 agents in team mode: ≈ 56 LLM calls per
+session (`7 × 2 phases × 4 agents`). Soft cap defaults to `$0.50`
+per session via `BRAINSTORM_TEAM_BUDGET_USD`. When the cap is hit,
+subsequent rounds return empty and the session continues solo-style
+for the remainder.
+
+### 18.6 Three surfaces, one store
+
+| Surface | Entry                                                 | Notes |
+|---------|-------------------------------------------------------|-------|
+| Signal  | `/brainstorm <tech> with N agents <topic>`            | Plain messages mid-session route to facilitator via the `commander/commands.py:try_command` hook |
+| CLI     | `python -m app.brainstorm --technique X --with-agents N --topic "..."` | `--resume`, `--list`, `--techniques`, `--sender` |
+| React   | `/cp/brainstorm` route                                | FastAPI router `/api/cp/brainstorm/*` mounted in `main.py`; React Query hooks in `dashboard-react/src/api/brainstorm.ts` |
+
+The web sender defaults to `signal_owner_number` so React + Signal share
+the same session pool by default. Override with `BRAINSTORM_WEB_SENDER`
+env or per-request `?sender=…` query parameter.
+
+### 18.7 Persistence + reports
+
+- Sessions: atomic JSON files under `workspace/brainstorm/sessions/`
+  with active-pointer files under `workspace/brainstorm/active/`
+  (mirrors `app/companion/state.py` patterns).
+- Reports: `workspace/output/brainstorm/<session_id>.md`. Generated by
+  the existing `app/agents/writer.py:create_writer()` factory wrapped in
+  a CrewAI Task + Crew kickoff. In team mode the prompt asks the Writer
+  to attribute strong contributions by role.
+- Fallback: if the Writer-agent path errors or
+  `BRAINSTORM_DISABLE_WRITER=1` is set, a deterministic markdown
+  rendering ships from the structured summary so the user always gets
+  a report.
+
+### 18.8 Shipped artefacts
+
+| Layer | Files |
+|-------|-------|
+| Module | `app/brainstorm/__init__.py`, `__main__.py`, `cli.py`, `session.py`, `store.py`, `facilitator.py`, `multi_agent.py`, `report.py`, `signal_handler.py`, `api.py`, `techniques/{base,scamper,six_hats,how_might_we,reverse,crazy_8s,rapid_ideation,starbursting,__init__}.py` |
+| Wiring | Hook in `app/agents/commander/commands.py:try_command` (top of fn); router include in `app/main.py` |
+| Tests | `tests/test_brainstorm_techniques.py` (21) + `_store.py` (12) + `_facilitator.py` (19) + `_multi_agent.py` (19) + `_signal.py` (24) + `_commands_integration.py` (4) + `_api.py` (21) = **120 tests** |
+| React | `dashboard-react/src/{api,types}/brainstorm.ts`, `components/BrainstormPage.tsx`, `components/brainstorm/{StartPanel,SessionView,SessionsList,ReportView,AgentRoundBlock,AgentResponseCard}.tsx`, route in `App.tsx`, nav entry in `Layout.tsx`, smoke-test entry in `tests/smoke.spec.ts` |
+| Docs | [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) |
+
+### 18.9 Composition with the rest of the system
+
+- **Creative MAS** — brainstorm reuses the agent factories +
+  `_TIER_BY_ROLE_CREATIVE` mapping but runs in parallel for interactive
+  UX. The two systems are independent; brainstorm is not a wrapper
+  around `creative_crew.run()`.
+- **Commander routing** — the brainstorm hook in `try_command` claims
+  `/brainstorm` slash commands AND any plain message from a sender that
+  has an active brainstorm session. Falls through to normal task routing
+  when neither applies.
+- **Companion layer / conversation_store** — independent. Brainstorm has
+  its own JSON store; the canonical Signal message log still records
+  user turns separately.
+- **TIER_IMMUTABLE** — `app/brainstorm/` is not in the protected list;
+  it's a normal additive module.
+
+### 18.10 Known follow-ups (deferred)
+
+* **Streaming agent output** — `crew.kickoff()` is synchronous; the React
+  UI shows a spinner while team rounds gather. SSE wrapping or
+  per-agent streaming would let seed/react cards fill in progressively.
+* **Named personas vs. fixed roles** — roster currently maps to the four
+  creative-crew roles. Adding tunable personas (Skeptic / Optimist /
+  Builder / Outsider) is a small extension; `resolve_roster()` already
+  accepts arbitrary role names.
+* **In-session steering** — no current way for the human to ask for
+  another round of react before advancing. Each step is exactly one
+  seed + one react. A `/brainstorm more` command would close this gap.

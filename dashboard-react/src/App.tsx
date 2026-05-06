@@ -62,6 +62,9 @@ const AffectPage = lazy(() =>
 const EpistemicPage = lazy(() =>
   import('./components/EpistemicPage').then((m) => ({ default: m.EpistemicPage })),
 );
+const BrainstormPage = lazy(() =>
+  import('./components/BrainstormPage').then((m) => ({ default: m.BrainstormPage })),
+);
 
 function RouteFallback() {
   return (
@@ -107,6 +110,7 @@ export default function App() {
             <Route path="/forge/:id" element={<LazyRoute><ForgeToolDetailPage /></LazyRoute>} />
             <Route path="/affect" element={<LazyRoute><AffectPage /></LazyRoute>} />
             <Route path="/epistemic" element={<LazyRoute><EpistemicPage /></LazyRoute>} />
+            <Route path="/brainstorm" element={<LazyRoute><BrainstormPage /></LazyRoute>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

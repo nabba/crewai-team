@@ -92,6 +92,12 @@ function fulfill(route: Route, opts: { status: number }) {
   else if (url.includes('/llm_mode')) body = { mode: 'hybrid', valid_modes: ['local','free','cloud','hybrid','insane','anthropic'] };
   else if (url.includes('/kb/businesses')) body = { businesses: [] };
   else if (url.includes('/kb/status')) body = { collection_name: 'kb', total_chunks: 0 };
+  else if (url.includes('/brainstorm/techniques')) body = [
+    { name: 'scamper', title: 'SCAMPER', description: 'apply 7 lenses', total_steps: 7 },
+    { name: 'six_hats', title: 'Six Thinking Hats', description: 'six frames', total_steps: 7 },
+  ];
+  else if (url.includes('/brainstorm/sessions/active')) body = { session: null };
+  else if (url.includes('/brainstorm/sessions')) body = [];
   else if (url.includes('/stats') || url.includes('/status')) body = { collection_name: 'x', total_chunks: 0 };
 
   return route.fulfill({
@@ -119,6 +125,7 @@ const ROUTES: { path: string; heading: string | RegExp }[] = [
   { path: 'knowledge', heading: /Knowledge Bases/ },
   { path: 'notes', heading: /^Notes$/ },
   { path: 'wiki', heading: /Knowledge Wiki/ },
+  { path: 'brainstorm', heading: /^Brainstorm$/ },
 ];
 
 for (const { path, heading } of ROUTES) {

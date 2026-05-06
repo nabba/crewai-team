@@ -2079,6 +2079,14 @@ try:
 except Exception:
     logger.debug("Workspace Companion API not available", exc_info=True)
 
+# ── Brainstorm API (multi-agent + solo Q/A sessions) ─────────────────────────
+try:
+    from app.brainstorm.api import router as brainstorm_router
+    app.include_router(brainstorm_router)
+    logger.info("Brainstorm API mounted at /api/cp/brainstorm/")
+except Exception:
+    logger.debug("Brainstorm API not available", exc_info=True)
+
 # ── Tool Registry (Phase 1a) ─────────────────────────────────────────────
 # Boot the registry exactly once: imports every module under
 # tool_registry.boot.TOOL_MODULE_ROOTS so all @register_tool decorators

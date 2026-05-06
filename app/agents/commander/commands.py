@@ -12,6 +12,18 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
     """Try to handle user_input as a special command. Returns response string or None."""
     lower = user_input.lower().strip()
 
+    # ── Brainstorm subsystem ───────────────────────────────────────────
+    # Claims /brainstorm slash commands AND any plain message from a sender
+    # that already has an active brainstorm session (so multi-turn Q/A
+    # works without the user re-prefixing every reply).
+    try:
+        from app.brainstorm.signal_handler import try_handle as _brainstorm_try
+        _b = _brainstorm_try(user_input, sender)
+        if _b is not None:
+            return _b
+    except Exception as _bs_exc:
+        logger.warning("brainstorm: routing failed (%s) — falling through", _bs_exc)
+
     # Access the shared thread pool from orchestrator
     from app.agents.commander.orchestrator import _ctx_pool
 

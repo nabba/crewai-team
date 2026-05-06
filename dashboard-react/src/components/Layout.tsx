@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { to: '/knowledge', label: 'Knowledge', icon: '📚', exact: false },
   { to: '/notes', label: 'Notes', icon: '📝', exact: false },
   { to: '/wiki', label: 'Wiki', icon: '📖', exact: false },
+  { to: '/brainstorm', label: 'Brainstorm', icon: '💡', exact: false },
   { to: '/forge', label: 'Forge', icon: '🔨', exact: false },
 ];
 
