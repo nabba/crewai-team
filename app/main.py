@@ -1126,6 +1126,85 @@ async def receive_signal(request: Request):
                 logger.debug("Reaction-based human_gate handling failed", exc_info=True)
                 # Fall through to normal feedback pipeline below
 
+        # ── Change-request approval via reaction (Phase 5.3) ───────────
+        # 👍 on a CHANGE REQUEST message approves + applies (hot-write +
+        # auto-PR); 👎 rejects. Mirrors the approval-via-reaction
+        # pattern used for proposals + human_gate. The change-request
+        # store correlates by signal_message_ts.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.change_requests import (
+                    find_request_by_signal_ts as _cr_find,
+                    DecisionSource as _CR_DS,
+                    Status as _CR_Status,
+                    apply_change as _cr_apply,
+                    approve as _cr_approve,
+                    get as _cr_get,
+                    reject as _cr_reject,
+                )
+                cr_id = _cr_find(target_ts)
+                if cr_id is not None:
+                    is_approve = emoji in ("👍", "+1")
+                    cr_now = _cr_get(cr_id)
+                    if cr_now is not None and cr_now.status == _CR_Status.PENDING:
+                        loop = asyncio.get_running_loop()
+                        if is_approve:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _cr_approve(
+                                    cr_id, source=_CR_DS.SIGNAL_THUMBS_UP,
+                                ),
+                            )
+                            apply_result = await loop.run_in_executor(
+                                None, _cr_apply, cr_id,
+                            )
+                            ack_msg = (
+                                f"✅ Change request {cr_id} approved + "
+                                f"applied.\n"
+                                f"  ok: {apply_result.ok}\n"
+                                f"  branch: {apply_result.git_branch or '?'}\n"
+                                f"  PR: {apply_result.pr_url or '(failed to open)'}\n"
+                                f"  module reload: {apply_result.module_reload_note}"
+                            )
+                            if not apply_result.ok:
+                                ack_msg += f"\n  ERROR: {apply_result.error}"
+                        else:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _cr_reject(
+                                    cr_id,
+                                    source=_CR_DS.SIGNAL_THUMBS_DOWN,
+                                    decision_reason="rejected via 👎 in Signal",
+                                ),
+                            )
+                            ack_msg = f"❌ Change request {cr_id} rejected."
+
+                        logger.info(
+                            "Reaction %s on change_request %s → %s",
+                            emoji, cr_id,
+                            "approved+applied" if is_approve else "rejected",
+                        )
+                        try:
+                            client = SignalClient()
+                            await client.send(sender, ack_msg)
+                        except Exception:
+                            logger.debug(
+                                "Failed to send change-request ack", exc_info=True,
+                            )
+                        return {
+                            "status": "accepted",
+                            "change_request_action": (
+                                "approved+applied" if is_approve else "rejected"
+                            ),
+                            "request_id": cr_id,
+                        }
+            except Exception:
+                logger.debug(
+                    "Reaction-based change_request handling failed",
+                    exc_info=True,
+                )
+                # Fall through
+
         try:
             from app.feedback_pipeline import FeedbackPipeline
             from app.config import get_settings
@@ -2114,6 +2193,11 @@ try:
     # Foundation for the routing fix (5.2) and change-request UI (5.3).
     from app.control_plane.system_state_api import router as system_state_cp_router
     app.include_router(system_state_cp_router)
+    # Change requests — agent-proposed code modifications via human gate (Phase 5.3a).
+    # GET / POST endpoints under /api/cp/changes — paired with the Signal
+    # 👍/👎 voting flow + the React control plane UI (5.3b).
+    from app.control_plane.changes_api import router as changes_cp_router
+    app.include_router(changes_cp_router)
     logger.info("Control Plane API mounted at /api/cp/")
     # Ensure every project has default budget rows for the current period
     from app.control_plane.budgets import get_budget_enforcer as _get_be
