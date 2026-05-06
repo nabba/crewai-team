@@ -51,8 +51,27 @@ each crew's agent file under `app/agents/`):
 |---|---|---|
 | `gee_run_script` (Google Earth Engine) | coder | [`docs/GEE.md`](GEE.md) |
 | `forge_register_tool` (sandboxed tool generation) | coder | [`docs/FORGE.md`](FORGE.md) |
+| `tool_search` (capability-typed registry discovery) | coder + writer | [`docs/TOOL_REGISTRY.md`](TOOL_REGISTRY.md) |
+| `pdf_compose` + `signal_send_attachment` (PDF render → Signal delivery) | coder + writer | [`docs/PDF_AND_SIGNAL_DELIVERY.md`](PDF_AND_SIGNAL_DELIVERY.md) |
 | `rank_emails` / `check_email` (PIM) | pim | inline in [`app/tools/email_tools.py`](../app/tools/email_tools.py) |
 | `recovery_loop` strategies (refusal handling) | all | [`docs/RECOVERY_LOOP.md`](RECOVERY_LOOP.md) |
+
+### Tool Registry control surface
+
+`/api/cp/tools/*` — read-only HTTP browser of the capability-typed
+tool registry. Auth via the same `require_gateway_auth` dep as the
+rest of the control plane.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/cp/tools` | List tools. Query params: `capability`, `tier`, `loadable_only`, `workspace`. |
+| `GET /api/cp/tools/{name}` | Full detail for one tool. 404 if absent. |
+| `GET /api/cp/tools/stats` | Counts by tier + lifecycle + capability coverage. |
+| `GET /api/cp/tools/capabilities` | Bounded vocabulary, grouped by category (`data`, `knowledge`, `memory`, `compute`, `delivery`, `governance`). |
+| `GET /api/cp/tools/drift` | Description-hash + tier drift vs prior Postgres snapshot. |
+| `GET /api/cp/tools/flags` | Phase 4d diagnostic — which migrated agents are running on legacy vs LoadableAgent right now. Reads the same env vars that the agent factories themselves consult; what it shows IS what the agents do. |
+
+Use cases: React control plane "tool catalog" + "agent flag matrix" widgets; pre-deploy sanity checks (`curl … | jq`); post-incident triage (which agents were on which path when the regression happened). Full reference: [`docs/TOOL_REGISTRY.md`](TOOL_REGISTRY.md).
 
 ### Watchdog (request-path timeouts)
 

@@ -27,6 +27,10 @@
 - **knowledge_search**: Search the enterprise knowledge base for relevant documents.
 - **memory tools**: Retrieve project context, style preferences, prior outputs.
 - **scoped_memory tools**: Store/retrieve from hierarchical scoped memory, update team beliefs.
+- **pdf_compose**: Render a data-driven PDF report (matplotlib charts + reportlab tables) when the user asks for a report with figures. Pair with `signal_send_attachment` to deliver. For prose-heavy documents prefer `generate_pdf` from the document_generator group.
+- **signal_send_attachment**: Deliver finished artifacts (PDF, CSV, PNG) to the user via Signal. Recipient is hard-pinned to the configured owner.
+- **tool_search**: Search the registry by capability tag and/or natural-language intent. Returns ranked candidates. USE THIS before assuming a tool doesn't exist — operator-promoted Forge tools surface here too.
+- **load_tool / list_available_tools** (LoadableAgent only — present when `LOADABLE_WRITER=1`): show or pull discoverable tools into the active toolset for the next step.
 
 ## Output Format — Destination-Adapted
 | Destination | Format | Length | Tone |

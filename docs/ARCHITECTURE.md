@@ -132,3 +132,4 @@ These are facade packages providing clean import boundaries. All existing import
 - [Control Planes](CONTROL_PLANES.md) — Postgres-backed command + state surface.
 - [Creativity System](CREATIVITY_SYSTEM.md) — Diverge/Discuss/Converge mode.
 - [SubIA](SUBIA.md) — meta-cognitive layer (`introspector` role).
+- [Tool Registry](TOOL_REGISTRY.md) — capability vocabulary (TIER_IMMUTABLE), `@register_tool` decorator, ChromaDB semantic search via `tool_search`, Forge bridge for SHADOW/CANARY tools, `LoadableAgent` runtime with per-agent opt-in migration. Replaces static `tools=[...]` agent constructors with a discoverable, capability-typed catalog. Phase 1c gate said GO at 33% of stock token cost; per-phase memos at TOOL_REGISTRY_PHASE_0.md / 1C.md / 2.md / 3.md / 4.md / 5.md.
