@@ -2198,6 +2198,12 @@ try:
     # 👍/👎 voting flow + the React control plane UI (5.3b).
     from app.control_plane.changes_api import router as changes_cp_router
     app.include_router(changes_cp_router)
+    # Coding sessions — read-only operator view of agent worktrees
+    # (Phase 5.4-f). Lifecycle owned by agent + reconciler; operator
+    # has visibility but no approve/reject — submission decisions
+    # happen in the change-request UI, not here.
+    from app.control_plane.coding_sessions_api import router as coding_sessions_cp_router
+    app.include_router(coding_sessions_cp_router)
     logger.info("Control Plane API mounted at /api/cp/")
     # Ensure every project has default budget rows for the current period
     from app.control_plane.budgets import get_budget_enforcer as _get_be

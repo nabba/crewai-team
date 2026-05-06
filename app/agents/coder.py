@@ -35,7 +35,60 @@ from app.fiction_inspiration import get_fiction_tools, FICTION_AWARENESS_PROMPT
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-CODER_BACKSTORY = compose_backstory("coder") + FICTION_AWARENESS_PROMPT
+_CODING_SESSION_GUIDANCE = """
+
+## Coding sessions (Phase 5.4)
+
+You can ask for an ephemeral worktree to iterate on code changes
+before submission. This is the **preferred** path for any non-trivial
+fix — multi-file changes, anything you want to verify with pytest /
+ruff / mypy before asking the operator to review.
+
+**Pattern:**
+
+  1. `coding_session_start(base="main", purpose="<one paragraph>")`
+     Returns `session_id`. Worktree is sandboxed; nothing inside
+     reaches production until you call `coding_session_submit`.
+
+  2. Iterate. `coding_session_read` / `_write` / `_run` / `_diff` —
+     all take `session_id`. You have ~30 minutes and 100 MB; no
+     network. Run the relevant tests with
+     `coding_session_run(argv=["pytest", "tests/test_foo.py", "-v"])`
+     before you ask the operator to look at it.
+
+  3. End the session with one of:
+       * `coding_session_submit(session_id, reason="...")`
+         Each modified file becomes its own change request through
+         the human gate (Signal 👍/👎 + React control plane).
+         Worktree destroyed.
+       * `coding_session_discard(session_id, reason="...")`
+         Abandon — record the reason for the operator's postmortem.
+         Use this when iteration stalls and you cannot reach a state
+         worth submitting. **Don't apologise; explain what blocked
+         progress.**
+
+**When NOT to use coding sessions:**
+  * Atomic single-file fix where iteration adds nothing — use
+    `request_restricted_write` directly.
+  * Workspace artefacts (skills/, output/, proposals/) — use
+    `file_manager` (those don't touch production code).
+  * Anything in TIER_IMMUTABLE — refused at validate time even
+    inside a session. Operator must edit those manually.
+
+**Failure modes:**
+  * `QUOTA_EXCEEDED:` — you have 3 active sessions; submit or
+    discard one before starting another.
+  * `REFUSED:` — the path or content was rejected at write time.
+    The reason explains why; pick a different file or content.
+  * `ERROR:` — infrastructure trouble (bridge unreachable, etc.).
+    Retry once; if persistent, ask the operator.
+"""
+
+CODER_BACKSTORY = (
+    compose_backstory("coder")
+    + FICTION_AWARENESS_PROMPT
+    + _CODING_SESSION_GUIDANCE
+)
 
 
 def create_coder(force_tier: str | None = None) -> Agent:
@@ -130,10 +183,23 @@ def _legacy_create_coder(force_tier: str | None = None) -> Agent:
         forge_tool = get_forge_generator_tool()
         if forge_tool is not None:
             tools.append(forge_tool)
+    # Coding sessions — Phase 5.4 iteration loop primitive. Adds the
+    # 7 coding_session_* tools (start/read/write/run/diff/submit/
+    # discard). Submission goes through the change-request human
+    # gate; nothing reaches production without operator 👍.
+    with optional_tool_group("coder", "coding_session"):
+        from app.tools.coding_session_tools import create_coding_session_tools
+        tools.extend(create_coding_session_tools())
 
     return Agent(
         role="Coder",
-        goal="Write, test, and debug code across any language. Execute code safely in a Docker sandbox.",
+        goal=(
+            "Write, test, and debug code across any language. Execute "
+            "code safely in a Docker sandbox. For non-trivial fixes "
+            "across the production codebase, use a coding session "
+            "(coding_session_start) to iterate with read/write/run "
+            "before submitting through the human gate."
+        ),
         backstory=CODER_BACKSTORY,
         llm=llm,
         tools=tools,
@@ -208,10 +274,19 @@ def _build_loadable_coder(*, force_tier: str | None = None) -> Agent:
         forge_tool = get_forge_generator_tool()
         if forge_tool is not None:
             eager.append(forge_tool)
+    with optional_tool_group("coder", "coding_session"):
+        from app.tools.coding_session_tools import create_coding_session_tools
+        eager.extend(create_coding_session_tools())
 
     return build_loadable_agent(
         role="Coder",
-        goal="Write, test, and debug code across any language. Execute code safely in a Docker sandbox.",
+        goal=(
+            "Write, test, and debug code across any language. Execute "
+            "code safely in a Docker sandbox. For non-trivial fixes "
+            "across the production codebase, use a coding session "
+            "(coding_session_start) to iterate with read/write/run "
+            "before submitting through the human gate."
+        ),
         backstory=CODER_BACKSTORY,
         llm=llm,
         agent_id="coder",
