@@ -559,7 +559,7 @@ def _():
 
 @test("self_healer.import")
 def _():
-    from app.self_healer import SelfHealer
+    from app.healing.health_remediator import SelfHealer
     return True
 
 # ═══════════════════════════════════════════════════════════════════

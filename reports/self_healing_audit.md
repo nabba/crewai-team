@@ -70,7 +70,7 @@ The self_correct hook at POST_LLM_CALL sets `ctx.metadata["needs_retry"]`, but t
 
 ### Issue 2: Self-Healer Mostly Queues Work (MEDIUM)
 
-**Location:** `self_healer.py`
+**Location:** `app/healing/health_remediator.py`
 
 Of 6 healing strategies, only `tighten_grounding()` applies a direct fix (modifies researcher prompt). The other 5 append tasks to `learning_queue.md` for the evolution system to pick up later. If evolution doesn't run or ignores the queue entry, the fix never happens.
 

@@ -41,7 +41,7 @@ class TestTier3Coverage:
             "app/version_manifest.py",
             "app/sandbox_runner.py",
             "app/health_monitor.py",
-            "app/self_healer.py",
+            "app/healing/health_remediator.py",
             "app/reference_tasks.py",
         ]:
             assert path in TIER3_FILES, f"regressed: {path} removed from Tier 3"

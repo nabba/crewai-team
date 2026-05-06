@@ -1895,11 +1895,11 @@ Successful fixes (`fixable=true`) become proposals tracked by error pattern (`re
 
 Both routines are wrapped in `_audit_lock` so only one auditor run at a time.
 
-### 16.2 Self-healer (`app/self_healer.py`)
+### 16.2 Self-healer (`app/healing/health_remediator.py`)
 
 [Read filename only.] Per docs: 6-dimension self-healing — `error_rate`, `latency`, `quality`, `cost`, `safety`, `coverage`. Triggered by the health monitor when a dimension degrades. Routes through the auditor's error-resolution loop or the modification engine.
 
-### 16.3 Self-heal + diagnose-and-fix (`app/self_heal.py`)
+### 16.3 Self-heal + diagnose-and-fix (`app/healing/error_diagnosis.py`)
 
 Per `app/main.py`, the request-handler calls `diagnose_and_fix()` in the background after every failed task. Reads the traceback and proposes a fix.
 
@@ -2504,7 +2504,7 @@ Source: `app/safety_guardian.py`.
 
 `TIER3_FILES` lists 40+ files protected by SHA-256 checksums:
 - All sandbox / execution paths: `sandbox.py`, `sandbox_runner.py`, `eval_sandbox.py`.
-- All vetting and safety: `vetting.py`, `safety_guardian.py`, `health_monitor.py`, `self_healer.py`.
+- All vetting and safety: `vetting.py`, `safety_guardian.py`, `health_monitor.py`, `healing/health_remediator.py`.
 - Governance: `governance.py`, `version_manifest.py`, `reference_tasks.py`.
 - Consciousness evaluators: `consciousness_probe.py`, `behavioral_assessment.py`, `certainty_vector.py`, `somatic_marker.py`, `somatic_bias.py`, `meta_cognitive.py`, `sentience_config.py`, `self_model.py`, `hyper_model.py`, `temporal_identity.py`, `agent_state.py`, `loop_closure.py`, `homeostasis.py`.
 - Phase 1 modules: `adversarial_probes.py`, `belief_store.py`, `metacognitive_monitor.py`, `config.py`, `workspace_buffer.py`, `attention_schema.py`, `global_broadcast.py`, `meta_workspace.py`, `personality_workspace.py`, `prediction_hierarchy.py`, `predictive_layer.py`.

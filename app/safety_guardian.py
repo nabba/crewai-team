@@ -51,7 +51,7 @@ TIER3_FILES = [
     "app/version_manifest.py",
     "app/sandbox_runner.py",
     "app/health_monitor.py",
-    "app/self_healer.py",
+    "app/healing/health_remediator.py",
     "app/reference_tasks.py",
     "app/governance.py",
     # (b) Consciousness evaluators — protected against self-tuning

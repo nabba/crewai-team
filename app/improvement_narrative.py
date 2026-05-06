@@ -95,7 +95,7 @@ def _gather_yesterday_data() -> dict:
 
     # Errors
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         all_errors = get_recent_errors(200)
         data["errors"] = _filter_to_window(all_errors, start, end, "ts")
     except Exception:

@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.llm_factory import create_specialist_llm
 from app.llm_selector import difficulty_to_tier
 from app.sanitize import wrap_user_input
-from app.self_heal import diagnose_and_fix
+from app.healing.error_diagnosis import diagnose_and_fix
 from app.firebase_reporter import (
     crew_started, crew_completed, crew_failed, update_sub_agent_progress,
 )

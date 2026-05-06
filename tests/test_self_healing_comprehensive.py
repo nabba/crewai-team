@@ -468,7 +468,7 @@ class TestSelfHealer:
 
     def test_dimension_strategy_mapping(self):
         """Each health dimension should map to a remediation strategy."""
-        source = (Path(__file__).parent.parent / "app" / "self_healer.py").read_text()
+        source = (Path(__file__).parent.parent / "app" / "healing" / "health_remediator.py").read_text()
         assert "error_rate" in source
         assert "avg_latency_ms" in source
         assert "hallucination_rate" in source
@@ -478,22 +478,22 @@ class TestSelfHealer:
 
     def test_rate_limiting(self):
         """Self-healer should limit remediations per dimension per day."""
-        source = (Path(__file__).parent.parent / "app" / "self_healer.py").read_text()
+        source = (Path(__file__).parent.parent / "app" / "healing" / "health_remediator.py").read_text()
         assert "_check_rate_limit" in source or "rate_limit" in source
 
     def test_verification_after_fix(self):
         """Self-healer should verify metrics improved after remediation."""
-        source = (Path(__file__).parent.parent / "app" / "self_healer.py").read_text()
+        source = (Path(__file__).parent.parent / "app" / "healing" / "health_remediator.py").read_text()
         assert "_schedule_verification" in source or "verification" in source
 
     def test_circuit_breaker_protection(self):
         """Self-healer should check its own circuit breaker."""
-        source = (Path(__file__).parent.parent / "app" / "self_healer.py").read_text()
+        source = (Path(__file__).parent.parent / "app" / "healing" / "health_remediator.py").read_text()
         assert "self_healer" in source and "circuit" in source.lower()
 
     def test_emergency_sends_signal(self):
         """Emergency alert should send Signal notification."""
-        source = (Path(__file__).parent.parent / "app" / "self_healer.py").read_text()
+        source = (Path(__file__).parent.parent / "app" / "healing" / "health_remediator.py").read_text()
         assert "emergency" in source.lower()
         assert "send_message" in source or "signal" in source.lower()
 

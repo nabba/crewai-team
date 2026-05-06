@@ -205,7 +205,7 @@ class TestRegressionNoFileUnprotected:
         "app/feedback_pipeline.py", "app/modification_engine.py",
         "app/prompt_registry.py", "app/version_manifest.py",
         "app/sandbox_runner.py", "app/health_monitor.py",
-        "app/self_healer.py", "app/reference_tasks.py", "Dockerfile.sandbox",
+        "app/healing/health_remediator.py", "app/reference_tasks.py", "Dockerfile.sandbox",
         "app/parallel_evolution.py",
         "app/atlas/__init__.py", "app/atlas/skill_library.py",
         "app/atlas/auth_patterns.py", "app/atlas/api_scout.py",

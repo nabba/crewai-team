@@ -105,7 +105,7 @@ class TestBuildContext:
     def test_context_includes_sections(self, tmp_path, monkeypatch):
         import app.evolution as evo
         import app.results_ledger as ledger
-        import app.self_heal as heal
+        import app.healing.error_diagnosis as heal
 
         monkeypatch.setattr(evo, "PROGRAM_PATH", tmp_path / "program.md")
         (tmp_path / "program.md").write_text("# Test Program")

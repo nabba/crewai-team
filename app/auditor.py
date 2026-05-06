@@ -38,7 +38,7 @@ from app.llm_factory import create_specialist_llm
 from app.tools.file_manager import file_manager
 from app.tools.memory_tool import create_memory_tools
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
-from app.self_heal import get_error_patterns, get_recent_errors
+from app.healing.error_diagnosis import get_error_patterns, get_recent_errors
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -383,7 +383,7 @@ def _attempt_error_fix(pattern_key: str, errors: list, track: dict) -> str | Non
             )
 
         # H4: Read actual source code from traceback
-        from app.self_heal import _read_source_from_traceback
+        from app.healing.error_diagnosis import _read_source_from_traceback
         source_context = _read_source_from_traceback(latest)
 
         # H5/H7: Direct LLM call — no CrewAI overhead

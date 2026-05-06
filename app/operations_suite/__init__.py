@@ -24,7 +24,7 @@ from app.health_monitor import (
 )
 
 # Self-healing
-from app.self_healer import SelfHealer
+from app.healing import SelfHealer
 
 # Reference task suite
 from app.reference_tasks import (

@@ -44,7 +44,7 @@ from app.tools.memory_tool import create_memory_tools
 from app.tools.file_manager import file_manager
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
 from app.rate_throttle import start_request_tracking, stop_request_tracking
-from app.self_heal import get_error_patterns, get_recent_errors
+from app.healing.error_diagnosis import get_error_patterns, get_recent_errors
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -1464,7 +1464,7 @@ def _select_evolution_engine() -> str:
 
     # 8. Undiagnosed errors → AVO (has error context)
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         undiagnosed = [e for e in get_recent_errors(10) if not e.get("diagnosed")]
         if len(undiagnosed) >= 3:
             logger.info(f"Engine selector: AVO ({len(undiagnosed)} undiagnosed errors, needs targeted fix)")

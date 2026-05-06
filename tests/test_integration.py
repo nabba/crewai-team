@@ -233,7 +233,7 @@ def _():
 def _():
     """Verify health → remediation → versioning chain."""
     from app.health_monitor import get_monitor, InteractionMetrics, HealthAlert
-    from app.self_healer import SelfHealer
+    from app.healing.health_remediator import SelfHealer
     from app.version_manifest import create_manifest, get_current_manifest, rollback_to_previous
 
     # Health monitor produces alerts
