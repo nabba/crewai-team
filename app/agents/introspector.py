@@ -74,16 +74,28 @@ def _is_loadable_experimental() -> bool:
     return is_loadable_for("introspector")
 
 
+def _introspector_collection() -> str:
+    """Memory-collection name for introspector tools.
+
+    Defaults to 'introspector'. The parity panel (and any other
+    test harness that wants to avoid polluting production memory)
+    sets ``INTROSPECTOR_COLLECTION=introspector_panel`` so writes
+    land in an isolated collection.
+    """
+    return os.environ.get("INTROSPECTOR_COLLECTION", "introspector").strip() or "introspector"
+
+
 def _legacy_create_introspector() -> Agent:
     """Stock-CrewAI introspector — kept as the default path during
     Phase 2 soak. Once the LoadableAgent variant is validated across
     a parity panel, this becomes the fallback for outages."""
+    collection = _introspector_collection()
     llm = create_specialist_llm(max_tokens=4096, role="introspector")
-    memory_tools = create_memory_tools(collection="introspector")
-    scoped_tools = create_scoped_memory_tools("introspector")
+    memory_tools = create_memory_tools(collection=collection)
+    scoped_tools = create_scoped_memory_tools(collection)
     awareness_tools = [
-        create_self_report_tool("introspector"),
-        ReflectionTool(agent_role="introspector"),
+        create_self_report_tool(collection),
+        ReflectionTool(agent_role=collection),
     ]
 
     return Agent(
@@ -109,12 +121,13 @@ def _build_loadable_introspector() -> Agent:
     from app.tool_registry import Tier
     from app.tool_runtime.factory import build_loadable_agent
 
+    collection = _introspector_collection()
     llm = create_specialist_llm(max_tokens=4096, role="introspector")
-    memory_tools = create_memory_tools(collection="introspector")
-    scoped_tools = create_scoped_memory_tools("introspector")
+    memory_tools = create_memory_tools(collection=collection)
+    scoped_tools = create_scoped_memory_tools(collection)
     awareness_tools = [
-        create_self_report_tool("introspector"),
-        ReflectionTool(agent_role="introspector"),
+        create_self_report_tool(collection),
+        ReflectionTool(agent_role=collection),
     ]
 
     return build_loadable_agent(
@@ -122,7 +135,8 @@ def _build_loadable_introspector() -> Agent:
         goal="Analyze execution patterns and generate actionable improvement policies for the team.",
         backstory=INTROSPECTOR_BACKSTORY,
         llm=llm,
-        agent_id="introspector",
+        # agent_id mirrors collection so telemetry rows are filterable per run.
+        agent_id=collection,
         # Eager: per-agent-state tools that need agent_id at construction.
         # Once these are @register_tool-annotated as PER_AGENT lifecycle,
         # they'll move to core_capabilities=["reads-agent-memory", ...].

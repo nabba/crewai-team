@@ -92,6 +92,37 @@ Stages can run in parallel across agents (introspector at Stage 3 while coder is
 * Token usage: `analyze_telemetry(agent_id="<agent>")` reports `effective_input_tokens` ≤ Phase 1c prediction × 1.15 (i.e. ≤38% of stock).
 * No new failure modes vs. legacy (manual review of failed tasks).
 
+### Validation harnesses for Stage 1 → 2
+
+| Harness | Validates | Cost | Where |
+|---|---|---|---|
+| `phase5_check` CLI | Construction-time parity (criterion 1 prereq) | None — no LLM calls | `app/tool_runtime/phase5_check.py` |
+| `parity_introspector.py` script | Live behavior parity + failure-mode review (criteria 2 + 4) | ~50 LLM calls per run | `scripts/parity_introspector.py` |
+| `analyze_telemetry(agent_id=...)` | Token economics (criterion 3) | None — reads `loadable_agent_usage.jsonl` | `app/tool_runtime/telemetry.py` |
+
+The introspector parity script is the reference implementation. It
+runs a fixed 25-task panel (10 eager / 10 discoverable / 5 edge-case)
+on both legacy and loadable paths, writes per-task results to
+`workspace/observability/parity_introspector.jsonl`, and reports the
+`loadable_pass / legacy_pass` ratio against the 0.90 threshold.
+Pollution is contained via the `INTROSPECTOR_COLLECTION` env var —
+set to `introspector_panel` so writes don't land in the production
+`introspector` collection.
+
+`analyze_telemetry` consumes the JSONL written by `install_cache_telemetry`
+in `app/tool_runtime/factory.py:build_loadable_agent`. Telemetry is
+captured per LLM call across both the litellm-fallback path
+(`CacheTelemetryHandler` callback) and the native-provider path
+(`crewai_event_bus.on(LLMCallCompletedEvent)`); cache fields populate
+only when the run lands on Anthropic — local Ollama and OpenAI-style
+providers report zeros for `cache_creation_input_tokens` /
+`cache_read_input_tokens`, which is expected. To validate criterion 3
+against the Phase 1c prediction, force the run onto the Anthropic
+tier via the cascade override.
+
+Equivalent panels for `researcher`, `writer`, `coder` are not yet
+implemented — the introspector script is the template.
+
 ### Stage 2 → Stage 3 (legacy deletion)
 
 * ≥7 days at default-on in production with no rollback.
@@ -158,6 +189,39 @@ curl -s http://localhost:8000/api/cp/tools/flags | jq
 docker exec crewai-team-gateway-1 python -m app.tool_runtime.phase5_check --json | \
   jq '.agents[] | select(.agent == "researcher")'
 ```
+
+### Running the parity panel (Stage 0 → Stage 1)
+
+For the introspector specifically:
+
+```bash
+# Smoke-test 1 task first (~$0.02-0.20, 2 LLM calls):
+docker exec -it crewai-team-gateway-1 \
+    sh -c 'INTROSPECTOR_COLLECTION=introspector_panel PARITY_TASKS=1 \
+           python /app/scripts/parity_introspector.py'
+
+# Full panel (~50 LLM calls — 25 tasks × 2 paths):
+docker exec -it crewai-team-gateway-1 \
+    sh -c 'INTROSPECTOR_COLLECTION=introspector_panel \
+           python /app/scripts/parity_introspector.py'
+
+# Validate token economics (criterion 3):
+docker exec crewai-team-gateway-1 python -c \
+    'from app.tool_runtime.telemetry import analyze_telemetry; \
+     import json; print(json.dumps(analyze_telemetry(agent_id="introspector_panel"), indent=2))'
+```
+
+Per-task JSONL lands at `workspace/observability/parity_introspector.jsonl`;
+LLM-call telemetry at `workspace/observability/loadable_agent_usage.jsonl`.
+Setting `INTROSPECTOR_COLLECTION=introspector_panel` isolates panel
+memory writes from the production `introspector` collection — the
+test-pollution decision pattern (option 2 of three).
+
+The script's summary reports the Stage 1 → 2 acceptance ratio. To
+validate criterion 3 against Phase 1c (Anthropic cache pricing),
+force the cascade onto the premium tier; otherwise local Ollama is
+the most likely model and `cache_creation_input_tokens` /
+`cache_read_input_tokens` will be zero (expected).
 
 ### Promoting an agent to default-on (Stage 1 → Stage 2)
 
