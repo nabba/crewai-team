@@ -210,6 +210,100 @@ class TestLibrarianMapsTodaysFailures:
         assert "escalate_tier" not in miss_strats
 
 
+class TestLibrarianRegistryBridge:
+    """The librarian augments its hand-curated _CAPABILITY_MAP with
+    semantic search over the tool registry. Catches tools whose
+    phrasing doesn't hit any keyword in the map."""
+
+    @staticmethod
+    def _fake_match(name: str, reason: str = "semantic match (d=0.30)"):
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, reason=reason, score=0.9)
+
+    def test_registry_hit_emits_direct_tool_for_recipe_eligible_tool(self):
+        """A registry hit on a recipe-eligible tool must surface as a
+        direct_tool alternative, even when keyword inference produced
+        nothing."""
+        from app.recovery import librarian
+        with patch(
+            "app.tool_registry.discovery.search_tools",
+            return_value=[self._fake_match("email_tools.check_email")],
+        ):
+            alts = librarian.find_alternatives(
+                "pull the most recent message from my correspondence",
+                refusal_category="missing_tool",
+                used_crew="research",
+            )
+        direct_tool_alts = [
+            a for a in alts
+            if a.strategy == "direct_tool" and a.tool == "email_tools.check_email"
+        ]
+        assert direct_tool_alts, (
+            "Registry semantic match on a recipe-eligible tool must "
+            "emit a direct_tool alternative."
+        )
+        assert "registry semantic match" in direct_tool_alts[0].rationale.lower()
+
+    def test_registry_hit_dedups_against_keyword_path(self):
+        """When the keyword path already emitted a direct_tool for tool
+        X, the registry path must NOT emit a duplicate."""
+        from app.recovery import librarian
+        with patch(
+            "app.tool_registry.discovery.search_tools",
+            return_value=[self._fake_match("email_tools.check_email")],
+        ):
+            alts = librarian.find_alternatives(
+                "what emails arrived today",  # hits the 'email' keywords
+                refusal_category="missing_tool",
+                used_crew="research",
+            )
+        direct_tool_alts = [
+            a for a in alts
+            if a.strategy == "direct_tool" and a.tool == "email_tools.check_email"
+        ]
+        assert len(direct_tool_alts) == 1, (
+            "Same (strategy, tool, crew) tuple must not be emitted "
+            f"twice. Got: {[a.rationale for a in direct_tool_alts]}"
+        )
+
+    def test_registry_failure_does_not_break_recovery(self):
+        """If search_tools raises, find_alternatives must still return
+        the keyword-path alternatives + forge_queue."""
+        from app.recovery import librarian
+        with patch(
+            "app.tool_registry.discovery.search_tools",
+            side_effect=RuntimeError("chromadb unreachable"),
+        ):
+            alts = librarian.find_alternatives(
+                "what emails arrived today",
+                refusal_category="missing_tool",
+                used_crew="research",
+            )
+        strategies = {a.strategy for a in alts}
+        assert "forge_queue" in strategies, "forge_queue must always survive"
+        assert "re_route" in strategies, (
+            "Keyword-path re_route to PIM must survive a registry failure."
+        )
+
+    def test_registry_hit_for_unknown_tool_is_dropped(self):
+        """A registry hit on a tool with no direct_tool recipe must be
+        dropped — we don't know how to invoke it directly. Today's
+        eligibility list is hard-coded; expanding it is a separate change."""
+        from app.recovery import librarian
+        with patch(
+            "app.tool_registry.discovery.search_tools",
+            return_value=[self._fake_match("hypothetical.new_tool")],
+        ):
+            alts = librarian.find_alternatives(
+                "do something only that hypothetical tool can do",
+                refusal_category="missing_tool",
+                used_crew="research",
+            )
+        assert not any(
+            a.tool == "hypothetical.new_tool" for a in alts
+        ), "Tools without a recipe must not be surfaced as direct_tool."
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Strategies — re_route + forge_queue
 # ══════════════════════════════════════════════════════════════════════

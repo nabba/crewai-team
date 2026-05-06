@@ -49,6 +49,17 @@ class Alternative:
 # This is the table that tells the librarian "the user asked about
 # email and the research crew refused — try PIM."
 
+# Tools wired into the direct_tool recipe table (see
+# app/recovery/strategies/direct_tool.py:_TOOL_RECIPES). Consulted by
+# both the keyword path below and the registry-bridge fallback in
+# `_registry_alternatives` — no point suggesting a tool we don't know
+# how to call directly.
+_DIRECT_TOOL_RECIPE_NAMES: tuple[str, ...] = (
+    "email_tools.check_email",
+    "calendar_tools.list_events",
+)
+
+
 _CAPABILITY_MAP: dict[str, dict] = {
     "email": {
         "crews": ["pim"],
@@ -125,6 +136,47 @@ def _current_tier_for_role(role: str) -> str | None:
     return None
 
 
+# ── Tool-registry bridge ────────────────────────────────────────────────
+
+def _registry_alternatives(task: str, used_crew: str) -> list[Alternative]:
+    """Augment the keyword-curated _CAPABILITY_MAP with semantic search
+    over the tool registry's ChromaDB index.
+
+    Closes the gap where a `@register_tool`-annotated tool exists but
+    the user's phrasing doesn't hit any keyword in the map. Reuses
+    `tool_registry.discovery.search_tools` so the 4-layer contamination
+    defense (subjectless guard, quarantine, tier, workspace, distance
+    ceiling 0.55) applies uniformly to recovery suggestions.
+
+    Today the only actionable bridge is to `direct_tool` — the registry
+    doesn't expose a source_module → crew map, so `re_route` from a
+    registry hit isn't yet derivable. When that lands, emit re_route
+    here too.
+
+    Falls back to empty list on any infrastructure failure — registry
+    blips must never break recovery.
+    """
+    try:
+        from app.tool_registry.discovery import search_tools
+        matches = search_tools(intent=task, limit=5)
+    except Exception:
+        logger.debug("librarian: registry search failed", exc_info=True)
+        return []
+
+    out: list[Alternative] = []
+    for m in matches:
+        if m.name in _DIRECT_TOOL_RECIPE_NAMES:
+            out.append(Alternative(
+                strategy="direct_tool",
+                tool=m.name,
+                rationale=f"Tool registry semantic match ({m.reason}).",
+                est_cost_usd=0.0,
+                est_latency_s=5.0,
+                sync=True,
+            ))
+    return out
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 # Default ranking: cheaper + faster + more-likely-to-work strategies first.
@@ -162,7 +214,7 @@ def find_alternatives(
             # Only for tools that have a recipe in direct_tool's table.
             # Hard-coded list keeps the librarian from suggesting tools
             # we don't actually know how to call directly.
-            if tool in ("email_tools.check_email", "calendar_tools.list_events"):
+            if tool in _DIRECT_TOOL_RECIPE_NAMES:
                 out.append(Alternative(
                     strategy="direct_tool",
                     tool=tool,
@@ -242,6 +294,17 @@ def find_alternatives(
                 est_latency_s=60.0,
                 sync=True,
             ))
+
+    # ── Augment with semantic search over the tool registry ───────
+    # Catches tools whose phrasing doesn't hit any _CAPABILITY_MAP
+    # keyword. Dedup by (strategy, tool, crew) so a registry hit that
+    # already came in via the keyword path doesn't get double-emitted.
+    existing_keys = {(a.strategy, a.tool, a.crew) for a in out}
+    for alt in _registry_alternatives(task, used_crew):
+        key = (alt.strategy, alt.tool, alt.crew)
+        if key not in existing_keys:
+            out.append(alt)
+            existing_keys.add(key)
 
     # Sort the runtime strategies by cost (cheapest first) so the
     # loop's budget is spent on most-likely-to-recover paths before

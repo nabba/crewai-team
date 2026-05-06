@@ -285,12 +285,45 @@ is one dict entry — see §11.
 The loop respects this order strictly: cheaper strategies get budget
 first, expensive ones only if cheap ones fail.
 
+### Tool-registry bridge
+
+The hand-curated `_CAPABILITY_MAP` is augmented by a semantic-search
+fallback against the tool registry's ChromaDB index. After the keyword
+path emits its alternatives, `_registry_alternatives(task, used_crew)`
+calls `tool_registry.discovery.search_tools(intent=task, limit=5)` and
+maps each ranked `ToolMatch` into a `direct_tool` `Alternative` —
+provided the tool name is in the recipe-eligibility list
+`_DIRECT_TOOL_RECIPE_NAMES` (shared with the keyword path).
+
+Why bridge them at all: the keyword catalog grows by hand on every
+new tool. Semantic search picks up `@register_tool`-annotated tools
+whose phrasing the operator never anticipated. The 4-layer
+contamination defense in `discovery.py` (subjectless guard,
+quarantine, tier, workspace, distance ceiling 0.55) applies
+uniformly to recovery suggestions — so the bridge inherits the same
+safety properties as the agent-side `tool_search` primitive.
+
+Dedup runs after the registry pass: any `(strategy, tool, crew)`
+tuple already emitted by the keyword path is skipped, so a registry
+hit on the same tool the keyword path found doesn't double-emit.
+
+Today the bridge only emits `direct_tool` alternatives because the
+registry doesn't expose a `source_module → crew` map. When that
+lands, the bridge can also emit `re_route` for hits whose source
+crew differs from `used_crew`.
+
+Failure mode: if the registry / Chroma is unreachable, the bridge
+returns an empty list and recovery proceeds with the keyword
+alternatives. Registry blips never break recovery.
+
 ### Code pointers
 
 | Function | Purpose |
 |---|---|
 | `_CAPABILITY_MAP` | Hand-curated capability → tools/crews/keywords |
 | `_infer_capabilities(task)` | Keyword match against the map |
+| `_DIRECT_TOOL_RECIPE_NAMES` | Eligibility list — tools with a recipe in `direct_tool.py:_TOOL_RECIPES` |
+| `_registry_alternatives(task, used_crew)` | Semantic-search bridge against the tool registry |
 | `_current_tier_for_role(role)` | Best-effort tier lookup for escalate_tier eligibility |
 | `find_alternatives(...)` | Public entry point — returns ranked list |
 
