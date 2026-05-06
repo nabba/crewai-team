@@ -45,6 +45,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field, PrivateAttr
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,19 +78,25 @@ def record_call_usage(
         usage = getattr(response, "usage", None) or {}
         if hasattr(usage, "model_dump"):
             usage = usage.model_dump()
-        elif hasattr(usage, "__dict__"):
+        elif hasattr(usage, "__dict__") and not isinstance(usage, dict):
             usage = dict(usage.__dict__)
         elif not isinstance(usage, dict):
             usage = {}
     except Exception:
         usage = {}
 
+    # Token name fallbacks: Anthropic uses input_tokens/output_tokens directly;
+    # litellm normalizes to OpenAI prompt_tokens/completion_tokens. Take whichever
+    # is non-zero so the row is meaningful regardless of provider.
+    input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+
     row = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "agent_id": agent_id,
         "iteration": iteration,
-        "input_tokens": int(usage.get("input_tokens", 0) or 0),
-        "output_tokens": int(usage.get("output_tokens", 0) or 0),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
         # Anthropic-specific fields. May be None for non-Anthropic models.
         "cache_creation_input_tokens": int(
             usage.get("cache_creation_input_tokens", 0) or 0
@@ -106,6 +114,154 @@ def record_call_usage(
                 f.write(json.dumps(row) + "\n")
     except Exception as exc:
         logger.debug("loadable_agent telemetry: write failed: %s", exc)
+
+
+# ── Callback handler + install helper ──────────────────────────────
+
+
+class CacheTelemetryHandler(BaseModel):
+    """litellm-compatible callback that captures cache_creation /
+    cache_read tokens per LLM call and writes one row to
+    ``loadable_agent_usage.jsonl`` via ``record_call_usage``.
+
+    Mirrors the shape of crewai's ``TokenCalcHandler`` so it can sit
+    alongside it in an agent's ``callbacks`` list. ``log_success_event``
+    is the litellm hook signature; failures are swallowed (telemetry
+    must never break the agent run).
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+    __hash__ = object.__hash__
+
+    agent_id: str = Field(default="")
+    _iteration: int = PrivateAttr(default=0)
+
+    def log_success_event(
+        self,
+        kwargs: dict[str, Any],
+        response_obj: Any,
+        start_time: float,
+        end_time: float,
+    ) -> None:
+        self._iteration += 1
+        try:
+            if isinstance(response_obj, dict):
+                usage = response_obj.get("usage")
+                model = response_obj.get("model", "") or ""
+            else:
+                usage = getattr(response_obj, "usage", None)
+                model = getattr(response_obj, "model", "") or ""
+            if usage is None:
+                return
+            # Stub object so record_call_usage's getattr-based extraction works
+            # whether the underlying usage is a dict, a Pydantic model, or a
+            # litellm Usage instance.
+            stub = type("_R", (), {})()
+            stub.usage = usage
+            record_call_usage(
+                agent_id=self.agent_id,
+                iteration=self._iteration,
+                response=stub,
+                model=model,
+            )
+        except Exception:
+            logger.debug(
+                "CacheTelemetryHandler: log_success_event failed", exc_info=True,
+            )
+
+
+# Native-provider path — CrewAI's OpenAI-compatible / Anthropic-direct LLMs
+# bypass litellm callbacks entirely; they emit `LLMCallCompletedEvent` on the
+# event bus. The map below lets the global event handler scope writes to the
+# loadable-agent identities we've installed telemetry for.
+#
+# Keyed by id(llm) — when the LLM object is GC'd, the id may be reused; for
+# parity-panel and per-process production usage the timing means the same
+# install_cache_telemetry call always runs first on any new instance, so
+# stale entries get overwritten before they're read.
+_LLM_AGENT_IDS: dict[int, str] = {}
+_LLM_ITERATIONS: dict[int, int] = {}
+_HANDLER_REGISTERED = False
+
+
+def _register_event_handler() -> None:
+    """Register a once-per-process subscription to LLMCallCompletedEvent.
+
+    Idempotent — a module-level flag guards re-registration. Failures to
+    import the event bus are swallowed (telemetry is optional).
+    """
+    global _HANDLER_REGISTERED
+    if _HANDLER_REGISTERED:
+        return
+    try:
+        from crewai.events import crewai_event_bus
+        from crewai.events.types.llm_events import LLMCallCompletedEvent
+    except Exception:
+        logger.debug(
+            "register_event_handler: crewai event bus unavailable",
+            exc_info=True,
+        )
+        return
+
+    @crewai_event_bus.on(LLMCallCompletedEvent)
+    def _on_llm_call_completed(source: Any, event: Any) -> None:  # noqa: ARG001
+        agent_id = _LLM_AGENT_IDS.get(id(source))
+        if not agent_id:
+            return
+        iteration = _LLM_ITERATIONS.get(id(source), 0) + 1
+        _LLM_ITERATIONS[id(source)] = iteration
+        try:
+            stub = type("_R", (), {})()
+            stub.usage = event.usage or {}
+            record_call_usage(
+                agent_id=agent_id,
+                iteration=iteration,
+                response=stub,
+                model=getattr(source, "model", "") or "",
+            )
+        except Exception:
+            logger.debug("event-bus telemetry handler failed", exc_info=True)
+
+    _HANDLER_REGISTERED = True
+
+
+def install_cache_telemetry(agent: Any, agent_id: str) -> None:
+    """Wire cache-aware telemetry for one LoadableAgent.
+
+    Two paths cooperate:
+      * litellm fallback — appends a CacheTelemetryHandler to
+        agent.callbacks; litellm invokes log_success_event.
+      * native providers (OpenAI-compatible, Anthropic-direct) — tags
+        the LLM instance and registers a global event-bus subscription
+        that scopes writes by id(llm).
+
+    Idempotent — both paths skip work when already wired.
+    """
+    # Path 1: litellm callback (registered through crewai.LLM.set_callbacks).
+    handler = CacheTelemetryHandler(agent_id=agent_id)
+    callbacks = getattr(agent, "callbacks", None)
+    if callbacks is None:
+        try:
+            agent.callbacks = [handler]
+        except Exception:
+            logger.debug(
+                "install_cache_telemetry: cannot set agent.callbacks",
+                exc_info=True,
+            )
+    else:
+        already_wired = any(
+            isinstance(cb, CacheTelemetryHandler) and cb.agent_id == agent_id
+            for cb in callbacks
+        )
+        if not already_wired:
+            callbacks.append(handler)
+
+    # Path 2: native provider event subscription.
+    _register_event_handler()
+    llm = getattr(agent, "llm", None)
+    if llm is not None:
+        _LLM_AGENT_IDS[id(llm)] = agent_id
+        _LLM_ITERATIONS[id(llm)] = 0
 
 
 # ── Analysis ────────────────────────────────────────────────────────

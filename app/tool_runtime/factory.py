@@ -170,7 +170,7 @@ def build_loadable_agent(
         agent_id, len(eager_tools), len(available),
     )
 
-    return LoadableAgent(
+    agent = LoadableAgent(
         role=role,
         goal=goal,
         backstory=backstory,
@@ -179,3 +179,18 @@ def build_loadable_agent(
         available_tools=available,
         **agent_kwargs,
     )
+
+    # Wire cache-aware telemetry so each LLM call writes a row to
+    # workspace/observability/loadable_agent_usage.jsonl. Phase 5 acceptance
+    # criterion 3 (token economics) is validated against this log.
+    try:
+        from app.tool_runtime.telemetry import install_cache_telemetry
+        install_cache_telemetry(agent, agent_id)
+    except Exception as exc:
+        logger.warning(
+            "build_loadable_agent[%s]: telemetry install failed (%s) — "
+            "agent runs unchanged, but token economics will not be observable.",
+            agent_id, exc,
+        )
+
+    return agent
