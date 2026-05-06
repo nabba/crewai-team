@@ -320,7 +320,7 @@ The remediation program splits into:
 | **5.1** | `app/system_state` foundation — readonly view over `crew_runs`, deployment state for the Commander | **shipped (PR #52)** |
 | **5.2** | Commander routing fix — two-layer defense: history sanitation + decision validator | **shipped (PR #53)** |
 | **5.3a** | Change-request backend — `request_restricted_write` agent tool, Signal 👍/👎 voting, React `/api/cp/changes/*` endpoints, hot-apply via bridge, auto-PR against main, rollback path | **shipped — see § 16** |
-| **5.3b** | React UI for change requests | pending |
+| **5.3b** | React UI for change requests at `/cp/changes` — list + status filter + diff drawer + approve/reject/rollback/retry-apply actions | **shipped — see § 16** |
 | **5.4** | Surface drift cleanup — coding specialists get bridge tools + `request_restricted_write`; `/cp/` shows phase-5 capability views | pending |
 
 ## 16. 2026-05-04 Change-request system — Phase 5.3a
@@ -341,6 +341,7 @@ Signal **and** React with idempotent transitions.
 | Rollback | bridge writes captured `old_content` back + module reload + `git revert <sha>` on a `revert/<id>` branch + push + revert PR. Operator merges to make rollback durable. |
 | Two-gate model | Gate 1 = approve (hot-applies + opens PR; reversible via Rollback). Gate 2 = operator merges PR (durable in `main`). CI auto-merge intentionally not wired. |
 | Tests | `tests/test_change_requests.py` — 40 tests, all pass. Covers validator, models, store + audit chain integrity, lifecycle transitions, HTTP API, Signal body shape, agent tool. |
+| React UI (Phase 5.3b) | `dashboard-react/src/{types,api}/changes.ts` + `components/ChangesPage.tsx`. List view with status filter, detail drawer with full unified diff (line-coloured), per-state action buttons (approve / reject / rollback / retry-apply), TIER_IMMUTABLE-protected flag visible on every row. Wired into `App.tsx` (`/changes` route) + `Layout.tsx` (nav item, ✏️). Polling: list 8s, detail 5s; cache invalidates on mutation success. Build/lint/typecheck on the new files: 0 errors. |
 | Doc | `docs/CHANGE_REQUESTS.md`. |
 
 **Design boundary held:** TIER_IMMUTABLE files (security core, eval
