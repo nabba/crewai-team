@@ -55,6 +55,23 @@ install_llm_event_subscriber()
 from app.crews.registry import install_defaults as _install_crew_registry
 _install_crew_registry()
 
+# Ensure the dossier subsystem is wired up at boot:
+#   * importing the package fires @register_tool for `build_company_dossier`
+#     so it shows up in `tool_search` and the /api/cp/tools panel
+#   * the dossier collector's adapters install lazily on first call,
+#     so this import is just for tool-registry visibility
+# The crew itself is registered via _install_crew_registry above; this
+# import is purely for the tool-registry side-effect.  See
+# app/dossier/__init__.py for the package init that pulls
+# app.dossier.tools.
+try:
+    import app.dossier  # noqa: F401
+except Exception as _exc:
+    logger = logging.getLogger(__name__)
+    logger.warning("dossier subsystem import failed at boot: %s — "
+                   "build_company_dossier will not be discoverable until "
+                   "the issue is resolved", _exc)
+
 # Subscribe the default lifecycle event handlers (belief state, Firebase,
 # metric, journal, auto-skill distillation) to the crew event bus.
 # Adding a new sink (e.g. SubIA pre/post hooks once that layer goes live)

@@ -160,6 +160,12 @@ def install_defaults() -> None:
         ("desktop",       "app.crews.desktop_crew",        "DesktopCrew"),
         ("repo_analysis", "app.crews.repo_analysis_crew",  "RepoAnalysisCrew"),
         ("devops",        "app.crews.devops_crew",         "DevOpsCrew"),
+        # Investment-grade company dossier — see app/dossier/ for
+        # the pipeline.  Distinct from ``financial`` (open-ended
+        # analyst) because it is a deterministic data + structured-
+        # composition pipeline that always produces the same multi-
+        # page report shape.
+        ("company_dossier", "app.crews.dossier_crew",      "DossierCrew"),
     ):
         register(name, class_run_runner(module, cls))
 
