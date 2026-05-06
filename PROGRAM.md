@@ -426,3 +426,178 @@ file per source — the schema fields exist; the merge layer wires them
 in by source priority.
 
 Full design notes: [`docs/COMPANY_DOSSIER.md`](docs/COMPANY_DOSSIER.md).
+
+
+## 17. 2026-05 Post-PIM-Incident Program (change requests + coding sessions)
+
+**Trigger.** Mid-2026-05 a PIM crew failed with `NameError:
+optional_tool_group is not defined` — a missing import in
+`app/agents/pim_agent.py`. The fix landed via PR #50, but Commander
+kept hallucinating "PIM is broken" for three more turns even after
+the gateway picked up the fix. Operator intervened manually. Four
+systemic gaps surfaced from the post-mortem:
+
+1. **Stale-context routing.** Commander based "is X broken?" on
+   conversation history rather than deployment state. Once a failure
+   was in-context, the model kept producing failure-shaped outputs.
+2. **Code-fix surface drift.** The Coder crew was sandboxed to
+   `output/skills/proposals/` — it had no path to actually fix bugs
+   in `app/agents/*.py` even when the operator asked.
+3. **Hot-deploy without restart.** The bridge could write
+   the file, but a stale Python module cache served the broken code
+   until the gateway restarted. (Already mostly addressed by 5.1.)
+4. **No human gate on agent writes.** If we widen the coder's
+   filesystem reach, we need a deliberate operator approval per
+   write — not "the agent decided it was right."
+
+The user's framing was explicit: *"do not fix things instead of
+system. I need it to systematically work."* The response is the
+Phase 5.3+5.4 program — three small primitives, one new human-gate
+surface, no workarounds.
+
+### 17.1 Architectural shape — three composing primitives
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Coder agent                                                │
+│   tools:                                                    │
+│     coding_session_*  (read/write/run/iterate)              │
+│     request_restricted_write  (one-shot atomic fix)         │
+│     read_host_file (existing — out-of-session reads)        │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Coding-session primitive (Phase 5.4)                       │
+│    Ephemeral worktree where the agent iterates with fast    │
+│    feedback (pytest / lint / typecheck). Submit bundles     │
+│    diffs into change requests. Discard tears down.          │
+└──────────────┬──────────────────────────────────────────────┘
+               │ on submit:
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Change-request system (Phase 5.3a)                         │
+│    Validator (TIER_IMMUTABLE absolute) → Signal 👍/👎 OR    │
+│    React /cp/changes operator approve → hot-apply file      │
+│    via bridge → auto-PR against main → operator merge       │
+│    (gate 2) makes it durable.                               │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Host bridge (existing)                                     │
+│    Filesystem + git tunnel. Stays minimal — does the one    │
+│    thing it always did. No new capabilities.                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The three primitives compose without overlapping:
+
+* **Bridge** — filesystem + git operations. Unchanged.
+* **Change requests** — deploy lifecycle with a human gate.
+  Unchanged across 5.4 (Phase 5.4-c reuses it via the
+  `ChangeRequestPort`).
+* **Coding sessions** — *development sandbox* with sandboxed exec.
+  New in 5.4. Single escape hatch is `submit`, which routes through
+  the change-request gate.
+
+### 17.2 Phased delivery (PRs #54 → #63)
+
+Each phase shipped as a small, independently-mergeable PR. Stack
+order:
+
+| PR | Phase | Scope |
+|---|---|---|
+| **#54** | 5.3a | Change-request **backend**: validator (TIER_IMMUTABLE absolute), JSONL store + hash-chained audit, lifecycle state machine, hot-apply via bridge, auto-PR, rollback. `request_restricted_write` agent tool. Signal 👍/👎 reaction handler. 40 tests. |
+| **#55** | 5.3b | Change-request **React UI** at `/cp/changes`. List + status filter; drawer with full unified diff (line-coloured), per-state action buttons (approve / reject / rollback / retry-apply), TIER_IMMUTABLE 🛑 flag on every row. |
+| **#56** | 5.4 plan | Design proposal — `docs/CODING_SESSIONS.md` (529 lines): primitive, tool surface, module layout, state machine, quotas, sandboxing, integration with change-requests, capability vocabulary, failure modes, test plan, open questions. **Plan-only PR**, reviewed before any code. |
+| **#57** | 5.4-a | **Data layer**: `models.py` (`CodingSession` + 5-state enum + `SubmitResult`), `store.py` (JSONL + hash-chained audit), `quotas.py` (frozen-dataclass config + checks), `manager.py` (lifecycle + injectable `WorktreeBackend` Protocol), `reconciler.py` (TTL/idle expiry, idempotent). 43 tests. |
+| **#58** | 5.4-b | **Runner + backends**: `runner.py` — argv-not-shell + executable allowlist + per-command subcommand restrictions + RLIMIT_CPU + wallclock + output cap + cwd lock + secret-stripping + pluggable network isolation (`CODING_SESSION_SANDBOX=none\|unshare-n\|firejail\|bwrap`). `backends.py` — `LocalWorktreeBackend` (subprocess) + `BridgeWorktreeBackend` (host bridge). 44 new tests, 86 cumulative. |
+| **#59** | 5.4-c | **Submit + change-request fan-out**: `submit.py` — `ChangeRequestPort` Protocol with lazy-importing default (so unit tests don't depend on #54). Per-file split; TIER_IMMUTABLE refused per-file but doesn't block the batch; deletes refused (`delete-not-supported` in v1); per-file exception → `status=error` row. Backend `WorktreeBackend` extended with `list_changed_paths` / `read_worktree_file` / `read_base_file` (porcelain-z parser handles renames + paths-with-spaces). 37 new tests, 123 cumulative. |
+| **#60** | 5.4-d | **Agent tools + capability vocabulary**: 7 CrewAI `BaseTool` classes (`coding_session_{start, read, write, run, diff, submit, discard}`). Errors prefix-encoded (`ERROR:` / `REFUSED:` / `QUOTA_EXCEEDED:`). `runtime.py` Manager singleton with env-driven backend selection. `app/tool_registry/capabilities.py` (TIER_IMMUTABLE) gains a new `code-development` category with 4 PRODUCTION tags (`reads-coding-session`, `writes-coding-session`, `runs-coding-session`, `submits-coding-session`). 34 new tests, 157 cumulative. |
+| **#61** | 5.4-e | **Coder agent wiring**: `_CODING_SESSION_GUIDANCE` block appended to `CODER_BACKSTORY` — teaches the 3-step pattern (start → iterate → submit/discard), when NOT to use a session (atomic single-file → `request_restricted_write`; workspace artefacts → `file_manager`; TIER_IMMUTABLE → manual PR), and the three error prefixes. Both `_legacy_create_coder` and `_build_loadable_coder` extend their tool list under `optional_tool_group("coder", "coding_session")` for graceful degradation. 6 new tests, 163 cumulative. |
+| **#62** | 5.4-f | **Operator read-only view** at `/cp/coding-sessions`: backend `GET /api/cp/coding-sessions` (list with status + agent filter) + `GET /{id}` (detail). **No POST/PUT/DELETE** — by design. React UI: list + filter + drawer (worktree info, activity counters, files-touched, terminal metadata, `submit_results` with deep-link to `/cp/changes`). 15 new tests covering the read-only contract. |
+| **#63** | follow-up | **Workspaces dedup fix** at `/api/workspaces`. Runtime accumulation in the `_gates` registry was producing two snapshots per logical project (one fresh-reconciled, one runtime-populated); the React UI rendered both as tabs. Defensive dedup at the serializer + a `POST /api/workspaces/_dedup` operator-GC endpoint. 5 tests. |
+
+Total: **~7 000 LoC of implementation + ~3 000 LoC of tests across 9 PRs**, all stacked. 168 cumulative tests across the new subsystems, all green.
+
+### 17.3 The properties the system holds
+
+* **Sandbox isolation.** Writes inside a coding-session worktree
+  never reach the live tree. `coding_session_run` is bounded
+  (allowlist + CPU + wallclock + output cap + optional netns).
+* **Single escape hatch.** The only way out of a worktree is
+  `submit`, which routes through the validator + change-request
+  human gate. TIER_IMMUTABLE is enforced at three layers —
+  write-time fast-fail, validate-time on submit, and CR-create.
+* **Self-cleaning.** Quotas (per-agent / system / disk / TTL /
+  idle) + an idle reconciler garbage-collect abandoned sessions.
+  No leaked worktrees.
+* **Two human gates per change.** Gate 1 = Signal 👍 OR React
+  approve → hot-apply + auto-PR opens. Gate 2 = operator merges
+  the auto-PR → durable in main. Either gate can reject.
+* **Idempotent transitions.** Re-discard / re-expire / re-submit
+  on a terminal session is a no-op or a clean error; no duplicate
+  side effects. Same shape as the change-request lifecycle.
+* **Operator visibility.** Sessions visible at `/cp/coding-sessions`
+  (read-only). Submitted change requests visible at `/cp/changes`
+  (actionable). The two surfaces deep-link to each other.
+* **Capability vocabulary stays small.** 4 new tags under one new
+  category. No "code-modify" or other unbounded grant.
+
+### 17.4 Capability vocabulary additions
+
+`app/tool_registry/capabilities.py` is TIER_IMMUTABLE; expansion
+required explicit operator review (per the file's own header). The
+new `code-development` category adds 4 tags, all PRODUCTION tier:
+
+| Tag | Holders |
+|---|---|
+| `reads-coding-session` | `coding_session_read`, `coding_session_diff`, `coding_session_discard` |
+| `writes-coding-session` | `coding_session_start`, `coding_session_write` |
+| `runs-coding-session` | `coding_session_run` |
+| `submits-coding-session` | `coding_session_submit` |
+
+Per the file's stability promise, these names will not be renamed
+or removed once merged.
+
+### 17.5 Key files
+
+| Subsystem | Files |
+|---|---|
+| Change requests | `app/change_requests/{__init__, models, validator, store, lifecycle, apply, signal}.py` ; `app/tools/restricted_write_tool.py` ; `app/control_plane/changes_api.py` ; reaction handler in `app/main.py` |
+| Coding sessions | `app/coding_session/{__init__, models, store, quotas, manager, reconciler, runner, backends, submit, runtime}.py` ; `app/tools/coding_session_tools.py` ; `app/control_plane/coding_sessions_api.py` |
+| React UI | `dashboard-react/src/{types,api}/changes.ts` + `components/ChangesPage.tsx` ; `dashboard-react/src/{types,api}/coding_sessions.ts` + `components/CodingSessionsPage.tsx` ; `App.tsx` + `Layout.tsx` (route + nav entries) |
+| Capability vocab | `app/tool_registry/capabilities.py` (new `code-development` category) |
+| Coder agent | `app/agents/coder.py` (`_CODING_SESSION_GUIDANCE` block + tool wiring in both legacy + LoadableAgent paths) |
+| Workspaces dedup | `app/api/workspace_api.py` (serializer dedup + `POST /api/workspaces/_dedup` GC endpoint) |
+| Tests | `tests/test_change_requests.py` (40) + `tests/test_coding_session*.py` (123) + `tests/test_coding_session_tools.py` (34) + `tests/test_coder_coding_session_wiring.py` (6) + `tests/test_coding_sessions_api.py` (15) + `tests/test_workspace_api_dedup.py` (5) |
+| Docs | [`docs/CHANGE_REQUESTS.md`](docs/CHANGE_REQUESTS.md), [`docs/CODING_SESSIONS.md`](docs/CODING_SESSIONS.md) |
+
+### 17.6 What this closes
+
+The original failure mode ("Commander hallucinates 'PIM is broken'
+because the coding agent has no path to fix it") now has the
+systemic fix the user demanded. The coding agent has the means to
+do its job — read source, write fixes, run tests, submit through
+the gate. The operator has visibility into both sides. TIER_IMMUTABLE
+remains the absolute backstop. **No workarounds, no quick
+patches; the system works systemically.**
+
+Open follow-ups (deferred):
+
+* **Phase 4 graduation** of the coder's experimental LoadableAgent
+  path now that coding-sessions are wired through both factories.
+* **Idle reconciler** for the change-request `TIMEOUT` transition
+  (the state is defined but not yet written by any path).
+* **Per-agent requestor identity** — currently `agent_id="coder"`
+  is a static stub in the coding-session tools; threading the real
+  caller agent_id through CrewAI's `BaseTool` invocation context
+  is a Phase 6 concern.
+* **All-or-nothing submit mode** for refactor-style multi-file
+  changes (currently per-file submit; one Signal ASK per touched
+  file).
+* **Sandbox-tech pick** for `CODING_SESSION_SANDBOX` in production
+  K8s (`unshare-n` with `CAP_SYS_ADMIN`, vs `firejail`, vs
+  `bwrap`); the runtime hook is in place and defaults to `none`
+  (relies on container egress policy).
