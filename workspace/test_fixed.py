@@ -197,7 +197,7 @@ def _(): from app.reference_tasks import REFERENCE_TASKS,run_reference_suite; as
 @test("sandbox_runner")
 def _(): from app.sandbox_runner import SandboxRunner; return True
 @test("self_healer")
-def _(): from app.self_healer import SelfHealer; return True
+def _(): from app.healing.health_remediator import SelfHealer; return True
 @test("vetting")
 def _(): from app.vetting import vet_response; return True
 @test("auto_deployer.protected")

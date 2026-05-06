@@ -438,7 +438,7 @@ class TestImprovementNarrative:
         monkeypatch.setattr(inv, "NARRATIVE_INDEX", tmp_path / "narratives" / "index.json")
 
         with patch("app.results_ledger.get_recent_results", return_value=[]):
-            with patch("app.self_heal.get_recent_errors", return_value=[]):
+            with patch("app.healing.error_diagnosis.get_recent_errors", return_value=[]):
                 narrative = inv.generate_daily_narrative()
                 assert "Evolution Daily" in narrative
                 assert "No experiments" in narrative or "idle" in narrative

@@ -1,5 +1,5 @@
 """
-self_healer.py — Maps health alerts to automated remediation strategies.
+health_remediator.py — Maps health alerts to automated remediation strategies.
 
 Each health dimension has a specific remediation approach:
   - error_rate → diagnose via error patterns → propose code fix
@@ -197,7 +197,7 @@ class SelfHealer:
         3. Submit to evolution sandbox for testing
         """
         try:
-            from app.self_heal import get_error_patterns, get_recent_errors
+            from app.healing.error_diagnosis import get_error_patterns, get_recent_errors
             patterns = get_error_patterns()
             recent_errors = get_recent_errors(10)
 

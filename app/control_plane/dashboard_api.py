@@ -671,7 +671,7 @@ def recent_errors(limit: int = Query(20, ge=1, le=200)):
     patterns: dict[str, int] = {}
     err: str | None = None
     try:
-        from app.self_heal import get_recent_errors, get_error_patterns
+        from app.healing.error_diagnosis import get_recent_errors, get_error_patterns
         recent = list(get_recent_errors(limit) or [])
         patterns = dict(get_error_patterns() or {})
     except Exception as exc:

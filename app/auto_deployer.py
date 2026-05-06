@@ -111,7 +111,7 @@ TIER_IMMUTABLE = frozenset({
     "app/atlas/video_learner.py", "app/atlas/learning_planner.py",
     "app/atlas/audit_log.py",
     # Deployment infrastructure
-    "app/version_manifest.py", "app/health_monitor.py", "app/self_healer.py",
+    "app/version_manifest.py", "app/health_monitor.py", "app/healing/health_remediator.py",
     # Other infrastructure
     "app/signal_client.py", "app/firebase_reporter.py", "app/proposals.py",
     "app/fiction_inspiration.py", "app/history_compression.py",
@@ -759,7 +759,7 @@ def _post_deploy_monitor(deployed_files: list[str], backup_dir: Path, reason: st
     _time.sleep(60)
 
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         errors = get_recent_errors(20)
         # Count errors in last 2 minutes (should include post-deploy period)
         from datetime import datetime, timezone, timedelta

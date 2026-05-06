@@ -53,7 +53,7 @@ class TestSUBIAPredictionInContext:
         """When SUBIA tracker has sustained errors, they appear in evolution context."""
         import app.evolution as evo
         import app.results_ledger as ledger
-        import app.self_heal as heal
+        import app.healing.error_diagnosis as heal
 
         monkeypatch.setattr(evo, "PROGRAM_PATH", tmp_path / "program.md")
         (tmp_path / "program.md").write_text("# Test")
@@ -77,7 +77,7 @@ class TestSUBIAPredictionInContext:
         """Evolution context works fine when SUBIA modules aren't available."""
         import app.evolution as evo
         import app.results_ledger as ledger
-        import app.self_heal as heal
+        import app.healing.error_diagnosis as heal
 
         monkeypatch.setattr(evo, "PROGRAM_PATH", tmp_path / "program.md")
         (tmp_path / "program.md").write_text("# Test")
@@ -96,7 +96,7 @@ class TestSUBIAPredictionInContext:
         """Evolution context includes historical variant tags."""
         import app.evolution as evo
         import app.results_ledger as ledger
-        import app.self_heal as heal
+        import app.healing.error_diagnosis as heal
 
         monkeypatch.setattr(evo, "PROGRAM_PATH", tmp_path / "program.md")
         (tmp_path / "program.md").write_text("# Test")

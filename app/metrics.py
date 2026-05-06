@@ -41,7 +41,7 @@ def _task_success_rate() -> float:
 def _error_rate_24h() -> float:
     """Errors per hour over the last 24 hours. Lower is better."""
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         errors = get_recent_errors(100)
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         recent = [
@@ -56,7 +56,7 @@ def _error_rate_24h() -> float:
 def _error_rate_1h() -> float:
     """Errors in the last 1 hour. For short-term trending."""
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         errors = get_recent_errors(100)
         cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         return sum(1 for e in errors if e.get("ts", "") > cutoff.isoformat())
@@ -81,7 +81,7 @@ def _error_trend() -> str:
 def _self_heal_rate() -> float:
     """Fraction of errors that were successfully diagnosed (0.0-1.0)."""
     try:
-        from app.self_heal import get_recent_errors
+        from app.healing.error_diagnosis import get_recent_errors
         errors = get_recent_errors(50)
         if not errors:
             return 0.5  # no data = neutral

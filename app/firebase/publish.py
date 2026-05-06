@@ -326,7 +326,7 @@ def report_errors() -> None:
     if not db:
         return
     try:
-        from app.self_heal import get_recent_errors, get_error_patterns
+        from app.healing.error_diagnosis import get_recent_errors, get_error_patterns
         errors = get_recent_errors(20)
         patterns = get_error_patterns()
         db.collection("status").document("errors").set({

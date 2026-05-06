@@ -1,5 +1,5 @@
 """
-self_heal.py — Self-healing error analysis and auto-fix system.
+error_diagnosis.py — Per-exception error analysis and auto-fix system.
 
 When a crew or task fails, this module:
 1. Logs the error with full context to a persistent error journal

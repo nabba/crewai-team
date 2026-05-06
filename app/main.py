@@ -93,7 +93,7 @@ from app.config import get_settings, get_gateway_secret
 from app.security import is_authorized_sender, is_within_rate_limit, _redact_number
 from app.signal_client import SignalClient
 from app.agents.commander import Commander
-from app.self_heal import diagnose_and_fix
+from app.healing.error_diagnosis import diagnose_and_fix
 from app.audit import (
     log_request_received, log_response_sent, log_security_event
 )
@@ -559,7 +559,7 @@ async def lifespan(app: FastAPI):
     # Health monitor — wire self-healer alerts
     try:
         from app.health_monitor import get_monitor
-        from app.self_healer import SelfHealer
+        from app.healing.health_remediator import SelfHealer
         monitor = get_monitor()
         healer = SelfHealer()
 

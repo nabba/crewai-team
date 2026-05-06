@@ -134,16 +134,16 @@ class TestSelfHealSanitization(unittest.TestCase):
     """#5 — self_heal must sanitize user input in diagnosis tasks."""
 
     def test_imports_sanitize_input(self):
-        source = open("app/self_heal.py").read()
+        source = open("app/healing/error_diagnosis.py").read()
         self.assertIn("from app.sanitize import sanitize_input", source)
 
     def test_uses_sanitize_input(self):
-        source = open("app/self_heal.py").read()
+        source = open("app/healing/error_diagnosis.py").read()
         self.assertIn("sanitize_input(", source,
                        "Diagnosis task must sanitize user input")
 
     def test_verbose_false_on_agent(self):
-        source = open("app/self_heal.py").read()
+        source = open("app/healing/error_diagnosis.py").read()
         # All verbose= should be False
         self.assertNotIn("verbose=True", source,
                          "Diagnosis agent/crew must use verbose=False to avoid leaking data")

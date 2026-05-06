@@ -814,7 +814,7 @@ class TestSystemWiring:
         assert "get_journal" in src
 
     def test_self_heal_wires_world_model(self):
-        src = inspect.getsource(__import__("app.self_heal", fromlist=["_"]))
+        src = inspect.getsource(__import__("app.healing.error_diagnosis", fromlist=["_"]))
         assert "store_causal_belief" in src
 
     def test_postprocess_wires_world_model(self):

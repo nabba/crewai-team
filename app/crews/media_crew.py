@@ -6,7 +6,7 @@ from app.config import get_settings
 from app.sanitize import wrap_user_input
 from app.firebase_reporter import crew_started, crew_completed, crew_failed
 from app.rate_throttle import start_request_tracking, stop_request_tracking
-from app.self_heal import diagnose_and_fix
+from app.healing.error_diagnosis import diagnose_and_fix
 from app.memory.belief_state import update_belief
 from app.benchmarks import record_metric
 from app.llm_selector import difficulty_to_tier
