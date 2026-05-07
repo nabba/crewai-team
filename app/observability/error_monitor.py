@@ -315,6 +315,22 @@ def _record_anomaly(
     except Exception as exc:
         logger.debug(f"error_monitor: anomaly insert failed: {exc}")
 
+    # Hook: dispatch a runbook if one is registered for this signature.
+    # No-op when ``ERROR_RUNBOOKS_ENABLED`` is unset. Wrapped so a
+    # runbook bug can never break anomaly recording.
+    try:
+        from app.healing.runbooks import maybe_run_runbook
+        maybe_run_runbook({
+            "pattern_signature": sig,
+            "pattern_sample": sample[:1000],
+            "anomaly_type": anomaly_type,
+            "severity": severity,
+            "hourly_rate": hourly_rate,
+            "baseline": baseline,
+        })
+    except Exception as exc:
+        logger.debug(f"error_monitor: runbook dispatch hook failed: {exc}")
+
 
 def _auto_resolve_open_anomalies() -> int:
     """For each open anomaly, if its signature's current rate has been

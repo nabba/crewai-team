@@ -1,0 +1,8 @@
+{
+  "runbooks": {
+    "log_only": {
+      "enabled": true,
+      "min_recurrence": 1
+    }
+  }
+}

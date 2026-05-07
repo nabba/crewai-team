@@ -42,6 +42,8 @@ from crewai.utilities.agent_utils import (
 from crewai.utilities.printer import Printer
 from pydantic import BaseModel, PrivateAttr
 
+from app.tool_runtime.supervisor import supervise_available_functions
+
 if TYPE_CHECKING:
     from crewai.llms.base_llm import BaseLLM
 
@@ -92,6 +94,8 @@ class LoadableAgentExecutor(CrewAgentExecutor):
         openai_tools, available_functions, self._tool_name_mapping = (
             convert_tools_to_openai_schema(self._current_tools_for_dispatch())
         )
+        # [SUP-1] Wrap each tool callable with the supervisor (no-op when disabled).
+        available_functions = supervise_available_functions(available_functions)
         if self.binder is not None:
             self.binder.clear_dirty()
 
@@ -114,6 +118,8 @@ class LoadableAgentExecutor(CrewAgentExecutor):
                     openai_tools, available_functions, self._tool_name_mapping = (
                         convert_tools_to_openai_schema(self._current_tools_for_dispatch())
                     )
+                    # [SUP-1] Re-wrap after schema re-render.
+                    available_functions = supervise_available_functions(available_functions)
                     self.binder.clear_dirty()
 
                 # [DYNA-2] Announce newly-loaded tools to the model.
@@ -214,6 +220,8 @@ class LoadableAgentExecutor(CrewAgentExecutor):
         openai_tools, available_functions, self._tool_name_mapping = (
             convert_tools_to_openai_schema(self._current_tools_for_dispatch())
         )
+        # [SUP-1] Wrap each tool callable with the supervisor (no-op when disabled).
+        available_functions = supervise_available_functions(available_functions)
         if self.binder is not None:
             self.binder.clear_dirty()
 
@@ -236,6 +244,8 @@ class LoadableAgentExecutor(CrewAgentExecutor):
                     openai_tools, available_functions, self._tool_name_mapping = (
                         convert_tools_to_openai_schema(self._current_tools_for_dispatch())
                     )
+                    # [SUP-1] Re-wrap after schema re-render.
+                    available_functions = supervise_available_functions(available_functions)
                     self.binder.clear_dirty()
 
                 # [DYNA-2] Announce newly-loaded tools.

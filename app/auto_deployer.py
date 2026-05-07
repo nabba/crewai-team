@@ -112,6 +112,8 @@ TIER_IMMUTABLE = frozenset({
     "app/atlas/audit_log.py",
     # Deployment infrastructure
     "app/version_manifest.py", "app/health_monitor.py", "app/healing/health_remediator.py",
+    # Self-healing v2 (mid-iteration tool repair + anomaly-driven runbook dispatch)
+    "app/tool_runtime/supervisor.py", "app/healing/runbooks.py",
     # Other infrastructure
     "app/signal_client.py", "app/firebase_reporter.py", "app/proposals.py",
     "app/fiction_inspiration.py", "app/history_compression.py",
