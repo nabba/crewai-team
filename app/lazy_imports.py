@@ -3,7 +3,7 @@ lazy_imports.py — Cached singleton accessors.
 
 Replaces the runtime `__import__("app.config", fromlist=["get_settings"])
 .get_settings()` pattern scattered through idle_scheduler.py,
-orchestrator.py, self_healer.py, and consciousness modules.
+orchestrator.py, healing/health_remediator.py, and consciousness modules.
 
 Those patterns are a DIY workaround for circular imports. The cost is
 a real import on every call — 3× per idle loop in one case — and

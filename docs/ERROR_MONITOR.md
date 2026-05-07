@@ -188,3 +188,155 @@ pre-existing `/api/cp/anomalies` endpoint — no parallel pipeline.
   first 18h") instead of just summary trend.
 - **ML-based pattern grouping** to catch near-identical messages our
   regex normalizer misses.
+
+---
+
+## 11. Runbook dispatch
+
+Anomaly rows are useful for humans on the dashboard, but for
+operationally-known failure modes — pool exhaustion, outbox stalls,
+schema drift — there is value in *automated* remediation. The
+Runbook Dispatcher (`app/healing/runbooks.py`, opt-in via
+`ERROR_RUNBOOKS_ENABLED=true`) is the hook for that.
+
+It is wired into `_record_anomaly`, *after* the INSERT into
+`control_plane.error_anomalies`. A runbook failure can never break
+anomaly recording — the dispatcher call is wrapped in a bare
+`try/except` that logs at debug.
+
+### Architecture
+
+```
+errors.jsonl ──► error_monitor scan ──► _record_anomaly ──► INSERT
+                                              │
+                                              └──► maybe_run_runbook(anomaly)
+                                                              │
+                                                              ▼
+                                                  ┌────── 7 gates ───────┐
+                                                  │ env flag             │
+                                                  │ severity ≠ info      │
+                                                  │ pattern match        │
+                                                  │ runbook enabled      │
+                                                  │ recurrence ≥ N       │
+                                                  │ success rate ≥ 50%   │
+                                                  │ concurrency cap ≤ 1  │
+                                                  └──────────┬───────────┘
+                                                             ▼
+                                                  daemon thread → handler
+                                                             │
+                                                             ▼
+                                                  _record_runbook_outcome
+                                                  + dispatch.{started,
+                                                    finished, skipped} audit
+```
+
+### The seven gates (and their skip reasons)
+
+Each skipped dispatch emits a `dispatch.skipped` audit row with a
+`reason` field, so traceability is end-to-end:
+
+| # | Gate | Skip reason |
+|---|---|---|
+| 1 | `ERROR_RUNBOOKS_ENABLED` env var | (returns None silently) |
+| 2 | severity ≠ `info` | `severity_info` |
+| 3 | Anomaly's `pattern_signature` matches a registered runbook's regex | `no_pattern_match` |
+| 4 | Per-runbook `enabled=true` in `runbook_settings.json` | `runbook_disabled` |
+| 5 | Signature's 24h recurrence ≥ runbook's `min_recurrence` | `below_recurrence_threshold` |
+| 6 | Recent success rate (last 10 outcomes) ≥ 50% | `recent_success_rate_low` |
+| 7 | At most 1 runbook in flight (concurrency cap) | `concurrency_cap` |
+
+First-registered-wins on pattern collision; insertion order is the
+operator-controlled tie-breaker. Empty success-rate history is
+treated as passing (1.0) so a freshly-registered runbook gets its
+first chance.
+
+### Audit actions
+
+Actor: `self_heal_runbook`. Three actions:
+
+* `dispatch.started` — gates passed, daemon thread launched.
+* `dispatch.finished` — handler returned (or raised). Includes
+  `success`, `duration_ms`, `error?`, `detail?`.
+* `dispatch.skipped` — one of the seven gates rejected. Includes
+  `reason` plus context (signature, severity, runbook_name,
+  recurrence vs threshold, etc.).
+
+Query: `/api/cp/audit?actor=self_heal_runbook`.
+
+### Reference handler — `log_only`
+
+Auto-registered at import time with the catch-all `.*` pattern and
+`enabled: true` in shipped defaults. It logs the trigger and writes
+an outcome row but takes no system action. Purpose: verify the
+dispatch wiring end-to-end before any real runbook is wired.
+Operators replace or narrow it once production runbooks
+(`restart_pool`, `force_reconcile_outbox`, …) are registered from
+boot code.
+
+### Adding a real runbook
+
+```python
+# app/main.py (or any boot-time module)
+from app.healing.runbooks import register_runbook, RunbookResult
+
+def restart_pool(anomaly: dict) -> RunbookResult:
+    try:
+        # ... operator-authored remediation ...
+        return RunbookResult(name="restart_pool", success=True,
+                             detail="pool reset, healthcheck green")
+    except Exception as exc:
+        return RunbookResult(name="restart_pool", success=False,
+                             error=str(exc))
+
+register_runbook(
+    name="restart_pool",
+    pattern=r"db_pool::.*pool exhaust",
+    handler=restart_pool,
+)
+```
+
+Then add an entry to `workspace/self_heal/runbook_settings.json`:
+
+```json
+{
+  "runbooks": {
+    "restart_pool": {"enabled": true, "min_recurrence": 3}
+  }
+}
+```
+
+### State files
+
+Both live under `workspace/self_heal/`:
+
+* **`runbook_settings.json`** — operator-authored. Per-runbook
+  `enabled` flag and `min_recurrence`. Missing entries default to
+  disabled (safe-by-default).
+* **`runbook_stats.json`** — runtime-managed. Last 10 outcomes per
+  runbook, used by the success-rate gate. Auto-pruned at write.
+
+### Constraints
+
+* **No LLM calls.** The dispatcher and handlers are pure Python by
+  contract. If a remediation needs reasoning, propose a code change
+  via `app/proposals.py` (the same path `diagnose_and_fix` uses for
+  `fix_type=code`).
+* **TIER_IMMUTABLE respected.** Runbook handlers must NOT modify any
+  file in `app/auto_deployer.TIER_IMMUTABLE`. The dispatcher itself
+  is in TIER_IMMUTABLE.
+* **Bounded concurrency.** Cap of 1 in flight prevents a runbook
+  storm from amplifying an outage.
+* **Self-tuning gate.** A runbook that fails > 50% of the time over
+  its last 10 dispatches gets benched until its history rolls forward
+  enough to recover. This keeps a broken handler from hammering a
+  signature.
+
+### Code pointers
+
+* `app/healing/runbooks.py` — dispatcher module.
+* `app/observability/error_monitor.py:_record_anomaly` — the call
+  site (post-INSERT, try/except wrapped).
+* See PROGRAM.md §14 for the change-log entry; the dispatcher
+  exists as the *Track B* half of the May 2026 self-healing pass.
+* See `docs/RECOVERY_LOOP.md` §17 for composition with the Tool
+  Supervisor (Track A).

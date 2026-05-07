@@ -318,8 +318,9 @@ class SignalClient:
 
 
 # ── Module-level convenience function ────────────────────────────────────────
-# Used by: self_healer, auditor, self_heal, auto_deployer, evolution,
-#          workspace_versioning, llm_factory — all call send_message() synchronously.
+# Used by: healing.health_remediator, healing.error_diagnosis, auditor,
+#          auto_deployer, evolution, workspace_versioning, llm_factory —
+#          all call send_message() synchronously.
 
 def send_message(recipient: str, text: str, attachments: list | None = None) -> None:
     """Send a Signal message (synchronous wrapper for async SignalClient.send).

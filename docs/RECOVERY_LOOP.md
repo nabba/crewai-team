@@ -1097,6 +1097,53 @@ For rapid navigation:
 
 ---
 
+## 17. Composition with the Tool Supervisor
+
+The Tool Supervisor (`app/tool_runtime/supervisor.py`, opt-in via
+`TOOL_SUPERVISOR_ENABLED=true`) is a sibling layer that handles a
+different failure shape. The two compose without overlap:
+
+| Layer | When it fires | What kind of failure | Surface |
+|---|---|---|---|
+| **Tool Supervisor** | mid-iteration, around each tool call inside `_handle_native_tool_calls` | Raised exception during tool dispatch (`RateLimitError`, `ConnectionError`, `TimeoutError`, schema-validation, etc.) | Wraps `available_functions` in `LoadableAgentExecutor` |
+| **Recovery Loop** | post-vetting, after the final answer is composed | Refusal-*shaped* final answer (the agent gave up in prose, no exception) | Hooks `Commander._route` |
+
+A single user request can trigger both. Example timeline:
+
+1. Agent calls `geocode_tool` mid-iteration → raises `TimeoutError`.
+2. **Supervisor** catches, classifies as `timeout`, exp-backoff retries
+   twice, both fail. Looks up registry alternatives — none. Emits
+   `invocation.gave_up` audit event and returns a structured
+   `[tool-supervisor] tool 'geocode_tool' failed after 3 attempt(s)`
+   string back into the agent's loop.
+3. Agent reads the soft-fail observation, decides it can't proceed, and
+   replies `"I'm unable to look up that location right now."`
+4. **Recovery Loop** detects the refusal-shaped answer, dispatches
+   `re_route` strategy → different crew has a working geocode path →
+   delivers the corrected answer with `_(note: re-routed via …)_`.
+
+Two safeties keep the layers from fighting:
+
+* **Recursion guard.** The Supervisor sets `_in_substitute = True`
+  before calling a substitute tool. Substitute tools therefore run
+  *unsupervised* — no nested retry/substitute on a substitute.
+  Mirrors the Recovery Loop's `_in_recovery` ContextVar.
+* **No double-recovery on substitution.** If a substitute *also* fails,
+  the Supervisor returns a soft-fail string (not an exception). The
+  agent's downstream prose may then be refusal-shaped, at which point
+  the Recovery Loop takes over — but the Supervisor never re-enters.
+
+### Code pointers
+
+* `app/tool_runtime/supervisor.py` — supervisor module.
+* `app/tool_runtime/loadable_executor.py:[SUP-1]` — the two wiring
+  sites in the sync path (initial render + dirty re-render).
+* Audit query: `/api/cp/audit?actor=tool_supervisor`.
+* See PROGRAM.md §14 for the change-log entry; the Supervisor
+  exists as the *Track A* half of the May 2026 self-healing pass.
+
+---
+
 ## See also
 
 | Document | Why |
@@ -1105,4 +1152,5 @@ For rapid navigation:
 | `docs/SELF_IMPROVEMENT.md` | The skill-forge that consumes `forge_queue`'s entries |
 | `docs/MEMORY_ARCHITECTURE.md` | Where `search_skills` (used by `skill_chain`) reads from |
 | `docs/CONTROL_PLANES.md` | The audit log this layer writes to |
+| `docs/ERROR_MONITOR.md` §11 | The Runbook Dispatcher — Track B's sibling to the Tool Supervisor |
 | `app/agents/commander/orchestrator.py` (Commander._route) | The host that calls `maybe_recover` |

@@ -517,7 +517,7 @@ class TestCrossModuleWiring:
         assert "record_interaction" in source or "InteractionMetrics" in source
 
     def test_self_heal_called_on_exception(self):
-        """main.py should call self_heal.diagnose_and_fix on task exception."""
+        """main.py should call healing.diagnose_and_fix on task exception."""
         source = (Path(__file__).parent.parent / "app" / "main.py").read_text()
         assert "diagnose_and_fix" in source
 

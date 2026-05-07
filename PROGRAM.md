@@ -296,8 +296,8 @@ both opt-in via env flag.
 | Component | What landed |
 |---|---|
 | **A — Tool Supervisor** | New `app/tool_runtime/supervisor.py`. Wraps every callable in CrewAI's `available_functions` (the dict `_handle_native_tool_calls` consumes). On exception: classify (`rate_limit | auth | network | timeout | schema | unknown`) → exp-backoff retry for transient classes → registry-driven substitute lookup via `ToolRegistry.filter(capabilities=spec.capabilities, tier_at_most=spec.tier)` → soft-fail with structured tool-result string (NOT raise). Audit actor `tool_supervisor`. ContextVar recursion guard mirrors the Recovery Loop's pattern. |
-| **A — wiring** | Four-site edit in `app/tool_runtime/loadable_executor.py` (lines 97, 121, 219, 244 — sync + async, initial + dirty re-render) calling `supervise_available_functions(...)`. No-op when `TOOL_SUPERVISOR_ENABLED` is unset (returns the original dict by identity). |
-| **B — Runbook Dispatcher** | Extension to `app/self_heal.py`: `register_runbook(name, pattern, handler)`, `maybe_run_runbook(anomaly)`, `RunbookResult` dataclass, `_runbook_log_only` reference handler. Dispatches a daemon thread when 7 safety gates pass (env flag, severity≠info, pattern match, handler exists, per-runbook enabled, recurrence ≥ N in 24h, success rate ≥ 50%). Concurrency cap of 1 runbook in flight (stricter than `diagnose_and_fix`'s diagnosis cap of 2). Audit actor `self_heal_runbook`. |
+| **A — wiring** | Two-site edit (sync path) in `app/tool_runtime/loadable_executor.py`, marked `[SUP-1]` — initial render + dirty re-render — calling `supervise_available_functions(...)`. No-op when `TOOL_SUPERVISOR_ENABLED` is unset (returns the original dict by identity). The async-path mirror is a known follow-up. |
+| **B — Runbook Dispatcher** | New module `app/healing/runbooks.py` (separate sibling of `error_diagnosis.py` post-PR #65; the original §14 plan said "extension to `app/self_heal.py`" but that file no longer exists — one concern per file matches the refactor philosophy). Public surface: `register_runbook(name, pattern, handler)`, `maybe_run_runbook(anomaly)`, `unregister_runbook(name)`, `runbooks_enabled()`, `RunbookResult` dataclass, `_runbook_log_only` reference handler. Dispatches a daemon thread when 7 safety gates pass (env flag, severity≠info, pattern match, runbook enabled, recurrence ≥ N in 24h, success rate ≥ 50%, concurrency cap). Concurrency cap of 1 runbook in flight (stricter than `diagnose_and_fix`'s diagnosis cap of 2). Audit actor `self_heal_runbook`. |
 | **B — wiring** | One-site edit in `app/observability/error_monitor.py:_record_anomaly` (after the `INSERT INTO control_plane.error_anomalies`). Wrapped in try/except so a runbook failure can never break anomaly recording. |
 | **State files** | `workspace/self_heal/runbook_settings.json` (per-runbook `enabled` flag + `min_recurrence`; missing entry defaults to disabled) and `workspace/self_heal/runbook_stats.json` (last 10 outcomes per runbook for success-rate gate). JSON, not Postgres — keeps cross-process visibility cheap and matches the recovery loop's `refusal_frequency.json` precedent. |
 | **Reference runbook** | `log_only` is auto-registered with a catch-all `.*` pattern and `enabled: true` in defaults. It logs the trigger and writes an outcome row but takes no other action — purpose is to verify the dispatch wiring end-to-end without changing system state. Operators replace or narrow it once real runbooks (`restart_pool`, `force_reconcile_outbox`, …) are registered from boot code. |
@@ -314,14 +314,27 @@ deterministic, and auditable. If a remediation needs reasoning, it
 should propose a code change via `app/proposals.py` (the same path
 `diagnose_and_fix` already uses for `fix_type=code`).
 
-**Verification on prod gateway** (post-rebuild, 2026-05-05):
-`supervisor.is_enabled() == True`, `runbooks_enabled() == True`,
-`log_only` registered, `error_monitor` warm-up back-filled 464 records
-across 51 signatures, no startup errors. Audit query
+**Restoration note (2026-05-07).** The 2026-05-05 prod gateway
+verification described above (`supervisor.is_enabled() == True`,
+`runbooks_enabled() == True`, `log_only` registered) was real on the
+running container but was never reproducible from the repo: only the
+`__pycache__/*.pyc` for `supervisor.py` and the two test files
+survived locally; no source was committed. PR #65 (the healing
+package consolidation, 2026-05-06) renamed `app/self_heal.py` →
+`app/healing/error_diagnosis.py`, by which point any uncommitted
+runbook extension to the original file was structurally homeless.
+Both tracks were rebuilt on 2026-05-07 from the orphan bytecode
+disassembly + this section's spec, with the sole structural change
+being the new sibling module placement (Track B sits at
+`app/healing/runbooks.py`). The 41-test count matches the original
+(20 + 21); all pass on restoration commit.
+
+**Operational windows.** Audit queries
 `/api/cp/audit?actor=tool_supervisor` and
-`/api/cp/audit?actor=self_heal_runbook` are the two operational
-windows; expect first `dispatch.started` for `log_only` within hours
-of activation given the warm-up signature population.
+`/api/cp/audit?actor=self_heal_runbook` surface every action.
+Expect the first `dispatch.started` for `log_only` within hours of
+flipping `ERROR_RUNBOOKS_ENABLED=true` against a populated signature
+window.
 
 Full design notes: `docs/RECOVERY_LOOP.md` §17 (Tool Supervisor) and
 `docs/ERROR_MONITOR.md` §11 (Runbook dispatcher).

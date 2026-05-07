@@ -62,7 +62,7 @@ def store_healing_result(
 ) -> None:
     """Store a verified healing result in ChromaDB.
 
-    Called by self_healer.py after verification confirms the fix worked.
+    Called by healing/health_remediator.py after verification confirms the fix worked.
     Deduplicates by error_signature: if same signature exists, increments
     times_applied instead of creating a duplicate.
     """

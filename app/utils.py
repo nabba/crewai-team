@@ -32,8 +32,8 @@ def now_iso() -> str:
 def load_json_file(path: Path, default=None):
     """Load a JSON file, returning default on any error.
 
-    Replaces the identical load pattern in self_heal.py, benchmarks.py,
-    auditor.py, variant_archive.py, proposals.py, etc.
+    Replaces the identical load pattern in healing/error_diagnosis.py,
+    benchmarks.py, auditor.py, variant_archive.py, proposals.py, etc.
     """
     if default is None:
         default = []
@@ -49,7 +49,8 @@ def save_json_file(path: Path, data, max_entries: int = 0) -> bool:
     """Save data as JSON, optionally capping list entries.
 
     Returns True on success, False on failure.
-    Replaces the identical save pattern in self_heal.py, benchmarks.py, etc.
+    Replaces the identical save pattern in healing/error_diagnosis.py,
+    benchmarks.py, etc.
     """
     try:
         if max_entries > 0 and isinstance(data, list):

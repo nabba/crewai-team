@@ -1310,7 +1310,7 @@ def report_system_monitor() -> None:
             health = get_monitor().get_health_state()
             monitor["subsystems"]["fast_deploy"] = {
                 "status": "ok", "label": "Fast Deploy",
-                "modules": ["version_manifest", "health_monitor", "self_healer",
+                "modules": ["version_manifest", "health_monitor", "health_remediator",
                              "reference_tasks", "sandbox_runner"],
                 "details": {
                     "current_version": manifest.get("version", "?") if manifest else "none",
