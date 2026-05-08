@@ -174,7 +174,7 @@ export function useWelfareConfigQuery() {
   return useQuery({
     queryKey: affectKeys.welfareConfig,
     queryFn: () => api<WelfareConfigReport>(endpoints.affectWelfareConfig()),
-    refetchInterval: POLL.oneMin * 5,
+    refetchInterval: POLL.verySlow * 10, // 5 min
   });
 }
 

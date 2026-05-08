@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AffectState, ViabilityFrame, GateStatus, WelfareBreach } from '../../types/affect';
+import type { AffectState, ViabilityFrame, WelfareBreach } from '../../types/affect';
 
 interface AffectStatusStripProps {
   affect: AffectState | null;

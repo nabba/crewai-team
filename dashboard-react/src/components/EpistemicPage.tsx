@@ -186,7 +186,7 @@ function BiasLibrarySection({
         </p>
       </header>
       {loading && <Skeleton lines={2} />}
-      {error && <ErrorBlock>{String(error)}</ErrorBlock>}
+      {error ? <ErrorBlock>{String(error)}</ErrorBlock> : null}
       {data && (
         <ul className="divide-y divide-[#1e2738]">
           {data.biases.map((b) => (
@@ -236,7 +236,7 @@ function VerifierRegistrySection({
         </p>
       </header>
       {loading && <Skeleton lines={2} />}
-      {error && <ErrorBlock>{String(error)}</ErrorBlock>}
+      {error ? <ErrorBlock>{String(error)}</ErrorBlock> : null}
       {data && (
         <ul className="divide-y divide-[#1e2738]">
           {data.verifiers.map((v) => (

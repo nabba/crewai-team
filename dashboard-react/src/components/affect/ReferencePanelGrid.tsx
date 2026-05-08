@@ -33,7 +33,7 @@ export function ReferencePanelGrid({ report }: ReferencePanelGridProps) {
         <div>
           <div className="text-xs text-[#7a8599] uppercase tracking-wider">Reference panel</div>
           <div className="text-[11px] text-[#7a8599] mt-1">
-            Fixed compass · {panel.scenarios.length} scenarios · v{panel.panel?.version ?? panel.version}
+            Fixed compass · {panel.scenarios.length} scenarios · v{panel.version}
             {' · next review '}{panel.next_review_due ?? '?'}
           </div>
         </div>

@@ -1,7 +1,7 @@
 // Companion Layer dashboard — sub-tab inside /cp/ops.
 // Wraps every backend endpoint shipped across Phases 0–13.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   fetchWikiPageBody,
   useAcceptGrandTask,

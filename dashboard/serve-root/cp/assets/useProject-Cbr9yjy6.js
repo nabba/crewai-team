@@ -1,0 +1,1 @@
+import{o as e}from"./chunk-CFjPhJqf.js";import{N as t}from"./client-CB_SXuli.js";var n=e(t(),1),r=(0,n.createContext)({projects:[],activeProject:null,isAllProjects:!1,setActiveProject:()=>{},loading:!0,error:null,refetch:()=>{}});function i(){return(0,n.useContext)(r)}export{r as n,i as t};
