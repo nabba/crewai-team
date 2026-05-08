@@ -290,3 +290,219 @@ def test_session_serializes_team_fields():
     assert reloaded.mode == "team"
     assert reloaded.participants == DEFAULT_ROSTER[:2]
     assert len(reloaded.agent_rounds) == 1
+
+
+# ── Degenerate-response detector ──────────────────────────────────────────
+
+
+class TestIsDegenerate:
+    """Pure validation — no I/O. Catches the failure modes observed in
+    real team-mode runs (CrewAI scaffolding echo, repetition loops,
+    punctuation-heavy garbage)."""
+
+    def _check(self, text):
+        from app.brainstorm.multi_agent import _is_degenerate
+        return _is_degenerate(text)
+
+    def test_empty_is_not_degenerate(self):
+        assert self._check("") == (False, "")
+        assert self._check("   ") == (False, "")
+
+    def test_short_response_passes_through(self):
+        # Below the 30-char threshold we don't make a call either way.
+        ok, _ = self._check("1. fast\n2. cheap")
+        assert ok is False
+
+    def test_normal_idea_list_is_clean(self):
+        text = (
+            "1. Substitute the manual review with an automated linter that\n"
+            "   catches the top three failure patterns.\n"
+            "2. Replace the email digest with a Slack thread anchored to\n"
+            "   the original incident channel.\n"
+            "3. Swap the JIRA ticket template for a one-line rotation note."
+        )
+        ok, reason = self._check(text)
+        assert ok is False, f"got reason: {reason}"
+
+    def test_scaffolding_echo_caught(self):
+        # The exact failure mode from the user's screenshots.
+        text = (
+            "MUST return the actual content, not a summary. "
+            "MUST return the actual content, not a summary. "
+            "MUST return the actual content, not a summary. "
+            "MUST return the actual content, not a summary."
+        )
+        ok, reason = self._check(text)
+        assert ok is True
+        assert "scaffolding" in reason.lower()
+
+    def test_expected_criteria_echo_caught(self):
+        text = (
+            "This is the expected criteria for your final answer: "
+            "This is the expected criteria for your final answer. "
+            "This is the expected criteria for your final answer."
+        )
+        ok, reason = self._check(text)
+        assert ok is True
+        assert "scaffolding" in reason.lower()
+
+    def test_repetition_loop_caught(self):
+        text = "\n".join(["the same line"] * 8)
+        ok, reason = self._check(text)
+        assert ok is True
+        assert "repetition" in reason.lower()
+
+    def test_heavy_punctuation_caught(self):
+        # >150 chars, ~zero alphanumeric — broken JSON / brace soup case.
+        text = '")"")")")"")"")")")")"")"")")")"")"")")")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")"")")")"")")"")")"")")"")")"")")"")")")")"")"")"")"")"' * 2
+        assert len(text) > 150
+        ok, reason = self._check(text)
+        assert ok is True, f"expected degenerate; got reason={reason!r}"
+        assert "non-text" in reason.lower()
+
+    def test_low_diversity_caught(self):
+        # 50+ words, <15% unique
+        text = " ".join(["foo bar baz"] * 50)  # 150 words, 3 unique = 2%
+        ok, reason = self._check(text)
+        assert ok is True
+        assert "diversity" in reason.lower()
+
+    def test_long_legitimate_response_not_caught(self):
+        # ~600 chars of varied prose; legit long answer.
+        text = (
+            "1. The onboarding survey is currently five steps long but the "
+            "drop-off concentrates between steps two and three, so a likely "
+            "high-leverage substitution is replacing the multi-page wizard "
+            "with a single scrolling form that reorders fields by inferred "
+            "intent.\n"
+            "2. A second angle: instead of asking the user to type their "
+            "company name, fetch it from the email domain via Clearbit and "
+            "let the user correct it in line. Reduces typing without losing "
+            "fidelity for atypical addresses.\n"
+            "3. Reframe step three's role-picker as an inferred default with "
+            "an 'edit' affordance, the way Linear does for new-issue "
+            "assignment."
+        )
+        ok, reason = self._check(text)
+        assert ok is False, f"caught a clean response: {reason}"
+
+
+def test_run_one_agent_demotes_degenerate_output(monkeypatch):
+    """End-to-end: a degenerate kickoff result should produce an errored
+    AgentResponse, not a populated text field."""
+    import app.brainstorm.multi_agent as ma
+
+    # Stub the agent build to avoid touching real LLM/factory code.
+    monkeypatch.setattr(
+        ma, "_build_creative_agent", lambda role, **_: object()
+    )
+
+    # Patch crewai.Crew.kickoff via a fake Crew class.
+    class _FakeKickoff:
+        def __init__(self, text):
+            self._text = text
+
+        def __str__(self):
+            return self._text
+
+    class _FakeCrew:
+        def __init__(self, *, agents, tasks, process, verbose):
+            pass
+
+        def kickoff(self):
+            # Return the exact failure mode from the screenshots.
+            return _FakeKickoff(
+                "MUST return the actual content, not a summary. "
+                "MUST return the actual content, not a summary. "
+                "MUST return the actual content, not a summary. "
+                "MUST return the actual content, not a summary."
+            )
+
+    monkeypatch.setattr("crewai.Crew", _FakeCrew, raising=False)
+    # Task and Process are imported by name inside the function; provide
+    # benign stand-ins.
+    import crewai
+
+    monkeypatch.setattr(
+        crewai, "Task", lambda **kw: object(), raising=False
+    )
+
+    resp = ma._run_one_agent(
+        "researcher",
+        "irrelevant",
+        expected_output="ignored",
+        phase="diverge",
+    )
+    assert resp.role == "researcher"
+    assert resp.text == ""
+    assert resp.error is not None
+    assert "degenerate" in resp.error.lower()
+
+
+def test_run_one_agent_keeps_clean_output(monkeypatch):
+    """Counterpart: a normal kickoff result should pass through unchanged."""
+    import app.brainstorm.multi_agent as ma
+
+    monkeypatch.setattr(
+        ma, "_build_creative_agent", lambda role, **_: object()
+    )
+
+    class _FakeKickoff:
+        def __str__(self):
+            return (
+                "1. Replace the JIRA template with a one-line rotation note.\n"
+                "2. Swap the email digest for a Slack thread on the incident "
+                "channel.\n"
+                "3. Combine the post-mortem and retro into one weekly meeting."
+            )
+
+    class _FakeCrew:
+        def __init__(self, **kw):
+            pass
+
+        def kickoff(self):
+            return _FakeKickoff()
+
+    monkeypatch.setattr("crewai.Crew", _FakeCrew, raising=False)
+    import crewai
+
+    monkeypatch.setattr(crewai, "Task", lambda **kw: object(), raising=False)
+
+    resp = ma._run_one_agent(
+        "writer", "irrelevant", expected_output="x", phase="discuss"
+    )
+    assert resp.error is None
+    assert "Replace the JIRA" in resp.text
+
+
+# ── Tier configuration ────────────────────────────────────────────────────
+
+
+def test_default_researcher_tier_is_budget():
+    """Brainstorm overrides creative_crew's `local` for the researcher
+    so degenerate Ollama output doesn't reach the user. See multi_agent's
+    _TIER_BY_ROLE comment."""
+    from app.brainstorm.multi_agent import _tier_for, _TIER_BY_ROLE
+    assert _TIER_BY_ROLE["researcher"] == "budget"
+    assert _tier_for("researcher") == "budget"
+
+
+def test_tier_env_override(monkeypatch):
+    """BRAINSTORM_TIER_<ROLE> rolls back individual tiers for ops cases
+    where someone wants the original creative_crew behaviour."""
+    from app.brainstorm.multi_agent import _tier_for
+
+    monkeypatch.setenv("BRAINSTORM_TIER_RESEARCHER", "local")
+    assert _tier_for("researcher") == "local"
+    monkeypatch.setenv("BRAINSTORM_TIER_CRITIC", "mid")
+    assert _tier_for("critic") == "mid"
+
+
+def test_tier_env_override_unaffected_roles_use_default(monkeypatch):
+    from app.brainstorm.multi_agent import _tier_for
+
+    monkeypatch.setenv("BRAINSTORM_TIER_RESEARCHER", "local")
+    # writer / coder / critic should NOT pick up the researcher override
+    assert _tier_for("writer") == "mid"
+    assert _tier_for("coder") == "budget"
+    assert _tier_for("critic") == "premium"
