@@ -273,3 +273,133 @@ def test_team_mode_status_string_shows_participants(monkeypatch):
     assert status is not None
     assert "team:" in status
     assert "researcher" in status
+
+
+# ── Escape-command allowlist (regression for the workspace-switch hijack) ──
+#
+# Pre-fix, an active brainstorm session swallowed every subsequent message
+# from that sender — including `switch workspace` commands. The user got
+# `(empty answer — please respond)` repeatedly with no escape route except
+# `/brainstorm cancel` (which they often forgot they had to type). Now
+# try_handle returns None for a small allowlist of commander commands so
+# they fall through to the normal command parser.
+
+
+def _start_session(sender: str = "+1escape") -> None:
+    """Helper — open an active brainstorm session for a sender."""
+    out = try_handle("/brainstorm scamper escape-test topic", sender)
+    assert out is not None  # session started
+
+
+def test_escape_workspace_switch_falls_through():
+    """The original bug. With an active session, 'switch to workspace X'
+    must NOT be captured by brainstorm — it has to fall through so the
+    commander's project switcher can handle it."""
+    _start_session()
+    for phrasing in (
+        "switch to workspace eesti mets",
+        "Switch to workspace eesti mets",
+        "switch workspace to eesti mets",
+        "switch project to PLG",
+        "switch to project default",
+        "workspace switch eesti mets",
+        "project switch PLG",
+    ):
+        assert try_handle(phrasing, "+1escape") is None, (
+            f"escape allowlist should let {phrasing!r} fall through"
+        )
+
+
+def test_escape_status_questions_fall_through():
+    _start_session()
+    for phrasing in (
+        "workspace status",
+        "project status",
+        "where am I",
+        "where am I?",
+        "what is the current workspace",
+        "what's the active project",
+        "current project",
+        "active workspace",
+        "which project am I on",
+        "what workspace am I working on",
+    ):
+        assert try_handle(phrasing, "+1escape") is None, (
+            f"escape allowlist should let {phrasing!r} fall through"
+        )
+
+
+def test_escape_slash_commands_fall_through():
+    """Any slash command (other than /brainstorm) must fall through.
+    /brainstorm is handled separately at the top of try_handle."""
+    _start_session()
+    for cmd in (
+        "/help", "/status", "/skill list", "/cancel", "/exit",
+    ):
+        assert try_handle(cmd, "+1escape") is None, (
+            f"escape allowlist should let slash-command {cmd!r} fall through"
+        )
+
+
+def test_escape_single_token_commands_fall_through():
+    _start_session()
+    for cmd in ("help", "?", "status", "cancel", "exit", "stop", "workspaces"):
+        assert try_handle(cmd, "+1escape") is None, (
+            f"escape allowlist should let bare token {cmd!r} fall through"
+        )
+
+
+def test_brainstorm_response_still_captured_for_normal_text():
+    """Sanity: a plain answer to a brainstorm prompt is still routed
+    into the session — the allowlist only carves out commander commands."""
+    _start_session()
+    out = try_handle("Substitute the welcome flow with a guided tour", "+1escape")
+    assert out is not None
+    # Either the response advanced the session OR it was rejected as too short;
+    # either way, brainstorm captured it (didn't return None).
+
+
+def test_brainstorm_slash_commands_still_route_to_brainstorm():
+    """`/brainstorm cancel`, `/brainstorm status`, etc. continue to go
+    INTO brainstorm — they're not in the escape allowlist; they're
+    matched by the earlier `/brainstorm`-prefix branch."""
+    _start_session()
+    out = try_handle("/brainstorm status", "+1escape")
+    assert out is not None
+    assert "scamper" in out.lower() or "step" in out.lower()
+
+
+def test_no_session_means_no_special_routing():
+    """Without an active session, the escape allowlist isn't consulted —
+    everything falls through (handled by the no-session branch returning None)."""
+    # No prior /brainstorm start
+    for phrasing in (
+        "switch to workspace eesti mets",
+        "what is the current project",
+        "/help",
+        "regular user message",
+    ):
+        assert try_handle(phrasing, "+1nosession") is None
+
+
+def test_looks_like_escape_command_unit():
+    """Direct unit test on the predicate, without setting up a session."""
+    from app.brainstorm.signal_handler import _looks_like_escape_command
+
+    assert _looks_like_escape_command("switch to workspace eesti mets")
+    assert _looks_like_escape_command("Switch to workspace eesti mets")
+    assert _looks_like_escape_command("switch project to PLG")
+    assert _looks_like_escape_command("/help")
+    assert _looks_like_escape_command("/status")
+    assert _looks_like_escape_command("workspace status")
+    assert _looks_like_escape_command("where am I?")
+    assert _looks_like_escape_command("help")
+    assert _looks_like_escape_command("?")
+
+    # Non-commands stay non-escape
+    assert not _looks_like_escape_command("Improve onboarding flow")
+    assert not _looks_like_escape_command("substitute the login screen")
+    assert not _looks_like_escape_command("My idea is to add a button")
+    assert not _looks_like_escape_command(
+        "what about adding a wizard?",  # NOT a status/switch question
+    )

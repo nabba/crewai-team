@@ -123,44 +123,73 @@ def resolve_roster(spec: int | list[str] | None) -> list[str]:
     raise TypeError(f"roster spec must be None, int, or list[str]; got {type(spec)}")
 
 
+# Tier mapping for brainstorm — distinct from creative_crew's mapping.
+#
+# Why the divergence from creative_crew's `researcher: local`:
+# In creative_crew, the researcher's wild-divergent firehose feeds into a
+# downstream discuss/converge phase that cleans up garbage. In brainstorm,
+# the researcher's output is shown DIRECTLY to the user, with no
+# refinement step in between. Empirically (May 2026 in-app session) the
+# local Ollama path on small models would echo CrewAI's internal Task
+# scaffolding ("MUST return the actual content, not a summary…") instead
+# of producing real ideas. Bumping to `budget` (DeepSeek via OpenRouter)
+# fixes the regression while keeping researcher distinct from the other
+# roles' tiers.
+_TIER_BY_ROLE = {
+    "researcher": "budget",   # was "local" — see comment above
+    "writer": "mid",
+    "coder": "budget",
+    "critic": "premium",
+}
+_METHOD_BY_ROLE = {
+    "researcher": "step_back",
+    "writer": "analogical_blending",
+    "coder": "compositional_cot",
+    "critic": "contrastive",
+}
+_LLM_ROLE = {
+    "researcher": "research",
+    "writer": "writing",
+    "coder": "coding",
+    "critic": "critic",
+}
+# Tier for a role can be overridden via env: BRAINSTORM_TIER_<ROLE>=<tier>
+# e.g. BRAINSTORM_TIER_RESEARCHER=local to roll back to the original
+# creative_crew behaviour.
+
+
+def _tier_for(role: str) -> str:
+    override = os.environ.get(f"BRAINSTORM_TIER_{role.upper()}")
+    if override:
+        return override.strip().lower()
+    return _TIER_BY_ROLE[role]
+
+
 def _build_creative_agent(role: str, *, phase: str = "diverge"):
     """Return a CrewAI Agent configured for high-creativity brainstorming.
 
-    Mirrors :func:`app.crews.creative_crew._make_agent` but with a tighter
-    ``max_execution_time`` since brainstorm rounds need to be interactive.
+    Mirrors :func:`app.crews.creative_crew._make_agent` with two
+    interactivity-driven differences:
+
+    * ``max_execution_time`` is tighter (rounds need to be interactive).
+    * ``researcher`` runs on ``budget`` instead of ``local`` — see the
+      comment on ``_TIER_BY_ROLE`` for why.
     """
     from crewai import Agent
     from app.agents._common import optional_tool_group  # noqa: F401  (unused but for parity)
     from app.llm_factory import create_specialist_llm
     from app.souls.loader import compose_backstory
 
-    _TIER_BY_ROLE = {
-        "researcher": "local",
-        "writer": "mid",
-        "coder": "budget",
-        "critic": "premium",
-    }
-    _METHOD_BY_ROLE = {
-        "researcher": "step_back",
-        "writer": "analogical_blending",
-        "coder": "compositional_cot",
-        "critic": "contrastive",
-    }
-    _LLM_ROLE = {
-        "researcher": "research",
-        "writer": "writing",
-        "coder": "coding",
-        "critic": "critic",
-    }
-
     factory = _factory_for(role)
     base = factory()
     tools = list(getattr(base, "tools", []) or [])
 
     llm = create_specialist_llm(
-        max_tokens=2048,  # tighter than creative_crew's 4096; brainstorm bursts are short
+        # 4096 matches creative_crew. Lower caps were truncating
+        # writer/critic mid-sentence on long-form responses.
+        max_tokens=4096,
         role=_LLM_ROLE[role],
-        force_tier=_TIER_BY_ROLE[role],
+        force_tier=_tier_for(role),
         phase=phase,
     )
     backstory = compose_backstory(role, reasoning_method=_METHOD_BY_ROLE[role])
@@ -244,6 +273,83 @@ def _build_react_prompt(
     )
 
 
+# ── Degenerate-response detection ─────────────────────────────────────────
+#
+# Real-world failure modes observed when a weak model is wrapped in
+# CrewAI's Task scaffolding:
+#
+#   1. "MUST return the actual content, not a summary." repeated forever —
+#      the model echoes CrewAI's internal re-prompt instead of answering.
+#   2. "This is the expected criteria for your final answer…" — same
+#      thing, different scaffolding string.
+#   3. A single short phrase repeated 20+ times (small-model degeneration).
+#   4. Streams of `")"")"` punctuation (broken JSON/markup attempts).
+#
+# Detecting these and tagging the response as errored prevents garbage
+# from showing up in the UI; the user sees the agent's role-coloured
+# error tag instead of a wall of repeated text.
+
+_SCAFFOLDING_PHRASES: tuple[str, ...] = (
+    "must return the actual content",
+    "must return the actual complete content",
+    "this is the expected criteria",
+    "expected criteria for your final answer",
+    "return the complete content as the final answer",
+)
+
+
+def _is_degenerate(text: str) -> tuple[bool, str]:
+    """Return ``(is_bad, reason)`` for an agent response string.
+
+    Pure: no I/O, no side effects. Conservative — designed to false-
+    negative (let some bad responses through) rather than false-positive
+    (block real ones). Tunable via the constants below.
+    """
+    if not text:
+        return False, ""
+    stripped = text.strip()
+    if len(stripped) < 30:
+        # Too short to gauge; let it through.
+        return False, ""
+
+    lower = stripped.lower()
+
+    # 1. Scaffolding echo — these phrases appearing 3+ times means the
+    #    model is parroting CrewAI's re-prompt.
+    for phrase in _SCAFFOLDING_PHRASES:
+        if lower.count(phrase) >= 3:
+            return True, f"echoing CrewAI scaffolding ('{phrase[:40]}…')"
+
+    # 2. Repetition loop — 5+ identical non-empty lines.
+    lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+    if len(lines) >= 5:
+        from collections import Counter
+
+        counts = Counter(lines)
+        most_line, count = counts.most_common(1)[0]
+        if count >= 5:
+            preview = most_line[:60] + ("…" if len(most_line) > 60 else "")
+            return True, f"repetition loop ({count}× '{preview}')"
+
+    # 3. Heavy non-text content — long response that is mostly punctuation
+    #    or symbols. Threshold: <40% alphanumeric/whitespace and >150 chars.
+    if len(stripped) > 150:
+        text_chars = sum(1 for c in stripped if c.isalnum() or c.isspace())
+        ratio = text_chars / len(stripped)
+        if ratio < 0.40:
+            return True, f"heavy non-text content ({ratio:.0%} alphanumeric)"
+
+    # 4. Very low word diversity — long response with <15% unique words.
+    words = stripped.split()
+    if len(words) >= 50:
+        unique = len(set(w.lower() for w in words))
+        diversity = unique / len(words)
+        if diversity < 0.15:
+            return True, f"low diversity ({unique}/{len(words)} unique words)"
+
+    return False, ""
+
+
 # ── Execution ─────────────────────────────────────────────────────────────
 
 
@@ -254,7 +360,13 @@ def _run_one_agent(
     expected_output: str,
     phase: str,
 ) -> AgentResponse:
-    """Build the agent, run one Task, return :class:`AgentResponse`. Catches all errors."""
+    """Build the agent, run one Task, return :class:`AgentResponse`.
+
+    Catches all exceptions and converts them into ``AgentResponse.error``.
+    Also runs the output through :func:`_is_degenerate` and demotes
+    scaffolding-echo / repetition-loop responses to errors so the UI
+    doesn't display them as ideas.
+    """
     from crewai import Crew, Process, Task
 
     t0 = time.monotonic()
@@ -269,7 +381,6 @@ def _run_one_agent(
             agents=[agent], tasks=[task], process=Process.sequential, verbose=False
         )
         text = str(crew.kickoff()).strip()
-        return AgentResponse(role=role, text=text, duration_s=time.monotonic() - t0)
     except Exception as exc:
         logger.warning("brainstorm.multi_agent: %s failed: %s", role, exc)
         return AgentResponse(
@@ -278,6 +389,21 @@ def _run_one_agent(
             duration_s=time.monotonic() - t0,
             error=str(exc)[:200],
         )
+
+    bad, reason = _is_degenerate(text)
+    if bad:
+        logger.warning(
+            "brainstorm.multi_agent: %s produced degenerate output (%s)",
+            role,
+            reason,
+        )
+        return AgentResponse(
+            role=role,
+            text="",
+            duration_s=time.monotonic() - t0,
+            error=f"degenerate output: {reason}",
+        )
+    return AgentResponse(role=role, text=text, duration_s=time.monotonic() - t0)
 
 
 def _gather_parallel(

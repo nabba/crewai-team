@@ -199,19 +199,48 @@ parallel rounds via `app.brainstorm.multi_agent`:
 ### High-creativity agent construction
 
 `multi_agent._build_creative_agent(role)` mirrors
-`creative_crew._make_agent`:
+`creative_crew._make_agent` with two interactivity-driven differences:
 
-| Role        | LLM tier  | Reasoning method        |
-|-------------|-----------|-------------------------|
-| researcher  | `local`   | step_back               |
-| writer      | `mid`     | analogical_blending     |
-| coder       | `budget`  | compositional_cot       |
-| critic      | `premium` | contrastive             |
+| Role        | LLM tier (brainstorm) | Reasoning method        |
+|-------------|-----------------------|-------------------------|
+| researcher  | `budget`*             | step_back               |
+| writer      | `mid`                 | analogical_blending     |
+| coder       | `budget`              | compositional_cot       |
+| critic      | `premium`             | contrastive             |
+
+`*` In `creative_crew` the researcher runs on `local` (Ollama), because
+its wild-divergent output is later cleaned up by the discuss/converge
+phases. Brainstorm shows agent output **directly** to the human with no
+downstream refinement, so the `local` tier reliably degenerated into
+echoing CrewAI's internal Task scaffolding. Brainstorm therefore
+overrides the researcher to `budget` (DeepSeek via OpenRouter) by
+default. Roll back per-role via `BRAINSTORM_TIER_<ROLE>=<tier>` env var
+(e.g. `BRAINSTORM_TIER_RESEARCHER=local`).
 
 A `ThreadPoolExecutor` runs the roster in parallel (workers =
 `min(4, len(roster))`). Per-agent failures are captured into
 `AgentResponse.error` and the round continues with the rest. A whole-round
 crash falls back to solo for that step.
+
+### Degenerate-response detection
+
+Each agent's raw output is screened by `multi_agent._is_degenerate()`
+before it reaches the UI. Catches:
+
+1. **Scaffolding echo** — phrases like "MUST return the actual
+   content…" repeated 3+ times. Models that struggle with the prompt
+   structure echo CrewAI's re-prompt instead of answering.
+2. **Repetition loop** — the same line repeated 5+ times.
+3. **Heavy non-text** — long response with <40% alphanumeric+whitespace
+   (broken JSON / brace soup).
+4. **Low diversity** — 50+ words with <15% unique tokens.
+
+When detected, the response is demoted to an empty `text` plus an
+`error` describing the failure mode; the UI shows the role-coloured
+error tag instead of a wall of garbage. Detection is conservative —
+designed to false-negative rather than false-positive on borderline
+cases. Tests in `test_brainstorm_multi_agent.py::TestIsDegenerate`
+exercise each path.
 
 ### Cost & budget
 
@@ -374,6 +403,7 @@ Run all 120 tests:
 | `BRAINSTORM_DISABLE_WRITER`      | `0`                                  | Set `1` to force deterministic report (skip the LLM)       |
 | `BRAINSTORM_TEAM_BUDGET_USD`     | `0.50`                               | Soft per-session cap for multi-agent rounds                |
 | `BRAINSTORM_WEB_SENDER`          | `<signal_owner_number>` if set, else `web:default` | Default sender for the React surface     |
+| `BRAINSTORM_TIER_<ROLE>`         | (per-role default)                   | Override the LLM tier for a single role (e.g. `BRAINSTORM_TIER_RESEARCHER=local` to roll back). |
 
 ---
 
