@@ -270,8 +270,42 @@ def _install_narrative_schedule() -> None:
         from app.affect.episodes import maybe_flush_quiet
         from app.affect.narrative import run_chapter_consolidation
 
+        def _chapter_with_workspace_publish() -> None:
+            """Wrap run_chapter_consolidation to publish a workspace summary
+            on completion (consciousness-roadmap §3.G5).
+
+            The chapter consolidator is read-only-by-Self-Improver per its
+            docstring; the publish hook lives here in `hooks.py` rather than
+            in `narrative.py` to preserve that boundary.
+            """
+            chapter = None
+            try:
+                chapter = run_chapter_consolidation()
+            finally:
+                try:
+                    from app.workspace_publish import publish_to_workspace
+                    if chapter is not None:
+                        n_episodes = chapter.get("n_episodes", 0)
+                        identity_claims = chapter.get("identity_claims") or []
+                        publish_to_workspace(
+                            source="narrative-chapter",
+                            content=(
+                                f"Daily chapter consolidated: "
+                                f"{n_episodes} episode(s), "
+                                f"{len(identity_claims)} active identity claim(s)"
+                            ),
+                            # Daily-rhythm signal: meaningful but not critical.
+                            salience=0.55,
+                            signal_type="disposition",
+                        )
+                except Exception:
+                    logger.debug(
+                        "affect.hooks: workspace publish for narrative-chapter failed",
+                        exc_info=True,
+                    )
+
         scheduler.add_job(
-            run_chapter_consolidation,
+            _chapter_with_workspace_publish,
             trigger=CronTrigger(hour=4, minute=40, timezone="Europe/Helsinki"),
             id="affect_chapter_consolidation",
             replace_existing=True,

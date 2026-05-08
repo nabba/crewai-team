@@ -22,6 +22,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
+from app.workspace_publish import publish_idle_outcome, publish_to_workspace
+
 logger = logging.getLogger(__name__)
 
 # How long to wait after last user task before starting background work
@@ -571,7 +573,14 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _belief_outbox_neo4j() -> None:
         try:
             from app.memory.belief_outbox import reconcile_belief_outbox
-            reconcile_belief_outbox()
+            counts = reconcile_belief_outbox()
+            publish_idle_outcome(
+                source="belief-outbox-neo4j",
+                signal_type="certainty_shift",
+                counts=counts,
+                salience_key="synced",
+                content_template="belief_outbox(neo4j): synced {synced} (failed {failed}, skipped {skipped})",
+            )
         except Exception:
             logger.debug(
                 "idle_scheduler: belief-outbox-neo4j failed", exc_info=True,
@@ -587,7 +596,14 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _belief_outbox_chroma() -> None:
         try:
             from app.memory.belief_outbox import sync_new_beliefs_to_chromadb
-            sync_new_beliefs_to_chromadb()
+            counts = sync_new_beliefs_to_chromadb()
+            publish_idle_outcome(
+                source="belief-outbox-chroma",
+                signal_type="certainty_shift",
+                counts=counts,
+                salience_key="indexed",
+                content_template="belief_outbox(chroma): indexed {indexed} of {scanned} scanned",
+            )
         except Exception:
             logger.debug(
                 "idle_scheduler: belief-outbox-chroma failed", exc_info=True,
@@ -618,15 +634,120 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
             if handle_task is None:
                 logger.debug("dlq-drain: handle_task not available")
                 return
-            drain(
+            counts = drain(
                 handle_task,
                 inflight_count=inflight,
                 shed_threshold=threshold,
                 max_to_drain=3,  # bounded per pass — keep idle slot cheap
             )
+            publish_idle_outcome(
+                source="dlq-drain",
+                signal_type="trend_reversal",
+                counts=counts,
+                salience_key="replayed",
+                content_template="dlq-drain: replayed {replayed} (expired {expired})",
+            )
         except Exception:
             logger.debug("idle_scheduler: dlq-drain failed", exc_info=True)
     jobs.append(("dlq-drain", _drain_inbound_dlq, JobWeight.LIGHT))
+
+    # ── Wiki-index reconciler (consciousness-roadmap §4) ──────────────────
+    # Drift-scan for `wiki/index.md`. Today the master index is rebuilt
+    # event-driven by `WikiWriteTool._rebuild_master_index()` on
+    # create/update/delete; out-of-band changes (manual file move, failed
+    # idea promotion, rename) leave it drifted from on-disk truth without
+    # any signal. This job detects the drift and produces a CANDIDATE file
+    # under `workspace/dreams/`, then opens a change-request — never auto-
+    # applies. LIGHT because the canonical compute over <100 pages is
+    # sub-second; weekly cadence emerges from the idle scheduler's overall
+    # rhythm, no explicit timer here.
+    # ── Viability → goals connector (consciousness-roadmap §3.G1) ─────────
+    # Closes the AE-1 PARTIAL → STRONG path. Reads the last N viability
+    # frames from the affect trace; emits goals for variables in sustained
+    # allostatic error (≥ N_CONSECUTIVE_REQUIRED frames above threshold);
+    # writes via FIFO to kernel.self_state.current_goals (previously a dead
+    # field). LIGHT — pure trace replay + small dict ops, no LLM.
+    # Triggers ethical threshold T1 (consciousness-roadmap §6) on first
+    # emission: welfare-check moves from observability to operator
+    # obligation.
+    # ── Backward counterfactual replay (consciousness-roadmap §3.G2) ─────
+    # Real "dreams" subsystem: samples past affect-trace + chapter
+    # fragments, recombines them into alternative-past scenarios, runs
+    # them through a (stub or wired) predictor, audit-logs the outcomes.
+    # Observational only — does not write to belief/, kernel/, or
+    # current_goals. HEAVY-tier weekly cadence target; using LIGHT here
+    # while predict_fn is the no-op stub (cheap), upgrade when wired to
+    # PredictiveLayer.predict_and_compare. Triggers ethical threshold T2
+    # on first sustained-promotion event downstream (retrospective rescan).
+    def _backward_counterfactual_replay() -> None:
+        try:
+            from app.subia.dreams.engine import run_pass as _replay_pass
+            result = _replay_pass()
+            if result.scenarios_count > 0 and not result.error:
+                publish_to_workspace(
+                    source="backward-replay",
+                    content=(
+                        f"Replay pass: {result.scenarios_count} scenarios, "
+                        f"{result.sampled_count} fragments sampled "
+                        f"(audit={result.audit_id})"
+                    ),
+                    salience=0.35,   # observational; above noise floor + ignition
+                    signal_type="free_energy_spike",
+                )
+        except Exception:
+            logger.debug(
+                "idle_scheduler: backward-counterfactual-replay failed",
+                exc_info=True,
+            )
+    jobs.append(("backward-counterfactual-replay", _backward_counterfactual_replay,
+                 JobWeight.LIGHT))
+
+    def _viability_goal_emitter() -> None:
+        try:
+            from app.affect.goal_emitter import run_pass
+            result = run_pass()
+            if result.written:
+                # Goal emission is high-information for the workspace —
+                # sustained low-viability has crossed the threshold of
+                # operator-visible obligation.
+                publish_to_workspace(
+                    source="viability-goal-emitter",
+                    content=(
+                        f"Emitted {len(result.written)} goal(s) — "
+                        f"triggers: {', '.join(g.triggered_by for g in result.written)}"
+                    ),
+                    salience=0.7,   # T1 threshold: above ignition + above bandwidth-2 floor
+                    signal_type="disposition",
+                )
+        except Exception:
+            logger.debug(
+                "idle_scheduler: viability-goal-emitter failed", exc_info=True,
+            )
+    jobs.append(("viability-goal-emitter", _viability_goal_emitter, JobWeight.LIGHT))
+
+    def _wiki_index_reconciler() -> None:
+        try:
+            from app.memory.wiki_index_reconciler import run_reconciler
+            result = run_reconciler()
+            if result.drift_detected:
+                publish_to_workspace(
+                    source="wiki-index-reconciler",
+                    content=(
+                        f"wiki/index.md drift candidate produced "
+                        f"(audit={result.audit_id}, "
+                        f"cr={result.change_request_id or 'none'})"
+                    ),
+                    # Drift is meaningful — push above ignition threshold so
+                    # the workspace surfaces it, but not into critical band.
+                    salience=0.55,
+                    signal_type="trend_reversal",
+                )
+        except Exception:
+            logger.debug(
+                "idle_scheduler: wiki-index-reconciler failed",
+                exc_info=True,
+            )
+    jobs.append(("wiki-index-reconciler", _wiki_index_reconciler, JobWeight.LIGHT))
 
     # ── Evolution: run experiments (2 iterations per idle slot) ─────────
     # Reduced from 5 to 2: each iteration takes ~4min, so 5 = 20min which
@@ -696,7 +817,17 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _consolidator() -> None:
         try:
             from app.self_improvement.consolidator import run_consolidation_cycle
-            run_consolidation_cycle(auto_merge=True)
+            counts = run_consolidation_cycle(auto_merge=True)
+            publish_idle_outcome(
+                source="skill-consolidator",
+                signal_type="certainty_shift",
+                counts=counts,
+                salience_key="auto_merged",
+                content_template=(
+                    "skill-consolidator: auto_merged={auto_merged} "
+                    "total_proposals={total_proposals}"
+                ),
+            )
         except Exception:
             logger.debug("consolidator run failed", exc_info=True)
     jobs.append(("consolidator", _consolidator, JobWeight.HEAVY))
@@ -1832,8 +1963,27 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # or mutate identity_claims.json. LIGHT — pure Python over JSONL.
     def _decentered_pass() -> None:
         try:
-            from app.affect.decentered import run_daily_pass
-            run_daily_pass()
+            from app.affect.decentered import run_decentered_pass
+            summary = run_decentered_pass(window_hours=24) or {}
+            # Decentered's summary is nested; flatten just the salience-relevant
+            # bits. Anomalies-outside-salience indicate things the affect track
+            # didn't already mark as salient — high-information for the GW.
+            anomalies = (summary.get("anomalies") or {}).get("total", 0)
+            outside = (summary.get("anomalies") or {}).get("outside_salience", 0)
+            cross_day = (summary.get("clusters") or {}).get("cross_day", 0)
+            magnitude = anomalies + cross_day
+            if magnitude > 0:
+                publish_to_workspace(
+                    source="decentered-pass",
+                    content=(
+                        f"decentered: {anomalies} anomalies "
+                        f"({outside} outside salience), {cross_day} cross-day clusters"
+                    ),
+                    # Outside-salience anomalies are the strongest signal
+                    # (the affect track missed them); weight them up.
+                    salience=min(0.25 + outside * 0.10 + cross_day * 0.05, 0.75),
+                    signal_type="free_energy_spike",
+                )
         except Exception:
             logger.debug("idle_scheduler: decentered pass failed", exc_info=True)
     jobs.append(("decentered-pass", _decentered_pass, JobWeight.LIGHT))
@@ -1846,7 +1996,23 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     def _valve_audit_replay() -> None:
         try:
             from app.observability.valve_audit_replay import run_daily_replay
-            run_daily_replay()
+            summary = run_daily_replay() or {}
+            # Filters-needing-review is the salience signal — the rest is volume.
+            filters = summary.get("filters") or []
+            review_count = sum(1 for f in filters if isinstance(f, dict)
+                               and f.get("frr_above_threshold"))
+            sampled = int(summary.get("sampled_total", 0) or 0)
+            if review_count > 0 or sampled > 0:
+                publish_to_workspace(
+                    source="valve-audit-replay",
+                    content=(
+                        f"valve-audit: sampled={sampled}, "
+                        f"filters_above_FRR_threshold={review_count}"
+                    ),
+                    # Filters above threshold are operationally significant.
+                    salience=min(0.20 + review_count * 0.15 + sampled * 0.001, 0.7),
+                    signal_type="trend_reversal",
+                )
         except Exception:
             logger.debug("idle_scheduler: valve-audit replay failed", exc_info=True)
     jobs.append(("valve-audit-replay", _valve_audit_replay, JobWeight.LIGHT))

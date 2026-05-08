@@ -95,6 +95,15 @@ AFFECT_HEALTH_CHECKS_DIR    = AFFECT_ROOT / "health_checks"
 AFFECT_IDENTITY_CLAIMS      = AFFECT_ROOT / "identity_claims.json"
 AFFECT_KB_TAGS              = AFFECT_ROOT / "episode_affect_tags.jsonl"
 
+# ── Dreams / wiki-index reconciler (consciousness-roadmap §4) ───────────
+# Lives next to AFFECT_ROOT so consciousness-adjacent shadow artifacts are
+# co-located. Adoption flows through the change-request gate; this dir is
+# observability + candidate-file scratch space, never the live source of
+# truth for `wiki/index.md`.
+DREAMS_ROOT                  = WORKSPACE_ROOT / "dreams"
+WIKI_INDEX_CANDIDATE         = DREAMS_ROOT / "wiki_index.candidate.md"
+WIKI_INDEX_AUDIT             = DREAMS_ROOT / "wiki_index_audit.jsonl"
+
 # ── System-wide files ────────────────────────────────────────────────────
 SYSTEM_CHRONICLE = WORKSPACE_ROOT / "system_chronicle.md"
 WORKSPACE_LOCK = WORKSPACE_ROOT / ".workspace.lock"
@@ -132,6 +141,7 @@ _MANAGED_DIRS = (
     TENSIONS_DIR,
     TENSIONS_ENTRIES_DIR,
     LITERATURE_LIBRARY_DIR,
+    DREAMS_ROOT,
 )
 
 

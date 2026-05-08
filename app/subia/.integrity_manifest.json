@@ -120,6 +120,14 @@
       "sha256": "36db50a2061b68172190fa4f93e47440cc2f704b5ceaf62254a23f86c2a3a5f6",
       "size": 6216
     },
+    "app/subia/dreams/__init__.py": {
+      "sha256": "60cb95d9951d2a646e663fc0a9f2ed8ded2c8a738a9e24b1be45ebce23c5d29d",
+      "size": 1571
+    },
+    "app/subia/dreams/engine.py": {
+      "sha256": "6ceb3463a7d697e5ef983be868ee48342bf165304d85e474640fb8467e27186f",
+      "size": 20090
+    },
     "app/subia/grounding/__init__.py": {
       "sha256": "b13f835a4cc17ce439c65fef571caaa63ff5ddfb00a33e3a620d5b9da9ac918f",
       "size": 2939
@@ -257,8 +265,8 @@
       "size": 18337
     },
     "app/subia/loop.py": {
-      "sha256": "5a411027eef9e7586781a839558bd998fb52af19a982ae702a2504a4c4e570b9",
-      "size": 48584
+      "sha256": "95aac0317f50beb82334045a9d590daa3cac0b34e318989556d76240a3cc8825",
+      "size": 50374
     },
     "app/subia/memory/__init__.py": {
       "sha256": "f0074922981104b9498b0b4fccd4ffcb071e9951d6797cd147f302ba4354df8d",
@@ -501,12 +509,12 @@
       "size": 5171
     },
     "app/subia/temporal/__init__.py": {
-      "sha256": "6fc9630095c606eb69ab321144254de79ca60d1dcef977025feed7477a5131ee",
-      "size": 2329
+      "sha256": "078ac5959a7997d625aa67a677aaea0eeb104beededfb183d98c8772afc63ee6",
+      "size": 2373
     },
     "app/subia/temporal/binding.py": {
-      "sha256": "be613f0cdb2a3d7228f6bd531c700ff0aa43ff2b67754ade2bac9c5704e6aa21",
-      "size": 5430
+      "sha256": "4b70aa5fcb58ee1b3e05ca493159b78b8225924712a425619cc9b43d281d5726",
+      "size": 7569
     },
     "app/subia/temporal/circadian.py": {
       "sha256": "8f6784a023a2b8099e02bd11dcd3234dde990185ea0cd1144b92d5a51ebd41fa",
@@ -533,8 +541,8 @@
       "size": 7651
     },
     "app/subia/temporal_hooks.py": {
-      "sha256": "1adeaf91e13528439891906f16531ad109345e0c7c8bb842d5a6d30c1a056b46",
-      "size": 4225
+      "sha256": "e9a4db7ff660d3f952f7166624a507d408ac89e52ae3f547f18a9ca009d67bcb",
+      "size": 5232
     },
     "app/subia/tsal/__init__.py": {
       "sha256": "00c0e788f702096826d64d7d5383a89b9763f3ba20e8b6ecca1a1997dc4a18d7",

@@ -35,7 +35,7 @@ from .density import (
     compute_processing_density, DensitySample,
 )
 from .binding import (
-    temporal_bind, BoundMoment,
+    temporal_bind, temporal_quick_bind, BoundMoment,
 )
 from .rhythm_discovery import (
     discover_rhythms, Rhythm,
@@ -48,7 +48,7 @@ __all__ = [
     "CIRCADIAN_MODES", "current_circadian_mode", "apply_circadian_setpoints",
     "circadian_allows_reverie", "circadian_cascade_preference",
     "compute_processing_density", "DensitySample",
-    "temporal_bind", "BoundMoment",
+    "temporal_bind", "temporal_quick_bind", "BoundMoment",
     "discover_rhythms", "Rhythm",
     "TemporalContext", "refresh_temporal_context",
 ]

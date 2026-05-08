@@ -248,6 +248,40 @@ class SubIALoop:
         self._run(result, "3_attend", self._step_attend)
 
         if loop_type == "compressed":
+            # ── Phase 14 §3.G4: compressed-loop quick-bind ───────────────
+            # The full Step-6 bind is unavailable here (Steps 4-6 don't run
+            # on the compressed path). The quick-bind uses just the
+            # already-computed FEEL + ATTEND outputs to produce a partial
+            # BoundMoment so observability surfaces and downstream consumers
+            # see at least `dominant_affect` and `salient_focus` on
+            # compressed cycles. `confidence_unified` and `conflicts` stay
+            # at dataclass defaults — they require PREDICT/MONITOR/OWN.
+            try:
+                from app.subia.temporal_hooks import (
+                    quick_bind_compressed_signals,
+                )
+                attend_items = [
+                    {"id": i.id, "salience": float(getattr(i, "salience", 0.5))}
+                    for i in self.kernel.focal_scene()
+                ]
+                bm = quick_bind_compressed_signals(
+                    feel={
+                        "dominant_affect":
+                            self.kernel.homeostasis.variables.get(
+                                "dominant_affect", "neutral"
+                            ),
+                    },
+                    attend={"focal_items": attend_items},
+                )
+                if bm is not None:
+                    qb = StepOutcome(step="3b_quick_bind", ok=True)
+                    qb.details["dominant_affect"] = bm.dominant_affect
+                    qb.details["salient_focus_count"] = len(bm.salient_focus)
+                    qb.details["compressed_loop"] = True
+                    result.add(qb)
+            except Exception:
+                logger.debug("phase14 quick_bind_compressed failed", exc_info=True)
+
             result.context_for_agent = self._build_compressed_context()
             result.total_elapsed_ms = (self._now() - t_start) * 1000.0
             result.within_budget = result.total_elapsed_ms <= budget_ms

@@ -118,3 +118,29 @@ def bind_just_computed_signals(
     except Exception as exc:
         logger.debug("phase14: temporal_bind failed: %s", exc)
         return None
+
+
+def quick_bind_compressed_signals(
+    *,
+    feel: Optional[dict] = None,
+    attend: Optional[dict] = None,
+):
+    """Post-Step-3 hook for the *compressed* CIL path.
+
+    Consciousness-roadmap §3.G4 (compressed-loop binding cadence). The
+    compressed loop early-returns after Step 3 ATTEND, so the full
+    `bind_just_computed_signals` would receive only feel/attend (the
+    other inputs haven't run). This wrapper calls the cheap
+    `temporal_quick_bind` reducer that's explicit about what it can and
+    cannot derive from those two layers alone.
+
+    Returned BoundMoment has `dominant_affect` and `salient_focus` populated;
+    `confidence_unified` stays at the dataclass default 0.5 because PREDICT
+    + MONITOR haven't run yet.
+    """
+    try:
+        from app.subia.temporal.binding import temporal_quick_bind
+        return temporal_quick_bind(feel=feel, attend=attend)
+    except Exception as exc:
+        logger.debug("phase14: temporal_quick_bind failed: %s", exc)
+        return None

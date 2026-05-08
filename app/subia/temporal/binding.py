@@ -123,3 +123,53 @@ def temporal_bind(
         bm.conflicts.append("mixed ownership in focal scene (self + external)")
 
     return bm
+
+
+def temporal_quick_bind(
+    *,
+    feel: Optional[dict] = None,
+    attend: Optional[dict] = None,
+) -> BoundMoment:
+    """Cheap variant of `temporal_bind` for the compressed CIL path.
+
+    The compressed loop runs only Steps 1-3 (PERCEIVE / FEEL / ATTEND) and
+    early-returns before OWN / PREDICT / MONITOR fire. Without this helper,
+    compressed cycles produce no BoundMoment at all, so any observability
+    surface that reads `details["bound_moment_*"]` sees nothing on the
+    common case (the compressed path is the default for unknown operations,
+    see `loop.py:130`).
+
+    What this can compute (from FEEL + ATTEND alone):
+      * `dominant_affect`     — direct from feel.dominant_affect
+      * `salient_focus`       — top-N from attend.focal_items, no stability
+                                bias (no retention window passed; the
+                                compressed path doesn't read SpeciousPresent)
+
+    What this CANNOT compute:
+      * `confidence_unified`  — needs MONITOR.confidence + PREDICT.confidence,
+                                which haven't run; left at the dataclass
+                                default of 0.5
+      * `conflicts`           — ownership conflict needs OWN output; left []
+
+    Tier-3 protected (no agent override) — same discipline as `temporal_bind`.
+    Consciousness-roadmap §3.G4. The honest scope is observability uniformity
+    across full and compressed loops, NOT correctness recovery (the original
+    G4 framing assumed stale-on-kernel which doesn't apply — see audit
+    note in CONSCIOUSNESS_ROADMAP.md).
+    """
+    feel = feel or {}
+    attend = attend or {}
+
+    bm = BoundMoment(feel=feel, attend=attend)
+
+    # Salient focus — same shape as the full reducer but without stability
+    # bias (no retention frames available on the compressed path).
+    candidates = list(attend.get("focal_items", []) or [])
+
+    def _key(it):
+        return -float(it.get("salience", 0.5)) if isinstance(it, dict) else -0.5
+
+    bm.salient_focus = sorted(candidates, key=_key)[:5]
+    bm.dominant_affect = feel.get("dominant_affect", "neutral")
+
+    return bm

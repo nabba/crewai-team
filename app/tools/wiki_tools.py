@@ -250,8 +250,21 @@ def _rebuild_section_index(section: str):
         f.write("".join(lines))
 
 
-def _rebuild_master_index():
-    """Rebuild wiki/index.md from all section indexes."""
+def _compute_master_index_content(*, now: Optional[datetime] = None) -> str:
+    """Pure compute of `wiki/index.md` canonical content from disk.
+
+    Returns the rendered content as a string without writing. Used by
+    `_rebuild_master_index()` (writes the file) AND by the wiki-index
+    reconciler in `app.memory.wiki_index_reconciler` (compares against
+    the live file to detect drift). Pure function — no side effects on
+    the filesystem. Sole exception: the `updated_at` timestamp it stamps
+    into the frontmatter; the reconciler accepts a `now=` injection so
+    its drift comparisons are deterministic.
+
+    Sections are rendered in fixed order (meta, self, philosophy, plg,
+    archibal, kaicart) regardless of `VALID_SECTIONS` set order — this
+    matches the existing wiki/index.md convention.
+    """
     section_counts = {}
     for section in sorted(VALID_SECTIONS):
         section_dir = os.path.join(WIKI_ROOT, section)
@@ -265,12 +278,13 @@ def _rebuild_master_index():
         section_counts[section] = count
 
     total = sum(section_counts.values())
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    timestamp = now or datetime.now(timezone.utc)
+    now_iso = timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    today = timestamp.strftime("%Y-%m-%d")
 
     fm_data = {
         "title": "AndrusAI Wiki — Master Index",
-        "updated_at": now,
+        "updated_at": now_iso,
         "total_pages": total,
         "sections": section_counts,
     }
@@ -313,9 +327,15 @@ def _rebuild_master_index():
         if not found:
             lines.append("(No pages yet.)\n")
 
+    return "".join(lines)
+
+
+def _rebuild_master_index():
+    """Rebuild wiki/index.md from all section indexes."""
+    content = _compute_master_index_content()
     index_path = os.path.join(WIKI_ROOT, "index.md")
     with open(index_path, "w") as f:
-        f.write("".join(lines))
+        f.write(content)
 
 
 # ---------------------------------------------------------------------------
