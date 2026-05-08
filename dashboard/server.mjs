@@ -47,6 +47,7 @@ const BACKEND_PATH_PREFIXES = [
   '/experiential/',
   '/aesthetics/',
   '/tensions/',
+  '/affect/',       // viability / V/A/C / welfare / reference panel
 ];
 
 const MIME_TYPES = {
