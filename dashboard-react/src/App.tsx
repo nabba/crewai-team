@@ -73,6 +73,9 @@ const CodingSessionsPage = lazy(() =>
     default: m.CodingSessionsPage,
   })),
 );
+const SettingsPage = lazy(() =>
+  import('./components/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
 
 function RouteFallback() {
   return (
@@ -121,6 +124,7 @@ export default function App() {
             <Route path="/brainstorm" element={<LazyRoute><BrainstormPage /></LazyRoute>} />
             <Route path="/changes" element={<LazyRoute><ChangesPage /></LazyRoute>} />
             <Route path="/coding-sessions" element={<LazyRoute><CodingSessionsPage /></LazyRoute>} />
+            <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

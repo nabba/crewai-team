@@ -142,6 +142,10 @@ export const endpoints = {
   creativeMode: () => `/config/creative_mode`,
   creativeRun: () => `/config/creative_run`,
 
+  // Personal-agent runtime settings — voice mode, vision CU, concierge.
+  // POST requires gateway secret (same as creative_mode).
+  runtimeSettings: () => `/config/runtime_settings`,
+
   // Knowledge bases (root-mounted prefixes)
   kbStatus: () => `/kb/status`,
   kbUpload: () => `/kb/upload`,

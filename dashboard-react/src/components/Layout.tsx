@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { to: '/brainstorm', label: 'Brainstorm', icon: '💡', exact: false },
   { to: '/forge', label: 'Forge', icon: '🔨', exact: false },
   { to: '/coding-sessions', label: 'Sessions', icon: '🧪', exact: false },
+  { to: '/settings', label: 'Settings', icon: '⚙️', exact: false },
 ];
 
 export function Layout() {

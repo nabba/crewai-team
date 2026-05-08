@@ -168,6 +168,7 @@ async def receive_signal(request: Request):
     payload = await request.json()
     sender = payload.get("sender", "")
     text = payload.get("message", "").strip()
+    attachments = payload.get("attachments") or []
 
     if not is_authorized_sender(sender):
         log_security_event("unauthorized_sender", _redact_number(sender))
@@ -175,6 +176,13 @@ async def receive_signal(request: Request):
     if not is_within_rate_limit(sender):
         log_security_event("rate_limit_exceeded", _redact_number(sender))
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    # Voice-note path — if an audio attachment came in and voice mode is
+    # active, transcribe it and treat the transcript as the user's message.
+    # Sets an "active" flag on the sender so the reply path knows to TTS.
+    if not text and attachments:
+        text = await asyncio.to_thread(_maybe_transcribe_voice, sender, attachments)
+
     if not text:
         return {"status": "ignored"}
 
@@ -185,6 +193,63 @@ async def receive_signal(request: Request):
     log_request_received(_redact_number(sender), len(text))
     asyncio.create_task(handle_task(sender, text))
     return {"status": "accepted"}
+
+
+def _maybe_transcribe_voice(sender: str, attachments: list) -> str:
+    """Inspect inbound attachments; if any is audio, transcribe and return
+    the transcript. Marks the sender as "voice-active" so the reply path
+    answers with TTS. Returns "" if no audio attachment or transcription
+    failed (caller treats the inbound as text-less)."""
+    try:
+        from app.voice import (
+            AUDIO_MIME_PREFIXES, transcribe, mark_voice_inbound,
+        )
+        from app.runtime_settings import get_voice_mode
+    except Exception:
+        logger.debug("voice subsystem unavailable", exc_info=True)
+        return ""
+
+    if get_voice_mode() == "off":
+        return ""
+
+    audio_att = next(
+        (a for a in attachments
+         if (a.get("contentType") or "").startswith(AUDIO_MIME_PREFIXES)),
+        None,
+    )
+    if not audio_att:
+        return ""
+
+    # Resolve the file via the same path resolver attachment_reader uses.
+    try:
+        from app.tools.attachment_reader import _safe_path
+    except Exception:
+        return ""
+    fn = audio_att.get("filename") or audio_att.get("id") or ""
+    if not fn:
+        return ""
+    path = _safe_path(fn, audio_att.get("contentType", ""))
+    if path is None or not path.exists():
+        logger.info(f"voice inbound: audio file not found: {fn!r}")
+        return ""
+
+    try:
+        audio_bytes = path.read_bytes()
+    except OSError as exc:
+        logger.warning(f"voice inbound: read failed: {exc}")
+        return ""
+
+    fmt = (audio_att.get("contentType") or "audio/m4a").split("/")[-1]
+    transcript = transcribe(audio_bytes, audio_format=fmt)
+    if not transcript:
+        logger.info("voice inbound: transcription returned empty")
+        return ""
+
+    mark_voice_inbound(sender)
+    logger.info(
+        f"voice inbound from {_redact_number(sender)}: {len(transcript)} chars transcribed"
+    )
+    return transcript
 
 
 async def handle_task(sender: str, text: str):
@@ -199,12 +264,65 @@ async def handle_task(sender: str, text: str):
         # Persist the assistant reply
         add_message(sender, "assistant", result)
 
-        await signal_client.send(sender, result)
+        # If the inbound was voice and voice mode is on, deliver the reply
+        # as a TTS attachment. Falls back to plain text on synthesis failure.
+        voice_path = await asyncio.to_thread(_maybe_synthesize_reply, sender, result)
+        if voice_path is not None:
+            await signal_client.send(sender, result, attachments=[voice_path])
+        else:
+            await signal_client.send(sender, result)
     except Exception:
         logger.exception("Error handling task")
         log_security_event("task_error", "unhandled exception in handle_task")
         # Generic error — do not leak internals to Signal
         await signal_client.send(sender, "Sorry, something went wrong processing your request. Please try again.")
+
+
+def _maybe_synthesize_reply(sender: str, text: str) -> str | None:
+    """Synthesize ``text`` to a host-side audio file when the sender is
+    voice-active. Returns the absolute host path of the audio attachment
+    (suitable for signal-cli) or None to send a text-only reply."""
+    try:
+        from app.voice import is_voice_active, synthesize, clear_voice_state
+        from app.runtime_settings import get_voice_mode
+        from app.voice.tts import TTS_OUTPUT_FORMAT
+        from app.paths import WORKSPACE_ROOT
+    except Exception:
+        return None
+
+    if get_voice_mode() == "off":
+        return None
+    if not is_voice_active(sender):
+        return None
+
+    audio = synthesize(text)
+    if audio is None:
+        return None
+
+    fmt = TTS_OUTPUT_FORMAT.get("latest", "ogg") or "ogg"
+    out_dir = WORKSPACE_ROOT / "voice_tmp"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    docker_path = out_dir / f"reply_{int(__import__('time').time())}.{fmt}"
+    try:
+        docker_path.write_bytes(audio)
+    except OSError as exc:
+        logger.warning(f"voice outbound: write failed: {exc}")
+        return None
+
+    # signal-cli runs on the host and reads attachment paths from the host
+    # filesystem — translate the Docker workspace path accordingly.
+    s = settings
+    host_root = (s.workspace_host_path or "").rstrip("/")
+    if host_root:
+        host_path = host_root + str(docker_path).removeprefix("/app/workspace")
+    else:
+        host_path = str(docker_path)
+
+    # Forget the voice flag now that we've delivered one voice reply — the
+    # next reply lands as text unless the user sends another voice note.
+    clear_voice_state(sender)
+    logger.info(f"voice outbound to {_redact_number(sender)}: {len(audio)} bytes ({fmt})")
+    return host_path
 
 
 @app.get("/health")

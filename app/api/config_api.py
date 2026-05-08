@@ -107,6 +107,62 @@ async def set_creative_mode_endpoint(request: Request):
     return {"status": "ok", **snapshot()}
 
 
+# ── Personal-agent runtime settings (Phase 0 — May 2026) ───────────────────
+# Voice mode, vision-driven computer-use cap, concierge persona toggle.
+# Read path: app.runtime_settings.snapshot(); write path: these endpoints.
+
+@router.get("/runtime_settings")
+async def get_runtime_settings_endpoint():
+    """Return the live runtime settings (voice mode + vision CU + concierge)."""
+    from app.runtime_settings import snapshot
+    return snapshot()
+
+
+@router.post("/runtime_settings")
+async def set_runtime_settings_endpoint(request: Request):
+    """Update one or more runtime settings.
+
+    Accepts any subset of:
+      voice_mode (off|local|cloud), vision_cu_enabled (bool),
+      vision_cu_monthly_cap_usd (float), concierge_persona_enabled (bool).
+    """
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(status_code=429, detail="Too many config changes. Try again later.")
+    payload = await request.json()
+    from app.runtime_settings import (
+        set_voice_mode, set_vision_cu_enabled,
+        set_vision_cu_monthly_cap_usd, set_concierge_persona_enabled,
+        snapshot,
+    )
+
+    try:
+        if "voice_mode" in payload:
+            set_voice_mode(str(payload["voice_mode"]))
+        if "vision_cu_enabled" in payload:
+            set_vision_cu_enabled(bool(payload["vision_cu_enabled"]))
+        if "vision_cu_monthly_cap_usd" in payload:
+            set_vision_cu_monthly_cap_usd(float(payload["vision_cu_monthly_cap_usd"]))
+        if "concierge_persona_enabled" in payload:
+            set_concierge_persona_enabled(bool(payload["concierge_persona_enabled"]))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Audit the change so the operator can see who flipped what.
+    try:
+        import json as _json
+        from app.audit import log_security_event
+        log_security_event(
+            "runtime_settings_change",
+            _json.dumps({"changed": list(payload.keys()), "after": snapshot()}),
+        )
+    except Exception:
+        logger.debug("runtime_settings audit log failed", exc_info=True)
+
+    return {"status": "ok", **snapshot()}
+
+
 @router.post("/creative_run")
 async def creative_run_endpoint(request: Request):
     """Force-dispatch a task to the creative crew, bypassing the router.

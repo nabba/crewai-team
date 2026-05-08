@@ -394,6 +394,31 @@ class Settings(BaseSettings):
     # value once the per-domain shadow data validates further rollout.
     transfer_memory_enabled_domains: str = "coding,grounding"
 
+    # ── Personal-agent surface (Phase 0 — May 2026) ────────────────────
+    # Voice mode: "off" disables both STT and TTS; "local" uses the
+    # whisper.cpp + Piper binaries on the host; "cloud" uses Groq Whisper
+    # for STT and Google Cloud Neural2 for TTS. Switchable at runtime
+    # via /config/voice_mode (file-backed in app.runtime_settings).
+    voice_mode: str = "off"
+    # Vision-driven computer use (Anthropic Haiku 4.5). Disabled by default;
+    # gated by a monthly USD cap that the dashboard can raise/lower at runtime.
+    vision_cu_enabled: bool = False
+    vision_cu_monthly_cap_usd: float = 10.0
+    # Concierge persona — wraps Commander's terse output in a warmer voice
+    # for direct chat (Signal DMs + /cp/chat). Bypassed for tool output
+    # and structured /cp API consumers.
+    concierge_persona_enabled: bool = False
+
+    # ── Voice provider keys ────────────────────────────────────────────
+    groq_api_key: SecretStr = SecretStr("")              # STT (cloud mode)
+    google_cloud_tts_key: SecretStr = SecretStr("")      # TTS (cloud mode)
+
+    # ── Google Workspace OAuth (Gmail, Calendar, Docs, Sheets, Slides) ──
+    # Installed-app flow; bootstrap with `python -m app.google_workspace.bootstrap`.
+    # Refresh token persists in workspace/google_token.json (chmod 600).
+    google_oauth_client_id: SecretStr = SecretStr("")
+    google_oauth_client_secret: SecretStr = SecretStr("")
+
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("sandbox_memory_limit")
@@ -428,6 +453,24 @@ class Settings(BaseSettings):
                 f"sandbox_timeout_seconds {v} out of range [1, {_MAX_SANDBOX_TIMEOUT}]."
             )
         return v
+
+    @field_validator("voice_mode")
+    @classmethod
+    def validate_voice_mode(cls, v: str) -> str:
+        allowed = ("off", "local", "cloud")
+        v = v.strip().lower()
+        if v not in allowed:
+            raise ValueError(f"voice_mode must be one of {allowed}, got {v!r}")
+        return v
+
+    @field_validator("vision_cu_monthly_cap_usd")
+    @classmethod
+    def validate_vision_cu_cap(cls, v: float) -> float:
+        if v < 0.0:
+            raise ValueError("vision_cu_monthly_cap_usd must be non-negative")
+        if v > 1000.0:
+            raise ValueError("vision_cu_monthly_cap_usd exceeds sanity cap of $1000/mo")
+        return float(v)
 
     @field_validator("cost_mode")
     @classmethod
@@ -475,3 +518,22 @@ def get_gateway_secret() -> str:
 def get_openrouter_api_key() -> str:
     """Return the OpenRouter API key (for API-tier LLMs only)."""
     return get_settings().openrouter_api_key.get_secret_value()
+
+
+def get_groq_api_key() -> str:
+    """Return the Groq API key (for cloud-mode Whisper STT only)."""
+    return get_settings().groq_api_key.get_secret_value()
+
+
+def get_google_cloud_tts_key() -> str:
+    """Return the Google Cloud TTS API key (for cloud-mode Neural2 TTS only)."""
+    return get_settings().google_cloud_tts_key.get_secret_value()
+
+
+def get_google_oauth_client() -> tuple[str, str]:
+    """Return (client_id, client_secret) for Google Workspace OAuth."""
+    s = get_settings()
+    return (
+        s.google_oauth_client_id.get_secret_value(),
+        s.google_oauth_client_secret.get_secret_value(),
+    )

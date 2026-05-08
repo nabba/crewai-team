@@ -72,6 +72,7 @@ export const keys = {
   notesGraph: (root: string) => ['notes', 'graph', root] as const,
   notesSearch: (root: string, q: string) => ['notes', 'search', root, q] as const,
   notesTags: (root: string) => ['notes', 'tags', root] as const,
+  runtimeSettings: ['runtime-settings'] as const,
 };
 
 // ── Projects ────────────────────────────────────────────────────────────────
@@ -468,6 +469,35 @@ export function useCreativeRun() {
         method: 'POST',
         body: JSON.stringify({ creativity: 'high', ...body }),
       }),
+  });
+}
+
+// ── Runtime settings (personal-agent surface) ─────────────────────────────
+export type VoiceMode = 'off' | 'local' | 'cloud';
+
+export interface RuntimeSettings {
+  voice_mode: VoiceMode;
+  vision_cu_enabled: boolean;
+  vision_cu_monthly_cap_usd: number;
+  concierge_persona_enabled: boolean;
+}
+
+export function useRuntimeSettingsQuery() {
+  return useQuery({
+    queryKey: keys.runtimeSettings,
+    queryFn: () => api<RuntimeSettings>(endpoints.runtimeSettings()),
+  });
+}
+
+export function useUpdateRuntimeSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<RuntimeSettings>) =>
+      api<RuntimeSettings & { status: string }>(endpoints.runtimeSettings(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.runtimeSettings }),
   });
 }
 
