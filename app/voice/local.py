@@ -41,10 +41,15 @@ logger = logging.getLogger(__name__)
 _AGENT_ID = "voice"  # capability identity for bridge_client
 
 # Per-language Piper voice file basenames (without .onnx). Override via env
-# var ``PIPER_VOICE_<LANG>`` if you swap models.
+# var ``PIPER_VOICE_<LANG>``.
+#
+# Estonian (et_EE) is intentionally absent: rhasspy/piper-voices does NOT
+# ship one as of May 2026, and ``_piper_voice_for`` falls back to the
+# English voice for unknown languages. For Estonian TTS that actually
+# sounds Estonian, run cloud mode (Google Cloud Neural2 has
+# ``et-EE-Standard-A``); the dispatcher will route there automatically.
 _PIPER_VOICES = {
     "en": "en_US-lessac-medium",
-    "et": "et_EE-mart-medium",
     "fi": "fi_FI-harri-medium",
 }
 

@@ -27,10 +27,13 @@ WHISPER_MODEL_NAME="ggml-large-v3.bin"
 WHISPER_MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODEL_NAME}"
 
 # Piper voices, hosted on HuggingFace under rhasspy/piper-voices.
+# NOTE: Estonian (et_EE) does NOT have a Piper voice in the rhasspy
+# repo as of May 2026. Local-mode Estonian TTS falls back to the
+# English voice (acceptable for an MVP); for proper Estonian TTS use
+# cloud mode (Google Cloud Neural2 supports et-EE-Standard-A).
 PIPER_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 PIPER_VOICES=(
   "en/en_US/lessac/medium/en_US-lessac-medium"
-  "et/et_EE/mart/medium/et_EE-mart-medium"
   "fi/fi_FI/harri/medium/fi_FI-harri-medium"
 )
 
@@ -85,8 +88,40 @@ install_piper() {
       python3 -m pip install --user piper-tts
     fi
   fi
+  # `pip install --user` lands binaries in ~/Library/Python/<ver>/bin
+  # (macOS) or ~/.local/bin (Linux), neither of which is on the default
+  # macOS PATH. If we can find piper, symlink it into Homebrew's bin
+  # directory so the host bridge — which has Homebrew bin on PATH — can
+  # invoke `piper` directly.
   if ! command -v piper >/dev/null 2>&1; then
-    fail "piper not on PATH after install — add ~/.local/bin to PATH or use pipx"
+    local found=""
+    for cand in \
+        "$HOME/Library/Python/3.13/bin/piper" \
+        "$HOME/Library/Python/3.12/bin/piper" \
+        "$HOME/Library/Python/3.11/bin/piper" \
+        "$HOME/Library/Python/3.10/bin/piper" \
+        "$HOME/Library/Python/3.9/bin/piper" \
+        "$HOME/.local/bin/piper" \
+        ; do
+      if [[ -x "$cand" ]]; then
+        found="$cand"
+        break
+      fi
+    done
+    if [[ -n "$found" ]]; then
+      local target="/opt/homebrew/bin/piper"
+      if [[ -d "/opt/homebrew/bin" ]]; then
+        ln -sf "$found" "$target"
+        step "symlinked $found → $target"
+      else
+        warn "no /opt/homebrew/bin to symlink into; export PATH=\"$(dirname "$found"):\$PATH\""
+      fi
+    else
+      fail "piper installed but binary not found under common pip-user dirs"
+    fi
+  fi
+  if ! command -v piper >/dev/null 2>&1; then
+    fail "piper still not on PATH after symlink attempt"
   fi
   ok "piper available at $(command -v piper)"
 
