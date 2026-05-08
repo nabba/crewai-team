@@ -173,11 +173,30 @@ class SignalClient:
         """Send a message back to the user's iPhone via signal-cli.
 
         Args:
-            recipient: Phone number to send to (must be owner)
+            recipient: Phone number to send to (must be owner). When the
+                recipient is prefixed with ``discord:<user_id>`` (Phase 6
+                Discord connector) the message is dispatched through the
+                Discord bot instead, so all the existing call sites can
+                remain unchanged.
             text: Message text
             attachments: Optional list of absolute file paths on the HOST filesystem
                          to attach to the message. signal-cli reads these from the host.
         """
+        # Discord routing: when a sender like "discord:1502398373490200577"
+        # makes its way to here, dispatch to the bot instead of signal-cli.
+        if recipient.startswith("discord:"):
+            user_id = recipient[len("discord:"):]
+            try:
+                from app.discord_client import send_via_discord
+                ok, detail = await asyncio.to_thread(
+                    send_via_discord, user_id, text, attachments or [],
+                )
+                if not ok:
+                    logger.warning(f"discord send failed: {detail}")
+            except Exception:
+                logger.exception("discord send dispatch raised")
+            return
+
         if recipient.strip() != settings.signal_owner_number.strip():
             logger.error("Blocked attempt to send to non-owner recipient")
             return

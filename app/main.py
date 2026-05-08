@@ -791,8 +791,24 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.debug("Forge bridge reconciliation loop not started: %s", exc)
 
+    # ── Discord connector (Phase 6 — May 2026) ───────────────────────
+    # Opt-in via DISCORD_ENABLED + DISCORD_BOT_TOKEN. The bot runs as a
+    # background asyncio task on the gateway's loop and forwards owner
+    # DMs to handle_task with sender prefix `discord:<user_id>`.
+    try:
+        from app.discord_client import start_bot as _discord_start
+        await _discord_start()
+    except Exception:
+        logger.exception("Discord bot startup failed (non-fatal)")
+
     logger.info("CrewAI Agent Team started")
     yield
+    # Discord clean shutdown (closes the gateway WS before APScheduler dies).
+    try:
+        from app.discord_client import stop_bot as _discord_stop
+        await _discord_stop()
+    except Exception:
+        logger.debug("Discord bot shutdown raised", exc_info=True)
     # ── Graceful shutdown: drain in-flight tasks before letting the
     # container die.  Without this, SIGTERM → immediate exit strands any
     # handle_task() threads that were in the middle of processing a
