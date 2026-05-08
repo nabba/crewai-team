@@ -186,6 +186,17 @@ reflections), `narrative.py` (Loop 3, daily 04:40 chapter
 consolidator), `health_check.py`. Documented separately in
 `docs/SUBIA.md` under the affect section.
 
+A Goal-Emitter track (May 2026) closes the SCORECARD's AE-1 PARTIAL
+gap — see [`CONSCIOUSNESS_ROADMAP.md`](./CONSCIOUSNESS_ROADMAP.md) §3.G1.
+`app/affect/goal_emitter.py` (Tier-3-protected) translates sustained
+viability error (≥3 consecutive frames above threshold) into entries
+on `kernel.self_state.current_goals`. Rate-limited (≥10 min between
+runs), FIFO-capped (≤5 active goals), dedups against
+`companion.grand_task` proposals. **Triggers ethical threshold T1**:
+welfare-check moves from observability to operator-visible obligation.
+Registered as the `viability-goal-emitter` LIGHT idle job. AE-1
+graduated PARTIAL → STRONG on 2026-05-08.
+
 ---
 
 ## Viability layer (H_t)

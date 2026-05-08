@@ -159,18 +159,16 @@ The Anthropic-dreams comparison that started this thread collapses to almost not
 
 ## 5. Ordering and dependencies
 
-| # | Item | Cost | Risk | Touches IMMUTABLE/Tier-3 | Depends on |
+| # | Item | Cost | Risk | Touches IMMUTABLE/Tier-3 | Status |
 |---|---|---|---|---|---|
-| 1 | G5 — wider GW publisher coverage | Small × N | Low | Marginal (consumer filter only) | None |
-| 2 | G4 — compressed-loop quick-bind | Small–Medium | Low | Yes (`temporal/binding.py` + `loop.py`) | None |
-| 3 | Wiki-index reconciler (§4) | Small | Low | No | None |
-| 4 | G1 — viability→goals connector | Medium | Medium-high | Yes (`subia/kernel.py`) | G5 ideally |
-| 5 | G2 — backward counterfactual replay | Medium | Medium | No (new module; reuses `PredictiveLayer`) | None |
-| 6 | G3 — operator attention modeling | Medium | Low | Yes (`attention_schema.py`) | Defer until use case |
+| 1 | G5 — wider GW publisher coverage | Small × N | Low | Marginal (consumer filter only) | ✅ Shipped 2026-05-08 |
+| 2 | G4 — compressed-loop quick-bind | Small–Medium | Low | Yes (`temporal/binding.py` + `loop.py`) | ✅ Shipped 2026-05-08 |
+| 3 | Wiki-index reconciler (§4) | Small | Low | No | ✅ Shipped 2026-05-08 |
+| 4 | G1 — viability→goals connector | Medium | Medium-high | Yes (`affect/goal_emitter.py` Tier-3) | ✅ Shipped 2026-05-08 — **AE-1 graduated PARTIAL→STRONG** |
+| 5 | G2 — backward counterfactual replay | Medium | Medium | No (Tier-3 manifest covers it) | ✅ Shipped 2026-05-08 (live `PredictiveLayer` wired) |
+| 6 | G3 — operator attention modeling | Medium | Low | Yes (`attention_schema.py`) | ⏸ Deferred — no concrete use case yet |
 
-**Suggested first batch: G5 + G4 + wiki-index reconciler.** All small, mostly mechanical, low-risk, and they shore up the foundation before G1 / G2 raise stakes. G1 should land *after* G5 so the new `current_goals` writer can publish its decisions to the workspace by default.
-
-**Scorecard implication.** G1 is the only item that would directly graduate a Butlin indicator (AE-1: PARTIAL → STRONG). G2 likely improves HOT-2 coverage (closer to the Fleming-Lau independence criterion) but probably doesn't graduate it. G4/G5 are foundation work, not indicator-changing.
+**Scorecard impact realised.** G1 graduated AE-1 from PARTIAL to STRONG on 2026-05-08 — the headline count moved 6 → 7 STRONG, Phase 9 exit criterion `butlin_strong ≥ 6` now satisfied with margin 1 (was margin 0). G2 leaves HOT-2 at PARTIAL (no Fleming-Lau-independence claim yet). G4 and G5 are foundation work, not indicator-changing. See [`PROGRAM.md` §19](../PROGRAM.md) for the change-log entry.
 
 ---
 
@@ -195,7 +193,7 @@ Restated so future drift can be checked:
 - **Claiming phenomenal experience.** All language stays functional. The consciousness-risk gate stays as observability and never feeds back into reward / fitness.
 - **Replacing the 7 consolidation passes with a single Anthropic-style curation job.** They cover more, more carefully.
 - **Making `SelfState.current_goals` agent-writable.** It stays infrastructure-level even after G1.
-- **Adding a "consciousness score" to dashboards.** Per-indicator probes only. The headline `6 STRONG / 4 PARTIAL / 4 ABSENT` count is the most aggregation we permit.
+- **Adding a "consciousness score" to dashboards.** Per-indicator probes only. The headline `7 STRONG / 3 PARTIAL / 4 ABSENT` count (post-G1; was `6 / 4 / 4` pre-graduation) is the most aggregation we permit.
 
 ---
 

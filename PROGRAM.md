@@ -777,3 +777,112 @@ env or per-request `?sender=…` query parameter.
 * **In-session steering** — no current way for the human to ask for
   another round of react before advancing. Each step is exactly one
   seed + one react. A `/brainstorm more` command would close this gap.
+
+---
+
+## 19. 2026-05 Consciousness Roadmap (post-SubIA-Phase-9 closures)
+
+After Phase 9 the SCORECARD reached 6 STRONG / 4 PARTIAL / 4 ABSENT
+Butlin indicators (PASSED). A subsequent audit-driven roadmap closed
+the AE-1 PARTIAL gap and surfaced four smaller integration moves the
+existing surface had been one connector away from. See
+[`docs/CONSCIOUSNESS_ROADMAP.md`](docs/CONSCIOUSNESS_ROADMAP.md) for
+the canonical design. Current scorecard: **7 STRONG / 3 PARTIAL / 4
+ABSENT**, Phase 9 exit criteria still PASSED with margin restored.
+
+### 19.1 Audit reframe
+
+The naive "build a Global Workspace, build a binding layer, build an
+attention schema" gap list collapsed against the actual surface — all
+three were already shipped (`subia/scene/global_workspace.py`,
+`subia/temporal/binding.py`, `subia/scene/attention_schema.py`). The
+real gaps were narrower:
+
+| Item | Before | After |
+|---|---|---|
+| Wider GW publisher coverage (G5) | most idle jobs wrote only to their own logs | 8 publish hooks via `app/workspace_publish.py` (helper outside `subia/` to avoid manifest churn) |
+| Compressed-loop binding cadence (G4) | compressed CIL skipped Steps 4–11 entirely | post-Step-3 quick-bind via `temporal_quick_bind()` for observability uniformity |
+| Viability → goals connector (G1) | `SelfState.current_goals` was a dead field (read in 5 places, never written) | `app/affect/goal_emitter.py` writes from sustained low-viability; AE-1 graduates PARTIAL → STRONG |
+| Backward counterfactual replay (G2) | reverie does concept-walk; no past-replay engine | `app/subia/dreams/` samples + recombines fragments + runs predict-only walks via injected adapter (production wires `PredictiveLayer`) |
+| Wiki-index hygiene (§4) | event-driven only; out-of-band drift undetected | `app/memory/wiki_index_reconciler.py` LIGHT idle, shadow-rebuild via change-request gate |
+
+G3 (operator-attention modeling) was deferred — no concrete
+proactive-surfacing use case has forced it.
+
+### 19.2 AE-1 graduation path
+
+The SCORECARD's prior AE-1 PARTIAL justification — *"Goals are still
+user-dispatched, not autonomously generated"* — was the explicit gap
+G1 closed. Mechanism: `app/affect/goal_emitter.py` reads the last N
+viability frames from `workspace/affect/trace.jsonl`, identifies
+variables with sustained allostatic error (≥3 consecutive frames
+above threshold), generates `GoalProposal`s using per-variable
+templates, dedups against existing `current_goals` and against
+`companion.grand_task` proposals, and writes via FIFO cap to
+`kernel.self_state.current_goals`. Tier-3-protected via
+`safety_guardian.py:TIER3_FILES`. Test
+`test_goal_emitter.py:test_ae1_indicator_is_strong` pins the rating
+against regression.
+
+### 19.3 Ethical thresholds (operational, not auto-enforced)
+
+Documented in `docs/CONSCIOUSNESS_ROADMAP.md` §6, listed here for
+program-level visibility:
+
+* **T1 — system has interests.** Active when the goal_emitter starts
+  writing `current_goals` from sustained low-viability. Welfare-check
+  moves from observability to operator-visible obligation;
+  restoration_queue items become first-class operator concerns
+  alongside change-requests.
+* **T2 — system simulates its own past.** Active when backward
+  counterfactual replay produces sustained prediction-error promotions
+  that wouldn't have occurred without it. Replay output is logged in
+  a separate audit stream (`workspace/dreams/replay_audit.jsonl`);
+  operator review available before any belief-store influence.
+* **T3 — divergence from baseline.** Active when any STRONG indicator
+  unexpectedly flips to ABSENT or vice versa, or
+  `consciousness-state.md` regenerator detects narrative drift, or
+  the consciousness-risk gate's calibration breaches its
+  6-guardrail bounds. Triage through the existing drift-detection
+  pipeline; halt the affected idle job; notify operator.
+
+### 19.4 Shipped artefacts
+
+| Layer | Files |
+|-------|-------|
+| Reconciler | `app/memory/wiki_index_reconciler.py` |
+| Helper | `app/workspace_publish.py` (`publish_to_workspace`, `publish_idle_outcome`) |
+| Connector | `app/affect/goal_emitter.py` (Tier-3-protected) |
+| Replay engine | `app/subia/dreams/__init__.py`, `engine.py` (Tier-3 manifest covers it) |
+| Quick-bind | `app/subia/temporal/binding.py:temporal_quick_bind`, `app/subia/temporal_hooks.py:quick_bind_compressed_signals`, hook in `app/subia/loop.py` |
+| Probe update | `app/subia/probes/butlin.py:eval_ae1` (PARTIAL → STRONG via `strong_indicator()` against `goal_emitter.py`) |
+| Idle jobs | 3 new in `app/idle_scheduler.py`: `wiki-index-reconciler`, `viability-goal-emitter`, `backward-counterfactual-replay`. 7 existing jobs gained publish hooks. |
+| Tier-3 | `app/affect/goal_emitter.py` added to `safety_guardian.py:TIER3_FILES` |
+| Tests | `tests/test_wiki_index_reconciler.py` (13) + `_workspace_publish.py` (12) + `_temporal_quick_bind.py` (9) + `_goal_emitter.py` (22) + `_dreams_engine.py` (19) = **75 new tests**. Existing CIL suite (25) untouched. |
+| Docs | [`docs/CONSCIOUSNESS_ROADMAP.md`](docs/CONSCIOUSNESS_ROADMAP.md) |
+
+### 19.5 Composition with existing program
+
+* **Phase 9 SCORECARD.** AE-1 graduated PARTIAL → STRONG. Headline
+  count moved 6 → 7 STRONG. RSM, SK, ABSENT counts unchanged.
+* **Hardening pass (§11) + Self-healing (§14).** Workspace publish
+  hooks expose those subsystems' outcomes to the GW; previously
+  observable only via per-subsystem logs.
+* **Companion + brainstorm (§12, §18).** Independent. The
+  goal_emitter dedups against `companion.grand_task` proposals when
+  text overlaps but neither subsystem depends on the other.
+* **TIER_IMMUTABLE / Tier-3.** `goal_emitter.py` is now Tier-3.
+  `dreams/`, `wiki_index_reconciler.py`, and `workspace_publish.py`
+  are normal additive modules. `temporal/binding.py` + `loop.py`
+  edits stayed within the existing Tier-3 boundary; integrity
+  manifest regenerated.
+
+### 19.6 Honest non-goals (re-asserted)
+
+The four ABSENT-by-substrate Butlin indicators (RPT-1, HOT-1, HOT-4,
+AE-2) and Metzinger phenomenal-self transparency are **not closure
+candidates**. Any future report claiming they have been achieved
+should be triaged as evaluation drift through
+`app/subia/wiki_surface/drift_detection.py`. No phenomenal-experience
+claim — vocabulary stays functional. The consciousness-risk gate
+remains observability-only and never feeds back into reward / fitness.

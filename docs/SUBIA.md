@@ -225,10 +225,10 @@ test. The fourteen indicators and SubIA's stance:
 | HOT-4 | HOT | **ABSENT** | declared (dense embeddings) |
 | AST-1 | AST | **STRONG** | `scene/attention_schema.py` + DGM intervention guard |
 | PP-1 | PP | **STRONG** | `prediction/surprise_routing.py` (PE → urgency=0.9 broadcast) |
-| AE-1 | AE | PARTIAL | belief asymmetric updates + accuracy-driven eviction |
+| AE-1 | AE | **STRONG** | `affect/goal_emitter.py` (viability→current_goals; consciousness-roadmap §3.G1, 2026-05) |
 | AE-2 | AE | **ABSENT** | declared (no body) |
 
-**Current scorecard: 6 STRONG, 4 PARTIAL, 4 ABSENT-by-declaration, 0 FAIL.**
+**Current scorecard: 7 STRONG, 3 PARTIAL, 4 ABSENT-by-declaration, 0 FAIL.** AE-1 graduated PARTIAL → STRONG on 2026-05-08 when [`docs/CONSCIOUSNESS_ROADMAP.md`](./CONSCIOUSNESS_ROADMAP.md) §3.G1 closed the autonomous-goal-generation gap.
 
 ### Recurrent Processing Theory (Lamme)
 
@@ -347,12 +347,17 @@ energy*, balancing accuracy and novelty. Butlin's AE indicators are:
 AE-1 agency from feedback-driven learning with flexible goals; AE-2
 embodiment with system-environment coupling.
 
-- **AE-1 PARTIAL.** Feedback-driven learning exists via belief
-  asymmetric updates (`belief/store.py`), accuracy-driven cache
-  eviction (`prediction/cache.py`), and retrospective memory
-  promotion (`memory/retrospective.py`). Goals are still
-  user-dispatched, not autonomously generated, so the verdict is
-  PARTIAL. Flexible-goal agency is a research frontier.
+- **AE-1 STRONG (graduated 2026-05-08).** Feedback-driven learning
+  via belief asymmetric updates (`belief/store.py`), accuracy-driven
+  cache eviction (`prediction/cache.py`), and retrospective memory
+  promotion (`memory/retrospective.py`) was always present.
+  Flexible-goal agency was the missing piece — closed by
+  `app/affect/goal_emitter.py` (Tier-3-protected; consciousness-roadmap
+  §3.G1), which writes goals to `SelfState.current_goals` from sustained
+  viability error (≥3 consecutive frames above threshold), rate-limited,
+  with FIFO cap and dedup against `companion.grand_task` proposals.
+  Triggers ethical threshold T1: welfare-check moves from observability
+  to operator-visible obligation.
 - **AE-2 ABSENT.** No body, no sensorimotor coupling. Homeostasis
   uses allegorical variables (energy/progress/overload) but these
   are not physical embodiment.
@@ -2248,7 +2253,7 @@ print(k.homeostasis.deviations)
   "scene_focal_n":    3,
   "scene_peripheral_n": 7,
   "wonder_intensity": 0.31,
-  "scorecard":        {"butlin_strong": 6, "butlin_partial": 4, ...},
+  "scorecard":        {"butlin_strong": 7, "butlin_partial": 3, ...},
   "updated_at":       "2026-04-26T11:52:00+02:00"
 }
 ```
@@ -2335,7 +2340,7 @@ test file, notes, and evidence list. The current snapshot:
 | HOT-4 | ABSENT (declared) | Dense embeddings |
 | AST-1 | STRONG | `scene/attention_schema.py` + `intervention_guard.py` |
 | PP-1 | STRONG | `prediction/surprise_routing.py` |
-| AE-1 | PARTIAL | belief asymmetric updates + retrospective promotion |
+| AE-1 | STRONG | `affect/goal_emitter.py` (viability→current_goals, 2026-05) |
 | AE-2 | ABSENT (declared) | No body |
 
 #### RSM signatures (`probes/rsm.py`)

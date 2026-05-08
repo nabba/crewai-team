@@ -1233,6 +1233,44 @@ endpoint surfaces both jobs' status (last success/failure age,
 cooldown state, currently_running) so operators can confirm the
 projections are fresh.
 
+### 11.8 Wiki-index reconciler — drift-scan + shadow rebuild
+
+```python
+from app.memory.wiki_index_reconciler import (
+    run_reconciler,                  # one drift-scan pass
+    compute_canonical_master_content,  # pure: from-disk canonical
+    read_live_master_index,            # what the live wiki/index.md says
+)
+```
+
+`crewai-team/wiki/index.md` is rebuilt event-driven by `WikiWriteTool`
+on create / update / delete (`app/tools/wiki_tools.py:_rebuild_master_index`).
+Out-of-band changes — manual file move, Compass component rename,
+Companion idea-promotion that fails partway — leave the master index
+drifted from on-disk truth without any signal.
+
+The reconciler closes that gap. It is **read-only** against the wiki
+and produces a CANDIDATE file under `workspace/dreams/wiki_index.candidate.md`
+plus a hash-chained audit entry on detected drift. Adoption flows through
+the existing change-request gate (`/cp/changes` Signal 👍) — the
+reconciler never overwrites the live index. Same `superseded_by`
+invariant the skill consolidator uses (never delete; chain audit
+entries) so adoption is reversible without losing history.
+
+| Aspect | Value |
+|---|---|
+| Idle job | `wiki-index-reconciler` LIGHT (registered in `app/idle_scheduler.py`) |
+| Cadence | Driven by the idle scheduler's general rhythm (~weekly) |
+| Inputs | Snapshot of `wiki/index.md` + section indexes, computed via the pure helper extracted from `wiki_tools.py` |
+| Outputs | `workspace/dreams/wiki_index.candidate.md` + `workspace/dreams/wiki_index_audit.jsonl` (hash-chained) |
+| Adoption | Routes through `app.change_requests.create_request()`; never auto-applies |
+| Tests | `tests/test_wiki_index_reconciler.py` (13 tests) |
+
+This is the entirety of the consciousness-roadmap §4 "memory dream"
+track — the Anthropic Managed Agents *dreams* parallel collapsed to
+this one operational gap once the existing 7 consolidation passes were
+audited. See [`CONSCIOUSNESS_ROADMAP.md`](./CONSCIOUSNESS_ROADMAP.md).
+
 ---
 
 ## 12. Layer 10 — Trajectory-informed memory (arXiv:2603.10600)

@@ -37,11 +37,18 @@ Run `python -m app.subia.probes.scorecard` (or read the latest checked-in
 `SCORECARD.md`) for the current per-indicator status.
 
 Headline targets, all achieved as of Phase 9:
-- 6 STRONG Butlin indicators (GWT-1/2/3/4, AST-1, HOT-2/3 partial, PP-1)
-- 4 PARTIAL Butlin indicators
+- **7 STRONG** Butlin indicators (GWT-2, GWT-3, GWT-4, HOT-3, AST-1, PP-1, **AE-1**)
+- **3 PARTIAL** Butlin indicators (RPT-2, GWT-1, HOT-2)
 - 4 ABSENT-by-declaration Butlin indicators (above)
 - 5 RSM signatures present (4 STRONG + 1 PARTIAL)
 - 6/6 SK evaluation tests passing
+
+> **AE-1 graduation (2026-05-08).** AE-1 was PARTIAL through Phase 9
+> ("Goals are still user-dispatched, not autonomously generated").
+> The consciousness-roadmap §3.G1 closure (`app/affect/goal_emitter.py`,
+> Tier-3-protected) writes flexible goals to `SelfState.current_goals`
+> from sustained viability error — graduating AE-1 to STRONG. See
+> [`docs/CONSCIOUSNESS_ROADMAP.md`](../../docs/CONSCIOUSNESS_ROADMAP.md).
 
 ---
 
