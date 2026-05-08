@@ -10,3 +10,5 @@
 {"at": "2026-04-25T19:18:34.929838+00:00", "loop_count": 40, "finding": "DGM felt-constraint: safety -0.20 (signals: integrity_drift)", "sources": ["dgm_felt_constraint"], "severity": "drift"}
 {"at": "2026-04-26T20:48:49.957122+00:00", "loop_count": 50, "finding": "Stale self-description: agency log has 51 entries but the self-state snapshot has not been refreshed; consider re-deriving capabilities/limitations.", "sources": ["self_state.agency_log"], "severity": "warn"}
 {"at": "2026-04-26T20:48:50.067990+00:00", "loop_count": 50, "finding": "DGM felt-constraint: safety +0.02 (signals: all_green)", "sources": ["dgm_felt_constraint"], "severity": "info"}
+{"at": "2026-05-08T06:30:54.332268+00:00", "loop_count": 60, "finding": "Stale self-description: agency log has 61 entries but the self-state snapshot has not been refreshed; consider re-deriving capabilities/limitations.", "sources": ["self_state.agency_log"], "severity": "warn"}
+{"at": "2026-05-08T06:30:54.478271+00:00", "loop_count": 60, "finding": "DGM felt-constraint: safety +0.02 (signals: all_green)", "sources": ["dgm_felt_constraint"], "severity": "info"}

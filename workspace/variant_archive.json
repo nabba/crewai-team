@@ -1378,5 +1378,22 @@
     "mutation_summary": "No improvement (delta=-0.0160), reverted",
     "timestamp": "2026-04-26T00:06:45.275224+00:00",
     "generation": 46
+  },
+  {
+    "id": "exp_202605070600_011d",
+    "parent_id": "exp_202604222104_f9f6",
+    "hypothesis": "The system is experiencing recurring 402 'Insufficient credits' errors across multiple agents (pim, coding), which are currently treated as generic RuntimeErrors. Implementing a specific interceptor for 402 errors allows the system to fail gracefully or alert the user instead of triggering useless self-healing loops that waste further tokens.",
+    "change_type": "code",
+    "fitness_before": 0.701688,
+    "fitness_after": 0.701688,
+    "delta": 0.0,
+    "test_pass_rate": 0.0,
+    "status": "discard",
+    "files_changed": [
+      "app/avo_operator.py"
+    ],
+    "mutation_summary": "No improvement (delta=+0.0000), reverted",
+    "timestamp": "2026-05-07T06:00:53.817683+00:00",
+    "generation": 46
   }
 ]

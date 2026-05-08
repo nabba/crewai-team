@@ -1,0 +1,6 @@
+{
+  "concierge_persona_enabled": false,
+  "vision_cu_enabled": false,
+  "vision_cu_monthly_cap_usd": 10.0,
+  "voice_mode": "off"
+}

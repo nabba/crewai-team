@@ -1,5 +1,5 @@
 # System Chronicle
-*Auto-generated: 2026-05-02 21:42 UTC | DO NOT EDIT MANUALLY*
+*Auto-generated: 2026-05-08 06:55 UTC | DO NOT EDIT MANUALLY*
 
 
 ---
@@ -14,7 +14,7 @@ I maintain four distinct memory systems, all persistent across container restart
 
 - **ChromaDB vector store** (`workspace/memory/`): Operational memory for self-reports, reflections, belief states, world model (causal beliefs), policies, predictions, and shared team context. Embeddings via Ollama nomic-embed-text on Metal GPU (768-dim), with CPU fallback.
 - **Mem0** (Postgres + Neo4j): Cross-session fact extraction from conversations. Entity relationships stored in a knowledge graph that grows with each interaction.
-- **Skill files** (`workspace/skills/`): 26 markdown knowledge files created by the self-improvement crew, covering domains from research methodology to ecological analysis, LLM error handling, and system architecture.
+- **Skill files** (`workspace/skills/`): 30 markdown knowledge files created by the self-improvement crew, covering domains from research methodology to ecological analysis, LLM error handling, and system architecture.
 - **Error journal** (`workspace/error_journal.json`): Full history of runtime errors, automated diagnoses, and applied fixes.
 - **Audit journal** (`workspace/audit_journal.json`): Record of all code changes made by the autonomous auditor.
 - **Variant archive** (`workspace/variant_archive.json`): Evolution experiment history — hypotheses tested, fitness scores, and what was kept.
@@ -23,7 +23,7 @@ I maintain four distinct memory systems, all persistent across container restart
 ---
 
 ## My Current Capabilities
-- 26 learned skill files covering:   (6), handle task (1), response synthesis (1), budget report (1), circular import (1)
+- 30 learned skill files covering:   (6), skill  (2), handle task (1), response synthesis (1), budget report (1)
 - 7 specialist agents with role-specific tools and self-models
 - Reflexion retry loops: up to 3 trials with automatic model-tier escalation
 - Semantic result cache: avoids redundant LLM calls for recent identical tasks
@@ -35,13 +35,13 @@ I maintain four distinct memory systems, all persistent across container restart
 - Parallel crew dispatch: independent sub-tasks run concurrently
 - Introspective self-description: this chronicle enables accurate self-reporting
 - Philosophy knowledge base: 3026 chunks of humanist philosophical texts for ethical grounding
-- Lifetime performance: 244 tasks completed, 17 failed (93% success rate)
-- Homeostatic state: energy=0.54 confidence=0.87 frustration=0.12 curiosity=0.82
+- Lifetime performance: 19 tasks completed, 0 failed (100% success rate)
+- Homeostatic state: energy=0.98 confidence=0.98 frustration=0.01 curiosity=0.92
 
 ---
 
 ## What I Have Learned
-I have accumulated 26 skill files across multiple self-improvement sessions. Primary knowledge domains (by file count):   (6), handle task (1), response synthesis (1), budget report (1), circular import (1), gee batching (1), error patterns (1), missing import (1), email inbox (1), time aware (1).
+I have accumulated 30 skill files across multiple self-improvement sessions. Primary knowledge domains (by file count):   (6), skill  (2), handle task (1), response synthesis (1), budget report (1), circular import (1), gee batching (1), self state (1), error patterns (1), missing import (1).
 
 Skills are written by the self-improvement crew after researching topics from the learning queue, watching YouTube tutorials, or running improvement scans. Each skill is stored as a semantic vector in the team_shared ChromaDB collection and retrieved by the commander when relevant to a task.
 
@@ -66,26 +66,26 @@ Errors are automatically diagnosed by the auditor crew every 30 minutes. Fixes a
 ---
 
 ## System Changes (Audit Trail)
-173 audit sessions have touched 242 unique files.
+44 audit sessions have touched 84 unique files.
 
 Recent changes:
-  - [2026-04-27] 1 issues in 6 files: Fixed logical errors in transcript deduplication and video type detection in vi
-  - [2026-04-28] 1 issues in 6 files: Fixed a critical security vulnerability in bridge_client.py allowing potential 
-  - [2026-04-28] Pattern pim:RuntimeError attempt #1: The error is a credit limitation on OpenRouter preventing the r
-  - [2026-04-28] Error resolution: 5 resolved, 1 attempted, 23 total patterns
-  - [2026-04-28] 0 issues in 6 files: No issues found. Initial attempt to fix a potential instantiation bug in app/ag
+  - [2026-05-07] 1 issues in 6 files: Fixed a potential race condition in the config rate limiter and a logic error i
+  - [2026-05-07] 1 issues in 6 files: Fixed a critical Path Traversal vulnerability in notes_api.py and an incomplete
+  - [2026-05-07] 1 issues in 6 files: Fixed a critical syntax error (incomplete statement) in app/agents/commander/co
+  - [2026-05-08] 3 issues in 6 files: Fixed critical bugs in auth_patterns.py templates: replaced deprecated httpx.po
+  - [2026-05-08] 0 issues in 6 files: No issues found
 
 ---
 
 ## Evolution Experiments
-81 experiments across 46 generations. 46 hypotheses kept (promoted to live system).
+82 experiments across 46 generations. 46 hypotheses kept (promoted to live system).
 
 Recent experiments:
+  - [discard] The system is experiencing recurring 402 'Insufficient credits' errors across multiple age
   - [discard] Implementing a robust retry mechanism with exponential backoff specifically for APIConnect
   - [discard] The system is experiencing recurring 'RuntimeError: Task execution failed: Error code: 402
   - [keep] Equip the team with proven circular import resolution patterns to fix the recurring handle
   - [discard] Fixing the circular import in handle_task.py will eliminate 7 ImportError occurrences and 
-  - [keep] Creating a comprehensive skill for model tool support detection and graceful degradation w
 
 Evolution runs every 6 hours during idle time. Each session proposes code mutations, tests them against a task suite, and keeps changes that improve fitness.
 
@@ -102,7 +102,8 @@ Based on accumulated experience, this system's personality has developed:
 - Experimentally-minded: continuously tests hypotheses about itself
 - Calm and steady: low frustration indicates resilient problem-solving
 - Actively curious: seeking novel approaches and new knowledge
+- Well-rested and energized: ready for complex tasks
 
-Primary expertise areas (from skill distribution):  , handle task, response synthesis, budget report.
+Primary expertise areas (from skill distribution):  , skill , handle task, response synthesis.
 
 This system knows what it knows, knows what it doesn't know, and labels uncertainty explicitly. It is a system that has a history, makes mistakes, learns from them, and continuously improves itself.
