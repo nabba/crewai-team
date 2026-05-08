@@ -3,9 +3,19 @@ import { ErrorPanel } from './ui/ErrorPanel';
 import {
   useRuntimeSettingsQuery,
   useUpdateRuntimeSettings,
+  useVapidPublicKeyQuery,
+  useWebPushSubscriptionsQuery,
+  useWebPushSubscribe,
+  useWebPushUnsubscribe,
+  useWebPushTest,
   type RuntimeSettings,
   type VoiceMode,
 } from '../api/queries';
+import {
+  getPushSubscription,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from '../api/pwa';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -40,6 +50,148 @@ export function SettingsPage() {
       <VoiceModeCard settings={settingsQ.data} />
       <VisionComputerUseCard settings={settingsQ.data} />
       <ConciergePersonaCard settings={settingsQ.data} />
+      <WebPushCard />
+    </div>
+  );
+}
+
+// ── Web Push (PWA notifications) ──────────────────────────────────────────
+
+function WebPushCard() {
+  const vapidQ = useVapidPublicKeyQuery();
+  const subsQ = useWebPushSubscriptionsQuery();
+  const subscribe = useWebPushSubscribe();
+  const unsubscribe = useWebPushUnsubscribe();
+  const test = useWebPushTest();
+  const [thisDeviceSubscribed, setThisDeviceSubscribed] = useState<boolean | null>(null);
+  const [feedback, setFeedback] = useState('');
+
+  // Reflect the current browser's subscription state.
+  useEffect(() => {
+    let alive = true;
+    getPushSubscription().then((s) => {
+      if (alive) setThisDeviceSubscribed(s !== null);
+    });
+    return () => { alive = false; };
+  }, [subsQ.data?.count]);
+
+  const supported =
+    typeof navigator !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in (typeof window !== 'undefined' ? window : ({} as Window));
+
+  const vapid = vapidQ.data?.public_key ?? '';
+  const configured = subsQ.data?.configured ?? false;
+
+  const enable = async () => {
+    setFeedback('');
+    if (!vapid) return;
+    const payload = await subscribeToPush(vapid);
+    if (!payload) {
+      setFeedback('Permission denied or push unsupported.');
+      return;
+    }
+    try {
+      await subscribe.mutateAsync(payload);
+      setThisDeviceSubscribed(true);
+      setFeedback('Notifications enabled on this device.');
+      setTimeout(() => setFeedback(''), 3000);
+    } catch (exc) {
+      setFeedback(`Subscribe failed: ${exc instanceof Error ? exc.message : exc}`);
+    }
+  };
+
+  const disable = async () => {
+    setFeedback('');
+    const sub = await getPushSubscription();
+    const endpoint = sub?.endpoint ?? '';
+    await unsubscribeFromPush();
+    if (endpoint) {
+      try {
+        await unsubscribe.mutateAsync({ endpoint });
+      } catch {/* ignored: client-side unsub already happened */}
+    }
+    setThisDeviceSubscribed(false);
+    setFeedback('Notifications disabled on this device.');
+    setTimeout(() => setFeedback(''), 3000);
+  };
+
+  const sendTest = async () => {
+    setFeedback('');
+    try {
+      const res = await test.mutateAsync();
+      setFeedback(`Test sent → ${res.delivered} device(s).`);
+      setTimeout(() => setFeedback(''), 3000);
+    } catch (exc) {
+      setFeedback(`Test failed: ${exc instanceof Error ? exc.message : exc}`);
+    }
+  };
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">PWA notifications</h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Add the dashboard to your iPhone Home Screen (Safari → Share → Add to Home Screen)
+          to install it as an app, then enable Web Push so completed scheduled tasks
+          and Signal events ping this device. Independent from Signal — you'll get both.
+        </p>
+      </div>
+
+      {!supported && (
+        <div className="text-xs text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 rounded p-2">
+          This browser doesn't support Web Push. Install the PWA and try again.
+        </div>
+      )}
+      {supported && !configured && (
+        <div className="text-xs text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 rounded p-2">
+          VAPID keys not configured on the server. Run <code>python -m app.web_push.bootstrap</code> to generate them, then restart the gateway.
+        </div>
+      )}
+      {supported && configured && (
+        <div className="flex flex-wrap items-center gap-3">
+          {thisDeviceSubscribed ? (
+            <button
+              onClick={disable}
+              disabled={unsubscribe.isPending}
+              className="px-3 py-2 bg-[#1e2738] hover:bg-[#2a3548] disabled:opacity-50 rounded text-[#e2e8f0] text-sm"
+            >
+              Disable on this device
+            </button>
+          ) : (
+            <button
+              onClick={enable}
+              disabled={subscribe.isPending || !vapid}
+              className="px-3 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] disabled:opacity-50 rounded text-white text-sm"
+            >
+              {subscribe.isPending ? 'Enabling…' : 'Enable on this device'}
+            </button>
+          )}
+          <button
+            onClick={sendTest}
+            disabled={test.isPending || (subsQ.data?.count ?? 0) === 0}
+            className="px-3 py-2 bg-[#0a0f18] border border-[#1e2738] hover:border-[#3b4659] disabled:opacity-50 rounded text-[#7a8599] hover:text-[#e2e8f0] text-sm"
+          >
+            {test.isPending ? 'Sending…' : 'Send test'}
+          </button>
+          <span className="text-xs text-[#7a8599]">
+            {subsQ.data ? `${subsQ.data.count} device${subsQ.data.count === 1 ? '' : 's'} registered` : ''}
+          </span>
+        </div>
+      )}
+
+      {subsQ.data && subsQ.data.devices.length > 0 && (
+        <ul className="text-xs text-[#7a8599] space-y-1 mt-2">
+          {subsQ.data.devices.map((d) => (
+            <li key={d.added_at + d.user_agent} className="flex items-center justify-between gap-3">
+              <span className="truncate flex-1">{d.user_agent || '<no UA>'}</span>
+              <span className="text-[#94a3b8]">{d.endpoint_host}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {feedback && <div className="text-xs text-[#34d399]">{feedback}</div>}
     </div>
   );
 }

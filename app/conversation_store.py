@@ -257,6 +257,31 @@ def get_history(sender: str, n: int = 10) -> str:
     return "\n".join(lines)
 
 
+def get_recent_messages(sender: str, limit: int = 10) -> list[dict]:
+    """Return raw recent messages as dicts, newest-first.
+
+    Each entry has ``{"role": str, "content": str, "ts": float}``.
+    Used by callers that need to walk history programmatically (vs.
+    ``get_history`` which returns a formatted prompt string).
+    """
+    try:
+        conn = _get_conn()
+        rows = conn.execute(
+            """
+            SELECT role, content, ts
+              FROM messages
+             WHERE sender_id = ?
+             ORDER BY ts DESC
+             LIMIT ?
+            """,
+            (_sender_id(sender), max(1, int(limit))),
+        ).fetchall()
+    except Exception:
+        logger.exception("conversation_store: failed to retrieve recent messages")
+        return []
+    return [{"role": r[0], "content": r[1], "ts": float(r[2])} for r in rows]
+
+
 def get_last_assistant_message(sender: str) -> str:
     """Return the raw content of the most recent assistant reply to this
     sender, or empty string. Used by Phase 15 grounding to supply

@@ -146,6 +146,23 @@ export const endpoints = {
   // POST requires gateway secret (same as creative_mode).
   runtimeSettings: () => `/config/runtime_settings`,
 
+  // Web Push (PWA notifications)
+  vapidPublicKey: () => `/config/vapid_public_key`,
+  webPushSubscribe: () => `/config/web_push/subscribe`,
+  webPushUnsubscribe: () => `/config/web_push/unsubscribe`,
+  webPushSubscriptions: () => `/config/web_push/subscriptions`,
+  webPushTest: () => `/config/web_push/test`,
+
+  // Skills (Hermes-style "save this workflow" registry)
+  skills: () => `${CP}/skills`,
+  skill: (name: string) => `${CP}/skills/${encodeURIComponent(name)}`,
+  skillRun: (name: string) => `${CP}/skills/${encodeURIComponent(name)}/run`,
+
+  // Files / artifacts (Generated docs, skill markdown, notes)
+  files: () => `${CP}/files`,
+  fileDownload: (path: string) => `${CP}/files/download?path=${encodeURIComponent(path)}`,
+  fileSend: () => `${CP}/files/send`,
+
   // Knowledge bases (root-mounted prefixes)
   kbStatus: () => `/kb/status`,
   kbUpload: () => `/kb/upload`,

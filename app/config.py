@@ -419,6 +419,22 @@ class Settings(BaseSettings):
     google_oauth_client_id: SecretStr = SecretStr("")
     google_oauth_client_secret: SecretStr = SecretStr("")
 
+    # ── Web Push (PWA notifications) ────────────────────────────────────
+    # Generate once with `python -m app.web_push.bootstrap`. Public key is
+    # served verbatim to the React app at /config/vapid_public_key so the
+    # browser can subscribe without a rebuild. Private key signs deliveries.
+    vapid_public_key: str = ""
+    vapid_private_key: SecretStr = SecretStr("")
+    vapid_contact_email: str = "andrus@raudsalu.com"
+
+    # ── Discord connector ─────────────────────────────────────────────
+    # Optional second messaging surface alongside Signal. Only DMs from
+    # ``discord_owner_id`` are accepted; everything else is silently ignored.
+    # Empty token disables the bot at startup.
+    discord_enabled: bool = False
+    discord_bot_token: SecretStr = SecretStr("")
+    discord_owner_id: str = ""
+
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("sandbox_memory_limit")
@@ -537,3 +553,8 @@ def get_google_oauth_client() -> tuple[str, str]:
         s.google_oauth_client_id.get_secret_value(),
         s.google_oauth_client_secret.get_secret_value(),
     )
+
+
+def get_discord_bot_token() -> str:
+    """Return the Discord bot token (empty when not configured)."""
+    return get_settings().discord_bot_token.get_secret_value()

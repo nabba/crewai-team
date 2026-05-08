@@ -96,14 +96,25 @@ async def lifespan(app: FastAPI):
     if settings.workspace_backup_repo:
         await asyncio.to_thread(setup_workspace_repo, settings.workspace_backup_repo)
 
-    scheduler.add_job(SelfImprovementCrew().run, trigger)
-    # Workspace sync: pass backup_repo as a kwarg so the job is a no-op when unset
+    # Phase 7: scheduled jobs ping Signal + Web Push when they finish.
+    # Self-improvement: notify on every run (daily; success matters as a
+    # heartbeat). Workspace sync: failure-only — hourly success would spam.
+    # Heartbeat: silent (60s cadence; no notifications wanted).
+    from app.notify import notify_on_complete
+
     scheduler.add_job(
-        sync_workspace,
+        notify_on_complete(label="Self-improvement")(SelfImprovementCrew().run),
+        trigger,
+    )
+    scheduler.add_job(
+        notify_on_complete(
+            label="Workspace sync", notify_on_failure_only=True,
+        )(sync_workspace),
         sync_trigger,
         kwargs={"backup_repo": settings.workspace_backup_repo},
     )
-    # Heartbeat — keep monitoring dashboard "last_seen" fresh
+    # Heartbeat — keep monitoring dashboard "last_seen" fresh.
+    # No notify wrapper: 60s cadence would flood Signal + Web Push.
     scheduler.add_job(heartbeat, "interval", seconds=60, id="heartbeat")
     scheduler.start()
 
@@ -111,11 +122,23 @@ async def lifespan(app: FastAPI):
     report_system_online()
     _publish_schedule()
 
+    # Discord connector (opt-in via DISCORD_ENABLED).
+    try:
+        from app.discord_client import start_bot as _discord_start
+        await _discord_start()
+    except Exception:
+        logger.exception("Discord bot startup failed (non-fatal)")
+
     logger.info("CrewAI Agent Team started")
     yield
     # Final sync on clean shutdown
     if settings.workspace_backup_repo:
         await asyncio.to_thread(sync_workspace, settings.workspace_backup_repo)
+    try:
+        from app.discord_client import stop_bot as _discord_stop
+        await _discord_stop()
+    except Exception:
+        logger.debug("Discord bot shutdown raised", exc_info=True)
     report_system_offline()
     scheduler.shutdown()
 
@@ -259,23 +282,56 @@ async def handle_task(sender: str, text: str):
         add_message(sender, "user", text)
 
         result = await asyncio.to_thread(commander.handle, text, sender)
+
+        # Phase 8: optionally reword the reply in the concierge voice for
+        # conversational warmth on Signal DMs. Skipped automatically for
+        # structured outputs (slash-command help, JSON, code blocks, etc.).
+        # The wrapper is a no-op when the runtime toggle is off.
+        try:
+            from app.personality.concierge_wrapper import apply_concierge
+            result = await asyncio.to_thread(apply_concierge, result)
+        except Exception:
+            logger.debug("concierge wrap failed (non-fatal)", exc_info=True)
+
         log_response_sent(_redact_number(sender), len(result))
 
         # Persist the assistant reply
         add_message(sender, "assistant", result)
 
-        # If the inbound was voice and voice mode is on, deliver the reply
-        # as a TTS attachment. Falls back to plain text on synthesis failure.
-        voice_path = await asyncio.to_thread(_maybe_synthesize_reply, sender, result)
-        if voice_path is not None:
-            await signal_client.send(sender, result, attachments=[voice_path])
+        # Route the reply to whichever surface the message came in on.
+        # ``discord:<user_id>`` senders go through the Discord bot;
+        # everything else falls back to Signal (the original surface).
+        if sender.startswith("discord:"):
+            await asyncio.to_thread(_send_discord_reply, sender, result)
         else:
-            await signal_client.send(sender, result)
+            # If the inbound was voice and voice mode is on, deliver the reply
+            # as a TTS attachment. Falls back to plain text on synthesis failure.
+            voice_path = await asyncio.to_thread(_maybe_synthesize_reply, sender, result)
+            if voice_path is not None:
+                await signal_client.send(sender, result, attachments=[voice_path])
+            else:
+                await signal_client.send(sender, result)
     except Exception:
         logger.exception("Error handling task")
         log_security_event("task_error", "unhandled exception in handle_task")
-        # Generic error — do not leak internals to Signal
-        await signal_client.send(sender, "Sorry, something went wrong processing your request. Please try again.")
+        # Generic error — do not leak internals to the user surface
+        msg = "Sorry, something went wrong processing your request. Please try again."
+        if sender.startswith("discord:"):
+            await asyncio.to_thread(_send_discord_reply, sender, msg)
+        else:
+            await signal_client.send(sender, msg)
+
+
+def _send_discord_reply(sender: str, text: str) -> None:
+    """Translate a 'discord:<user_id>' sender into a DM via the bot."""
+    try:
+        from app.discord_client import send_via_discord
+        user_id = sender[len("discord:"):]
+        ok, detail = send_via_discord(user_id, body=text)
+        if not ok:
+            logger.warning(f"discord reply failed: {detail}")
+    except Exception:
+        logger.exception("discord reply dispatch failed")
 
 
 def _maybe_synthesize_reply(sender: str, text: str) -> str | None:

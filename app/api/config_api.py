@@ -107,6 +107,83 @@ async def set_creative_mode_endpoint(request: Request):
     return {"status": "ok", **snapshot()}
 
 
+# ── Web Push (PWA notifications, Phase 4 — May 2026) ────────────────────────
+
+@router.get("/vapid_public_key")
+async def get_vapid_public_key():
+    """Return the VAPID public key (or empty when not configured) so the
+    React PWA can subscribe browsers via PushManager.subscribe."""
+    from app.config import get_settings
+    return {"public_key": get_settings().vapid_public_key or ""}
+
+
+@router.post("/web_push/subscribe")
+async def web_push_subscribe(request: Request):
+    """Register a browser's PushSubscription so the gateway can notify it."""
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    payload = await request.json()
+    from app.web_push import add_subscription
+    ok = add_subscription(payload)
+    if not ok:
+        raise HTTPException(status_code=400, detail="invalid subscription payload")
+    return {"status": "ok"}
+
+
+@router.post("/web_push/unsubscribe")
+async def web_push_unsubscribe(request: Request):
+    """Remove a previously-registered subscription by endpoint."""
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    payload = await request.json()
+    endpoint = (payload or {}).get("endpoint", "")
+    from app.web_push import remove_subscription
+    return {"removed": remove_subscription(endpoint)}
+
+
+@router.get("/web_push/subscriptions")
+async def web_push_list():
+    """List currently-registered devices (for the Settings page indicator)."""
+    from app.web_push import list_subscriptions, is_configured
+    subs = list_subscriptions()
+    return {
+        "configured": is_configured(),
+        "count": len(subs),
+        "devices": [
+            {
+                "user_agent": s.get("user_agent", ""),
+                "added_at": s.get("added_at", ""),
+                "endpoint_host": _endpoint_host(s.get("endpoint", "")),
+            }
+            for s in subs
+        ],
+    }
+
+
+@router.post("/web_push/test")
+async def web_push_test(request: Request):
+    """Send a test notification to all registered devices."""
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    from app.web_push import send_to_all
+    delivered = send_to_all(
+        title="AndrusAI",
+        body="Push notifications are working ✓",
+        url="/cp/settings",
+        tag="andrusai-test",
+    )
+    return {"delivered": delivered}
+
+
+def _endpoint_host(endpoint: str) -> str:
+    """Strip the path off an endpoint URL so the UI shows just 'fcm.googleapis.com' etc."""
+    try:
+        from urllib.parse import urlparse
+        return urlparse(endpoint).netloc
+    except Exception:
+        return ""
+
+
 # ── Personal-agent runtime settings (Phase 0 — May 2026) ───────────────────
 # Voice mode, vision-driven computer-use cap, concierge persona toggle.
 # Read path: app.runtime_settings.snapshot(); write path: these endpoints.

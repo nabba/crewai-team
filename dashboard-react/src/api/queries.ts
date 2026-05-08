@@ -73,6 +73,11 @@ export const keys = {
   notesSearch: (root: string, q: string) => ['notes', 'search', root, q] as const,
   notesTags: (root: string) => ['notes', 'tags', root] as const,
   runtimeSettings: ['runtime-settings'] as const,
+  webPushSubscriptions: ['web-push', 'subscriptions'] as const,
+  vapidPublicKey: ['web-push', 'vapid'] as const,
+  skills: ['skills'] as const,
+  skill: (name: string) => ['skills', name] as const,
+  files: ['files'] as const,
 };
 
 // ── Projects ────────────────────────────────────────────────────────────────
@@ -498,6 +503,176 @@ export function useUpdateRuntimeSettings() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.runtimeSettings }),
+  });
+}
+
+// ── Web Push ──────────────────────────────────────────────────────────────
+
+export interface VapidPublicKey { public_key: string; }
+
+export interface WebPushDevice {
+  user_agent: string;
+  added_at: string;
+  endpoint_host: string;
+}
+
+export interface WebPushSubscriptionsList {
+  configured: boolean;
+  count: number;
+  devices: WebPushDevice[];
+}
+
+export function useVapidPublicKeyQuery() {
+  return useQuery({
+    queryKey: keys.vapidPublicKey,
+    queryFn: () => api<VapidPublicKey>(endpoints.vapidPublicKey()),
+    staleTime: 60 * 60 * 1000, // VAPID key effectively never changes per deployment
+  });
+}
+
+export function useWebPushSubscriptionsQuery() {
+  return useQuery({
+    queryKey: keys.webPushSubscriptions,
+    queryFn: () => api<WebPushSubscriptionsList>(endpoints.webPushSubscriptions()),
+  });
+}
+
+export function useWebPushSubscribe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent: string }) =>
+      api<{ status: string }>(endpoints.webPushSubscribe(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.webPushSubscriptions }),
+  });
+}
+
+export function useWebPushUnsubscribe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { endpoint: string }) =>
+      api<{ removed: boolean }>(endpoints.webPushUnsubscribe(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.webPushSubscriptions }),
+  });
+}
+
+export function useWebPushTest() {
+  return useMutation({
+    mutationFn: () =>
+      api<{ delivered: number }>(endpoints.webPushTest(), {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+  });
+}
+
+// ── Skills (Hermes-style saved workflows) ─────────────────────────────────
+
+export interface Skill {
+  name: string;
+  task_template: string;
+  description: string;
+  args_schema: string[];
+  force_tier: string | null;
+  extra_tools: string[];
+  task_hint: string;
+  created_at: string;
+  last_run_at: string | null;
+  run_count: number;
+  success_count: number;
+}
+
+export function useSkillsQuery() {
+  return useQuery({
+    queryKey: keys.skills,
+    queryFn: () => api<{ skills: Skill[] }>(endpoints.skills()),
+  });
+}
+
+export function useSaveSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      task_template: string;
+      description?: string;
+      task_hint?: string;
+    }) =>
+      api<Skill>(endpoints.skills(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.skills }),
+  });
+}
+
+export function useDeleteSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api<{ removed: boolean }>(endpoints.skill(name), { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.skills }),
+  });
+}
+
+export function useRunSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, args }: { name: string; args: Record<string, string> }) =>
+      api<{ result: string }>(endpoints.skillRun(name), {
+        method: 'POST',
+        body: JSON.stringify({ args }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.skills }),
+  });
+}
+
+// ── Files / artifacts ────────────────────────────────────────────────────
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  size: number;
+  modified: string;
+  extension: string;
+  mime: string;
+}
+
+export type FilesRoot = 'output' | 'skills' | 'notes';
+
+export interface FilesList {
+  roots: Record<FilesRoot, FileEntry[]>;
+}
+
+export type SendChannel = 'signal' | 'email' | 'discord';
+
+export interface SendFileBody {
+  channel: SendChannel;
+  path: string;
+  body?: string;
+  to?: string;       // email-only
+  subject?: string;  // email-only
+}
+
+export function useFilesQuery() {
+  return useQuery({
+    queryKey: keys.files,
+    queryFn: () => api<FilesList>(endpoints.files()),
+  });
+}
+
+export function useSendFile() {
+  return useMutation({
+    mutationFn: (body: SendFileBody) =>
+      api<{ status: string; detail: string }>(endpoints.fileSend(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   });
 }
 

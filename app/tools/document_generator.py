@@ -1,16 +1,18 @@
 """
-document_generator.py — Generate formatted documents (PDF, DOCX, XLSX, HTML).
+document_generator.py — Generate formatted documents (PDF, DOCX, XLSX, PPTX, HTML).
 
 Enables agents to produce professional output beyond plain text:
   - PDF reports with headers, tables, and formatting
   - Word documents with styles and structure
   - Excel spreadsheets with data and formulas
+  - PowerPoint decks with title + content slides and themes
   - Styled HTML pages (served locally for Signal URL delivery)
 
 Output written to workspace/output/docs/ and optionally served via
 a local HTTP endpoint so Signal can deliver a clickable URL.
 
-Uses existing libraries: reportlab (PDF), python-docx (DOCX), openpyxl (XLSX).
+Uses existing libraries: reportlab (PDF), python-docx (DOCX), openpyxl (XLSX),
+python-pptx (PPTX).
 """
 
 import json
@@ -20,12 +22,21 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.paths import WORKSPACE_ROOT
+
 logger = logging.getLogger(__name__)
 
-OUTPUT_DIR = Path("/app/workspace/output/docs")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR = WORKSPACE_ROOT / "output" / "docs"
+try:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    # On the host, WORKSPACE_ROOT may not be writable yet (e.g. running tests
+    # before app.paths.ensure_dirs()). Tests + callers can still patch
+    # ``OUTPUT_DIR`` on the module before invoking the generators.
+    pass
 
-# Host-side path for Signal attachment delivery
+# Docker workspace root retained as a string for the host-path translation
+# helper below — this is the path layout INSIDE the container, not on disk.
 _WORKSPACE_ROOT = "/app/workspace"
 
 def _host_path(docker_path: str) -> str:
@@ -297,6 +308,247 @@ def create_xlsx(
         logger.error(f"XLSX generation failed: {e}")
         return {"success": False, "error": str(e)[:300]}
 
+# ── PPTX Generation ───────────────────────────────────────────────────────────
+
+# Theme palettes — same vocabulary the HTML generator uses, but expressed as
+# RGB triples so python-pptx can paint shape fills directly.
+_PPTX_THEMES = {
+    "modern-dark": {
+        "bg":     (0x0F, 0x17, 0x2A),
+        "text":   (0xE2, 0xE8, 0xF0),
+        "accent": (0x3B, 0x82, 0xF6),
+        "muted":  (0x94, 0xA3, 0xB8),
+    },
+    "clean-light": {
+        "bg":     (0xFF, 0xFF, 0xFF),
+        "text":   (0x1E, 0x29, 0x3B),
+        "accent": (0x25, 0x63, 0xEB),
+        "muted":  (0x64, 0x74, 0x8B),
+    },
+    "minimal": {
+        "bg":     (0xFA, 0xFA, 0xFA),
+        "text":   (0x17, 0x17, 0x17),
+        "accent": (0x00, 0x00, 0x00),
+        "muted":  (0x73, 0x73, 0x73),
+    },
+}
+
+
+def create_pptx(
+    title: str,
+    slides: list[dict] | None = None,
+    *,
+    subtitle: str = "",
+    style: str = "modern-dark",
+    author: str = "BotArmy Agent Team",
+) -> dict:
+    """Create a PowerPoint deck (.pptx).
+
+    Args:
+        title: Deck title — appears on the cover slide.
+        slides: List of content slides. Each is a dict with at least one of:
+            ``title`` (str), ``body`` (str — paragraphs separated by blank
+            lines, lines starting with ``- `` become bullets), ``bullets``
+            (list[str]), ``table`` ({"headers": [...], "rows": [[...]]}),
+            ``notes`` (str — speaker notes).
+        subtitle: Optional subtitle on the cover slide. Falls back to a
+            "Generated <date> | <author>" line.
+        style: Visual theme — "modern-dark", "clean-light", or "minimal".
+            Same palette vocabulary as ``create_html_page``.
+        author: Author attribution.
+
+    Returns:
+        ``{"success": True, "path": str, "host_path": str, "filename": str,
+           "slides": int}`` on success, ``{"success": False, "error": str}``
+        on failure.
+    """
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.dml.color import RGBColor
+
+        theme = _PPTX_THEMES.get(style, _PPTX_THEMES["modern-dark"])
+
+        def rgb(name: str) -> RGBColor:
+            return RGBColor(*theme[name])
+
+        filename = _generate_filename("deck", "pptx")
+        filepath = str(OUTPUT_DIR / filename)
+
+        prs = Presentation()
+        # Standard 16:9 widescreen — matches Google Slides / Keynote default.
+        prs.slide_width = Inches(13.333)
+        prs.slide_height = Inches(7.5)
+
+        # ── Cover slide (blank layout so we control everything) ────────
+        cover = prs.slides.add_slide(prs.slide_layouts[6])
+        _paint_background(cover, prs, rgb("bg"))
+        _accent_bar(cover, prs, rgb("accent"))
+
+        title_box = cover.shapes.add_textbox(
+            Inches(0.7), Inches(2.4), Inches(12), Inches(2),
+        )
+        _set_text(title_box, title, font_size=44, bold=True, color=rgb("text"))
+
+        subtitle_text = subtitle or (
+            f"Generated {datetime.now(timezone.utc).strftime('%B %d, %Y')} · {author}"
+        )
+        sub_box = cover.shapes.add_textbox(
+            Inches(0.7), Inches(4.5), Inches(12), Inches(1),
+        )
+        _set_text(sub_box, subtitle_text, font_size=20, color=rgb("muted"))
+
+        # ── Content slides ─────────────────────────────────────────────
+        slide_specs = list(slides or [])
+        for spec in slide_specs:
+            _add_content_slide(prs, spec, theme)
+
+        prs.save(filepath)
+        return {
+            "success": True,
+            "path": filepath,
+            "host_path": _host_path(filepath),
+            "filename": filename,
+            "slides": 1 + len(slide_specs),
+        }
+    except Exception as e:
+        logger.error(f"PPTX generation failed: {e}", exc_info=True)
+        return {"success": False, "error": str(e)[:300]}
+
+
+def _add_content_slide(prs, spec: dict, theme: dict) -> None:
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+
+    def rgb(name: str) -> RGBColor:
+        return RGBColor(*theme[name])
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _paint_background(slide, prs, rgb("bg"))
+    _accent_bar(slide, prs, rgb("accent"))
+
+    # Title row
+    title_text = (spec.get("title") or "").strip()
+    if title_text:
+        title_box = slide.shapes.add_textbox(
+            Inches(0.7), Inches(0.5), Inches(12), Inches(1),
+        )
+        _set_text(title_box, title_text, font_size=32, bold=True, color=rgb("text"))
+
+    # Body — bullets array preferred, otherwise parse markdown-ish body string.
+    bullets = spec.get("bullets")
+    body_text = spec.get("body") or ""
+    body_lines: list[tuple[str, int]] = []  # (text, indent_level)
+    if isinstance(bullets, list) and bullets:
+        body_lines = [(str(b), 0) for b in bullets if str(b).strip()]
+    elif body_text:
+        for para in body_text.split("\n\n"):
+            for line in para.splitlines():
+                stripped = line.lstrip()
+                if not stripped:
+                    continue
+                if stripped.startswith("- "):
+                    indent = (len(line) - len(stripped)) // 2
+                    body_lines.append((stripped[2:], min(indent, 3)))
+                else:
+                    body_lines.append((stripped, 0))
+
+    if body_lines:
+        body_box = slide.shapes.add_textbox(
+            Inches(0.7), Inches(1.7), Inches(12), Inches(5),
+        )
+        tf = body_box.text_frame
+        tf.word_wrap = True
+        for i, (line, level) in enumerate(body_lines):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.text = line
+            p.level = level
+            for run in p.runs:
+                run.font.size = Pt(20 if level == 0 else 16)
+                run.font.color.rgb = rgb("text")
+
+    # Optional table
+    table_spec = spec.get("table")
+    if isinstance(table_spec, dict):
+        headers = table_spec.get("headers") or []
+        rows = table_spec.get("rows") or []
+        if headers and rows:
+            n_rows = 1 + len(rows)
+            n_cols = len(headers)
+            top_inches = 1.7 + (1.2 if body_lines else 0)
+            tbl_shape = slide.shapes.add_table(
+                n_rows, n_cols,
+                Inches(0.7), Inches(top_inches),
+                Inches(12), Inches(min(5, 0.6 * n_rows + 0.6)),
+            )
+            tbl = tbl_shape.table
+            for c, h in enumerate(headers):
+                cell = tbl.cell(0, c)
+                cell.text = str(h)
+                for run in cell.text_frame.paragraphs[0].runs:
+                    run.font.bold = True
+                    run.font.size = Pt(14)
+                    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = rgb("accent")
+            for r, row in enumerate(rows, start=1):
+                for c, val in enumerate(row[:n_cols]):
+                    cell = tbl.cell(r, c)
+                    cell.text = str(val)
+                    for run in cell.text_frame.paragraphs[0].runs:
+                        run.font.size = Pt(12)
+                        run.font.color.rgb = rgb("text")
+
+    # Speaker notes
+    notes_text = spec.get("notes")
+    if notes_text:
+        slide.notes_slide.notes_text_frame.text = str(notes_text)
+
+
+def _paint_background(slide, prs, color) -> None:
+    """Fill the slide background with a solid colour."""
+    from pptx.util import Emu
+    from pptx.enum.shapes import MSO_SHAPE
+    bg = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Emu(0), Emu(0), prs.slide_width, prs.slide_height,
+    )
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = color
+    bg.line.fill.background()  # no border
+    # Send to back so foreground shapes paint over it.
+    spTree = bg._element.getparent()
+    spTree.remove(bg._element)
+    spTree.insert(2, bg._element)
+
+
+def _accent_bar(slide, prs, color) -> None:
+    """Thin accent strip across the top — gives every slide a consistent header."""
+    from pptx.util import Inches, Emu
+    from pptx.enum.shapes import MSO_SHAPE
+    bar = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Emu(0), Emu(0), prs.slide_width, Inches(0.18),
+    )
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = color
+    bar.line.fill.background()
+
+
+def _set_text(textbox, text: str, *, font_size: int, color, bold: bool = False) -> None:
+    """Set text + font on a fresh textbox's first paragraph."""
+    from pptx.util import Pt
+    tf = textbox.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = text
+    for run in p.runs:
+        run.font.size = Pt(font_size)
+        run.font.bold = bold
+        run.font.color.rgb = color
+
+
 # ── HTML Page Generation (for Signal URL delivery) ────────────────────────────
 
 def create_html_page(
@@ -500,6 +752,42 @@ def create_document_tools() -> list:
             result = create_html_page(title=title, body_html=content, theme=theme)
             return result.get("url", result.get("path", result.get("error", "HTML generation failed")))
 
-        return [pdf_tool, docx_tool, html_tool]
+        @tool("generate_pptx_report")
+        def pptx_tool(
+            title: str,
+            slides: str,
+            subtitle: str = "",
+            theme: str = "modern-dark",
+        ) -> str:
+            """Generate a PowerPoint deck (.pptx) and return the file path.
+
+            Args:
+                title: Cover-slide title.
+                slides: JSON array of content slides. Each item:
+                    {"title": "...", "body": "bullet/text\\n- item\\n- item",
+                     "bullets": ["alt to body — one bullet per item"],
+                     "table": {"headers": [...], "rows": [[...]]},
+                     "notes": "speaker notes"}.
+                subtitle: Optional cover subtitle (else auto-stamps date+author).
+                theme: "modern-dark", "clean-light", or "minimal".
+
+            Returns the absolute file path so the deck can be sent as a Signal
+            attachment via signal_send_attachment.
+            """
+            slide_list: list[dict] = []
+            if slides:
+                try:
+                    parsed = json.loads(slides)
+                    if isinstance(parsed, list):
+                        slide_list = [s for s in parsed if isinstance(s, dict)]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result = create_pptx(
+                title=title, slides=slide_list,
+                subtitle=subtitle, style=theme,
+            )
+            return result.get("path", result.get("error", "PPTX generation failed"))
+
+        return [pdf_tool, docx_tool, html_tool, pptx_tool]
     except Exception:
         return []

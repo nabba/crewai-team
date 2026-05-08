@@ -93,9 +93,17 @@ def register_user_schedules(scheduler) -> int:
 
 
 def _execute_scheduled_task(name: str, task: str) -> None:
-    """Execute a scheduled task by routing it through the Commander."""
-    logger.info(f"schedule_manager: executing '{name}': {task[:100]}")
-    try:
+    """Execute a scheduled task by routing it through the Commander.
+
+    Wrapped with ``notify_on_complete`` (Phase 7) so each user-defined
+    schedule pings Signal + Web Push when it finishes — success or
+    failure. The decorator runs around `_run_user_schedule` so the outer
+    error logging stays in place.
+    """
+    from app.notify import notify_on_complete
+
+    @notify_on_complete(label=f"Schedule: {name}")
+    def _run() -> None:
         # Update last_run
         schedules = _load_schedules()
         for sched in schedules:
@@ -108,7 +116,13 @@ def _execute_scheduled_task(name: str, task: str) -> None:
         from app.agents.commander.orchestrator import Commander
         commander = Commander()
         commander.handle(task, sender="scheduler")
+
+    logger.info(f"schedule_manager: executing '{name}': {task[:100]}")
+    try:
+        _run()
     except Exception as e:
+        # The decorator already pinged on the failure path; log + swallow
+        # so APScheduler doesn't disable the job.
         logger.error(f"schedule_manager: task '{name}' failed: {e}")
 
 

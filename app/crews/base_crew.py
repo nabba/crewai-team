@@ -1035,6 +1035,12 @@ def _register_default_plugins() -> None:
     register_tool_plugin(
         lambda: __import__("app.tools.mcp_manager_tool", fromlist=["create_mcp_manager_tools"]).create_mcp_manager_tools()
     )
+    # Vision-driven computer use (Phase 6 — disabled by default; runtime
+    # toggle gated). Returns [] unless vision_cu_enabled is on AND the
+    # Anthropic SDK + Playwright are both available.
+    register_tool_plugin(
+        lambda: __import__("app.tools.computer_use_tool", fromlist=["create_computer_use_tools"]).create_computer_use_tools()
+    )
 
     # ── Declarative tool registry (Week 2 audit fix — Shift 1) ──
     # Registers the tool factories with category + intended-agents + priority

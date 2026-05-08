@@ -27,6 +27,28 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
     # Access the shared thread pool from orchestrator
     from app.agents.commander.orchestrator import _ctx_pool
 
+    # ── Phase 4 mobile-surface slash commands (May 2026) ───────────
+    # /help: list the most useful Signal commands at a glance.
+    # /status: live system summary (uptime, voice mode, scheduled tasks,
+    # last error, recent push count) — same data the React /cp/ops page
+    # shows, but condensed for a quick mobile glance.
+    if lower in ("/help", "help", "?"):
+        return _signal_help()
+    if lower in ("/status", "status"):
+        return _signal_status()
+
+    # ── Phase 5 skill registry slash commands ──────────────────────
+    # /skill save <name>: <task template>           save a new skill
+    # /skill save <name>                            save using last user message
+    # /skill list                                   list all saved skills
+    # /skill show <name>                            show a skill's template + counters
+    # /skill run <name> [k=v ...]                   substitute args + dispatch
+    # /skill delete <name>                          remove a skill
+    if lower.startswith("/skill") or lower.startswith("skill "):
+        sub = _handle_skill_command(user_input, sender, commander)
+        if sub is not None:
+            return sub
+
     # ── force-recover (2026-04-28) ─────────────────────────────────
     # Triggered when the user explicitly says "force this" / "try
     # harder" / "force recover" right after a refusal-shaped answer.
@@ -1424,3 +1446,318 @@ def _handle_force_recover(sender: str, commander) -> str:
         f"({', '.join(rec.strategies_tried)}) but none produced a "
         f"better answer. The original response stands."
     )
+
+
+# ── Phase 4 mobile-surface slash commands ────────────────────────────────
+
+def _signal_help() -> str:
+    """Compact list of the most useful Signal commands."""
+    return (
+        "AndrusAI — Signal commands\n"
+        "\n"
+        "Status & info:\n"
+        "  /help                       this list\n"
+        "  /status                     uptime, voice mode, scheduled tasks, last error\n"
+        "  skills                      list known skill files\n"
+        "  show learning queue         pending topics\n"
+        "  workspaces                  list workspaces\n"
+        "\n"
+        "Operations:\n"
+        "  learn <topic>               queue a topic for self-improvement\n"
+        "  please learn <topic>        queue + run self-improvement now\n"
+        "  switch workspace to <name>  change active workspace\n"
+        "  watch <youtube url>         distill into skill + memory\n"
+        "  force this / try harder     re-run last refusal via the recovery loop\n"
+        "\n"
+        "Brainstorm:\n"
+        "  /brainstorm <topic>         interactive ideation (SCAMPER, Six Hats, …)\n"
+        "\n"
+        "Voice notes (Settings → Voice mode in /cp/settings):\n"
+        "  send a voice note → transcribed; reply comes back as voice if mode != off"
+    )
+
+
+def _signal_status() -> str:
+    """Live system status — uptime, voice mode, scheduled tasks, last error.
+
+    Pulls from the same data the React /cp/ops page uses but condensed for a
+    quick mobile glance. Designed to fit in a single Signal message bubble.
+    """
+    lines: list[str] = ["AndrusAI status"]
+
+    # Voice mode
+    try:
+        from app.runtime_settings import snapshot as rt_snapshot
+        rt = rt_snapshot()
+        lines.append(f"  voice: {rt['voice_mode']}")
+        if rt.get("vision_cu_enabled"):
+            cap = rt.get("vision_cu_monthly_cap_usd", 10.0)
+            lines.append(f"  vision-cu: on (cap ${cap:.2f}/mo)")
+        if rt.get("concierge_persona_enabled"):
+            lines.append("  concierge: on")
+    except Exception:
+        pass
+
+    # Scheduled jobs
+    try:
+        from main import scheduler
+        jobs = scheduler.get_jobs()
+        if jobs:
+            lines.append(f"  scheduled: {len(jobs)} jobs")
+            # First three with their next-run time, abbreviated
+            for j in jobs[:3]:
+                nrt = j.next_run_time
+                when = nrt.strftime("%a %H:%M") if nrt else "—"
+                lines.append(f"    · {j.name or j.id}: {when}")
+    except Exception:
+        pass
+
+    # Web push device count
+    try:
+        from app.web_push import list_subscriptions, is_configured as wp_configured
+        n = len(list_subscriptions())
+        if wp_configured():
+            lines.append(f"  push: {n} device{'s' if n != 1 else ''}")
+        else:
+            lines.append("  push: not configured")
+    except Exception:
+        pass
+
+    # Last error from the structured log (best-effort, last line only)
+    try:
+        from app.config import get_settings as _gs
+        from pathlib import Path
+        log_path = Path(_gs().structured_log_path)
+        if log_path.exists():
+            with log_path.open("rb") as fp:
+                fp.seek(0, 2)
+                size = fp.tell()
+                # Read last ~4 KB and grab the final non-empty line.
+                fp.seek(max(0, size - 4096))
+                tail = fp.read().decode("utf-8", errors="replace").strip().splitlines()
+                if tail:
+                    last = tail[-1]
+                    import json as _json
+                    try:
+                        rec = _json.loads(last)
+                        msg = rec.get("event") or rec.get("message") or last[:80]
+                        lines.append(f"  last error: {str(msg)[:80]}")
+                    except (ValueError, TypeError):
+                        lines.append(f"  last error: {last[:80]}")
+    except Exception:
+        pass
+
+    if len(lines) == 1:
+        lines.append("  (no metrics available — gateway just booted?)")
+    return "\n".join(lines)
+
+
+# ── Phase 5 skill registry dispatcher ────────────────────────────────────
+
+def _handle_skill_command(user_input: str, sender: str, commander) -> str | None:
+    """Dispatch ``/skill ...`` and ``skill ...`` subcommands. Returns a
+    response string when the input is claimed, None otherwise."""
+    raw = user_input.strip()
+    # Strip leading "/skill" or "skill" + whitespace.
+    rest = raw[len("/skill"):] if raw.lower().startswith("/skill") else raw[len("skill"):]
+    rest = rest.strip()
+    if not rest:
+        return _skill_help()
+
+    # First word is the subcommand.
+    parts = rest.split(None, 1)
+    sub = parts[0].lower()
+    tail = parts[1] if len(parts) > 1 else ""
+
+    if sub in ("help", "?"):
+        return _skill_help()
+    if sub in ("list", "ls"):
+        return _skill_list()
+    if sub == "show":
+        return _skill_show(tail)
+    if sub == "save":
+        return _skill_save(tail, sender)
+    if sub == "run":
+        return _skill_run(tail, sender, commander)
+    if sub in ("delete", "rm", "remove"):
+        return _skill_delete(tail)
+    return f"Unknown skill subcommand {sub!r}. Try /skill help."
+
+
+def _skill_help() -> str:
+    return (
+        "Skill registry — save tasks you run repeatedly.\n"
+        "\n"
+        "  /skill save <name>: <task template>   save a new skill (use {placeholder} for args)\n"
+        "  /skill save <name>                     save using your last user message\n"
+        "  /skill list                            list saved skills\n"
+        "  /skill show <name>                     show a skill's template + run counters\n"
+        "  /skill run <name> [k=v ...]            substitute args and run via commander\n"
+        "  /skill delete <name>                   remove a skill\n"
+        "\n"
+        "Example:\n"
+        "  /skill save weekly: Summarize my Q{quarter} week with focus on {topic}\n"
+        "  /skill run weekly quarter=2 topic=growth"
+    )
+
+
+def _skill_list() -> str:
+    from app.skills import list_skills
+    skills = list_skills()
+    if not skills:
+        return "No skills saved yet. Use `/skill save <name>: <task>` to add one."
+    lines = [f"Skills ({len(skills)} total):"]
+    for s in skills:
+        rate = ""
+        if s.run_count:
+            pct = 100.0 * s.success_count / s.run_count
+            rate = f" — {s.success_count}/{s.run_count} ({pct:.0f}% ok)"
+        args_hint = f" args: {', '.join(s.args_schema)}" if s.args_schema else ""
+        lines.append(f"  · {s.name}{args_hint}{rate}")
+    return "\n".join(lines)
+
+
+def _skill_show(name: str) -> str:
+    from app.skills import get_skill
+    if not name:
+        return "Usage: /skill show <name>"
+    s = get_skill(name)
+    if not s:
+        return f"No skill named {name!r}. Try /skill list."
+    out = [
+        f"Skill: {s.name}",
+        f"  description: {s.description or '(none)'}",
+        f"  template: {s.task_template}",
+    ]
+    if s.args_schema:
+        out.append(f"  args: {', '.join(s.args_schema)}")
+    if s.task_hint:
+        out.append(f"  hint: {s.task_hint}")
+    if s.run_count:
+        pct = 100.0 * s.success_count / s.run_count
+        out.append(f"  runs: {s.run_count} ({pct:.0f}% ok), last {s.last_run_at}")
+    return "\n".join(out)
+
+
+def _skill_save(tail: str, sender: str) -> str:
+    """``save <name>: <template>`` or ``save <name>`` (uses last user message)."""
+    from app.skills import save_skill
+    if not tail.strip():
+        return "Usage: /skill save <name>[: <task template>]"
+    name, sep, template = tail.partition(":")
+    name = name.strip()
+    template = template.strip()
+    if not template:
+        # Pull the most recent user message before this command from history.
+        try:
+            from app.conversation_store import get_recent_messages
+            history = get_recent_messages(sender, limit=10) or []
+        except Exception:
+            history = []
+        # ``get_recent_messages`` returns newest-first — walk forward and
+        # skip the /skill save command itself.
+        for entry in history:
+            if entry.get("role") != "user":
+                continue
+            content = (entry.get("content") or "").strip()
+            if not content:
+                continue
+            lc = content.lower()
+            if lc.startswith("/skill") or lc.startswith("skill save") or lc.startswith("skill run"):
+                continue
+            template = content
+            break
+    if not template:
+        return ("Couldn't find a task to save. Run the task once first, "
+                "then `/skill save <name>` — or use `/skill save <name>: "
+                "<task>` to provide it inline.")
+    try:
+        skill = save_skill(name=name, task_template=template)
+    except ValueError as exc:
+        return f"Save failed: {exc}"
+
+    # Audit so the operator can see who saved what.
+    try:
+        import json as _json
+        from app.audit import log_security_event
+        log_security_event(
+            "skill_save",
+            _json.dumps({"name": skill.name, "args": skill.args_schema}),
+        )
+    except Exception:
+        pass
+
+    args_hint = f" — args: {', '.join(skill.args_schema)}" if skill.args_schema else ""
+    return f"Saved skill {skill.name!r}{args_hint}.\nRun it with `/skill run {skill.name}`."
+
+
+def _skill_run(tail: str, sender: str, commander) -> str:
+    from app.skills import run_skill
+    if not tail.strip():
+        return "Usage: /skill run <name> [k=v ...]"
+
+    name, args = _parse_skill_run_args(tail)
+    if not name:
+        return "Usage: /skill run <name> [k=v ...]"
+
+    try:
+        result = run_skill(name, args, sender, commander)
+    except KeyError:
+        return f"No skill named {name!r}. Try /skill list."
+    except ValueError as exc:
+        # Missing-args path — the runner returns exactly the placeholder names.
+        return f"Skill error: {exc}"
+
+    try:
+        import json as _json
+        from app.audit import log_security_event
+        log_security_event(
+            "skill_run",
+            _json.dumps({"name": name, "args": list(args.keys())}),
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _parse_skill_run_args(tail: str) -> tuple[str, dict[str, str]]:
+    """Split ``"name k1=v1 k2=v2"`` into (name, {k1: v1, k2: v2}).
+
+    Values may be quoted with double quotes if they contain spaces:
+        weekly quarter=2 topic="growth and ops"
+    """
+    import shlex
+    try:
+        tokens = shlex.split(tail)
+    except ValueError:
+        tokens = tail.split()
+    if not tokens:
+        return "", {}
+    # Name runs from the start until the first token containing '='.
+    name_parts: list[str] = []
+    args: dict[str, str] = {}
+    arg_started = False
+    for tok in tokens:
+        if "=" in tok and not arg_started and not tok.startswith("="):
+            arg_started = True
+        if not arg_started:
+            name_parts.append(tok)
+            continue
+        if "=" not in tok:
+            # Stray positional after args started — append to last value.
+            if args:
+                last_key = list(args.keys())[-1]
+                args[last_key] = args[last_key] + " " + tok
+            continue
+        k, _, v = tok.partition("=")
+        args[k.strip()] = v.strip()
+    return " ".join(name_parts), args
+
+
+def _skill_delete(name: str) -> str:
+    from app.skills import delete_skill
+    if not name:
+        return "Usage: /skill delete <name>"
+    if delete_skill(name):
+        return f"Deleted skill {name!r}."
+    return f"No skill named {name!r}."

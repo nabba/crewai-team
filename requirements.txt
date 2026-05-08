@@ -18,7 +18,19 @@ requests>=2.31.0
 firebase-admin>=6.5.0
 pypdf>=4.0,<6
 python-docx>=1.0
+python-pptx>=0.6.21
 openpyxl>=3.1
+# Google Workspace native integration (Gmail / Calendar / Docs / Sheets / Slides)
+# via OAuth installed-app flow. google-auth + google-api-core are pulled in
+# transitively by firebase-admin already; the next three add the discovery
+# client + OAuth helpers.
+google-api-python-client>=2.0
+google-auth-oauthlib>=1.0
+google-auth-httplib2>=0.1
+# Web Push (PWA notifications) — VAPID-signed messages to browser endpoints.
+pywebpush>=1.14
+# Discord connector — second messaging surface alongside Signal.
+discord.py>=2.3
 Pillow>=10.0
 litellm>=1.50.0
 # mem0ai[nlp] — pulls in spaCy (~50 MB) + dependencies. The NLP extra

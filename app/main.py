@@ -2103,6 +2103,20 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 from app.api.config_api import router as config_router
 app.include_router(config_router, prefix="/config")
 
+# ── Skill registry (Phase 5 — May 2026) ──────────────────────────────────────
+try:
+    from app.api.skills_api import router as skills_router
+    app.include_router(skills_router)
+except Exception:
+    logger.debug("Skills API router registration failed", exc_info=True)
+
+# ── Files / artifacts (May 2026) — list + download + multi-channel send ──────
+try:
+    from app.api.files_api import router as files_router
+    app.include_router(files_router)
+except Exception:
+    logger.debug("Files API router registration failed", exc_info=True)
+
 
 # ── Knowledge Base router (extracted to app/api/kb.py) ────────────────────────
 from app.api.kb import router as kb_router

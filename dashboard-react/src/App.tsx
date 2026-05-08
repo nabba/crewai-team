@@ -76,6 +76,12 @@ const CodingSessionsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./components/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const SkillsPage = lazy(() =>
+  import('./components/SkillsPage').then((m) => ({ default: m.SkillsPage })),
+);
+const FilesPage = lazy(() =>
+  import('./components/FilesPage').then((m) => ({ default: m.FilesPage })),
+);
 
 function RouteFallback() {
   return (
@@ -125,6 +131,8 @@ export default function App() {
             <Route path="/changes" element={<LazyRoute><ChangesPage /></LazyRoute>} />
             <Route path="/coding-sessions" element={<LazyRoute><CodingSessionsPage /></LazyRoute>} />
             <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
+            <Route path="/skills" element={<LazyRoute><SkillsPage /></LazyRoute>} />
+            <Route path="/files" element={<LazyRoute><FilesPage /></LazyRoute>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
