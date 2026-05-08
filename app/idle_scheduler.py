@@ -681,8 +681,14 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     # on first sustained-promotion event downstream (retrospective rescan).
     def _backward_counterfactual_replay() -> None:
         try:
-            from app.subia.dreams.engine import run_pass as _replay_pass
-            result = _replay_pass()
+            from app.subia.dreams.engine import (
+                production_predict_fn,
+                run_pass as _replay_pass,
+            )
+            # Wire the live PredictiveLayer (singleton). production_predict_fn
+            # internally falls back to (0.5, 0.0) on any predictor error, so
+            # replay never crashes the idle thread.
+            result = _replay_pass(predict_fn=production_predict_fn())
             if result.scenarios_count > 0 and not result.error:
                 publish_to_workspace(
                     source="backward-replay",

@@ -24,9 +24,11 @@ available before promotion influences belief or skill stores.
 from .engine import (
     FragmentSource,
     PerturbationKind,
+    REPLAY_CHANNEL,
     ReplayOutcome,
     ReplayScenario,
     construct_scenarios,
+    production_predict_fn,
     run_pass,
     sample_fragments,
 )
@@ -34,9 +36,11 @@ from .engine import (
 __all__ = [
     "FragmentSource",
     "PerturbationKind",
+    "REPLAY_CHANNEL",
     "ReplayOutcome",
     "ReplayScenario",
     "construct_scenarios",
+    "production_predict_fn",
     "run_pass",
     "sample_fragments",
 ]

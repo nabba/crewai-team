@@ -121,12 +121,12 @@
       "size": 6216
     },
     "app/subia/dreams/__init__.py": {
-      "sha256": "60cb95d9951d2a646e663fc0a9f2ed8ded2c8a738a9e24b1be45ebce23c5d29d",
-      "size": 1571
+      "sha256": "a0110926d8133a5bce3f921b6c463445d16e79bbbaa82b3c1849631240623a19",
+      "size": 1669
     },
     "app/subia/dreams/engine.py": {
-      "sha256": "6ceb3463a7d697e5ef983be868ee48342bf165304d85e474640fb8467e27186f",
-      "size": 20090
+      "sha256": "460ec9f3b03a18466e2b489c48c2c3475e81901195660d7bef35f1c05ef395d6",
+      "size": 22600
     },
     "app/subia/grounding/__init__.py": {
       "sha256": "b13f835a4cc17ce439c65fef571caaa63ff5ddfb00a33e3a620d5b9da9ac918f",
@@ -357,8 +357,8 @@
       "size": 12968
     },
     "app/subia/probes/butlin.py": {
-      "sha256": "186a781ab3f0bc16c9644c45d67fc88401fe5ec7122a3f6af24efc4fed4ba0d9",
-      "size": 12130
+      "sha256": "3c253c6bdaec18849a2961caa4675a3bb363fe87c9d6d0586df58035e9608509",
+      "size": 13264
     },
     "app/subia/probes/consciousness_probe.py": {
       "sha256": "6f32de096d9c11eeef3aef7509e175290226afa325f7e58831e0637011a8a2d5",

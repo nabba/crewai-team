@@ -301,3 +301,27 @@ def test_t1_threshold_documented_invariant():
         for g in kernel.self_state.current_goals
         if isinstance(g, dict)
     ), "at least one goal must be autonomously generated"
+
+
+# ── AE-1 SCORECARD graduation pin ────────────────────────────────────────
+
+
+def test_ae1_indicator_is_strong():
+    """Pin the AE-1 graduation. If this regresses, the SCORECARD's
+    Phase 9 exit criterion (butlin_strong ≥ 6) goes back to its prior
+    margin of 0 — fragile. Test failure = goal_emitter no longer
+    Tier-3 protected, missing tests, or no longer at the expected path.
+    """
+    from app.subia.probes.butlin import eval_ae1
+    from app.subia.probes.indicator_result import Status
+
+    result = eval_ae1()
+
+    assert result.status == Status.STRONG, (
+        f"AE-1 expected STRONG, got {result.status.value}: {result.notes}"
+    )
+    assert result.tier3_protected, (
+        "AE-1 mechanism must remain Tier-3 protected for STRONG status"
+    )
+    assert result.mechanism == "app/affect/goal_emitter.py"
+    assert result.test_file == "tests/test_goal_emitter.py"

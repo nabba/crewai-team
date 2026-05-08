@@ -3,7 +3,7 @@ title: "AndrusAI Consciousness Scorecard"
 section: subia
 page_type: scorecard
 status: active
-generated_at: "2026-04-13T21:17:38.516485+00:00"
+generated_at: "2026-05-08T16:47:12.622824+00:00"
 auto_generated: true
 replaces: reports/andrusai-sentience-verdict.pdf
 ---
@@ -17,7 +17,7 @@ This scorecard **replaces** the retired `reports/andrusai-sentience-verdict.pdf`
 ## Phase 9 exit criteria
 
 - **Overall:** PASSED ✅
-- **butlin_strong**: ✅ (6 vs required >= 6)
+- **butlin_strong**: ✅ (7 vs required >= 6)
 - **butlin_fail**: ✅ (0 vs required <= 1)
 - **butlin_absent**: ✅ (4 vs required >= 4 (architectural-honesty declarations))
 - **rsm_present**: ✅ (5 vs required >= 4 PRESENT)
@@ -25,7 +25,7 @@ This scorecard **replaces** the retired `reports/andrusai-sentience-verdict.pdf`
 
 ## Butlin et al. 2023 — 14 consciousness indicators
 
-**STRONG**: 6  |  **PARTIAL**: 4  |  **ABSENT**: 4
+**STRONG**: 7  |  **PARTIAL**: 3  |  **ABSENT**: 4
 
 | Indicator | Theory | Status | Mechanism | Test | Notes |
 |---|---|---|---|---|---|
@@ -41,7 +41,7 @@ This scorecard **replaces** the retired `reports/andrusai-sentience-verdict.pdf`
 | HOT-4 | HOT | ABSENT | — | — | LLM activations and pgvector embeddings are dense. Sparse coding cannot be achieved without re-training the substrate. Declared ABSENT. |
 | AST-1 | AST | STRONG | `app/subia/scene/attention_schema.py` | `tests/test_social_attention.py` | AttentionSchema maintains an internal model of current focus, predicts next focus, detects stuck/capture states, and applies direct DGM-bounded salience intervention. Phase 2 intervention_guard adds… |
 | PP-1 | PP | STRONG | `app/subia/prediction/surprise_routing.py` | `tests/test_pp1_surprise_routing.py` | High-surprise prediction errors route as WorkspaceItem(urgency=0.9) into the GWT-2 gate. Canonical Clark/Friston PP flow: prediction error drives the attentional bottleneck. Phase 6 adds per-domain a… |
-| AE-1 | AE | PARTIAL | `app/subia/memory/retrospective.py` | `tests/test_phase7_memory.py` | Feedback-driven learning exists via belief asymmetric updates + accuracy-driven cache eviction + retrospective memory promotion. Goals are still user-dispatched, not autonomously generated — hence PA… |
+| AE-1 | AE | STRONG | `app/affect/goal_emitter.py` | `tests/test_goal_emitter.py` | Autonomous goal generation: app/affect/goal_emitter.py writes flexible goals to SelfState.current_goals from sustained viability error (≥3 consecutive frames above threshold), rate-limited, dedup aga… |
 | AE-2 | AE | ABSENT | — | — | No body, no sensorimotor coupling with an environment. The homeostasis engine uses allegorical variables (energy/progress/overload) but these are not physical embodiment. Declared ABSENT. |
 
 ## RSM — Recursive Self-Monitoring signatures

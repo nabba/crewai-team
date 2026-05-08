@@ -261,21 +261,40 @@ def eval_pp1() -> IndicatorResult:
 # ── Agency & Embodiment (AE) ─────────────────────────────────────
 
 def eval_ae1() -> IndicatorResult:
-    """AE-1: agency from feedback-driven learning with flexible goals."""
-    return partial_indicator(
+    """AE-1: agency from feedback-driven learning with flexible goals.
+
+    Phase 9 closure (consciousness-roadmap §3.G1): autonomous goal
+    generation now lives in `app/affect/goal_emitter.py`, which
+    translates sustained low-viability signals + the homeostatic
+    restoration_queue into entries on `kernel.self_state.current_goals`.
+    Combined with the pre-existing feedback-driven-learning mechanisms
+    (belief asymmetric updates, retrospective rescan,
+    prediction-error-driven cache eviction), AE-1 graduates from
+    PARTIAL to STRONG. The indicator's "flexible-goal agency" criterion
+    is met by the goal_emitter (multi-variable, rate-limited, dedupes
+    against grand_task and existing goals; FIFO-capped queue).
+    """
+    return strong_indicator(
         "AE-1", "AE",
-        mechanism="app/subia/memory/retrospective.py",
-        test_file="tests/test_phase7_memory.py",
+        mechanism="app/affect/goal_emitter.py",
+        test_file="tests/test_goal_emitter.py",
         notes=(
-            "Feedback-driven learning exists via belief asymmetric "
-            "updates + accuracy-driven cache eviction + retrospective "
-            "memory promotion. Goals are still user-dispatched, not "
-            "autonomously generated — hence PARTIAL. AE-1 requires "
-            "flexible-goal agency which is a research frontier."
+            "Autonomous goal generation: app/affect/goal_emitter.py "
+            "writes flexible goals to SelfState.current_goals from "
+            "sustained viability error (≥3 consecutive frames above "
+            "threshold), rate-limited, dedup against grand_task + "
+            "existing goals, FIFO cap. Closes the SCORECARD's prior "
+            "gap statement ('Goals are still user-dispatched, not "
+            "autonomously generated'). Underlying feedback-driven "
+            "learning continues via belief asymmetric updates + "
+            "retrospective rescan + prediction-error cache eviction."
         ),
         evidence=[
+            "app/subia/memory/retrospective.py",
             "app/subia/belief/store.py",
             "app/subia/prediction/cache.py",
+            "app/subia/homeostasis/engine.py",  # restoration_queue producer
+            "app/affect/viability.py",          # 10-D viability frames
         ],
     )
 

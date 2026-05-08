@@ -385,6 +385,63 @@ def _stub_predict_fn(scenario: ReplayScenario) -> tuple[float, float]:
     return (0.5, 0.0)
 
 
+# ── Production predictor adapter ─────────────────────────────────────────
+
+# Channel name reserved on `PredictiveLayer` for replay walks. Distinct
+# from real channels (text, etc.) so the predictor's per-channel running
+# accuracy stays clean — replay outcomes shouldn't pollute real
+# prediction-error stats.
+REPLAY_CHANNEL = "counterfactual_replay"
+
+
+def production_predict_fn(
+    layer: Optional[Any] = None,
+) -> PredictFn:
+    """Build a predict_fn wired to the live `PredictiveLayer`.
+
+    Production wiring (idle scheduler hook) calls this factory to get a
+    closure suitable as `run_pass(predict_fn=...)`. Tests can pass a
+    custom layer; default uses the singleton `get_predictive_layer()`.
+
+    **Semantics — important caveat.** Counterfactual replay has no
+    ground-truth "actual outcome" by construction (the scenario is
+    synthetic). We therefore do not call the full `predict_and_compare`
+    error pipeline; instead we extract just the predictor's *own*
+    confidence on the synthesized context. Surprise is reported as 0.0
+    because there is no real comparison to make.
+
+    Sustained low confidence on a particular perturbation kind across
+    many replay passes is the actionable signal — it indicates a
+    systematic blind spot the retrospective rescan
+    (`accuracy_tracker.has_sustained_error`) can act on, even without a
+    surprise number.
+
+    Failure mode: any exception during predictor access falls through to
+    `(0.5, 0.0)` — the same neutral signal the stub returns. Replay must
+    NEVER crash the calling subsystem.
+    """
+    def _adapter(scenario: ReplayScenario) -> tuple[float, float]:
+        try:
+            nonlocal layer
+            if layer is None:
+                from app.subia.prediction.layer import get_predictive_layer
+                layer = get_predictive_layer()
+            predictor = layer.get_predictor(REPLAY_CHANNEL)
+            context = scenario.to_synthesized_context()
+            prediction = predictor.generate_prediction(context, "")
+            confidence = float(getattr(prediction, "confidence", 0.5))
+            return (confidence, 0.0)
+        except Exception as exc:
+            logger.debug(
+                "dreams.engine: production_predict_fn failed for %s: %s",
+                getattr(scenario, "id", "<unknown>"),
+                type(exc).__name__,
+            )
+            return (0.5, 0.0)
+
+    return _adapter
+
+
 def _run_predictions(
     scenarios: list[ReplayScenario],
     predict_fn: PredictFn,

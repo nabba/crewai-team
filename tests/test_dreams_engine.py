@@ -277,3 +277,105 @@ def test_pass_result_to_dict_is_json_safe(isolated_dreams):
     result = run_pass(rng=random.Random(0), trace_lines=trace, chapter_dicts=[])
     payload = json.dumps(result.to_dict())
     assert "scenarios_count" in payload
+
+
+# ── production_predict_fn ────────────────────────────────────────────────
+
+
+def test_production_predict_fn_calls_layer_with_replay_channel(isolated_dreams):
+    """The factory should hand the predictor the dedicated REPLAY_CHANNEL
+    name so replay outcomes don't pollute the per-channel running accuracy
+    of real channels."""
+    from app.subia.dreams.engine import (
+        REPLAY_CHANNEL,
+        production_predict_fn,
+    )
+    from types import SimpleNamespace
+
+    captured = {}
+
+    class _FakePredictor:
+        def generate_prediction(self, context, beliefs):
+            captured["context"] = context
+            captured["beliefs"] = beliefs
+            return SimpleNamespace(confidence=0.73)
+
+    class _FakeLayer:
+        def get_predictor(self, channel):
+            captured["channel"] = channel
+            return _FakePredictor()
+
+    fn = production_predict_fn(layer=_FakeLayer())
+    fragment = FragmentSource(source="affect_trace", ts="t1",
+                              content_summary="affect=calm", raw={})
+    scenario = ReplayScenario(
+        id="s1", fragments=[fragment, fragment],
+        perturbation=PerturbationKind.AFFECT_FLIP,
+        perturbation_note="test",
+        constructed_at="2026-05-08T12:00:00Z",
+    )
+    confidence, surprise = fn(scenario)
+
+    assert captured["channel"] == REPLAY_CHANNEL
+    assert "COUNTERFACTUAL" in captured["context"]
+    assert confidence == pytest.approx(0.73)
+    assert surprise == 0.0
+
+
+def test_production_predict_fn_falls_back_to_neutral_on_error(isolated_dreams):
+    """Predictor failures must yield (0.5, 0.0) — same as the stub. The
+    replay engine never crashes the idle thread."""
+    from app.subia.dreams.engine import production_predict_fn
+
+    class _BrokenLayer:
+        def get_predictor(self, channel):
+            raise RuntimeError("predictive layer offline")
+
+    fn = production_predict_fn(layer=_BrokenLayer())
+    fragment = FragmentSource(source="affect_trace", ts="t1",
+                              content_summary="affect=calm", raw={})
+    scenario = ReplayScenario(
+        id="s1", fragments=[fragment, fragment],
+        perturbation=PerturbationKind.ITEM_SWAP,
+        perturbation_note="test",
+        constructed_at="2026-05-08T12:00:00Z",
+    )
+    confidence, surprise = fn(scenario)
+
+    assert (confidence, surprise) == (0.5, 0.0)
+
+
+def test_run_pass_uses_production_predict_fn(isolated_dreams):
+    """End-to-end: run_pass with the production adapter wired feeds
+    confidences from the layer's predictor through to the audit log."""
+    from types import SimpleNamespace
+
+    from app.subia.dreams.engine import production_predict_fn
+
+    class _DiscriminatingPredictor:
+        """Returns different confidences per perturbation note — lets us
+        verify the audit log received the actual values."""
+        def generate_prediction(self, context, beliefs):
+            if "flipped" in context:
+                return SimpleNamespace(confidence=0.20)
+            if "swapped" in context:
+                return SimpleNamespace(confidence=0.55)
+            return SimpleNamespace(confidence=0.80)
+
+    class _FakeLayer:
+        def get_predictor(self, channel):
+            return _DiscriminatingPredictor()
+
+    trace = [_trace_line(ts=f"t{i}", dominant_affect="calm") for i in range(10)]
+    result = run_pass(
+        rng=random.Random(0),
+        predict_fn=production_predict_fn(layer=_FakeLayer()),
+        trace_lines=trace,
+        chapter_dicts=[],
+    )
+
+    # Each outcome's confidence reflects the predictor's per-perturbation
+    # response, NOT the stub's flat 0.5.
+    confidences = {o.predictor_confidence for o in result.outcomes}
+    assert confidences != {0.5}
+    assert all(o.predictor_surprise == 0.0 for o in result.outcomes)

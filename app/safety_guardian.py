@@ -260,6 +260,7 @@ TIER3_FILES = [
     "app/affect/episodes.py",                        # narrative-self episode flush (Loop 2)
     "app/affect/narrative.py",                       # narrative-self chapter consolidator (Loop 3)
     "app/affect/health_check.py",                    # one-shot 2-week health check
+    "app/affect/goal_emitter.py",                    # consciousness-roadmap §3.G1: viability→current_goals (AE-1 STRONG)
     "app/affect/integrity.py",                       # affect manifest verifier
     # Corresponding shim paths in app/self_awareness/
     "app/self_awareness/cogito.py",
