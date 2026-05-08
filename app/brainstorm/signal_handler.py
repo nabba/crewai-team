@@ -61,6 +61,23 @@ def try_handle(text: str, sender: str) -> str | None:
     """Route a Signal message into the brainstorm subsystem if applicable.
 
     Returns the reply string if handled, or ``None`` to fall through.
+
+    Escape-command allowlist: when a sender has an active brainstorm
+    session, *most* messages are treated as answers to the current
+    step — but a small set of commander commands always take
+    precedence so the user is never trapped. Specifically:
+
+      * any slash command (``/help``, ``/status``, ``/skill ...``, etc.)
+      * ``switch (to) (project|workspace) ...``
+      * project/workspace status questions ("workspace status",
+        "where am I", "current project", etc.)
+      * ``help``, ``?``, ``status``, ``cancel``, ``exit``, ``stop``
+
+    The user can always exit via ``/brainstorm cancel`` or
+    ``/brainstorm pause`` explicitly. The escape allowlist is for the
+    "I forgot I had a session open" case, where the user types a
+    routine command and shouldn't get an opaque "(empty answer —
+    please respond)" response.
     """
     if text is None:
         return None
@@ -72,9 +89,87 @@ def try_handle(text: str, sender: str) -> str | None:
         return _handle_command(stripped, sender)
 
     if store.get_active(sender) is not None:
+        if _looks_like_escape_command(stripped):
+            return None
         return _handle_response(stripped, sender)
 
     return None
+
+
+# ── Escape allowlist ────────────────────────────────────────────────
+
+
+# Compile-once regexes for the messages that should bypass an active
+# brainstorm session. Mirrors the patterns in
+# ``app/agents/commander/commands.py`` so the fall-through reaches a
+# real command handler.
+_ESCAPE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Workspace / project switch (the bug that motivated this allowlist)
+    re.compile(
+        r"^(?:"
+            r"(?:project|workspace)\s+switch"
+            r"|"
+            r"switch\s+(?:to\s+)?(?:project|workspace)"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    # Project / workspace status questions
+    re.compile(
+        r"^(?:"
+            r"what(?:'s| is)?(?:\s+the)?(?:\s+(?:current|active))*\s+"
+            r"(?:project|workspace)"
+            r"|"
+            r"which\s+(?:project|workspace)"
+            r"|"
+            r"(?:current|active)\s+(?:project|workspace)"
+            r"|"
+            r"what\s+(?:project|workspace)\s+am\s+i\s+(?:on|in|using|working)"
+        r")\b",
+        re.IGNORECASE,
+    ),
+)
+
+# Single-token commands that the commander handles unconditionally.
+_ESCAPE_TOKENS: frozenset[str] = frozenset({
+    "help", "?", "status", "cancel", "exit", "stop",
+    "project", "project status",
+    "workspace", "workspace status", "workspaces",
+    "where am i", "where am i?",
+})
+
+
+def _looks_like_escape_command(text: str) -> bool:
+    """True if ``text`` should bypass an active brainstorm session.
+
+    Pure validation; no side effects. Used by ``try_handle`` to
+    distinguish "free-form brainstorm answer" from "user wants to do
+    something the commander handles."
+
+    Two-pass token check: we test the raw stripped form first (so
+    bare ``?`` matches even though rstrip would empty it), then the
+    rstrip'd form (so ``where am I?`` matches the same way as
+    ``where am I``).
+    """
+    stripped_lower = text.strip().lower()
+    if not stripped_lower:
+        return False
+
+    # 1) any slash command
+    if stripped_lower.startswith("/"):
+        return True
+    # 2) exact-match against the raw stripped form (catches "?")
+    if stripped_lower in _ESCAPE_TOKENS:
+        return True
+
+    trimmed = stripped_lower.rstrip("?.! ").strip()
+    # 3) exact-match after stripping trailing punctuation
+    if trimmed in _ESCAPE_TOKENS:
+        return True
+    # 4) regex-matched commands
+    for pat in _ESCAPE_PATTERNS:
+        if pat.match(trimmed):
+            return True
+    return False
 
 
 # ── Command parser ───────────────────────────────────────────────────────
