@@ -93,6 +93,16 @@ def install() -> None:
 
             # Phase 3: if this is a user-initiated task, update the user OtherModel.
             sender_id = ctx.get("sender_id", "") or ctx.metadata.get("sender_id", "")
+            if not sender_id:
+                # Fallback: read from the request-scoped ContextVar set by
+                # Commander.handle / brainstorm dispatch. Without this the
+                # PRE_TASK / ON_COMPLETE HookContexts go through with sender
+                # unset and the user OtherModel never accumulates last_seen.
+                try:
+                    from app.project_context import resolve_current_sender_id
+                    sender_id = resolve_current_sender_id() or ""
+                except Exception:
+                    pass
             if sender_id:
                 try:
                     from app.affect.attachment import primary_user_identity, update_from_interaction
@@ -172,6 +182,16 @@ def install() -> None:
             # Phase 3: feed the episode's terminal valence back into the user
             # OtherModel as observed sentiment, IF this was a user-initiated task.
             sender_id = ctx.get("sender_id", "") or ctx.metadata.get("sender_id", "")
+            if not sender_id:
+                # Fallback: read from the request-scoped ContextVar set by
+                # Commander.handle / brainstorm dispatch. Without this the
+                # PRE_TASK / ON_COMPLETE HookContexts go through with sender
+                # unset and the user OtherModel never accumulates last_seen.
+                try:
+                    from app.project_context import resolve_current_sender_id
+                    sender_id = resolve_current_sender_id() or ""
+                except Exception:
+                    pass
             if sender_id and s is not None:
                 try:
                     from app.affect.attachment import primary_user_identity, update_from_interaction

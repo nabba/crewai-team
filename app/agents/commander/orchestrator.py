@@ -2728,8 +2728,8 @@ class Commander:
     def handle(self, user_input: str, sender: str = "",
                attachments: list = None) -> str:
         """Decompose input, dispatch to the right crew(s), return the answer."""
-        from app.project_context import agent_scope
-        with agent_scope("commander"):
+        from app.project_context import agent_scope, sender_scope
+        with agent_scope("commander"), sender_scope(sender or None):
             return self._handle_locked(user_input, sender, attachments)
 
     def _handle_locked(self, user_input: str, sender: str = "",

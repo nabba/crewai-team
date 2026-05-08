@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _project_id: ContextVar[str | None] = ContextVar("project_id", default=None)
 _agent_role: ContextVar[str | None] = ContextVar("agent_role", default=None)
+_sender_id: ContextVar[str | None] = ContextVar("sender_id", default=None)
 
 
 def set_current_project_id(project_id: str | None):
@@ -84,6 +85,39 @@ def agent_scope(agent_role: str | None):
     finally:
         try:
             _agent_role.reset(token)
+        except ValueError:
+            pass
+
+
+def set_current_sender_id(sender_id: str | None):
+    """Mark which user/identity originated the current request so the
+    affect attachment hook (and anything else that wants to know) can
+    attribute interactions without that hook needing to be threaded
+    through every dispatch path."""
+    return _sender_id.set(sender_id)
+
+
+def reset_current_sender_id(token) -> None:
+    try:
+        _sender_id.reset(token)
+    except ValueError:
+        pass
+
+
+def resolve_current_sender_id() -> str | None:
+    """Return the current sender id, or None."""
+    return _sender_id.get()
+
+
+@contextlib.contextmanager
+def sender_scope(sender_id: str | None):
+    """Context manager scoping subsequent telemetry to a sender id."""
+    token = _sender_id.set(sender_id)
+    try:
+        yield
+    finally:
+        try:
+            _sender_id.reset(token)
         except ValueError:
             pass
 

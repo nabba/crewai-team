@@ -69,7 +69,15 @@ def _default_sender() -> str:
 
 
 def _resolve_sender(sender: str | None) -> str:
-    return (sender or "").strip() or _default_sender()
+    resolved = (sender or "").strip() or _default_sender()
+    # Make sure the affect attachment hook can see who's interacting —
+    # brainstorm sessions are user-initiated and should bump last_seen.
+    try:
+        from app.project_context import set_current_sender_id
+        set_current_sender_id(resolved)
+    except Exception:
+        pass
+    return resolved
 
 
 # ── Request / response models ────────────────────────────────────────────
