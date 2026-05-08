@@ -42,7 +42,8 @@ const BACKEND_PATH_PREFIXES = [
   '/kb/',
   '/fiction/',
   '/philosophy/',
-  '/episteme/',
+  '/episteme/',     // RAG over research KB
+  '/epistemic/',    // claim ledger / pushback / overrides — distinct subsystem
   '/experiential/',
   '/aesthetics/',
   '/tensions/',
