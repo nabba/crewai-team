@@ -33,6 +33,12 @@ _GROQ_MODEL = "whisper-large-v3"
 
 _GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
+# Sent on every outbound HTTP request. Without this, urllib's default UA
+# (`Python-urllib/<ver>`) trips Cloudflare's bot signature filter on Groq
+# (HTTP 403 with body "error code: 1010"). Google TTS doesn't need it but
+# we send it everywhere for defensive consistency.
+_USER_AGENT = "AndrusAI/1.0"
+
 # Neural2 voices per language. en-US has a male (J) and female (F) variant
 # — pick whichever; override via env if desired (left to a follow-up).
 _GOOGLE_VOICES = {
@@ -71,6 +77,7 @@ def transcribe(
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "User-Agent": _USER_AGENT,
         },
     )
     try:
@@ -149,7 +156,10 @@ def synthesize(text: str, *, language: str = "en") -> bytes | None:
     url = _GOOGLE_TTS_URL + "?" + urllib.parse.urlencode({"key": key})
     req = urllib.request.Request(
         url, data=body, method="POST",
-        headers={"Content-Type": "application/json; charset=utf-8"},
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": _USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
