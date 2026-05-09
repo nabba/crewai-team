@@ -2213,3 +2213,311 @@ All defaults ON except backup-related (per-deploy operator choice).
 * 22 silent-failure bugs caught + fixed across the audit cycles E + F (would have shipped silently otherwise).
 * 3 shared utilities extracted (`feed_parser`, `hash_embedding`, `jsonl_retention`).
 * 18 new operator-tunable env switches; all default ON except backup.
+
+
+## 29. 2026-05-10 — Pattern_learner triage (58 uncovered scaffolds → 7 PRs)
+
+The morning's pattern_learner alert flagged **58 failure patterns
+observed but not covered by any runbook (last 7 d, ≥10 occurrences)**.
+Top five by volume: `30bbb7cd` (OpenRouter Stealth 502 ×630),
+`834bbc74` (APScheduler "Run time was missed" ×613), `d2ae1dfd`
+(Neo4j Unauthorized ×589), `787a4626` (llm_selector keep-incumbent
+×147), `eb829b26` (Anthropic 400 credit-low ×143) — plus 53 more.
+
+Triage showed the alert was misleading.  Most of the 58 weren't
+"missing remediation handlers" — they were **log-level mistakes**
+(stat-detector noise, by-design degradation, breaker state changes,
+provider failover, validator rejections, startup info), **already-
+handled patterns whose signatures had drifted**, or **operator-action
+items that benefit from circuit-breaking, not retry**.  Writing 58
+`if "<frag>" in sample: return …` shells would have just added
+noise.
+
+Instead the work split into three tiers shipped in seven PRs.
+
+### 29.1 Tier 1 — log-level fixes (PRs #84 #85 #86)
+
+The bulk of the noise was misclassified WARN messages — pattern_learner
+flagged each new SHA-1 signature as a "new uncovered pattern" because
+the f-strings included floating numerics that re-signed every outlier.
+
+#### 29.1.1 PR #84 — `anomaly_detector` sigma-aware log level (T1.1)
+
+Pre-fix: every `record_sample()` call that crossed the 2σ threshold
+emitted `logger.warning("ANOMALY: …")`.  Each new outlier value
+generated a new SHA-1 because `value`, `mean`, `stddev`, `sigma_dist`
+are all in the message — pattern_learner saw 10+ "uncovered" patterns
+that were really one stat-detector.
+
+Post-fix:
+
+```python
+_WARN_SIGMA_THRESHOLD = 5.0
+...
+if sigma_dist >= _WARN_SIGMA_THRESHOLD:
+    logger.warning(msg)
+else:
+    logger.info(msg)
+```
+
+`_alerts.append(alert)` is unchanged — the dashboard / API source-of-
+truth still captures every event regardless of log level; only the
+human-visible error stream changed.  4 tests cover the new
+contract.
+
+#### 29.1.2 PR #85 — APScheduler `misfire_grace_time=60` + coalesce (T1.2)
+
+Pattern_learner reported **613 occurrences/week** of
+`Run time of job '...' was missed by 0:00:03.389716` from
+`apscheduler.executors.default` at WARNING (so it landed in
+errors.jsonl).  APScheduler's default `misfire_grace_time` is
+1 second — any cron job delayed by 3+ s during normal load
+triggers the warning.
+
+Fix at scheduler construction:
+
+```python
+scheduler = AsyncIOScheduler(
+    job_defaults={"misfire_grace_time": 60, "coalesce": True},
+)
+```
+
+60 s grace absorbs routine scheduling jitter; coalesce means
+catch-up after a pause fires once, not N times.  Real overruns
+(>60 s) still log at WARN — visibility into actual stalls preserved.
+
+#### 29.1.3 PR #86 — 6 in-our-code WARN→INFO + JsonlNoiseFilter (T1.3)
+
+Six log sites that described **by-design behavior** at WARNING:
+
+| Site | Why it isn't WARN material |
+|---|---|
+| `llm_selector` keep-incumbent (147×) | Graceful degradation — caller asked for fresh-data, none qualified |
+| `circuit_breaker` HALF_OPEN→OPEN | Breaker doing its job; first CLOSED→OPEN trip stays at WARN |
+| `proposals.py` path-violation reject | Validator working as designed |
+| `base_crew` tool-cap (post-init + pre-init) | Provider context-budget enforcement |
+| `CreditAwareAnthropicCompletion` failover sync + async (285×) | Designed mid-call failover to OpenRouter |
+
+All six demoted to **INFO**.  The first-trip CLOSED→OPEN transition
+on the breaker stays at WARN — that's the actual operator-visible
+signal.  Only the cyclic HALF_OPEN→OPEN re-trip is now INFO.
+
+Plus a new `app/logging_filters.JsonlNoiseFilter` attached to the
+JSONL handler (NOT the root logger) drops three known third-party
+WARNs we already handle correctly downstream:
+
+* discord.py "voice will NOT be supported" (PyNaCl/davey, ~1×/restart)
+* Anthropic SDK 400 "credit balance too low" (143× — handled by
+  CreditAwareAnthropicCompletion → OpenRouter failover)
+* OpenRouter Stealth 502 "Invalid URL" (630× — eliminated at the
+  source by T3.3; the filter is a backstop)
+
+The filter is **hardcoded** — every entry is an explicit operator
+decision that the message is informational.  New entries require
+code review (no auto-grow path).  13 tests cover the demotions +
+filter.
+
+### 29.2 Tier 2 — signature-drift investigation (PR #87)
+
+The numeric_overflow sample at `c38013f9929816242` was flagged as
+"uncovered" but inspection showed `numeric_overflow_widen_cr` IS
+correctly registered against that exact signature in
+`app/healing/handlers/schema_drift.py`.
+
+**Root cause** (already fixed on disk in commit `72f3f6e9`,
+"Phase E"): `pattern_learner._registered_signatures()` imported
+`_LOCK` from runbooks.py, but the actual symbol is `_registry_lock`.
+The ImportError fell through `except Exception: return set()` and
+the function silently returned an empty set every call — so
+pattern_learner thought every covered handler was uncovered,
+including `numeric_overflow_widen_cr` itself.
+
+Phase E renamed the import; gateway just hadn't been redeployed yet.
+
+PR #87 is the **regression guard** — a 5-test suite that exercises
+the function against a real `_REGISTERED_RUNBOOKS` registry so a
+future symbol rename can't re-introduce the silent-empty-set mode:
+
+* `test_function_uses_real_lock_symbol` — source-grep that the
+  import name lines up with runbooks.py
+* `test_lock_symbol_actually_exists_in_runbooks` — runbooks-side
+  mirror of the same check
+* `test_hash_pattern_handler_is_seen_as_covered` — register a
+  fake hash-pattern handler, confirm it lands in the covered set
+* `test_catch_all_pattern_is_not_claimed_as_covered` — `.*`
+  handlers must NOT swallow every signature
+* `test_returns_non_empty_when_handlers_registered` — smoke for
+  the silent-empty-set mode that started this whole thing
+
+Verified by running the suite against the **still-live broken
+gateway**: 3/5 fail — exactly the failure mode the suite targets.
+After the next `docker compose build gateway && --force-recreate`
+all 5 will pass.
+
+### 29.3 Tier 3 — operator-action circuit breakers (PRs #88 #89 #90)
+
+The remaining high-volume patterns weren't transient errors that
+benefit from retry — they were **operator-action items** (rotate
+the credential / fix the URL).  Hammering the upstream once-per-
+minute serves only to fill errors.jsonl.
+
+#### 29.3.1 PR #88 — `belief_outbox` Neo4j auth breaker (T3.1)
+
+589 occurrences/week of:
+
+```
+belief_outbox: neo4j read failed:
+  {neo4j_code: Neo.ClientError.Security.Unauthorized}
+  {message: The client is unauthorized due to authentication failure.}
+```
+
+The reconciler ran every MEDIUM idle slot, hit the auth failure
+each time, logged WARN each time.  The underlying issue (wrong
+password / rotated credential) cannot be fixed by retry — only
+the operator can rotate.
+
+Fix shape (mirror of `anthropic_credits` from §17):
+
+* New `neo4j_auth` operator-action breaker in `app/circuit_breaker.py`
+  (`failure_threshold=1`, `cooldown_seconds=3600`).
+* `_fetch_existing_neo4j_belief_ids()` short-circuits at entry when
+  the breaker is OPEN — no round trip, no re-log.
+* `_is_neo4j_auth_error(exc)` detects auth-failure variants
+  (`Unauthorized` / `AuthenticationRateLimit` / `"client is
+  unauthorized"`).
+* First trip logs WARN once via the breaker's CLOSED→OPEN path
+  (operator alert); subsequent attempts inside the cooldown
+  short-circuit silently with the breaker's HALF_OPEN→OPEN at INFO
+  (per T1.3).
+* Transient (non-auth) errors **still log WARN** — connectivity
+  issues stay visible.
+
+Same PR also adds an `mcp_auth` template breaker, used by T3.2.
+
+9 tests.
+
+#### 29.3.2 PR #89 — `mcp_client` per-server 401/403 breaker (T3.2)
+
+`mcp_client: 'STUzhy/py_execute_mcp' init failed: HTTP 401:
+{"error":"invalid_token"}` — same pattern as Neo4j, but per-server
+isolation matters: an auth failure on one MCP server must not
+block connections to others.
+
+Fix:
+
+* `_is_mcp_auth_error(text)` detects 401/403/invalid_token/
+  Unauthorized/Forbidden in connect/init error text.
+* Per-server breaker key (`mcp_auth:<server-name>`).  Built on a
+  new **`circuit_breaker.ensure_breaker()`** helper — same as
+  `get_breaker` but takes explicit `failure_threshold` and
+  `cooldown_seconds` so dynamic creates land with the
+  operator-action shape (1 / 3600), not the generic 5 / 30.
+* `_record_failure_log()` helper centralizes
+  "auth → trip breaker + log INFO" vs "transient → log WARN" so
+  the choice is in one place.
+* connect() entry-check short-circuits when the per-server breaker
+  is OPEN.
+
+11 tests.
+
+#### 29.3.3 PR #90 — Stealth filter on prefix-routed calls (T3.3)
+
+**The single biggest source of pattern_learner noise**: 630
+occurrences/week of:
+
+```
+OpenAI API call failed: Error code: 502 -
+  {'error': {'message': 'Invalid URL: ', 'code': 502,
+             'metadata': {'provider_name': 'Stealth'}}}
+```
+
+The provider-exclusion filter at `app/llm_factory.py:229` was gated
+on `"openrouter.ai" in (base_url or "")` — but the bulk of our
+OpenRouter traffic uses **prefix routing**
+(`model_id="openrouter/deepseek/deepseek-chat"`) without an
+explicit `base_url` kwarg.  litellm routes those calls via
+`OPENROUTER_API_KEY`, so the filter trigger never fired and Stealth
+was never excluded for prefix-routed calls.  That accounts for the
+630/week.
+
+Fix:
+
+```python
+_is_openrouter_call = (
+    "openrouter.ai" in (base_url or "")
+    or (model_id or "").startswith("openrouter/")
+)
+```
+
+Active role-assigned models (Claude / Gemma / DeepSeek paid variants)
+all have non-Stealth routes — no functional loss.
+`OPENROUTER_IGNORE_PROVIDERS` env var still overrides (set to `""`
+to disable, or to add other provider names).
+
+This pairs with PR #86's `JsonlNoiseFilter` entry for the same 502
+message: that filter prevents leakage when there's a residual case;
+PR #90 eliminates the source.
+
+7 tests.
+
+### 29.4 Combined impact
+
+Conservatively (assuming dedup overlap), this sweep eliminates
+**~1,500–2,000 false-WARN entries/week** from `errors.jsonl`:
+
+* ~10 anomaly-detector signatures × hundreds of outliers
+* 613 APScheduler "missed by 3 s" warnings
+* 285 + 147 in-our-code by-design WARNs (failover + keep-incumbent)
+* 589 Neo4j auth retries → 1 WARN/h after first trip
+* MCP-401 retries → 1 WARN/h per server after first trip
+* 630 OpenRouter Stealth 502s eliminated at the source
+
+Three new operator-action breakers (`anthropic_credits` from §17,
+`neo4j_auth` and `mcp_auth` from this sweep) all share the same
+1-failure / 1-h-cooldown shape — operators see one alert per
+incident, not one per attempt.
+
+### 29.5 Files touched
+
+```
+app/anomaly_detector.py                            # PR #84
+app/main.py                                        # PR #85
+app/llm_selector.py                                # PR #86
+app/circuit_breaker.py                             # PR #86, #88, #89
+app/proposals.py                                   # PR #86
+app/crews/base_crew.py                             # PR #86
+app/llms/credit_aware_anthropic.py                 # PR #86
+app/logging_filters.py                             # PR #86 (NEW)
+app/error_handler.py                               # PR #86 (filter wire-in)
+app/memory/belief_outbox.py                        # PR #88
+app/mcp/client.py                                  # PR #89
+app/llm_factory.py                                 # PR #90
+
+tests/test_anomaly_detector_log_level.py           # PR #84 (NEW)  4 tests
+tests/test_scheduler_misfire_defaults.py           # PR #85 (NEW)  2 tests
+tests/test_misclassified_warn_demotion.py          # PR #86 (NEW) 13 tests
+tests/healing/test_pattern_learner_coverage.py     # PR #87 (NEW)  5 tests
+tests/test_belief_outbox_neo4j_auth_breaker.py     # PR #88 (NEW)  9 tests
+tests/test_mcp_client_auth_breaker.py              # PR #89 (NEW) 11 tests
+tests/test_openrouter_stealth_exclusion.py         # PR #90 (NEW)  7 tests
+```
+
+Total: **51 new tests** across 7 files.
+
+### 29.6 What still needs operator action
+
+* **Pattern_learner backlog** at `workspace/proposed_runbooks/`
+  still has 58 markdown scaffolds.  After the next gateway rebuild
+  + 7-day re-scan window, the scaffolds for the patterns these
+  PRs eliminated will stop being re-flagged.  Cleaning up the
+  existing files is operator-discretion (move under
+  `_noise/` or delete).
+* **Gateway rebuild required** to land any of these runtime
+  effects.  `docker compose build gateway && docker compose up
+  -d --force-recreate gateway` is the recipe (confirmed working
+  in §27.3).  Until then, the broken `_LOCK` import + the
+  missing prefix-routing filter remain in production.
+* **Neo4j credential rotation** still needed by the operator
+  (the breaker just stops the hammering, not the underlying
+  auth issue).  Same for MCP server `STUzhy/py_execute_mcp`
+  token.
