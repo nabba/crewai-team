@@ -342,3 +342,93 @@ def run_goodhart_check() -> dict:
         "high_severity_signals": [s.description for s in signals if s.severity == "high"],
     }
     return summary
+
+
+# ── Hard-gate read API (Wave 3 #2, 2026-05-09 — operator-authorized) ─────────
+#
+# ``governance.evaluate_promotion`` reads ``recent_severity()`` to decide
+# whether to admit or block a promotion. The detection logic above stays
+# unchanged; this is a pure read function over the persisted signal log.
+
+# Severity ranking for the "highest in window" computation. Higher value
+# = more severe. None case is handled by callers via the "none" string.
+_SEVERITY_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def recent_severity(lookback_hours: int = 24) -> str:
+    """Highest-severity gaming signal seen in the last ``lookback_hours``.
+
+    Returns one of ``"none" | "low" | "medium" | "high"``. ``"none"``
+    when the report is missing, empty, or no signal in window.
+
+    Read-only: never modifies the signal log. The detector
+    (``detect_gaming_signals``) writes; this function reads.
+    """
+    if not GAMING_REPORT_PATH.exists():
+        return "none"
+    try:
+        signals = json.loads(GAMING_REPORT_PATH.read_text())
+        if not isinstance(signals, list):
+            return "none"
+    except (OSError, json.JSONDecodeError):
+        return "none"
+
+    cutoff = time.time() - lookback_hours * 3600
+    highest = "none"
+    for s in signals:
+        if not isinstance(s, dict):
+            continue
+        ts = s.get("detected_at")
+        try:
+            if ts is None or float(ts) < cutoff:
+                continue
+        except (TypeError, ValueError):
+            continue
+        sev = str(s.get("severity") or "").lower()
+        if _SEVERITY_RANK.get(sev, 0) > _SEVERITY_RANK.get(highest, 0):
+            highest = sev
+    return highest
+
+
+def recent_signal_summary(lookback_hours: int = 24) -> dict:
+    """Audit-friendly snapshot for governance to emit on every check.
+
+    Returns counts per severity + the highest severity + one sample
+    description (handy for Signal alerts).
+    """
+    snapshot: dict = {
+        "lookback_hours": lookback_hours,
+        "highest_severity": "none",
+        "counts": {"low": 0, "medium": 0, "high": 0},
+        "highest_description": "",
+    }
+    if not GAMING_REPORT_PATH.exists():
+        return snapshot
+    try:
+        signals = json.loads(GAMING_REPORT_PATH.read_text())
+        if not isinstance(signals, list):
+            return snapshot
+    except (OSError, json.JSONDecodeError):
+        return snapshot
+
+    cutoff = time.time() - lookback_hours * 3600
+    highest = "none"
+    sample = ""
+    for s in signals:
+        if not isinstance(s, dict):
+            continue
+        ts = s.get("detected_at")
+        try:
+            if ts is None or float(ts) < cutoff:
+                continue
+        except (TypeError, ValueError):
+            continue
+        sev = str(s.get("severity") or "").lower()
+        if sev in snapshot["counts"]:
+            snapshot["counts"][sev] += 1
+        if _SEVERITY_RANK.get(sev, 0) > _SEVERITY_RANK.get(highest, 0):
+            highest = sev
+            sample = str(s.get("description") or "")[:200]
+    snapshot["highest_severity"] = highest
+    snapshot["highest_description"] = sample
+    return snapshot

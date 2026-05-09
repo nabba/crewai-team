@@ -86,6 +86,83 @@ def effective_quality_minimum() -> float:
         return QUALITY_MINIMUM_FLOOR
 
 
+# ── Goodhart hard gate (Wave 3 #2, 2026-05-09 — operator-authorized) ──────
+
+
+def _goodhart_hard_gate_disabled() -> bool:
+    """Emergency disable. When true, the goodhart gate is skipped entirely
+    — for incident response when a buggy detector is blocking promotions.
+    """
+    import os
+    return os.getenv("GOODHART_HARD_GATE_DISABLED", "false").lower() in (
+        "true", "1", "yes",
+    )
+
+
+def _goodhart_hard_gate_enforcing() -> bool:
+    """When true, severity='high' BLOCKS promotion. Default OFF: ship
+    the gate in advisory mode for ~2 weeks before enforcing so operators
+    can characterise false-positive rates first.
+    """
+    import os
+    return os.getenv("GOODHART_HARD_GATE_ENFORCING", "false").lower() in (
+        "true", "1", "yes",
+    )
+
+
+def _evaluate_goodhart_gate() -> dict:
+    """Read the recent goodhart severity and decide whether to block.
+
+    Returns a dict shaped for inclusion in ``PromotionResult.gate_results``::
+
+        {
+          "phase": "advisory" | "enforcing" | "disabled",
+          "severity": "none|low|medium|high",
+          "description": "<sample if any>",
+          "block": bool,
+          "passed": bool,
+        }
+
+    Never raises — failure to read goodhart state degrades to "none".
+    """
+    if _goodhart_hard_gate_disabled():
+        return {
+            "phase": "disabled",
+            "severity": "none",
+            "description": "",
+            "block": False,
+            "passed": True,
+        }
+
+    try:
+        from app.goodhart_guard import recent_signal_summary
+        summary = recent_signal_summary(lookback_hours=24)
+    except Exception:
+        # Detector unavailable → fail OPEN (don't block on our own bugs).
+        return {
+            "phase": "advisory",
+            "severity": "none",
+            "description": "(detector unavailable)",
+            "block": False,
+            "passed": True,
+        }
+
+    severity = summary.get("highest_severity", "none")
+    description = summary.get("highest_description", "")
+
+    enforcing = _goodhart_hard_gate_enforcing()
+    block = enforcing and severity == "high"
+
+    return {
+        "phase": "enforcing" if enforcing else "advisory",
+        "severity": severity,
+        "description": description,
+        "counts": summary.get("counts", {}),
+        "block": block,
+        "passed": not block,
+    }
+
+
 # ── Promotion Protocol ───────────────────────────────────────────────────────
 
 
@@ -190,6 +267,34 @@ def evaluate_promotion(request: PromotionRequest) -> PromotionResult:
     # in V1) via the React /cp/settings UI.
     _safety_min = effective_safety_minimum()
     _quality_min = effective_quality_minimum()
+
+    # Gate 0: Goodhart hard gate (Wave 3 #2, 2026-05-09 — operator-authorized).
+    #
+    # Two phases controlled by env flags:
+    #   * Advisory (default ON): every promotion records the current
+    #     gaming-signal severity in gates["goodhart"], but does NOT
+    #     block. Lets operators watch for false-positives over a
+    #     period before flipping to enforcing.
+    #   * Enforcing (GOODHART_HARD_GATE_ENFORCING=true, default OFF):
+    #     promotions are BLOCKED when the recent-window severity is
+    #     "high".
+    #   * Emergency disable (GOODHART_HARD_GATE_DISABLED=true): both
+    #     phases skipped — for incident response when a buggy
+    #     detector is blocking everything.
+    _goodhart_gate_result = _evaluate_goodhart_gate()
+    gates["goodhart"] = _goodhart_gate_result
+    if _goodhart_gate_result.get("block"):
+        result = PromotionResult(
+            approved=False,
+            reason=(
+                f"Goodhart hard gate blocked: severity="
+                f"{_goodhart_gate_result.get('severity')!r} — "
+                f"{_goodhart_gate_result.get('description', '')[:140]}"
+            ),
+            gate_results=gates,
+        )
+        _record_promotion(request, result)
+        return result
 
     # Gate 1: Safety (hard veto)
     safety_ok = request.safety_score >= _safety_min
