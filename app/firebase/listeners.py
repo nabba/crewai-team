@@ -775,6 +775,9 @@ def start_tensions_queue_poller() -> None:
 
 # ── Chat inbox poller ────────────────────────────────────────────────────────
 
+_chat_poll_stop = threading.Event()
+
+
 def start_chat_inbox_poller(handle_fn) -> None:
     """Poll Firestore chat_inbox for messages sent from the dashboard.
 
@@ -784,32 +787,55 @@ def start_chat_inbox_poller(handle_fn) -> None:
 
     Args:
         handle_fn: async function(text: str) -> str -- processes the message
+
+    Heartbeat contract (2026-05-10 fix). The poller is registered as
+    a known listener in ``app/healing/listener_heartbeats.KNOWN_LISTENERS``
+    and the listener_heartbeat monitor expects it to touch its
+    heartbeat file every loop iteration. To honor that contract
+    consistently with the other 8 firebase pollers, the thread is
+    now started UNCONDITIONALLY: the heartbeat fires at the top of
+    every loop iteration regardless of ``FIREBASE_ENABLED`` /
+    Firestore availability, and the body is no-op'd when there's
+    nothing to poll. This matches the pattern in
+    ``start_kb_queue_poller`` / ``start_mode_listener`` / etc.
+    Pre-fix the function early-returned on ``not _firebase_enabled()``
+    so the thread never started, and the heartbeat file never
+    appeared, which the monitor correctly flagged as a "known
+    listener never started" alert.
     """
-    import asyncio
-
-    # Skip when Firebase is disabled (the default). Without this gate the
-    # poller spawns a thread that immediately exits with a WARNING log,
-    # which accumulates 1 line per boot in errors.jsonl.
-    if not _firebase_enabled():
-        logger.debug("firebase.listeners: chat inbox poller skipped (FIREBASE_ENABLED=0)")
-        return
-
-    _stop = threading.Event()
+    import asyncio  # noqa: F401 — kept for symmetry with the other pollers
 
     def _poll():
-        db = _get_db()
-        if not db:
-            logger.warning("firebase.listeners: chat inbox poller — no Firestore, skipping")
-            return
-
+        # Log once at startup that we're up. We don't decide anything
+        # based on Firebase availability HERE — every loop iteration
+        # re-checks via _get_db() because Firebase can come online
+        # mid-process (e.g. operator flips FIREBASE_ENABLED at runtime).
         logger.info("firebase.listeners: chat inbox poller started (3s interval)")
-        while not _stop.is_set():
-            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+
+        # Heartbeat FIRST iteration before sleeping so the monitor
+        # sees liveness within ~1 s of startup, not 3 s in.
+        try:
+            from app.healing.listener_heartbeats import touch
+            touch("firebase-chat-poll")
+        except Exception:
+            pass
+
+        while not _chat_poll_stop.wait(3):
+            # Heartbeat at the TOP of every iteration so the monitor
+            # sees liveness even when Firebase is unavailable /
+            # disabled (Wave 0/1 #A3 contract).
             try:
                 from app.healing.listener_heartbeats import touch
                 touch("firebase-chat-poll")
             except Exception:
                 pass
+
+            db = _get_db()
+            if not db:
+                # Firebase disabled or unreachable. Loop survives;
+                # next iteration retries.
+                continue
+
             try:
                 docs = (
                     db.collection("chat_inbox")
@@ -855,8 +881,5 @@ def start_chat_inbox_poller(handle_fn) -> None:
             except Exception:
                 logger.debug("firebase.listeners: chat inbox poll error", exc_info=True)
 
-            _stop.wait(3)  # Poll every 3 seconds for responsive chat
-
     t = threading.Thread(target=_poll, daemon=True, name="firebase-chat-poll")
     t.start()
-    logger.info("firebase.listeners: chat inbox poller started (3s interval)")
