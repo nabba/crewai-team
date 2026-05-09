@@ -81,6 +81,7 @@ def notify_on_complete(
     notify_on_failure_only: bool = False,
     url: str = _DEFAULT_DEEP_LINK,
     silent: bool = False,
+    metadata: Optional[dict] = None,
 ) -> Callable[[F], F]:
     """Decorator: ping Signal + Web Push when the wrapped fn finishes.
 
@@ -93,6 +94,13 @@ def notify_on_complete(
         url: Deep link the notification opens in the PWA.
         silent: Master kill switch — disable notifications entirely on
             this job (still runs the function as normal).
+        metadata: Phase F #3 (2026-05-09) — opaque dict forwarded to
+            ``notify(metadata=...)`` so the notify_meta sidechannel
+            captures the (send_ts, metadata) pair for the
+            ``feedback_router`` closed-loop. Typical keys:
+            ``{"job_id": "self_improve", "task_id": "..."}``. Without
+            metadata the completion ping is still sent — operator just
+            can't react to it for skill/recipe credit.
     """
 
     def deco(fn: F) -> F:
@@ -133,7 +141,7 @@ def notify_on_complete(
                     _emit_completion(
                         job_label, error, time.monotonic() - start,
                         notify_on_failure_only=notify_on_failure_only,
-                        url=url,
+                        url=url, metadata=metadata,
                     )
 
         return wrapper  # type: ignore[return-value]
@@ -150,6 +158,7 @@ def _emit_completion(
     *,
     notify_on_failure_only: bool,
     url: str,
+    metadata: Optional[dict] = None,
 ) -> None:
     """Build the one-line message and dispatch."""
     if error is None:
@@ -168,7 +177,7 @@ def _emit_completion(
             f"{str(error)[:120]} (after {_human_duration(elapsed_s)})"
         )
     try:
-        notify(title, body, url=url)
+        notify(title, body, url=url, metadata=metadata)
     except Exception:
         # Never propagate notification failures back to the wrapped fn.
         logger.debug("notify_on_complete: dispatch failed", exc_info=True)

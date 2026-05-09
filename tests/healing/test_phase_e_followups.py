@@ -129,15 +129,19 @@ def test_runtime_settings_defensive_reads(monkeypatch):
 # ── E1: feedback_router uses the right table + columns ──────────────────
 
 
-def test_feedback_router_resolve_send_ts_targets_response_metadata():
-    """The query must hit ``feedback.response_metadata.msg_timestamp``,
-    not the non-existent ``feedback.responses.target_timestamp``."""
+def test_feedback_router_query_targets_response_metadata():
+    """The fetch query must hit ``feedback.response_metadata.msg_timestamp``,
+    not the non-existent ``feedback.responses.target_timestamp``.
+
+    Phase F #8 collapsed the per-event lookup into a single JOIN in
+    ``_fetch_new_events`` — the assertions now check that fn instead.
+    """
     import inspect
     from app.companion import feedback_router
-    src = inspect.getsource(feedback_router._resolve_send_ts)
+    src = inspect.getsource(feedback_router._fetch_new_events)
     assert "feedback.response_metadata" in src
     assert "msg_timestamp" in src
-    # Defensively check the OLD wrong query is gone.
+    # The OLD wrong query/table must not reappear.
     assert "feedback.responses" not in src
     assert "target_timestamp" not in src
 
@@ -166,26 +170,35 @@ def test_calendar_prep_uses_real_mem0_helper():
 
 
 def test_interest_model_filters_feedback_to_up_only(tmp_path, monkeypatch):
-    """A 👎 comment must NOT show up as positive interest signal."""
-    from app.companion import interest_model
-    events_path = tmp_path / "events.jsonl"
-    rows = [
-        {"type": "FEEDBACK", "ts": 9999999999.0,  # always within lookback
-         "payload": {"polarity": "down", "comment": "I dislike forest carbon"}},
-        {"type": "FEEDBACK", "ts": 9999999999.0,
-         "payload": {"polarity": "up", "comment": "love the kaicart angle"}},
-    ]
-    events_path.write_text("\n".join(json.dumps(r) for r in rows))
+    """A 👎 comment must NOT show up as positive interest signal.
 
-    # Repoint the events.jsonl path the function reads.
-    from pathlib import Path
-    from unittest.mock import patch
-    real_path = Path
-    def patched_path(s):
-        if isinstance(s, str) and s == "/app/workspace/companion/events.jsonl":
-            return events_path
-        return real_path(s)
-    monkeypatch.setattr(interest_model, "Path", patched_path)
+    Phase F #1 changed the feedback source from a single events.jsonl
+    to a per-workspace ``events/<ws_id>.jsonl`` walked via
+    ``events.iter_all_workspaces``. We stub that helper directly.
+    """
+    from app.companion import interest_model
+    from app.companion import events as _events
+
+    fake = [
+        _events.Event(
+            workspace_id="ws-1",
+            idea_id="i1",
+            type=_events.EventType.FEEDBACK,
+            ts=9999999999.0,
+            payload={"polarity": "down", "comment": "I dislike forest carbon"},
+        ),
+        _events.Event(
+            workspace_id="ws-2",
+            idea_id="i2",
+            type=_events.EventType.FEEDBACK,
+            ts=9999999999.0,
+            payload={"polarity": "up", "comment": "love the kaicart angle"},
+        ),
+    ]
+    monkeypatch.setattr(
+        _events, "iter_all_workspaces",
+        lambda *, type_filter=None, since_ts=None: fake,
+    )
 
     out = list(interest_model._feedback_events_text(lookback_days=14))
     comments = [text for text, _ in out]

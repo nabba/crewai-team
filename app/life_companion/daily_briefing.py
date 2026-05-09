@@ -208,6 +208,32 @@ def _gather_open_tickets(n: int = 5) -> list[str]:
     return lines
 
 
+def _gather_top_interests(n: int = 5) -> list[str]:
+    """Top-N topics from the interest_model profile (Phase F #6).
+
+    Empty list when the profile hasn't been generated yet — not an
+    error, just means interest_model hasn't run.
+    """
+    try:
+        from app.companion.interest_model import current_profile
+    except Exception:
+        return []
+    try:
+        profile = current_profile()
+    except Exception:
+        return []
+    topics = profile.get("topics") or []
+    out: list[str] = []
+    for t in topics[:n]:
+        if not isinstance(t, dict):
+            continue
+        name = (t.get("name") or "").strip()
+        score = t.get("score")
+        if name and score is not None:
+            out.append(f"  • {name} ({score:.2f})")
+    return out
+
+
 def _gather_companion_surfaced() -> list[str]:
     """Recent companion ideas surfaced to the user (last 24 h). Soft fail."""
     try:
@@ -272,6 +298,7 @@ def _compose_weekly() -> str:
     cal = _gather_calendar_24h()
     tickets = _gather_open_tickets(n=8)
     surfaced = _gather_companion_surfaced()
+    interests = _gather_top_interests(n=5)
 
     parts = ["🗓 Weekly review\n"]
     parts.append("📅 Next 24h:")
@@ -280,6 +307,11 @@ def _compose_weekly() -> str:
     parts.extend(tickets or ["  • (no open tickets)"])
     parts.append("\n💡 Companion surfaced last week:")
     parts.extend(surfaced or ["  • (none)"])
+    if interests:
+        # Phase F #6: only surface interests in the weekly digest —
+        # daily morning/evening cadences don't need this noise.
+        parts.append("\n🧭 Topics you've cared about:")
+        parts.extend(interests)
     return "\n".join(parts)
 
 

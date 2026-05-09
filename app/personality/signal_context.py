@@ -80,13 +80,29 @@ def _mood_from_affect() -> str:
 # ── Circadian segment ─────────────────────────────────────────────────────
 
 
+_CIRCADIAN_TO_TIME_OF_DAY: dict[str, str] = {
+    # SubIA circadian modes → coarse time-of-day strings the concierge
+    # prompt understands. Phase F #4 (2026-05-09): the prior code
+    # imported a non-existent ``current_segment`` and even when caught
+    # by the broad except, the function name's intent was misleading.
+    # Now uses the actual ``current_circadian_mode`` and maps its
+    # output ("active_hours", "deep_work_hours", …) into our four
+    # coarse buckets.
+    "dawn_transition":     "morning",
+    "active_hours":        "afternoon",
+    "deep_work_hours":     "evening",
+    "consolidation_hours": "night",
+}
+
+
 def _time_of_day() -> str:
     """Local hour → coarse segment. Tries SubIA's circadian helper first."""
     try:
-        from app.subia.temporal.circadian import current_segment  # type: ignore[import-not-found]
-        seg = (current_segment() or "").strip().lower()
-        if seg in ("morning", "afternoon", "evening", "night"):
-            return seg
+        from app.subia.temporal.circadian import current_circadian_mode
+        mode = (current_circadian_mode() or "").strip().lower()
+        mapped = _CIRCADIAN_TO_TIME_OF_DAY.get(mode)
+        if mapped:
+            return mapped
     except Exception:
         pass
     hour = datetime.now().hour

@@ -116,7 +116,26 @@ def create_request(
             )
         return cr
 
-    # Validation passed — persist as PENDING.
+    # Validation passed. Phase F #5 (2026-05-09): consult the
+    # rejected-hypothesis lessons KB before persisting so the
+    # operator's review surface includes a "matches lesson X" banner
+    # when the proposal looks like something previously rejected.
+    # Best-effort and non-blocking — KB unavailable / empty is fine.
+    try:
+        from app.companion.lessons_learned import check_against
+        proposal_text = f"{path}: {reason}"
+        matches = check_against(proposal_text, top_k=1)
+        if matches:
+            top = matches[0]
+            cr.reason = (
+                f"{cr.reason}\n\n"
+                f"⚠️ Matches rejected-pattern lesson `{top['id']}` "
+                f"(similarity {top['similarity']:.2f}, seen {top['count']}× "
+                f"before). Sample reason: {top['sample_reason'][:160]}"
+            )
+    except Exception:
+        logger.debug("change_requests: lessons check failed", exc_info=True)
+
     store.save(cr, audit_event="created")
     logger.info(
         "change_requests: created %s by %s for path=%s",

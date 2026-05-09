@@ -30,12 +30,17 @@ def isolated(tmp_path, monkeypatch):
 
 
 def test_per_listener_path_no_alerts_when_fresh(isolated):
+    """All KNOWN listeners present + fresh = no alerts.
+
+    Phase F #9 added missing-heartbeat alerts when SOME heartbeats
+    exist but a known listener has none — so the test now touches
+    every listener in KNOWN_LISTENERS to suppress that path."""
     tmp_path, sent = isolated
     from app.healing import listener_heartbeats
     from app.healing.monitors import listener_heartbeat
 
-    listener_heartbeats.touch("firebase-kb-poll")
-    listener_heartbeats.touch("firebase-mode-poll")
+    for name in listener_heartbeats.KNOWN_LISTENERS:
+        listener_heartbeats.touch(name)
 
     listener_heartbeat.run()
     assert sent == []

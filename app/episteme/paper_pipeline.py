@@ -289,8 +289,56 @@ def _summarize(title: str, abstract: str) -> dict | None:
 # ── Persistence ──────────────────────────────────────────────────────────
 
 
+_PROPOSALS_MAX_LINES = 2000  # Phase F #7: ~3 yrs of weekly digests at 10/wk
+
+
+def _interest_profile_embedding() -> list[float] | None:
+    """Build one centroid embedding from the operator's interest topics.
+
+    Phase F #11 (2026-05-09): replaces the LLM-self-rated relevance
+    score (unreliable — same model that wrote the summary scores its
+    own enthusiasm) with cosine similarity against this centroid.
+    Returns None when interest_model has no profile yet.
+    """
+    try:
+        from app.companion.interest_model import current_profile
+        from app.utils.hash_embedding import embed
+    except Exception:
+        return None
+    profile = current_profile()
+    topics = profile.get("topics") or []
+    if not topics:
+        return None
+    # Concatenate the top topic names, weighted implicitly by frequency
+    # (top-scored topics appear first; the hash-embed sums tokens so
+    # repetition naturally weights them).
+    text = " ".join(
+        (t.get("name") or "") for t in topics[:15]
+        if isinstance(t, dict) and t.get("name")
+    )
+    if not text.strip():
+        return None
+    return embed(text)
+
+
+def _embedding_relevance(paper: dict, profile_emb: list[float] | None) -> float:
+    """Cosine similarity between paper text and the interest centroid.
+
+    Returns 0.0 when no profile is available — caller should fall
+    back to the LLM relevance in that case.
+    """
+    if profile_emb is None:
+        return 0.0
+    try:
+        from app.utils.hash_embedding import embed, cosine
+    except Exception:
+        return 0.0
+    paper_text = f"{paper.get('title', '')}\n\n{paper.get('abstract', '')}"
+    paper_emb = embed(paper_text)
+    return max(0.0, cosine(profile_emb, paper_emb))
+
+
 def _append_proposal(paper: dict, llm_out: dict) -> None:
-    _PROPOSALS_PATH.parent.mkdir(parents=True, exist_ok=True)
     row = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "arxiv_id": paper["id"],
@@ -303,10 +351,12 @@ def _append_proposal(paper: dict, llm_out: dict) -> None:
         "relevance": float(llm_out.get("relevance", 0.0) or 0.0),
     }
     try:
-        with _PROPOSALS_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, sort_keys=True))
-            f.write("\n")
-    except OSError:
+        from app.utils.jsonl_retention import append_with_cap
+        append_with_cap(
+            _PROPOSALS_PATH, json.dumps(row, sort_keys=True),
+            _PROPOSALS_MAX_LINES,
+        )
+    except Exception:
         logger.debug("paper_pipeline: proposal append failed", exc_info=True)
 
 
@@ -345,7 +395,8 @@ def run() -> dict[str, Any]:
     summary["fetched"] = len(papers)
 
     seen = _load_seen()
-    proposals: list[tuple[dict, dict]] = []
+    proposals: list[tuple[dict, dict, float]] = []
+    profile_emb = _interest_profile_embedding()
 
     for p in papers:
         if p["id"] in seen:
@@ -355,27 +406,39 @@ def run() -> dict[str, Any]:
         llm_out = _summarize(p["title"], p["abstract"])
         if not llm_out:
             continue
+        # Phase F #11: embedding similarity is the primary ranking
+        # signal. LLM-self-rated relevance still recorded but used as
+        # tiebreaker (and persisted for audit). When no profile exists
+        # yet, fall back to LLM relevance only.
+        emb_rel = _embedding_relevance(p, profile_emb)
+        llm_rel = float(llm_out.get("relevance") or 0.0)
+        ranking = emb_rel if profile_emb is not None else llm_rel
+        llm_out["embedding_relevance"] = round(emb_rel, 3)
+        llm_out["ranking_score"] = round(ranking, 3)
         _append_proposal(p, llm_out)
         seen[p["id"]] = time.time()
-        proposals.append((p, llm_out))
+        proposals.append((p, llm_out, ranking))
 
     summary["proposed"] = len(proposals)
     _save_seen(seen)
     write_state_json(_STATE_FILE, state)
 
     if proposals:
-        # Top by relevance.
-        proposals.sort(key=lambda t: float(t[1].get("relevance") or 0.0), reverse=True)
+        # Top by combined ranking score.
+        proposals.sort(key=lambda t: t[2], reverse=True)
         lines = [
             f"📚 Paper-to-experiment: {len(proposals)} new arXiv paper(s) "
             f"reviewed against current interests "
             f"({', '.join(terms[:3])}, …):\n"
         ]
-        for p, llm in proposals[:_TOP_DIGEST]:
-            rel = float(llm.get("relevance") or 0.0)
+        for p, llm, ranking in proposals[:_TOP_DIGEST]:
             title = p["title"][:80]
             arxiv_id = p["id"].rsplit("/", 1)[-1]
-            lines.append(f"  • [{arxiv_id}] {title}  (relevance {rel:.2f})")
+            lines.append(
+                f"  • [{arxiv_id}] {title}  "
+                f"(rank {ranking:.2f} · emb {llm.get('embedding_relevance', 0.0):.2f} "
+                f"· llm {float(llm.get('relevance') or 0.0):.2f})"
+            )
             lines.append(f"    {llm.get('summary', '')[:200]}")
             implications = llm.get("implications", []) or []
             if implications:

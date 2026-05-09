@@ -95,6 +95,52 @@ def read_for_idea(workspace_id: str, idea_id: str) -> list[Event]:
     return [e for e in read_all(workspace_id) if e.idea_id == idea_id]
 
 
+def iter_all_workspaces(
+    *, type_filter: EventType | None = None,
+    since_ts: float | None = None,
+) -> list[Event]:
+    """Walk every workspace's event log; yield events newest-first.
+
+    Phase F #1 (2026-05-09): consumers like ``interest_model`` and
+    ``lessons_learned`` need cross-workspace feedback signals; the
+    earlier code looked at a single ``events.jsonl`` that doesn't
+    exist (events are sharded per workspace under
+    ``events/<ws_id>.jsonl``). This helper centralises the walk so
+    the wrong-path bug can't recur.
+
+    Args:
+        type_filter: When set, drop events whose ``type`` doesn't match.
+        since_ts:    When set, drop events older than this epoch second.
+    """
+    if not _EVENTS_DIR.exists():
+        return []
+    out: list[Event] = []
+    for p in _EVENTS_DIR.glob("*.jsonl"):
+        try:
+            text = p.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+                kwargs = {k: raw[k] for k in Event.__dataclass_fields__
+                          if k in raw}
+                if "type" in kwargs:
+                    kwargs["type"] = EventType(kwargs["type"])
+                ev = Event(**kwargs)
+            except Exception:
+                continue
+            if type_filter is not None and ev.type != type_filter:
+                continue
+            if since_ts is not None and ev.ts < since_ts:
+                continue
+            out.append(ev)
+    out.sort(key=lambda e: e.ts, reverse=True)
+    return out
+
+
 def _path_for(workspace_id: str) -> Path:
     safe = "".join(c for c in workspace_id if c.isalnum() or c in "-_") \
         or "default"

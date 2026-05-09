@@ -102,7 +102,10 @@ def _execute_scheduled_task(name: str, task: str) -> None:
     """
     from app.notify import notify_on_complete
 
-    @notify_on_complete(label=f"Schedule: {name}")
+    @notify_on_complete(
+        label=f"Schedule: {name}",
+        metadata={"job_id": f"schedule:{name}"},
+    )
     def _run() -> None:
         # Update last_run
         schedules = _load_schedules()

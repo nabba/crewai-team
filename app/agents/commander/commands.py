@@ -37,6 +37,17 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
     if lower in ("/status", "status"):
         return _signal_status()
 
+    # ── Phase F #10 (2026-05-09) — long-arc commitment management ─────
+    # /commitment list                              show active commitments
+    # /commitment fulfilled <id>                    mark fulfilled
+    # /commitment broken <id>                       mark broken
+    # /commitment deferred <id>                     mark deferred (+mute nudges)
+    # /commitment unmute <id>                       resume long_arc nudges
+    if lower.startswith("/commitment") or lower.startswith("commitment "):
+        sub = _handle_commitment_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -1761,3 +1772,152 @@ def _skill_delete(name: str) -> str:
     if delete_skill(name):
         return f"Deleted skill {name!r}."
     return f"No skill named {name!r}."
+
+
+# ── Long-arc commitment management (Phase F #10) ─────────────────────────
+
+
+def _commitment_help() -> str:
+    return (
+        "Commitment commands:\n"
+        "  /commitment list                show active commitments\n"
+        "  /commitment fulfilled <id>      mark fulfilled (terminal)\n"
+        "  /commitment broken <id>         mark broken (terminal)\n"
+        "  /commitment deferred <id>       defer + mute nudges\n"
+        "  /commitment unmute <id>         resume nudges\n"
+    )
+
+
+def _commitment_list() -> str:
+    """List active commitments with their current status + age."""
+    try:
+        from app.subia.persistence import load_kernel_state
+        from datetime import datetime, timezone
+    except Exception:
+        return "Commitments unavailable: kernel persistence not loaded."
+    try:
+        kernel = load_kernel_state()
+    except Exception:
+        return "Commitments unavailable: kernel state could not be read."
+    commitments = (
+        getattr(getattr(kernel, "self_state", None), "active_commitments", None)
+        or []
+    )
+    if not commitments:
+        return "No active commitments."
+    lines = ["📋 Active commitments:"]
+    now = datetime.now(timezone.utc)
+    for c in commitments:
+        if hasattr(c, "__dict__"):
+            d = dict(c.__dict__)
+        elif isinstance(c, dict):
+            d = dict(c)
+        else:
+            continue
+        cid = d.get("id", "?")
+        desc = (d.get("description") or "")[:80]
+        venture = d.get("venture", "?")
+        status = d.get("status", "active")
+        deadline = d.get("deadline") or "open"
+        lines.append(f"  • [{cid}] ({venture}) {desc} — {status}, due {deadline}")
+    return "\n".join(lines)
+
+
+def _commitment_set_status(
+    commitment_id: str, new_status: str, *, mute: bool = False,
+) -> str:
+    """Update status on a commitment by id. Persists kernel + sets mute flag."""
+    if not commitment_id:
+        return f"Usage: /commitment {new_status} <id>"
+    try:
+        from app.subia.persistence import load_kernel_state, save_kernel_state
+    except Exception:
+        return "Commitments unavailable: kernel persistence not loaded."
+    try:
+        kernel = load_kernel_state()
+    except Exception:
+        return "Commitments unavailable: kernel state could not be read."
+
+    target = None
+    for c in (
+        getattr(getattr(kernel, "self_state", None), "active_commitments", None)
+        or []
+    ):
+        cid = (
+            getattr(c, "id", None)
+            if not isinstance(c, dict) else c.get("id")
+        )
+        if str(cid) == commitment_id:
+            target = c
+            break
+    if target is None:
+        return f"No commitment with id {commitment_id!r}."
+
+    if hasattr(target, "status"):
+        target.status = new_status
+    elif isinstance(target, dict):
+        target["status"] = new_status
+
+    try:
+        save_kernel_state(kernel)
+    except Exception:
+        return "Updated in memory but failed to persist kernel state."
+
+    # Mute the long_arc_follow_up nudges via its state file. The
+    # follow-up module owns the state schema; we just flip the flag.
+    if mute:
+        try:
+            from app.life_companion._common import (
+                read_state_json, write_state_json,
+            )
+            state = read_state_json("long_arc_follow_up.json", {})
+            by_id = state.setdefault("by_commitment", {})
+            entry = by_id.setdefault(commitment_id, {})
+            entry["muted"] = True
+            write_state_json("long_arc_follow_up.json", state)
+        except Exception:
+            logger.debug("commitment: mute write failed", exc_info=True)
+    return f"Commitment {commitment_id!r} marked {new_status}."
+
+
+def _commitment_unmute(commitment_id: str) -> str:
+    if not commitment_id:
+        return "Usage: /commitment unmute <id>"
+    try:
+        from app.life_companion._common import (
+            read_state_json, write_state_json,
+        )
+        state = read_state_json("long_arc_follow_up.json", {})
+        by_id = state.setdefault("by_commitment", {})
+        entry = by_id.setdefault(commitment_id, {})
+        entry["muted"] = False
+        write_state_json("long_arc_follow_up.json", state)
+    except Exception:
+        return "Could not update mute state."
+    return f"Resumed long-arc nudges for {commitment_id!r}."
+
+
+def _handle_commitment_command(user_input: str) -> str | None:
+    """Dispatch ``/commitment <sub> [id]``. Returns response string or
+    None if the subcommand wasn't recognised."""
+    text = user_input.strip()
+    if text.lower().startswith("/commitment"):
+        text = text[len("/commitment"):].strip()
+    elif text.lower().startswith("commitment "):
+        text = text[len("commitment "):].strip()
+    if not text or text.lower() in ("help", "?", "/help"):
+        return _commitment_help()
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+    if sub == "list":
+        return _commitment_list()
+    if sub == "fulfilled":
+        return _commitment_set_status(arg, "fulfilled", mute=True)
+    if sub == "broken":
+        return _commitment_set_status(arg, "broken", mute=True)
+    if sub == "deferred":
+        return _commitment_set_status(arg, "deferred", mute=True)
+    if sub == "unmute":
+        return _commitment_unmute(arg)
+    return _commitment_help()

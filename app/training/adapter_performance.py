@@ -99,6 +99,9 @@ def _read_registry() -> dict[str, dict[str, Any]]:
         return {}
 
 
+_HISTORY_MAX_LINES = 5000  # Phase F #7: ~50 weeks × 100 adapters
+
+
 def _snapshot_to_history(registry: dict[str, dict]) -> int:
     """Append one history row per adapter. Returns count appended."""
     if not registry:
@@ -121,6 +124,12 @@ def _snapshot_to_history(registry: dict[str, dict]) -> int:
                 written += 1
     except OSError:
         logger.debug("adapter_performance: history write failed", exc_info=True)
+    # Phase F #7: cap retention so the JSONL doesn't grow unbounded.
+    try:
+        from app.utils.jsonl_retention import cap_jsonl
+        cap_jsonl(_HISTORY_PATH, _HISTORY_MAX_LINES)
+    except Exception:
+        logger.debug("adapter_performance: history cap failed", exc_info=True)
     return written
 
 
@@ -168,49 +177,71 @@ def _adapter_health(info: dict, now: datetime, quality_gate: float) -> dict:
 
 
 def _recipe_winrate_for_adapter(adapter_name: str, days: int = 7) -> Optional[float]:
-    """Fetch 7-day win-rate of recipes that mention this adapter.
+    """Fetch the recent win-rate across recipes mentioning this adapter.
 
-    The recipe ledger lives in PG; its row shape includes a
-    ``tool_names`` array. We look for adapter_name as a substring.
-    Returns None if PG isn't reachable (treat as no signal).
+    Phase F #2 (2026-05-09): the earlier implementation iterated
+    ``RecipeOutcome.tool_names`` — a field that doesn't exist on
+    ``RecipeOutcome`` (it lives on ``AgentRecipe.extra_tool_names``).
+    The check therefore always returned None and the cross-signal
+    was dead.
+
+    Correct shape:
+
+      1. ``list_recipes`` to find every recipe whose
+         ``extra_tool_names`` mentions ``adapter_name``.
+      2. For each matching recipe, walk its outcomes (the recipe-id
+         join restores the (recipe, outcome) pairing).
+      3. Roll up to a single win-rate over the lookback window.
+
+    Returns None when PG is unavailable, when no recipe mentions the
+    adapter, or when no outcomes fall in the window — in all three
+    cases the caller treats it as "no signal" and ignores.
     """
     try:
-        from app.self_improvement.meta_agent.store import list_outcomes
-    except Exception:
-        return None
-    try:
-        outcomes = list_outcomes(limit=500)
+        from app.self_improvement.meta_agent.store import (
+            list_outcomes, list_recipes,
+        )
     except Exception:
         return None
 
-    # ``list_outcomes`` returns dicts/dataclasses. Be defensive.
+    try:
+        all_recipes = list_recipes(limit=500)
+    except Exception:
+        return None
+
+    matching_recipe_ids: set[str] = set()
+    for r in all_recipes or []:
+        tools = getattr(r, "extra_tool_names", None) or []
+        if any(adapter_name in str(t) for t in tools):
+            rid = getattr(r, "id", None) or getattr(r, "recipe_id", None)
+            if rid:
+                matching_recipe_ids.add(str(rid))
+    if not matching_recipe_ids:
+        return None
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    success = 0
     total = 0
-    for o in outcomes or []:
-        recorded = ""
-        if hasattr(o, "recorded_at"):
-            recorded = getattr(o, "recorded_at") or ""
-        elif isinstance(o, dict):
-            recorded = o.get("recorded_at") or ""
-        ts = _parse_iso(recorded)
-        if ts is None or ts < cutoff:
+    success = 0
+    for rid in matching_recipe_ids:
+        try:
+            outcomes = list_outcomes(rid, limit=200)
+        except Exception:
             continue
-        # Adapter mention check (best-effort; most recipes don't tag adapters).
-        tool_names = []
-        if hasattr(o, "tool_names"):
-            tool_names = getattr(o, "tool_names") or []
-        elif isinstance(o, dict):
-            tool_names = o.get("tool_names") or []
-        if not any(adapter_name in str(tn) for tn in tool_names):
-            continue
-        total += 1
-        success_flag = (
-            getattr(o, "success", False) if not isinstance(o, dict)
-            else bool(o.get("success", False))
-        )
-        if success_flag:
-            success += 1
+        for o in outcomes or []:
+            recorded = (
+                getattr(o, "recorded_at", "")
+                if not isinstance(o, dict) else o.get("recorded_at", "")
+            )
+            ts = _parse_iso(recorded)
+            if ts is None or ts < cutoff:
+                continue
+            total += 1
+            success_flag = (
+                getattr(o, "success", False)
+                if not isinstance(o, dict) else bool(o.get("success", False))
+            )
+            if success_flag:
+                success += 1
     if total == 0:
         return None
     return success / total
@@ -219,10 +250,12 @@ def _recipe_winrate_for_adapter(adapter_name: str, days: int = 7) -> Optional[fl
 # ── Proposal writer ──────────────────────────────────────────────────────
 
 
+_PROPOSALS_MAX_LINES = 1000  # Phase F #7
+
+
 def _write_proposal(adapter_name: str, health: dict, reason: str,
                     action: str) -> None:
     """Append a retirement proposal to the JSONL log."""
-    _PROPOSALS_PATH.parent.mkdir(parents=True, exist_ok=True)
     row = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "adapter_name": adapter_name,
@@ -233,10 +266,12 @@ def _write_proposal(adapter_name: str, health: dict, reason: str,
         "reason": reason, "suggested_action": action,
     }
     try:
-        with _PROPOSALS_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, sort_keys=True))
-            f.write("\n")
-    except OSError:
+        from app.utils.jsonl_retention import append_with_cap
+        append_with_cap(
+            _PROPOSALS_PATH, json.dumps(row, sort_keys=True),
+            _PROPOSALS_MAX_LINES,
+        )
+    except Exception:
         logger.debug("adapter_performance: proposal append failed", exc_info=True)
 
 

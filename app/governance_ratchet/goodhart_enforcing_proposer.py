@@ -234,13 +234,18 @@ def _build_proposal(
     }
 
 
+# Shares retention with auto_propose since both write to the same file.
+_PROPOSALS_MAX_LINES = 1000  # Phase F #7
+
+
 def _append_proposal(proposal: dict) -> None:
-    _PROPOSALS_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with _PROPOSALS_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(proposal, sort_keys=True))
-            f.write("\n")
-    except OSError:
+        from app.utils.jsonl_retention import append_with_cap
+        append_with_cap(
+            _PROPOSALS_PATH, json.dumps(proposal, sort_keys=True),
+            _PROPOSALS_MAX_LINES,
+        )
+    except Exception:
         logger.debug(
             "goodhart_enforcing_proposer: append failed", exc_info=True,
         )

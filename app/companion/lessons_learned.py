@@ -132,42 +132,38 @@ def _from_change_requests(cutoff: datetime) -> list[dict]:
 
 
 def _from_companion_feedback(cutoff: datetime) -> list[dict]:
-    events_path = Path("/app/workspace/companion/events.jsonl")
-    if not events_path.exists():
+    """Walk per-workspace FEEDBACK events; emit thumbs-down rejections.
+
+    Phase F #1 (2026-05-09): events are sharded per workspace under
+    ``workspace/companion/events/<ws_id>.jsonl``. The earlier path
+    pointed at a non-existent single file. Use the
+    ``events.iter_all_workspaces`` helper.
+    """
+    try:
+        from app.companion import events as _events
+    except Exception:
         return []
-    out: list[dict] = []
     cutoff_ts = cutoff.timestamp()
     try:
-        with events_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except Exception:
-                    continue
-                if ev.get("type") != "FEEDBACK":
-                    continue
-                payload = ev.get("payload") or {}
-                if (payload.get("polarity") or "").lower() != "down":
-                    continue
-                ts = float(ev.get("ts") or 0)
-                if ts < cutoff_ts:
-                    continue
-                proposal_text = (payload.get("comment") or "")[:1000]
-                if not proposal_text:
-                    proposal_text = f"idea_id={ev.get('idea_id', '')}"
-                out.append({
-                    "source": "feedback_down",
-                    "ts": datetime.fromtimestamp(
-                        ts, tz=timezone.utc
-                    ).isoformat(),
-                    "proposal_text": proposal_text,
-                    "decision_reason": "operator thumbs-down via Signal/React",
-                })
-    except OSError:
+        rows = _events.iter_all_workspaces(
+            type_filter=_events.EventType.FEEDBACK, since_ts=cutoff_ts,
+        )
+    except Exception:
         return []
+    out: list[dict] = []
+    for ev in rows:
+        payload = ev.payload or {}
+        if (payload.get("polarity") or "").lower() != "down":
+            continue
+        proposal_text = (payload.get("comment") or "")[:1000]
+        if not proposal_text:
+            proposal_text = f"idea_id={ev.idea_id}"
+        out.append({
+            "source": "feedback_down",
+            "ts": datetime.fromtimestamp(ev.ts, tz=timezone.utc).isoformat(),
+            "proposal_text": proposal_text,
+            "decision_reason": "operator thumbs-down via Signal/React",
+        })
     return out
 
 

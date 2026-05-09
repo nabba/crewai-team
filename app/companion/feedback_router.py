@@ -71,11 +71,18 @@ def _write_state(state: dict[str, Any]) -> None:
 
 
 def _fetch_new_events(since_id: str, limit: int = 200) -> list[dict[str, Any]]:
-    """Pull recent rows from ``feedback.events``. Returns [] on error.
+    """Pull recent rows from ``feedback.events`` joined with
+    ``feedback.response_metadata`` so each event carries its
+    ``msg_timestamp``. Returns [] on error.
 
-    Cursor is the row UUID. We sort by ``recorded_at`` desc, ``id`` desc
-    to absorb in-batch insert ordering. The cursor stops scanning once
-    we hit the previously-seen id.
+    Phase F #8 (2026-05-09): the prior implementation ran ONE query
+    per event via ``_resolve_send_ts``. With limit=200 that's 200
+    round-trips per pass. Now folded into a single LEFT JOIN — N+1
+    becomes 1.
+
+    Cursor is the row UUID. We sort by ``recorded_at`` desc, ``id``
+    desc to absorb in-batch insert ordering. The cursor stops scanning
+    once we hit the previously-seen id.
     """
     try:
         from sqlalchemy import create_engine, text  # type: ignore[import-not-found]
@@ -90,18 +97,22 @@ def _fetch_new_events(since_id: str, limit: int = 200) -> list[dict[str, Any]]:
         engine = create_engine(db_url, pool_size=1, max_overflow=1)
         with engine.connect() as conn:
             rows = conn.execute(text(
-                "SELECT id, sender_id, feedback_type, raw_signal, "
-                "       original_task, original_response, crew_used, "
-                "       recorded_at, target_role "
-                "FROM feedback.events "
-                "ORDER BY recorded_at DESC, id DESC "
+                "SELECT e.id, e.sender_id, e.feedback_type, e.raw_signal, "
+                "       e.original_task, e.original_response, e.crew_used, "
+                "       e.recorded_at, e.target_role, rm.msg_timestamp "
+                "FROM feedback.events e "
+                "LEFT JOIN feedback.response_metadata rm "
+                "  ON rm.response_text = e.original_response "
+                " AND (rm.sender_id = e.sender_id OR rm.sender_id IS NULL) "
+                "ORDER BY e.recorded_at DESC, e.id DESC "
                 "LIMIT :lim"
             ), {"lim": limit}).fetchall()
         out: list[dict[str, Any]] = []
         for row in rows:
             row_id = str(row[0])
             if row_id == since_id:
-                break  # seen everything from here back
+                break
+            msg_ts = row[9]
             out.append({
                 "id": row_id,
                 "sender_id": row[1],
@@ -112,11 +123,11 @@ def _fetch_new_events(since_id: str, limit: int = 200) -> list[dict[str, Any]]:
                 "crew_used": row[6] or "",
                 "recorded_at": row[7],
                 "target_role": row[8] or "",
-                # The PG schema doesn't include target_timestamp directly;
-                # we rely on the notify_meta sidechannel for ts→source.
-                # See _resolve_send_ts below.
+                # ``msg_timestamp`` joined in via the JOIN above; consumers
+                # (the dispatcher) read this directly. None when no
+                # response_metadata row exists for this event yet.
+                "msg_timestamp": int(msg_ts) if msg_ts else None,
             })
-        # Reverse so we process oldest→newest (so the cursor advances cleanly).
         out.reverse()
         return out
     except Exception:
@@ -125,44 +136,16 @@ def _fetch_new_events(since_id: str, limit: int = 200) -> list[dict[str, Any]]:
 
 
 def _resolve_send_ts(event: dict[str, Any]) -> Optional[int]:
-    """Find the Signal-cli send timestamp this event reacted to.
+    """Return the Signal-cli send timestamp pre-joined onto the event.
 
-    The IMMUTABLE feedback_pipeline correlates reactions to the
-    original message via ``feedback.response_metadata.msg_timestamp``
-    (see ``app/feedback_pipeline.py:_lookup_response_metadata``). We
-    walk that table by ``(sender_id, response_text)`` to find the
-    matching ``msg_timestamp`` for each event. The ``response_text``
-    column is the same one the pipeline stored on send (truncated to
-    2000 chars) and replicated to ``feedback.events.original_response``
-    on react — so equal-by-prefix is exact.
+    Phase F #8 collapsed the per-event SQL lookup into the
+    ``_fetch_new_events`` JOIN — this function now just reads the
+    ``msg_timestamp`` field that the JOIN populated. Kept as a
+    function (rather than inlining) so existing test stubs that
+    monkeypatch ``_resolve_send_ts`` continue to work.
     """
-    try:
-        from sqlalchemy import create_engine, text  # type: ignore[import-not-found]
-        from app.config import get_settings
-    except Exception:
-        return None
-    s = get_settings()
-    db_url = getattr(s, "mem0_postgres_url", None)
-    if not db_url:
-        return None
-
-    sender_id = event.get("sender_id") or ""
-    response_text = (event.get("original_response") or "")[:2000]
-    if not response_text:
-        return None
-    try:
-        engine = create_engine(db_url, pool_size=1, max_overflow=1)
-        with engine.connect() as conn:
-            row = conn.execute(text(
-                "SELECT msg_timestamp FROM feedback.response_metadata "
-                "WHERE response_text = :resp "
-                "  AND (:sender = '' OR sender_id = :sender) "
-                "ORDER BY msg_timestamp DESC LIMIT 1"
-            ), {"resp": response_text, "sender": sender_id}).fetchone()
-        return int(row[0]) if row and row[0] else None
-    except Exception:
-        logger.debug("feedback_router: response_metadata join failed", exc_info=True)
-        return None
+    ts = event.get("msg_timestamp")
+    return int(ts) if ts else None
 
 
 def _polarity_for(event: dict[str, Any]) -> str:
@@ -183,7 +166,7 @@ def _dispatch(event: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]
     """
     polarity = _polarity_for(event)
     success = polarity == "👍"
-    delivered = {"skill": False, "recipe": False, "companion": False}
+    delivered = {"skill": False, "recipe": False, "companion": False, "job": False}
 
     # ── Skill registry counter ────────────────────────────────────────
     skill_id = metadata.get("skill_id")
@@ -247,6 +230,33 @@ def _dispatch(event: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]
                 exc_info=True,
             )
 
+    # ── Background-job feedback log (Phase F #3) ────────────────────
+    # When a completion-ping carries ``job_id`` metadata (set via
+    # ``notify_on_complete(metadata={"job_id": ...})``), record the
+    # reaction so we can build a per-job satisfaction metric over time.
+    # Sink is a simple JSONL — separate from companion event log
+    # because the scope is system jobs, not workspace ideas.
+    job_id = metadata.get("job_id")
+    if job_id:
+        try:
+            from datetime import datetime, timezone
+            from pathlib import Path
+            log_path = Path("/app/workspace/companion/job_feedback.jsonl")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            row = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "job_id": job_id,
+                "polarity": polarity,
+                "raw_signal": event.get("raw_signal", ""),
+                "event_id": event.get("id", ""),
+            }
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(row, sort_keys=True))
+                f.write("\n")
+            delivered["job"] = True
+        except Exception:
+            logger.debug("feedback_router: job sink failed", exc_info=True)
+
     return delivered
 
 
@@ -255,7 +265,7 @@ def run() -> dict[str, Any]:
     summary: dict[str, Any] = {
         "ran": False, "events_seen": 0, "events_resolved": 0,
         "events_dispatched": 0, "skill_hits": 0, "recipe_hits": 0,
-        "companion_hits": 0, "error": "",
+        "companion_hits": 0, "job_hits": 0, "error": "",
     }
     if not _enabled():
         return summary
@@ -298,6 +308,8 @@ def run() -> dict[str, Any]:
                     summary["recipe_hits"] += 1
                 if delivered["companion"]:
                     summary["companion_hits"] += 1
+                if delivered.get("job"):
+                    summary["job_hits"] += 1
         except Exception:
             logger.debug("feedback_router: per-event dispatch failed", exc_info=True)
         new_cursor = ev["id"]

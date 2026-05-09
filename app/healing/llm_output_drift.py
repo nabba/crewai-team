@@ -206,13 +206,17 @@ def _write_baseline(data: dict) -> None:
         logger.debug("llm_drift: baseline write failed", exc_info=True)
 
 
+_HISTORY_MAX_LINES = 1000  # Phase F #7: weekly probes for ~20 years
+
+
 def _append_history(row: dict) -> None:
-    _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with _HISTORY_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, sort_keys=True))
-            f.write("\n")
-    except OSError:
+        from app.utils.jsonl_retention import append_with_cap
+        append_with_cap(
+            _HISTORY_PATH, json.dumps(row, sort_keys=True),
+            _HISTORY_MAX_LINES,
+        )
+    except Exception:
         logger.debug("llm_drift: history append failed", exc_info=True)
 
 

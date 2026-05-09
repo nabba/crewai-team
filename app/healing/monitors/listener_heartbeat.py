@@ -63,17 +63,28 @@ def _stale_min() -> int:
 def _check_per_listener(now: float, threshold_s: int) -> tuple[list[dict], int]:
     """Walk per-listener heartbeats. Returns (stale_records, total_seen).
 
-    Each ``stale_record`` is ``{name, age_s}``. Caller decides how to
-    alert. Listeners not in ``KNOWN_LISTENERS`` are still checked —
-    extra heartbeats are valid (e.g. an experimental new poller); they
-    just don't trigger absent-warning logic.
+    Each ``stale_record`` is ``{name, age_s}``. ``age_s`` is ``None``
+    when the listener is in ``KNOWN_LISTENERS`` but never produced a
+    heartbeat (Phase F #9, 2026-05-09: previously such cases were
+    invisible — listener crashed before first touch went unnoticed).
+    Listeners NOT in ``KNOWN_LISTENERS`` are checked for staleness only
+    so an experimental new poller doesn't fire absent-warnings.
     """
     seen = list_heartbeats()
+    seen_names = {h["name"] for h in seen}
     stale = [
         {"name": h["name"], "age_s": int(h["age_s"])}
         for h in seen
         if h["age_s"] > threshold_s
     ]
+    # Only fire missing-heartbeat alerts when SOME heartbeats exist —
+    # otherwise the entire heartbeat subsystem may be off (laptop dev,
+    # FIREBASE_ENABLED=0) and every known listener would alert
+    # spuriously.
+    if seen:
+        for known in KNOWN_LISTENERS:
+            if known not in seen_names:
+                stale.append({"name": known, "age_s": None})
     return stale, len(seen)
 
 
@@ -99,7 +110,12 @@ def _check_workspace_proxy(now: float, threshold_s: int) -> tuple[float, str | N
 def _maybe_alert_per_listener(
     stale: list[dict], state: dict, now: float,
 ) -> list[str]:
-    """De-dup per-listener alerts. Returns list of names actually alerted."""
+    """De-dup per-listener alerts. Returns list of names actually alerted.
+
+    Two alert flavours: stale (``age_s`` is an int) and missing
+    (``age_s`` is None — listener in KNOWN_LISTENERS but never
+    produced a heartbeat). Both share the per-listener dedup window.
+    """
     alerted_names: list[str] = []
     last_alerts: dict = state.setdefault("per_listener_last_alert", {})
     for record in stale:
@@ -109,14 +125,23 @@ def _maybe_alert_per_listener(
             continue
         last_alerts[name] = now
         alerted_names.append(name)
-        human_age = f"{record['age_s'] // 60} min"
-        send_signal_alert(
-            f"🔌 Self-heal: listener `{name}` heartbeat stale "
-            f"— {human_age} since last loop iteration "
-            f"(threshold {_stale_min()} min). The listener thread "
-            f"may have crashed or hung.",
-            tag=f"listener_heartbeat:{name}",
-        )
+        if record["age_s"] is None:
+            send_signal_alert(
+                f"🔌 Self-heal: listener `{name}` has produced NO "
+                f"heartbeat — known listener never started, or "
+                f"crashed before its first loop iteration. Other "
+                f"listeners are healthy (heartbeat subsystem on).",
+                tag=f"listener_heartbeat:{name}",
+            )
+        else:
+            human_age = f"{record['age_s'] // 60} min"
+            send_signal_alert(
+                f"🔌 Self-heal: listener `{name}` heartbeat stale "
+                f"— {human_age} since last loop iteration "
+                f"(threshold {_stale_min()} min). The listener thread "
+                f"may have crashed or hung.",
+                tag=f"listener_heartbeat:{name}",
+            )
     return alerted_names
 
 

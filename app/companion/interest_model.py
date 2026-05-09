@@ -170,43 +170,34 @@ def _calendar_titles_text(lookback_days: int) -> Iterable[tuple[str, float]]:
 def _feedback_events_text(lookback_days: int) -> Iterable[tuple[str, float]]:
     """Yield comments from POSITIVE companion FEEDBACK events only.
 
-    Originally this yielded all FEEDBACK comments, but the consumer
-    treats every snippet as a positive-weight contribution. A 👎
-    comment on "forest carbon" was therefore upweighting "forest
-    carbon" in the interest profile — wrong directionality. We now
-    filter to ``polarity == "up"`` so only thumbs-up comments
-    contribute to interest scoring. Negative feedback flows through
-    ``feedback_weights`` (workspace selection) instead.
+    Phase F #1 (2026-05-09): events are sharded per-workspace under
+    ``workspace/companion/events/<ws_id>.jsonl``; the prior single-file
+    path was wrong and silently yielded nothing. We now walk all
+    workspaces via ``events.iter_all_workspaces`` and filter to
+    ``polarity == "up"`` (E4 logic preserved — negative feedback flows
+    through ``feedback_weights`` instead).
     """
-    events_path = Path("/app/workspace/companion/events.jsonl")
-    if not events_path.exists():
+    try:
+        from app.companion import events as _events
+    except Exception:
         return
     cutoff = time.time() - lookback_days * 86400
     try:
-        with events_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line)
-                except Exception:
-                    continue
-                if ev.get("type") != "FEEDBACK":
-                    continue
-                payload = ev.get("payload") or {}
-                if (payload.get("polarity") or "").lower() != "up":
-                    continue
-                ts = float(ev.get("ts", 0))
-                if ts < cutoff:
-                    continue
-                comment = (payload.get("comment") or "").strip()
-                if comment:
-                    age_days = max(0.0, (time.time() - ts) / 86400)
-                    yield (comment, age_days)
+        rows = _events.iter_all_workspaces(
+            type_filter=_events.EventType.FEEDBACK, since_ts=cutoff,
+        )
     except Exception:
-        logger.debug("interest_model: events.jsonl scan failed", exc_info=True)
+        logger.debug("interest_model: events scan failed", exc_info=True)
         return
+    now = time.time()
+    for ev in rows:
+        payload = ev.payload or {}
+        if (payload.get("polarity") or "").lower() != "up":
+            continue
+        comment = (payload.get("comment") or "").strip()
+        if comment:
+            age_days = max(0.0, (now - ev.ts) / 86400)
+            yield (comment, age_days)
 
 
 def _affect_topics_text(lookback_days: int) -> Iterable[tuple[str, float]]:
