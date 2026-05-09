@@ -131,30 +131,45 @@ def approve(
     source: DecisionSource,
     decision_reason: str | None = None,
 ) -> ChangeRequest:
-    """Transition PENDING → APPROVED. Idempotent if already APPROVED.
+    """Transition PENDING|APPLY_FAILED → APPROVED. Idempotent if
+    already APPROVED.
 
     Does NOT apply — caller calls ``apply()`` next. This split lets
     the React UI override → approve → apply in three audit-trail
     steps so each is separately observable.
+
+    Two valid entry statuses:
+      * PENDING       — first-time approval (Signal 👍 or React click)
+      * APPLY_FAILED  — retry path (the API endpoint
+        ``/api/cp/changes/{id}/retry-apply`` and React UI's "Retry
+        apply" button bring the request back to APPROVED so
+        ``apply_change`` accepts it again).  2026-05-09 bug fix —
+        previously this raised ValueError, breaking every retry.
     """
     cr = store.get(request_id)
     if cr is None:
         raise KeyError(f"change_request {request_id!r} not found")
     if cr.status == Status.APPROVED:
         return cr  # idempotent
-    if cr.status != Status.PENDING:
+    if cr.status not in (Status.PENDING, Status.APPLY_FAILED):
         raise ValueError(
             f"cannot approve {request_id!r} in status {cr.status.value}"
         )
+    prior_status = cr.status
     cr.status = Status.APPROVED
     cr.decided_at = _now_iso()
     cr.decided_by = source
     if decision_reason:
         cr.decision_reason = decision_reason
-    store.save(cr, audit_event="approved")
+    audit_event = (
+        "re-approved-for-retry"
+        if prior_status == Status.APPLY_FAILED
+        else "approved"
+    )
+    store.save(cr, audit_event=audit_event)
     logger.info(
-        "change_requests: approved %s by %s",
-        request_id, source.value,
+        "change_requests: %s %s by %s",
+        audit_event, request_id, source.value,
     )
     return cr
 
