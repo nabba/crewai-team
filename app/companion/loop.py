@@ -99,4 +99,18 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.extend(_lc_get_idle_jobs())
     except Exception:
         logger.debug("companion.loop: life_companion jobs skipped", exc_info=True)
+
+    # Phase B (2026-05-09) — closed-loop feedback router.
+    try:
+        from app.companion.feedback_router import run as _feedback_router_run
+        jobs.append(("feedback-router", _feedback_router_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: feedback_router job skipped", exc_info=True)
+
+    # Phase B (2026-05-09) — user-interest model.
+    try:
+        from app.companion.interest_model import run as _interest_run
+        jobs.append(("interest-model", _interest_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: interest_model job skipped", exc_info=True)
     return jobs

@@ -63,7 +63,13 @@ _SKIP_PREFIXES = (
 def apply_concierge(text: str, *, model: Optional[str] = None) -> str:
     """Maybe rewrite ``text`` in the concierge voice. Returns ``text``
     unchanged whenever the wrap is disabled or the heuristics suggest
-    skipping. Never raises — failures fall back to the input."""
+    skipping. Never raises — failures fall back to the input.
+
+    Phase B #5 (2026-05-09): pulls a ``ToneContext`` (mood / time-of-day
+    / top interests) from ``app.personality.signal_context`` and feeds
+    it into the rewriter prompt as a soft hint. The LLM stays free to
+    ignore the hint when it would distort the message; the contract
+    above (preserve facts/length/structure) takes precedence."""
     if not text:
         return text
 
@@ -77,7 +83,21 @@ def apply_concierge(text: str, *, model: Optional[str] = None) -> str:
     if _should_skip(text):
         return text
 
-    return _rewrite_with_llm(text, model=model or DEFAULT_MODEL)
+    tone_hint = _build_tone_hint()
+    return _rewrite_with_llm(
+        text, model=model or DEFAULT_MODEL, tone_hint=tone_hint,
+    )
+
+
+def _build_tone_hint() -> str:
+    """Build a one-line tone hint or '' if context unavailable."""
+    try:
+        from app.personality.signal_context import build_context
+        ctx = build_context()
+        line = ctx.to_prompt_line()
+        return line if line else ""
+    except Exception:
+        return ""
 
 
 # ── Skip heuristics ────────────────────────────────────────────────────────
@@ -123,8 +143,12 @@ it almost verbatim.
 """
 
 
-def _rewrite_with_llm(text: str, *, model: str) -> str:
-    """Call Anthropic with the concierge prompt. Returns ``text`` on any error."""
+def _rewrite_with_llm(text: str, *, model: str, tone_hint: str = "") -> str:
+    """Call Anthropic with the concierge prompt. Returns ``text`` on any error.
+
+    ``tone_hint`` (Phase B #5) is appended to the user message as a
+    one-line soft guidance string. Empty string disables the hint.
+    """
     try:
         from anthropic import Anthropic
     except Exception:
@@ -140,6 +164,16 @@ def _rewrite_with_llm(text: str, *, model: str) -> str:
         logger.debug(f"concierge_wrapper: client init failed: {exc}")
         return text
 
+    user_message = text
+    if tone_hint:
+        user_message = (
+            f"[Context: {tone_hint}]\n"
+            f"Use this context to choose tone (terser when tired/late; "
+            f"warmer when energized/morning). Do not mention the context "
+            f"in the output. Reword the message below.\n\n"
+            f"{text}"
+        )
+
     try:
         # Keep max_tokens proportional to the input — concierge should match
         # the original within ~20%. Cap at 1024 so a runaway expansion
@@ -149,7 +183,7 @@ def _rewrite_with_llm(text: str, *, model: str) -> str:
             model=model,
             max_tokens=budget,
             system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}],
+            messages=[{"role": "user", "content": user_message}],
         )
     except Exception as exc:
         logger.debug(f"concierge_wrapper: LLM call failed: {exc}")

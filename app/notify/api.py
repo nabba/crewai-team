@@ -42,13 +42,33 @@ def notify(
     tag: str = "andrusai",
     signal: bool = True,
     web_push: bool = True,
+    metadata: Optional[dict] = None,
 ) -> dict[str, Any]:
     """Fire-and-forget completion ping. Returns a small delivery summary
-    so callers (and tests) can assert what landed where."""
-    delivered = {"signal": False, "web_push_count": 0}
+    so callers (and tests) can assert what landed where.
+
+    ``metadata`` is optional and used by the feedback-router (Phase B
+    #3, 2026-05-09): when set, the Signal send timestamp is recorded
+    in ``workspace/companion/notify_meta.jsonl`` against the metadata
+    so a later reaction on the message can be correlated back to the
+    skill / recipe / task that produced this ping. Typical keys::
+
+        {"skill_id": "...", "recipe_id": "...",
+         "task_id": "...", "idea_id": "...",
+         "workspace_id": "..."}
+    """
+    delivered: dict[str, Any] = {"signal": False, "web_push_count": 0, "signal_ts": None}
 
     if signal:
-        delivered["signal"] = _send_signal(title, body)
+        ts = _send_signal_with_ts(title, body)
+        delivered["signal"] = ts is not None and ts > 0
+        delivered["signal_ts"] = ts
+        if metadata and ts:
+            try:
+                from app.companion.notify_meta import record as _record_meta
+                _record_meta(ts, metadata)
+            except Exception:
+                logger.debug("notify: meta record failed", exc_info=True)
     if web_push:
         delivered["web_push_count"] = _send_web_push(title, body, url=url, tag=tag)
 
@@ -167,27 +187,34 @@ def _human_duration(seconds: float) -> str:
 
 
 def _send_signal(title: str, body: str) -> bool:
-    """Send a single short message to the configured owner number.
+    """Send a single short message; return True/False. Kept for back-compat."""
+    ts = _send_signal_with_ts(title, body)
+    return ts is not None and ts > 0
 
-    Returns True if Signal-cli accepted the message; False on every kind
-    of failure (no recipient configured, signal-cli down, etc.).
+
+def _send_signal_with_ts(title: str, body: str) -> Optional[int]:
+    """Send a single short message; return the Signal-cli timestamp.
+
+    None on every kind of failure (no recipient, signal-cli down, etc.).
+    The timestamp is what reactions later target — Phase B #3 records
+    it against caller-supplied metadata for the feedback-router.
     """
     try:
         from app.config import get_settings
         from app.signal_client import send_message_blocking
     except Exception:
-        return False
+        return None
     s = get_settings()
     recipient = (s.signal_owner_number or "").strip()
     if not recipient:
-        return False
+        return None
     text = title if not body else f"{title}\n{body}"
     try:
         ts = send_message_blocking(recipient, text)
-        return ts is not None and ts > 0
+        return ts if ts and ts > 0 else None
     except Exception:
         logger.debug("notify._send_signal: send failed", exc_info=True)
-        return False
+        return None
 
 
 def _send_web_push(title: str, body: str, *, url: str, tag: str) -> int:
