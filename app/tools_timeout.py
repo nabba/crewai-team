@@ -86,6 +86,15 @@ _PER_TOOL_OVERRIDES: dict[str, int] = {
     # Knowledge-base searches (pgvector) are fast unless the index is
     # rebuilding.
     "search_knowledge_base": 30,
+    # Google Earth Engine compute over country-scale time-series is
+    # legitimately slow. The default 180s budget killed a real
+    # forest-age-distribution-over-time query at 05:18 → 05:32 on
+    # 2026-05-09; the agent then thrashed on broken MCP code-
+    # interpreters until the janitor killed it at 15 min idle.
+    # 600s (10 min) lets a single Hansen-Global-Forest-Change reduction
+    # over Estonia for 2000–2024 finish without panic; agent-level
+    # tasks still have the 30-min outer wallclock as the hard cap.
+    "gee_run_script": 600,
 }
 
 _installed: bool = False
