@@ -76,7 +76,15 @@ def collect_candidates(now_local_hour: int | None = None) -> list[Candidate]:
         if skip_reason_for_affect:
             _record_skip(st, f"affect:{skip_reason_for_affect}")
             continue
-        candidates.append(Candidate(pid, cfg, st, _affect_weight()))
+        # Phase D #4 (2026-05-09): downweight workspaces with recent 👎.
+        # Decay-bounded multiplier in [0.4, 1.0]; baseline behaviour (1.0)
+        # when no negative feedback exists.
+        try:
+            from app.companion.feedback_weights import current_multiplier
+            fb_multiplier = float(current_multiplier(pid))
+        except Exception:
+            fb_multiplier = 1.0
+        candidates.append(Candidate(pid, cfg, st, _affect_weight() * fb_multiplier))
     return candidates
 
 

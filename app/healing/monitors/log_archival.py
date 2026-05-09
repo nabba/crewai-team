@@ -31,6 +31,7 @@ import gzip
 import logging
 import os
 import shutil
+import tarfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,13 @@ _ERRORS_ARCHIVE_DIR = Path("/app/workspace/logs/archive")
 _AUDIT_JOURNAL_PATH = Path("/app/workspace/audit_journal.json")
 _AUDIT_ARCHIVE_DIR = Path("/app/workspace/audit_archive")
 _AUDIT_ROTATE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+# Phase D #2 (2026-05-09): evolution-run archives. Per-run dirs under
+# ``workspace/shinka_results/`` accumulate forever; we tarball + gzip
+# any older than 90 days into ``workspace/shinka_results/archive/``.
+_EVOLUTION_RUNS_DIR = Path("/app/workspace/shinka_results")
+_EVOLUTION_ARCHIVE_DIR = Path("/app/workspace/shinka_results/archive")
+_EVOLUTION_AGE_DAYS = 90
 
 
 def _retention_days() -> int:
@@ -122,11 +130,59 @@ def _archive_audit_journal() -> dict:
     return summary
 
 
+def _archive_evolution_runs() -> dict:
+    """Tar+gzip per-run dirs older than ``_EVOLUTION_AGE_DAYS`` and delete.
+
+    Phase D #2 (2026-05-09): ShinkaEvolve writes one directory per run
+    under ``workspace/shinka_results/run_<ts>/``. Without retention the
+    dir grows unbounded — each run is ~100KB-2MB plus per-iteration
+    artefacts. Gzipped tarballs land in ``shinka_results/archive/``;
+    the original dir is removed after a successful tar.
+    """
+    summary = {"archived_runs": 0, "bytes_archived": 0}
+    if not _EVOLUTION_RUNS_DIR.exists():
+        return summary
+    _EVOLUTION_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - _EVOLUTION_AGE_DAYS * 86400
+    try:
+        for entry in _EVOLUTION_RUNS_DIR.iterdir():
+            # Skip the archive subdir itself, and any non-run files.
+            if not entry.is_dir():
+                continue
+            if entry.name == "archive":
+                continue
+            try:
+                if entry.stat().st_mtime > cutoff:
+                    continue
+                size_before = sum(
+                    p.stat().st_size for p in entry.rglob("*") if p.is_file()
+                )
+                target = _EVOLUTION_ARCHIVE_DIR / f"{entry.name}.tar.gz"
+                with tarfile.open(target, "w:gz") as tar:
+                    tar.add(entry, arcname=entry.name)
+                shutil.rmtree(entry)
+                summary["archived_runs"] += 1
+                summary["bytes_archived"] += size_before
+            except OSError:
+                logger.debug(
+                    "log_archival: evolution archive failed for %s",
+                    entry, exc_info=True,
+                )
+                continue
+    except OSError:
+        logger.debug(
+            "log_archival: evolution dir scan failed", exc_info=True,
+        )
+    return summary
+
+
 def _purge_old_archives(retention_days: int) -> dict:
     """Delete archive files older than retention_days. Returns count + bytes."""
     summary = {"deleted_files": 0, "bytes_deleted": 0}
     cutoff = time.time() - retention_days * 24 * 3600
-    for d in (_ERRORS_ARCHIVE_DIR, _AUDIT_ARCHIVE_DIR):
+    # The evolution archive runs on its own retention (90 days fixed) —
+    # keep the user-tunable retention only for errors + audit archives.
+    for d in (_ERRORS_ARCHIVE_DIR, _AUDIT_ARCHIVE_DIR, _EVOLUTION_ARCHIVE_DIR):
         if not d.exists():
             continue
         try:
@@ -160,13 +216,19 @@ def run() -> None:
 
     err_summary = _archive_errors_jsonl()
     audit_summary = _archive_audit_journal()
+    evolution_summary = _archive_evolution_runs()
     purge_summary = _purge_old_archives(_retention_days())
 
     audit_event(
         "log_archival_pass",
         rotated_error_files=err_summary["rotated_files"],
-        bytes_archived=err_summary["bytes_archived"] + audit_summary["bytes_archived"],
+        bytes_archived=(
+            err_summary["bytes_archived"]
+            + audit_summary["bytes_archived"]
+            + evolution_summary["bytes_archived"]
+        ),
         audit_journal_rotated=audit_summary["rotated"],
+        evolution_runs_archived=evolution_summary["archived_runs"],
         deleted_old_archives=purge_summary["deleted_files"],
         bytes_deleted=purge_summary["bytes_deleted"],
     )
@@ -174,6 +236,7 @@ def run() -> None:
     state["last_summary"] = {
         "errors": err_summary,
         "audit": audit_summary,
+        "evolution": evolution_summary,
         "purge": purge_summary,
     }
     write_state_json(_STATE_FILE, state)

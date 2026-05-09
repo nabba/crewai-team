@@ -224,6 +224,24 @@ def _dispatch(event: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]
         except Exception:
             logger.debug("feedback_router: companion sink failed", exc_info=True)
 
+    # ── Companion-scheduler weight downgrade (Phase D #4) ───────────
+    # Bias the next-pick away from the workspace whose idea was 👎'd.
+    # 👍 partially counteracts past downvotes (see feedback_weights).
+    if workspace_id:
+        try:
+            from app.companion.feedback_weights import (
+                record_negative, record_positive,
+            )
+            if success:
+                record_positive(workspace_id)
+            else:
+                record_negative(workspace_id)
+        except Exception:
+            logger.debug(
+                "feedback_router: scheduler-weight sink failed",
+                exc_info=True,
+            )
+
     return delivered
 
 

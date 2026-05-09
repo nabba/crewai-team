@@ -130,4 +130,23 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.append(("governance-auto-propose", _gov_run, JobWeight.LIGHT))
     except Exception:
         logger.debug("companion.loop: governance_auto_propose job skipped", exc_info=True)
+
+    # Phase D (2026-05-09).
+    try:
+        from app.governance_ratchet.goodhart_enforcing_proposer import run as _ghe_run
+        jobs.append(
+            ("goodhart-enforcing-proposer", _ghe_run, JobWeight.LIGHT),
+        )
+    except Exception:
+        logger.debug(
+            "companion.loop: goodhart_enforcing_proposer job skipped",
+            exc_info=True,
+        )
+    try:
+        from app.companion.lessons_learned import run as _ll_run
+        jobs.append(("lessons-learned", _ll_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: lessons_learned job skipped", exc_info=True,
+        )
     return jobs

@@ -68,6 +68,7 @@ _DEFAULT_CADENCE_S = {
     "db_backup": 6 * 3600,             # 6 h probe — internal cadence weekly; Wave 0/1 (#A1)
     "silent_regression_detector": 4 * 3600,  # 4 h probe — Phase C #2 (2026-05-09)
     "pattern_learner": 24 * 3600,            # daily probe — Phase C #4 (2026-05-09)
+    "llm_output_drift": 24 * 3600,           # daily probe — Phase D #6 (2026-05-09)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -185,6 +186,14 @@ def _driver() -> None:
         ))
     except Exception:
         logger.debug("monitors: pattern_learner import failed", exc_info=True)
+    try:
+        from app.healing import llm_output_drift
+        monitors.append((
+            "llm_output_drift", llm_output_drift.run,
+            _DEFAULT_CADENCE_S["llm_output_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: llm_output_drift import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

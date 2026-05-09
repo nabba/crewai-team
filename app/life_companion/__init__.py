@@ -61,4 +61,13 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], Any]]:
         )
     except Exception:
         pass
+    # Phase D #5 (2026-05-09) — weekly personalized digest.
+    try:
+        from app.life_companion import personalized_digest
+        jobs.append(
+            ("life-companion-personalized-digest",
+             personalized_digest.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
     return jobs
