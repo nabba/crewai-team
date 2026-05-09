@@ -52,9 +52,20 @@ _in_recovery: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def is_enabled() -> bool:
-    """Off by default. Flip RECOVERY_LOOP_ENABLED=true to activate."""
-    val = os.getenv("RECOVERY_LOOP_ENABLED", "").strip().lower()
-    return val in ("1", "true", "yes", "on")
+    """Off by default. Flip via the React /cp/settings UI (preferred —
+    no restart) or set ``RECOVERY_LOOP_ENABLED=true`` (legacy fallback).
+
+    Runtime-settings wins on a live system. Env var is the test /
+    degraded-boot fallback. The runtime_settings file is seeded from
+    the env value at first boot so an existing ``.env`` setup keeps
+    its current behaviour.
+    """
+    try:
+        from app.runtime_settings import get_recovery_loop_enabled
+        return bool(get_recovery_loop_enabled())
+    except Exception:
+        val = os.getenv("RECOVERY_LOOP_ENABLED", "").strip().lower()
+        return val in ("1", "true", "yes", "on")
 
 
 def _max_attempts() -> int:

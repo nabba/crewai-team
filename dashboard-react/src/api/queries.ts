@@ -486,6 +486,13 @@ export interface RuntimeSettings {
   vision_cu_monthly_cap_usd: number;
   concierge_persona_enabled: boolean;
   tier3_amendment_enabled: boolean;
+  // Self-heal subsystem master switches (Wave 4 follow-up, 2026-05-09)
+  error_runbooks_enabled: boolean;
+  tool_supervisor_enabled: boolean;
+  recovery_loop_enabled: boolean;
+  // Goodhart hard-gate three-way control
+  goodhart_hard_gate_disabled: boolean;
+  goodhart_hard_gate_enforcing: boolean;
 }
 
 export function useRuntimeSettingsQuery() {
@@ -552,6 +559,37 @@ export function useSetGovernanceRatchet() {
       ),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ['governance_ratchet'] }),
+  });
+}
+
+// ── Per-runbook settings (Wave 4 follow-up, 2026-05-09) ───────────────────
+
+export interface RunbookEntry {
+  enabled: boolean;
+  min_recurrence: number;
+  _comment?: string;
+}
+
+export interface RunbookSettings {
+  runbooks: Record<string, RunbookEntry>;
+}
+
+export function useRunbookSettingsQuery() {
+  return useQuery({
+    queryKey: ['runbook_settings'],
+    queryFn: () => api<RunbookSettings>('/config/runbook_settings'),
+  });
+}
+
+export function useToggleRunbook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; enabled: boolean; min_recurrence?: number }) =>
+      api<{ status: string } & RunbookSettings>('/config/runbook_settings', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['runbook_settings'] }),
   });
 }
 

@@ -3,17 +3,31 @@ runtime_settings.py — File-backed runtime state for the personal-agent surface
 
 Holds the toggles the React dashboard can flip without a restart:
 
-    voice_mode                  off | local | cloud
-    vision_cu_enabled           bool
-    vision_cu_monthly_cap_usd   float
-    concierge_persona_enabled   bool
-    tier3_amendment_enabled     bool
+    voice_mode                       off | local | cloud
+    vision_cu_enabled                bool
+    vision_cu_monthly_cap_usd        float
+    concierge_persona_enabled        bool
+    tier3_amendment_enabled          bool
+
+    # Self-heal subsystem master switches (Wave 4 follow-up, 2026-05-09):
+    error_runbooks_enabled           bool
+    tool_supervisor_enabled          bool
+    recovery_loop_enabled            bool
+
+    # Goodhart hard-gate three-way control (Wave 4 follow-up):
+    goodhart_hard_gate_disabled      bool   # emergency disable
+    goodhart_hard_gate_enforcing     bool   # advisory→blocking flip
 
 State is initialised from `Settings` defaults on first read, then persisted
 to ``workspace/runtime_settings.json`` so toggles survive process restarts.
 This is the single read path for any subsystem that needs to know what mode
 the user wants — do NOT read these values directly from `get_settings()`,
 because that returns the env-default and ignores dashboard updates.
+
+Default-seeding policy: the new healing/governance switches default to the
+operator's current ``.env`` value at first read, so flipping the file-backed
+runtime_settings in front of an existing env-true setup doesn't silently
+turn things off. After the JSON file exists, IT is canonical.
 
 Pattern mirrors `app.creative_mode` and `app.llm_mode`, with the added file
 backing because these toggles drive user-facing behaviour and should not
@@ -26,11 +40,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from typing import Any
 
 from app.config import get_settings
 from app.paths import WORKSPACE_ROOT
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Read an env var as a boolean. Used to seed first-time defaults
+    so an existing ``.env`` setup is preserved when the runtime_settings
+    JSON is created."""
+    raw = os.getenv(name, "").strip().lower()
+    if raw in ("true", "1", "yes"):
+        return True
+    if raw in ("false", "0", "no"):
+        return False
+    return default
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +70,23 @@ _cache: dict[str, Any] | None = None
 
 def _defaults() -> dict[str, Any]:
     s = get_settings()
-    # ``tier3_amendment_enabled`` is read defensively because ``Settings``
-    # may not declare it on older deployments — the runtime-settings file
-    # is the single source of truth once written, env is just the seed.
+    # Settings may not declare every key on older deployments — read
+    # defensively. The runtime-settings file is the single source of
+    # truth once written; env vars are just the first-boot seed so an
+    # existing ``.env`` setup isn't silently flipped off.
     return {
         "voice_mode": s.voice_mode,
         "vision_cu_enabled": s.vision_cu_enabled,
         "vision_cu_monthly_cap_usd": float(s.vision_cu_monthly_cap_usd),
         "concierge_persona_enabled": s.concierge_persona_enabled,
         "tier3_amendment_enabled": bool(getattr(s, "tier3_amendment_enabled", False)),
+        # Self-heal subsystem master switches.
+        "error_runbooks_enabled": _env_bool("ERROR_RUNBOOKS_ENABLED", False),
+        "tool_supervisor_enabled": _env_bool("TOOL_SUPERVISOR_ENABLED", False),
+        "recovery_loop_enabled": _env_bool("RECOVERY_LOOP_ENABLED", False),
+        # Goodhart hard-gate three-way control.
+        "goodhart_hard_gate_disabled": _env_bool("GOODHART_HARD_GATE_DISABLED", False),
+        "goodhart_hard_gate_enforcing": _env_bool("GOODHART_HARD_GATE_ENFORCING", False),
     }
 
 
@@ -151,6 +186,70 @@ def set_tier3_amendment_enabled(value: bool) -> None:
     _update({"tier3_amendment_enabled": bool(value)})
     logger.info(
         "runtime_settings: tier3_amendment_enabled set to %s", bool(value),
+    )
+
+
+# ── Self-heal subsystem master switches (2026-05-09) ────────────────────
+
+
+def get_error_runbooks_enabled() -> bool:
+    """Read by ``app.healing.runbooks.runbooks_enabled``."""
+    return bool(_ensure_initialized()["error_runbooks_enabled"])
+
+
+def set_error_runbooks_enabled(value: bool) -> None:
+    _update({"error_runbooks_enabled": bool(value)})
+    logger.info("runtime_settings: error_runbooks_enabled set to %s", bool(value))
+
+
+def get_tool_supervisor_enabled() -> bool:
+    """Read by ``app.tool_runtime.supervisor.is_enabled``."""
+    return bool(_ensure_initialized()["tool_supervisor_enabled"])
+
+
+def set_tool_supervisor_enabled(value: bool) -> None:
+    _update({"tool_supervisor_enabled": bool(value)})
+    logger.info("runtime_settings: tool_supervisor_enabled set to %s", bool(value))
+
+
+def get_recovery_loop_enabled() -> bool:
+    """Read by ``app.recovery.loop.is_enabled``."""
+    return bool(_ensure_initialized()["recovery_loop_enabled"])
+
+
+def set_recovery_loop_enabled(value: bool) -> None:
+    _update({"recovery_loop_enabled": bool(value)})
+    logger.info("runtime_settings: recovery_loop_enabled set to %s", bool(value))
+
+
+# ── Goodhart hard-gate (2026-05-09) ─────────────────────────────────────
+
+
+def get_goodhart_hard_gate_disabled() -> bool:
+    """Emergency disable. Read by
+    ``app.governance._goodhart_hard_gate_disabled``.
+    """
+    return bool(_ensure_initialized()["goodhart_hard_gate_disabled"])
+
+
+def set_goodhart_hard_gate_disabled(value: bool) -> None:
+    _update({"goodhart_hard_gate_disabled": bool(value)})
+    logger.info(
+        "runtime_settings: goodhart_hard_gate_disabled set to %s", bool(value),
+    )
+
+
+def get_goodhart_hard_gate_enforcing() -> bool:
+    """Advisory→blocking flip. Read by
+    ``app.governance._goodhart_hard_gate_enforcing``.
+    """
+    return bool(_ensure_initialized()["goodhart_hard_gate_enforcing"])
+
+
+def set_goodhart_hard_gate_enforcing(value: bool) -> None:
+    _update({"goodhart_hard_gate_enforcing": bool(value)})
+    logger.info(
+        "runtime_settings: goodhart_hard_gate_enforcing set to %s", bool(value),
     )
 
 

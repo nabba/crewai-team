@@ -92,22 +92,37 @@ def effective_quality_minimum() -> float:
 def _goodhart_hard_gate_disabled() -> bool:
     """Emergency disable. When true, the goodhart gate is skipped entirely
     — for incident response when a buggy detector is blocking promotions.
+
+    Runtime-settings wins on a live system (so the React /cp/settings
+    toggle takes effect without restart). Env var is the test / degraded-
+    boot fallback.
     """
-    import os
-    return os.getenv("GOODHART_HARD_GATE_DISABLED", "false").lower() in (
-        "true", "1", "yes",
-    )
+    try:
+        from app.runtime_settings import get_goodhart_hard_gate_disabled
+        return bool(get_goodhart_hard_gate_disabled())
+    except Exception:
+        import os
+        return os.getenv("GOODHART_HARD_GATE_DISABLED", "false").lower() in (
+            "true", "1", "yes",
+        )
 
 
 def _goodhart_hard_gate_enforcing() -> bool:
     """When true, severity='high' BLOCKS promotion. Default OFF: ship
     the gate in advisory mode for ~2 weeks before enforcing so operators
     can characterise false-positive rates first.
+
+    Same runtime-settings → env-fallback hierarchy as
+    ``_goodhart_hard_gate_disabled``.
     """
-    import os
-    return os.getenv("GOODHART_HARD_GATE_ENFORCING", "false").lower() in (
-        "true", "1", "yes",
-    )
+    try:
+        from app.runtime_settings import get_goodhart_hard_gate_enforcing
+        return bool(get_goodhart_hard_gate_enforcing())
+    except Exception:
+        import os
+        return os.getenv("GOODHART_HARD_GATE_ENFORCING", "false").lower() in (
+            "true", "1", "yes",
+        )
 
 
 def _evaluate_goodhart_gate() -> dict:

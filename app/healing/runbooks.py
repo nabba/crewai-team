@@ -62,10 +62,21 @@ _RECURRENCE_WINDOW_HOURS = 24
 
 
 def runbooks_enabled() -> bool:
-    """Master switch. Default off, per the Recovery Loop precedent."""
-    return os.getenv("ERROR_RUNBOOKS_ENABLED", "false").lower() in (
-        "true", "1", "yes",
-    )
+    """Master switch. Default off, per the Recovery Loop precedent.
+
+    Runtime-settings wins on a live system (so the React /cp/settings
+    toggle takes effect without restart). Env var is the test /
+    degraded-boot fallback. The runtime-settings file is seeded from
+    the env value at first boot so an existing ``.env`` setup with
+    ``ERROR_RUNBOOKS_ENABLED=true`` keeps its current behaviour.
+    """
+    try:
+        from app.runtime_settings import get_error_runbooks_enabled
+        return bool(get_error_runbooks_enabled())
+    except Exception:
+        return os.getenv("ERROR_RUNBOOKS_ENABLED", "false").lower() in (
+            "true", "1", "yes",
+        )
 
 
 # ── Registry ───────────────────────────────────────────────────────────────

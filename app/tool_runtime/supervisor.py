@@ -41,8 +41,17 @@ logger = logging.getLogger(__name__)
 
 
 def is_enabled() -> bool:
-    """Master switch. Default off, per the Recovery Loop precedent."""
-    return os.getenv("TOOL_SUPERVISOR_ENABLED", "false").lower() in ("true", "1", "yes")
+    """Master switch. Default off, per the Recovery Loop precedent.
+
+    Runtime-settings wins on a live system (so the React /cp/settings
+    toggle takes effect without restart). Env var is the test /
+    degraded-boot fallback.
+    """
+    try:
+        from app.runtime_settings import get_tool_supervisor_enabled
+        return bool(get_tool_supervisor_enabled())
+    except Exception:
+        return os.getenv("TOOL_SUPERVISOR_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
 def _max_retries() -> int:

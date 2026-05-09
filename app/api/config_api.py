@@ -212,6 +212,9 @@ async def set_runtime_settings_endpoint(request: Request):
         set_voice_mode, set_vision_cu_enabled,
         set_vision_cu_monthly_cap_usd, set_concierge_persona_enabled,
         set_tier3_amendment_enabled,
+        set_error_runbooks_enabled, set_tool_supervisor_enabled,
+        set_recovery_loop_enabled,
+        set_goodhart_hard_gate_disabled, set_goodhart_hard_gate_enforcing,
         snapshot,
     )
 
@@ -226,6 +229,16 @@ async def set_runtime_settings_endpoint(request: Request):
             set_concierge_persona_enabled(bool(payload["concierge_persona_enabled"]))
         if "tier3_amendment_enabled" in payload:
             set_tier3_amendment_enabled(bool(payload["tier3_amendment_enabled"]))
+        if "error_runbooks_enabled" in payload:
+            set_error_runbooks_enabled(bool(payload["error_runbooks_enabled"]))
+        if "tool_supervisor_enabled" in payload:
+            set_tool_supervisor_enabled(bool(payload["tool_supervisor_enabled"]))
+        if "recovery_loop_enabled" in payload:
+            set_recovery_loop_enabled(bool(payload["recovery_loop_enabled"]))
+        if "goodhart_hard_gate_disabled" in payload:
+            set_goodhart_hard_gate_disabled(bool(payload["goodhart_hard_gate_disabled"]))
+        if "goodhart_hard_gate_enforcing" in payload:
+            set_goodhart_hard_gate_enforcing(bool(payload["goodhart_hard_gate_enforcing"]))
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -293,6 +306,89 @@ async def set_governance_ratchet_endpoint(request: Request):
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"status": "ok", "state": state.to_dict()}
+
+
+@router.get("/runbook_settings")
+async def get_runbook_settings_endpoint():
+    """List every registered self-heal runbook with its current
+    ``enabled`` flag, ``min_recurrence``, and operator comment.
+
+    Reads ``workspace/self_heal/runbook_settings.json``. Empty list
+    when the file doesn't exist (no runbooks are configured yet).
+    """
+    import json as _json
+    from pathlib import Path
+    state_path = Path("/app/workspace/self_heal/runbook_settings.json")
+    if not state_path.exists():
+        return {"runbooks": {}}
+    try:
+        return _json.loads(state_path.read_text())
+    except (OSError, _json.JSONDecodeError):
+        raise HTTPException(status_code=500, detail="runbook_settings.json malformed")
+
+
+@router.post("/runbook_settings")
+async def set_runbook_settings_endpoint(request: Request):
+    """Toggle one runbook's ``enabled`` flag.
+
+    Body: ``{"name": "<runbook_name>", "enabled": bool}``. Optionally
+    include ``min_recurrence`` (int) to update the dispatch gate at the
+    same time.
+
+    The dispatcher re-reads ``runbook_settings.json`` on every anomaly,
+    so the change takes effect immediately — no gateway restart.
+    """
+    import json as _json
+    from pathlib import Path
+
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(status_code=429, detail="Too many config changes. Try again later.")
+    payload = await request.json()
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="missing 'name'")
+    if "enabled" not in payload:
+        raise HTTPException(status_code=400, detail="missing 'enabled'")
+
+    state_path = Path("/app/workspace/self_heal/runbook_settings.json")
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    if state_path.exists():
+        try:
+            data = _json.loads(state_path.read_text())
+        except (OSError, _json.JSONDecodeError):
+            data = {"runbooks": {}}
+    else:
+        data = {"runbooks": {}}
+
+    runbooks = data.setdefault("runbooks", {})
+    entry = runbooks.setdefault(name, {})
+    entry["enabled"] = bool(payload["enabled"])
+    if "min_recurrence" in payload:
+        try:
+            mr = int(payload["min_recurrence"])
+            entry["min_recurrence"] = max(1, min(100, mr))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="min_recurrence must be int")
+
+    # Atomic write so a crash mid-update doesn't corrupt the JSON.
+    tmp = state_path.with_suffix(".json.tmp")
+    tmp.write_text(_json.dumps(data, indent=2, sort_keys=True))
+    tmp.replace(state_path)
+
+    # Audit so the operator can grep /cp/audit for who-flipped-what.
+    try:
+        import json as __json
+        from app.audit import log_security_event
+        log_security_event(
+            "runbook_setting_change",
+            __json.dumps({"name": name, "after": entry}),
+        )
+    except Exception:
+        logger.debug("runbook_settings audit log failed", exc_info=True)
+
+    return {"status": "ok", **data}
 
 
 @router.post("/governance_ratchet/relax")

@@ -11,9 +11,12 @@ import {
   useGovernanceRatchetQuery,
   useSetGovernanceRatchet,
   useRelaxGovernanceRatchet,
+  useRunbookSettingsQuery,
+  useToggleRunbook,
   type RuntimeSettings,
   type VoiceMode,
   type GovernanceRatchetThreshold,
+  type RunbookEntry,
 } from '../api/queries';
 import {
   getPushSubscription,
@@ -56,6 +59,8 @@ export function SettingsPage() {
       <ConciergePersonaCard settings={settingsQ.data} />
       <Tier3AmendmentCard settings={settingsQ.data} />
       <GovernanceRatchetCard />
+      <GoodhartHardGateCard settings={settingsQ.data} />
+      <SelfHealSubsystemsCard settings={settingsQ.data} />
       <WebPushCard />
     </div>
   );
@@ -1010,5 +1015,343 @@ function ConciergePersonaCard({ settings }: { settings: RuntimeSettings }) {
       {error && <div className="text-[#f87171] text-sm">{error}</div>}
       {success && <div className="text-[#34d399] text-sm">{success}</div>}
     </div>
+  );
+}
+
+// ── Goodhart hard gate (Wave 3 #2 + Wave 4 React UI) ──────────────────────
+
+type GoodhartMode = 'off' | 'advisory' | 'enforcing';
+
+function modeFor(settings: RuntimeSettings): GoodhartMode {
+  if (settings.goodhart_hard_gate_disabled) return 'off';
+  return settings.goodhart_hard_gate_enforcing ? 'enforcing' : 'advisory';
+}
+
+const GOODHART_OPTIONS: Array<{
+  value: GoodhartMode;
+  label: string;
+  detail: string;
+  badgeColor: string;
+}> = [
+  {
+    value: 'off',
+    label: 'Off (emergency disable)',
+    detail:
+      "Skip the Goodhart gate entirely. Use only when a buggy detector is blocking legitimate promotions. Promotions are evaluated on safety + quality only — no gaming-signal check.",
+    badgeColor: '#f87171',
+  },
+  {
+    value: 'advisory',
+    label: 'Advisory (default)',
+    detail:
+      "Detector runs and records the recent severity in every promotion's audit trail (gate_results.goodhart). Does NOT block. Good for the first ~2 weeks after enabling — lets you characterise the false-positive rate before flipping to enforcing.",
+    badgeColor: '#fbbf24',
+  },
+  {
+    value: 'enforcing',
+    label: 'Enforcing (blocking)',
+    detail:
+      "Severity='high' BLOCKS promotion (severity='medium' / 'low' do not). The gate runs BEFORE safety + quality checks, so a high-severity gaming signal pre-empts everything else. Reason in PromotionResult: \"Goodhart hard gate blocked\".",
+    badgeColor: '#34d399',
+  },
+];
+
+function GoodhartHardGateCard({ settings }: { settings: RuntimeSettings }) {
+  const update = useUpdateRuntimeSettings();
+  const [success, setSuccess] = useState('');
+
+  const currentMode = modeFor(settings);
+
+  const choose = async (next: GoodhartMode) => {
+    if (next === currentMode || update.isPending) return;
+    setSuccess('');
+    const body =
+      next === 'off'
+        ? { goodhart_hard_gate_disabled: true, goodhart_hard_gate_enforcing: false }
+        : next === 'advisory'
+          ? { goodhart_hard_gate_disabled: false, goodhart_hard_gate_enforcing: false }
+          : { goodhart_hard_gate_disabled: false, goodhart_hard_gate_enforcing: true };
+    try {
+      await update.mutateAsync(body);
+      setSuccess(`Goodhart gate → ${next}.`);
+      setTimeout(() => setSuccess(''), 2500);
+    } catch {
+      // surface via update.error
+    }
+  };
+
+  const error = update.error instanceof Error ? update.error.message : '';
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">
+          Goodhart hard gate
+        </h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Reads the goodhart_guard.py severity signal (kept-ratio spikes,
+          category concentration, rollback silence) before each promotion
+          and (when enforcing) blocks promotions while gaming is detected.
+          The gate runs as <em>Gate 0</em> — before safety and quality —
+          so a high-severity block pre-empts everything else. See{' '}
+          <code className="text-[#60a5fa]">app/goodhart_guard.py</code>{' '}
+          for the detection logic.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {GOODHART_OPTIONS.map((opt) => {
+          const active = currentMode === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => choose(opt.value)}
+              disabled={update.isPending}
+              className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                active
+                  ? 'bg-[#60a5fa]/10 border-[#60a5fa]/40 text-[#e2e8f0]'
+                  : 'bg-[#0a0f18] border-[#1e2738] text-[#7a8599] hover:text-[#e2e8f0] hover:border-[#3b4659]'
+              } disabled:opacity-50`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{opt.label}</span>
+                {active && (
+                  <span
+                    className="text-[10px] uppercase tracking-wider"
+                    style={{ color: opt.badgeColor }}
+                  >
+                    Active
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-[#7a8599] mt-1">{opt.detail}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {error && <div className="text-[#f87171] text-sm">{error}</div>}
+      {success && <div className="text-[#34d399] text-sm">{success}</div>}
+    </div>
+  );
+}
+
+// ── Self-heal subsystems (Wave 4 React UI) ────────────────────────────────
+
+interface SubsystemSwitch {
+  key:
+    | 'error_runbooks_enabled'
+    | 'tool_supervisor_enabled'
+    | 'recovery_loop_enabled';
+  label: string;
+  detail: string;
+}
+
+const SELF_HEAL_SWITCHES: SubsystemSwitch[] = [
+  {
+    key: 'error_runbooks_enabled',
+    label: 'Runbook dispatcher',
+    detail:
+      "Pattern-matched error runbooks. When ON, errors_monitor.py anomalies fire registered handlers in app/healing/handlers/ — db_pool_reset, schema-drift CRs, code-drift alerts, etc. 7 safety gates apply (severity / pattern / per-runbook enabled / recurrence threshold / success-rate / concurrency cap / no TIER_IMMUTABLE writes).",
+  },
+  {
+    key: 'tool_supervisor_enabled',
+    label: 'Tool exception supervisor',
+    detail:
+      "Mid-iteration tool exception classifier (rate_limit / auth / network / timeout / schema / unknown). When ON, transient tool failures retry with exp backoff, schema mismatches substitute via the tool registry, and unknown errors soft-fail with diagnostic text. Composes with — does not replace — the recovery loop.",
+  },
+  {
+    key: 'recovery_loop_enabled',
+    label: 'Refusal recovery loop',
+    detail:
+      "Detects refusal-shaped final answers (\"I can't…\" / \"I don't have access…\") and retries via 6 ranked strategies: direct_tool, sandbox_execute, re_route, skill_chain, escalate_tier, forge_queue. Off-by-default because each retry costs an extra LLM call.",
+  },
+];
+
+function SelfHealSubsystemsCard({ settings }: { settings: RuntimeSettings }) {
+  const update = useUpdateRuntimeSettings();
+  const [success, setSuccess] = useState('');
+  const runbookSettingsQ = useRunbookSettingsQuery();
+  const toggleRunbook = useToggleRunbook();
+
+  const toggle = async (key: SubsystemSwitch['key'], next: boolean) => {
+    if (update.isPending) return;
+    setSuccess('');
+    try {
+      await update.mutateAsync({ [key]: next } as Partial<RuntimeSettings>);
+      setSuccess(`${key.replace(/_/g, ' ')} → ${next ? 'on' : 'off'}.`);
+      setTimeout(() => setSuccess(''), 2500);
+    } catch {
+      // surface via update.error
+    }
+  };
+
+  const error = update.error instanceof Error ? update.error.message : '';
+  const runbooks = runbookSettingsQ.data?.runbooks ?? {};
+  const runbookEntries = Object.entries(runbooks).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">
+          Self-heal subsystems
+        </h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Three master switches for the healing infrastructure. Each
+          composes with the others — a full healing pipeline has all
+          three on. Per-runbook overrides for the dispatcher are below
+          (only relevant when <em>Runbook dispatcher</em> is on).
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {SELF_HEAL_SWITCHES.map((sw) => {
+          const enabled = Boolean(settings[sw.key]);
+          return (
+            <label
+              key={sw.key}
+              className={`flex items-start gap-3 cursor-pointer px-3 py-2.5 rounded-lg border ${
+                enabled
+                  ? 'bg-[#34d399]/5 border-[#34d399]/30'
+                  : 'bg-[#0a0f18] border-[#1e2738]'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => toggle(sw.key, e.target.checked)}
+                disabled={update.isPending}
+                className="w-4 h-4 mt-1 accent-[#60a5fa]"
+              />
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-[#e2e8f0]">
+                    {sw.label}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider">
+                    {enabled ? (
+                      <span className="text-[#34d399]">ON</span>
+                    ) : (
+                      <span className="text-[#7a8599]">OFF</span>
+                    )}
+                  </span>
+                </div>
+                <div className="text-xs text-[#7a8599] mt-1">{sw.detail}</div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      {error && <div className="text-[#f87171] text-sm">{error}</div>}
+      {success && <div className="text-[#34d399] text-sm">{success}</div>}
+
+      <div className="pt-3 border-t border-[#1e2738]">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-[#e2e8f0]">
+            Registered runbooks ({runbookEntries.length})
+          </h3>
+          <span className="text-[10px] text-[#7a8599]">
+            {settings.error_runbooks_enabled
+              ? 'Active when dispatcher is ON'
+              : 'Dormant — dispatcher is OFF'}
+          </span>
+        </div>
+        <p className="text-[11px] text-[#7a8599] mt-1">
+          Each runbook has its own <code>enabled</code> flag and{' '}
+          <code>min_recurrence</code> (the dispatcher requires this many
+          occurrences in 24 h before firing). Toggle individual runbooks
+          when you want fine-grained control without disabling the whole
+          dispatcher.
+        </p>
+
+        {runbookSettingsQ.isLoading && (
+          <div className="text-xs text-[#7a8599] mt-2">Loading runbook list…</div>
+        )}
+        {runbookSettingsQ.error && (
+          <div className="text-xs text-[#f87171] mt-2">
+            Could not load runbook list:{' '}
+            {runbookSettingsQ.error instanceof Error
+              ? runbookSettingsQ.error.message
+              : 'unknown'}
+          </div>
+        )}
+
+        <ul className="space-y-1.5 mt-3">
+          {runbookEntries.map(([name, entry]) => (
+            <RunbookRow
+              key={name}
+              name={name}
+              entry={entry}
+              dispatcherOn={settings.error_runbooks_enabled}
+              onToggle={(next) =>
+                toggleRunbook.mutateAsync({ name, enabled: next })
+              }
+              pending={toggleRunbook.isPending}
+            />
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function RunbookRow({
+  name,
+  entry,
+  dispatcherOn,
+  onToggle,
+  pending,
+}: {
+  name: string;
+  entry: RunbookEntry;
+  dispatcherOn: boolean;
+  onToggle: (next: boolean) => Promise<unknown>;
+  pending: boolean;
+}) {
+  const [enabled, setEnabled] = useState(entry.enabled);
+  useEffect(() => {
+    setEnabled(entry.enabled);
+  }, [entry.enabled]);
+
+  const handle = async (next: boolean) => {
+    setEnabled(next);
+    try {
+      await onToggle(next);
+    } catch {
+      setEnabled(!next);
+    }
+  };
+
+  return (
+    <li className="flex items-center gap-3 text-xs px-2 py-1.5 rounded bg-[#0a0f18] border border-[#1e2738]">
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(e) => handle(e.target.checked)}
+        disabled={pending || !dispatcherOn}
+        className="w-3.5 h-3.5 accent-[#60a5fa]"
+      />
+      <span
+        className={`flex-1 font-mono ${
+          enabled && dispatcherOn ? 'text-[#e2e8f0]' : 'text-[#7a8599]'
+        }`}
+      >
+        {name}
+      </span>
+      <span className="text-[10px] text-[#94a3b8]">
+        min_recurrence: <code>{entry.min_recurrence}</code>
+      </span>
+      {entry._comment && (
+        <span
+          title={entry._comment}
+          className="text-[10px] text-[#7a8599] cursor-help"
+        >
+          ⓘ
+        </span>
+      )}
+    </li>
   );
 }

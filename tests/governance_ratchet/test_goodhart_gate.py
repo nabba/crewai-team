@@ -9,7 +9,13 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
-    """Redirect the goodhart report file + ratchet state file."""
+    """Redirect the goodhart report file + ratchet state file.
+
+    The new reader hierarchy in ``governance.py`` prefers
+    ``runtime_settings`` over env vars. We patch the runtime-settings
+    getters directly so tests can flip the gate without depending on
+    runtime-settings init / cache state.
+    """
     from app import goodhart_guard
     from app.governance_ratchet import store as ratchet_store
     from app.governance_ratchet import audit as ratchet_audit
@@ -20,16 +26,34 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(ratchet_store, "_STATE_PATH", tmp_path / "ratchet_state.json")
     monkeypatch.setattr(ratchet_audit, "_AUDIT_PATH", tmp_path / "ratchet_audit.jsonl")
 
-    # Stub Postgres-touching paths in governance.py so tests don't try to
-    # reach a real DB.
+    # Stub Postgres-touching paths in governance.py.
     monkeypatch.setattr("app.governance._check_rate_limit", lambda _s: True)
     monkeypatch.setattr("app.governance._record_promotion", lambda *_a: None)
 
-    # Default: gate disabled-OFF + enforcing-OFF (advisory mode).
+    # Patch runtime-settings getters so tests control the gate directly.
+    # The default state is advisory (both flags False).
+    flags = {"disabled": False, "enforcing": False}
+
+    def _set_disabled(v: bool) -> None:
+        flags["disabled"] = v
+
+    def _set_enforcing(v: bool) -> None:
+        flags["enforcing"] = v
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_disabled",
+        lambda: flags["disabled"],
+    )
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_enforcing",
+        lambda: flags["enforcing"],
+    )
+
+    # Also clear env so the env-fallback path is consistent.
     monkeypatch.delenv("GOODHART_HARD_GATE_DISABLED", raising=False)
     monkeypatch.delenv("GOODHART_HARD_GATE_ENFORCING", raising=False)
 
-    yield tmp_path
+    yield tmp_path, _set_disabled, _set_enforcing
 
 
 def _write_signals(path, severities_with_offsets):
@@ -122,7 +146,7 @@ def test_advisory_phase_does_not_block(isolated):
 
 def test_enforcing_phase_blocks_on_high(isolated, monkeypatch):
     """With enforcing flag ON, severity=high blocks the promotion."""
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
 
     from app.governance import evaluate_promotion
     from app.goodhart_guard import GAMING_REPORT_PATH
@@ -142,7 +166,7 @@ def test_enforcing_phase_passes_on_medium(isolated, monkeypatch):
     when enforcing is on. (Otherwise we'd block on every category-
     concentration warning.)
     """
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
 
     from app.governance import evaluate_promotion
     from app.goodhart_guard import GAMING_REPORT_PATH
@@ -156,8 +180,8 @@ def test_emergency_disable_skips_gate(isolated, monkeypatch):
     """GOODHART_HARD_GATE_DISABLED=true bypasses both phases — for
     incident response when the detector is buggy.
     """
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
-    monkeypatch.setenv("GOODHART_HARD_GATE_DISABLED", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
+    isolated[1](True)  # disabled=True via the runtime-settings stub
 
     from app.governance import evaluate_promotion
     from app.goodhart_guard import GAMING_REPORT_PATH
@@ -171,7 +195,7 @@ def test_emergency_disable_skips_gate(isolated, monkeypatch):
 
 def test_no_signals_no_block(isolated, monkeypatch):
     """Empty / missing report file → severity=none → never blocks."""
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
 
     from app.governance import evaluate_promotion
 
@@ -185,7 +209,7 @@ def test_detector_failure_fails_open(isolated, monkeypatch):
     """If recent_signal_summary raises, the gate fails OPEN — we don't
     let a buggy detector halt every promotion.
     """
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
 
     def _explode(*_a, **_kw):
         raise RuntimeError("detector broken")
@@ -204,7 +228,7 @@ def test_gate_evaluated_before_safety_minimum(isolated, monkeypatch):
     block PRE-EMPTS the safety check — the result reason mentions
     goodhart, not safety.
     """
-    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    isolated[2](True)  # enforcing=True via the runtime-settings stub
 
     from app.governance import evaluate_promotion, PromotionRequest
     from app.goodhart_guard import GAMING_REPORT_PATH
@@ -223,6 +247,103 @@ def test_gate_evaluated_before_safety_minimum(isolated, monkeypatch):
     assert not result.approved
     assert "Goodhart" in result.reason
     assert "Safety gate failed" not in result.reason
+
+
+def test_runtime_settings_overrides_env_for_disabled(monkeypatch):
+    """When runtime_settings says ``disabled=True``, the gate is OFF
+    even with ``GOODHART_HARD_GATE_DISABLED=false`` in env. The React
+    toggle is canonical on a live system.
+    """
+    from app.governance import _goodhart_hard_gate_disabled
+
+    monkeypatch.delenv("GOODHART_HARD_GATE_DISABLED", raising=False)
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_disabled",
+        lambda: True,
+    )
+    assert _goodhart_hard_gate_disabled() is True
+
+
+def test_runtime_settings_overrides_env_for_enforcing(monkeypatch):
+    from app.governance import _goodhart_hard_gate_enforcing
+
+    monkeypatch.delenv("GOODHART_HARD_GATE_ENFORCING", raising=False)
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_enforcing",
+        lambda: True,
+    )
+    assert _goodhart_hard_gate_enforcing() is True
+
+
+def test_env_fallback_when_runtime_settings_unavailable(monkeypatch):
+    """If ``runtime_settings`` raises (corrupted JSON / degraded boot),
+    the env-var fallback keeps the gate switchable.
+    """
+    from app.governance import (
+        _goodhart_hard_gate_disabled, _goodhart_hard_gate_enforcing,
+    )
+
+    def _explode():
+        raise RuntimeError("runtime_settings unavailable")
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_disabled", _explode,
+    )
+    monkeypatch.setattr(
+        "app.runtime_settings.get_goodhart_hard_gate_enforcing", _explode,
+    )
+
+    monkeypatch.setenv("GOODHART_HARD_GATE_DISABLED", "true")
+    monkeypatch.setenv("GOODHART_HARD_GATE_ENFORCING", "true")
+    assert _goodhart_hard_gate_disabled() is True
+    assert _goodhart_hard_gate_enforcing() is True
+
+    monkeypatch.delenv("GOODHART_HARD_GATE_DISABLED")
+    monkeypatch.delenv("GOODHART_HARD_GATE_ENFORCING")
+    assert _goodhart_hard_gate_disabled() is False
+    assert _goodhart_hard_gate_enforcing() is False
+
+
+def test_runbooks_runtime_settings_priority(monkeypatch):
+    """``app.healing.runbooks.runbooks_enabled`` reads runtime_settings
+    first, falls back to env.
+    """
+    from app.healing import runbooks
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_error_runbooks_enabled", lambda: True,
+    )
+    monkeypatch.delenv("ERROR_RUNBOOKS_ENABLED", raising=False)
+    assert runbooks.runbooks_enabled() is True
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_error_runbooks_enabled", lambda: False,
+    )
+    monkeypatch.setenv("ERROR_RUNBOOKS_ENABLED", "true")  # ignored
+    assert runbooks.runbooks_enabled() is False
+
+
+def test_supervisor_runtime_settings_priority(monkeypatch):
+    """``app.tool_runtime.supervisor.is_enabled`` follows the same
+    runtime-settings → env hierarchy.
+    """
+    from app.tool_runtime import supervisor
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_tool_supervisor_enabled", lambda: True,
+    )
+    monkeypatch.delenv("TOOL_SUPERVISOR_ENABLED", raising=False)
+    assert supervisor.is_enabled() is True
+
+
+def test_recovery_loop_runtime_settings_priority(monkeypatch):
+    from app.recovery import loop
+
+    monkeypatch.setattr(
+        "app.runtime_settings.get_recovery_loop_enabled", lambda: True,
+    )
+    monkeypatch.delenv("RECOVERY_LOOP_ENABLED", raising=False)
+    assert loop.is_enabled() is True
 
 
 def test_advisory_records_severity_for_audit(isolated):
