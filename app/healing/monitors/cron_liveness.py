@@ -39,6 +39,10 @@ _JOBS = [
     ("workspace_sync", "workspace/.git/HEAD", 1 * 3600),
     ("retrospective", "workspace/retrospective", 24 * 3600),
     ("self_improve", "workspace/self_improvement", 24 * 3600),
+    # The healing watchdog touches its own footprint every 60 s; if it
+    # goes silent we want to know — converts a fully-silent watchdog
+    # death into a Signal alert. Wave 2 #7, 2026-05-09.
+    ("healing_watchdog", "workspace/healing/watchdog_heartbeat", 60),
 ]
 
 

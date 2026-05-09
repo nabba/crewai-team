@@ -141,18 +141,41 @@ def _driver() -> None:
             return
 
 
+_DAEMON_THREAD_NAME = "healing-monitors"
+
+
+def _is_running() -> bool:
+    """True iff a thread named ``_DAEMON_THREAD_NAME`` is currently alive."""
+    return any(
+        t.name == _DAEMON_THREAD_NAME and t.is_alive()
+        for t in threading.enumerate()
+    )
+
+
 def start() -> None:
-    """Start the daemon driver. Idempotent."""
+    """Start the daemon driver. Truly idempotent — checks thread liveness
+    on every call, so the watchdog can call this to re-spawn after death
+    and the call is safe even if another thread already restarted us.
+
+    The previous implementation gated on a ``_driver_started`` flag that
+    drifted out of sync when the thread died (flag stayed True, no restart
+    was possible). The new path detects death directly via
+    ``threading.enumerate()``.
+    """
     global _driver_started
     if not _enabled():
         logger.info("healing.monitors: disabled via HEALING_MONITORS_ENABLED")
         return
     with _driver_lock:
+        if _is_running():
+            return  # already alive — nothing to do
         if _driver_started:
-            return
+            logger.warning(
+                "healing.monitors: previous daemon thread is dead, re-spawning"
+            )
         _stop_event.clear()
         thread = threading.Thread(
-            target=_driver, name="healing-monitors", daemon=True,
+            target=_driver, name=_DAEMON_THREAD_NAME, daemon=True,
         )
         thread.start()
         _driver_started = True

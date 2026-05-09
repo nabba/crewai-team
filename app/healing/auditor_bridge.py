@@ -303,18 +303,37 @@ def _driver() -> None:
             return
 
 
+_DAEMON_THREAD_NAME = "healing-auditor-bridge"
+
+
+def _is_running() -> bool:
+    """True iff a thread named ``_DAEMON_THREAD_NAME`` is currently alive."""
+    return any(
+        t.name == _DAEMON_THREAD_NAME and t.is_alive()
+        for t in threading.enumerate()
+    )
+
+
 def start() -> None:
-    """Start the bridge daemon. Idempotent."""
+    """Start the bridge daemon. Truly idempotent — checks thread liveness
+    on every call, so the watchdog can safely re-call after a crash and
+    no duplicate threads are spawned if another caller already restarted
+    us.
+    """
     global _started
     if not _enabled():
         logger.info("auditor_bridge: disabled via HEALING_AUDITOR_BRIDGE_ENABLED")
         return
     with _start_lock:
+        if _is_running():
+            return  # already alive
         if _started:
-            return
+            logger.warning(
+                "auditor_bridge: previous daemon thread is dead, re-spawning"
+            )
         _stop_event.clear()
         thread = threading.Thread(
-            target=_driver, name="healing-auditor-bridge", daemon=True,
+            target=_driver, name=_DAEMON_THREAD_NAME, daemon=True,
         )
         thread.start()
         _started = True

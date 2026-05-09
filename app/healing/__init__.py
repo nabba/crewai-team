@@ -57,6 +57,14 @@ try:
 except Exception:
     _log.warning("app.healing: auditor_bridge wiring failed", exc_info=True)
 
+# Watchdog (Wave 2 #7, 2026-05-09) — re-spawns the daemons above when
+# they die. Started LAST so the daemons it watches are already running
+# at first reaper pass.
+try:
+    from app.healing import watchdog as _watchdog  # noqa: F401
+except Exception:
+    _log.warning("app.healing: watchdog wiring failed", exc_info=True)
+
 __all__ = [
     "diagnose_and_fix",
     "log_error",
