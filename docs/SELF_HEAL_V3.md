@@ -296,6 +296,48 @@ comparisons (chroma 768-d ↔ hash 256-d) refuse to compare and
 instead alert "rebase needed" — the dim/scale mismatch would
 otherwise cosine to 0 and fire false-positive drift.
 
+### 18. Restore-drill freshness monitor (Phase H #1, 2026-05-10)
+
+`app/healing/monitors/restore_drill.py` — daily probe that watches
+`workspace/backups/restore_drill_manifest.json` (written by
+`deploy/scripts/restore-drill.sh`).
+
+Closes the gap "backups exist but the restore path has never been
+tested." The monitor never RUNS the drill (compose-from-inside-the-
+gateway risks cross-resource issues) — operator runs it from cron /
+launchd quarterly:
+
+```
+@quarterly cd /path/to/crewai-team && bash deploy/scripts/restore-drill.sh
+```
+
+Alert conditions (14-day per-tag dedup):
+
+* **Manifest missing** → "no drill has ever run" (first-boot case).
+* **Stale** → most recent drill > `RESTORE_DRILL_STALE_DAYS`
+  (default 100 days).
+* **Last-failed** → most recent drill's `all_ok: false`.
+
+The drill itself runs Postgres + Neo4j + ChromaDB into a separate
+compose project (`andrusai-restore-drill`), restores the freshest
+`all_ok` backup set, runs smoke checks (PG row count, Neo4j node
+count, Chroma heartbeat), tears down on success or failure.
+
+### 19. Signal 120-day re-registration keepalive (Phase H #2, 2026-05-10)
+
+`app/healing/monitors/signal_keepalive.py` — 30-day cadence,
+sends a tagged self-message to keep signal-cli registration warm:
+
+```
+[andrusai-keepalive] 2026-05-10T01:23:45+00:00 — registration keepalive (~30d).
+```
+
+The `[andrusai-keepalive]` tag lets the operator filter / mute the
+thread on their phone. After 3 consecutive failed keepalives
+(~90 days) the monitor escalates via Signal alert — composes with
+the existing `signal_heartbeat` (Wave 2 #3) PWA-push + email
+escalation chain.
+
 ---
 
 ## Wiring

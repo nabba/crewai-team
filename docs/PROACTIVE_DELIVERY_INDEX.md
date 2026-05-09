@@ -1,11 +1,12 @@
 # 2026-05-09→10 Proactive-companion + self-evolution sweep
 
-> Index for the seven-phase delivery (Phases A → G) over a 24-hour
-> window. ~13 000 lines of Python + ~3 400 lines of tests + 374
+> Index for the eight-phase delivery (Phases A → H) over a 24-hour
+> window. ~14 000 lines of Python + ~3 500 lines of tests + 394
 > green cross-suite tests.
 >
-> Per-phase change-log lives in PROGRAM.md §28. This file is the
-> reverse map: by-feature → docs that explain it.
+> Per-phase change-log lives in PROGRAM.md §27 (Phase A), §28
+> (B–G), §29 (H). This file is the reverse map: by-feature →
+> docs that explain it.
 
 ---
 
@@ -63,6 +64,10 @@
 | Rejected-hypothesis lessons KB | COMPANION_FEEDBACK_LOOP.md (cross-link) | D #7, F #5 |
 | Auto-propose ratchet UP based on rolling avg | GOVERNANCE_RATCHET.md → "Auto-proposers" | C #5 |
 | Auto-propose Goodhart Advisory → Enforcing flip | GOVERNANCE_RATCHET.md → "Auto-proposers" | D #3 |
+| Restore-drill freshness monitor + quarterly drill script | SELF_HEAL_V3.md → "Restore-drill freshness monitor" | H #1 |
+| Signal 120-day re-registration keepalive | SELF_HEAL_V3.md → "Signal 120-day re-registration keepalive" | H #2 |
+| Idle-scheduler half-open retry on cooldowns | (PROGRAM.md §29.3) | H #3 |
+| Postgres-down on boot bounded retry for mem0 | (PROGRAM.md §29.4) | H #4 |
 
 ### "Operator commands"
 
@@ -93,9 +98,10 @@ more — keep `app/utils/` boring.
 
 ## Master switches
 
-See PROGRAM.md §28.10 for the full table of 18 new env switches.
-Defaults are ON for everything except `HEALING_DB_BACKUP_ENABLED`
-(operator decides whether the gateway is the backup runner).
+See PROGRAM.md §28.10 + §29.5 for the full table of 22 new env
+switches. Defaults are ON for everything except
+`HEALING_DB_BACKUP_ENABLED` (operator decides whether the gateway is
+the backup runner).
 
 The runtime-toggleable switches surface on the React `/cp/settings`
 page; env-var-only switches require a gateway restart.
@@ -104,9 +110,9 @@ page; env-var-only switches require a gateway restart.
 
 ## Tests
 
-* 374 cross-suite tests pass (healing + companion + concierge + fts5
+* 394 cross-suite tests pass (healing + companion + concierge + fts5
   + change_requests).
-* The Phase E / F / G targeted tests (`tests/healing/test_phase_*_
+* The Phase E / F / G / H targeted tests (`tests/healing/test_phase_*_
   followups.py`) pin the bug-fix shapes specifically — a future
   rename of a real-system symbol surfaces here BEFORE production
   silently breaks.
@@ -128,6 +134,13 @@ page; env-var-only switches require a gateway restart.
    (`HEALING_DB_BACKUP_ENABLED=1`) or you run them host-side via
    `deploy/scripts/backup.sh` from cron / launchd. Both write to
    `workspace/backups/` with the same manifest format.
+4. **Restore drill scheduling.** Add to cron / launchd quarterly:
+   ```
+   @quarterly cd /path/to/crewai-team && bash deploy/scripts/restore-drill.sh
+   ```
+   The H1 monitor will Signal-alert at day 100 if no drill has run,
+   so the system is self-reminding even if the cron entry is
+   forgotten.
 
 ---
 
@@ -140,3 +153,22 @@ page; env-var-only switches require a gateway restart.
 * PROGRAM.md §28.4 — Phase E (Phase D audit cleanup; 14 fixes)
 * PROGRAM.md §28.5 — Phase F (Phase A-E delivery audit; 11 fixes)
 * PROGRAM.md §28.6 — Phase G (4 final companion gaps)
+* PROGRAM.md §29 — Phase H (4 silent-failure modes from years-of-uptime audit)
+
+---
+
+## 8 silent-failure modes — final accounting
+
+The original audit identified 8 silent-failure modes for years-of-
+uptime risk. After Phase H, all 8 are closed:
+
+| # | Item | Status | Where |
+|---|------|--------|-------|
+| 1 | Restore-from-backup untested | ✅ DONE | A1 backup engine + H1 quarterly drill |
+| 2 | Google OAuth refresh persist | ✅ DONE | pre-existing (refuted in audit) |
+| 3 | Signal 120-day re-registration | ✅ DONE | H2 keepalive |
+| 4 | Firestore on_snapshot drops silently | ✅ DONE | A3 polling-fallback heartbeat + F9 missing-listener alert |
+| 5 | Sticky 1h cooldowns | ✅ DONE | H3 half-open probes at 1/4, 1/2, 3/4 |
+| 6 | Disk growth unbounded | ✅ DONE | A5/A6/A7 + D2 + F7 + Wave 2 retention monitors |
+| 7 | Postgres-down on boot hangs gateway | ✅ DONE | D1 control_plane + H4 mem0_manager |
+| 8 | Vendor model sunsets blind | ✅ DONE | A4 weekly /v1/models diff + CR filing |

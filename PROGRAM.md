@@ -2521,3 +2521,213 @@ Total: **51 new tests** across 7 files.
   (the breaker just stops the hammering, not the underlying
   auth issue).  Same for MCP server `STUzhy/py_execute_mcp`
   token.
+
+---
+
+## 29. 2026-05-10 — Phase H — close the 8 silent-failure modes
+
+The 24-hour Phase A→G sweep closed most of the years-of-uptime
+audit but left four silent-failure modes from the original 8-item
+list still open. Phase H closes them all in one commit.
+
+The 8 silent-failure modes were:
+
+```
+1. Restore-from-backup is untested            HIGH    — pre-H: PARTIAL
+2. Google OAuth refresh persists              MED→HI  — DONE pre-Phase A (refuted)
+3. Signal 120-day idle re-registration        MED     — pre-H: NOT DONE
+4. Firestore on_snapshot drops silently       HIGH    — DONE in Phase A #A3 (data path)
+5. Sticky 1-hour cooldowns                    MED     — pre-H: PARTIAL (boot-only)
+6. Disk growth unbounded                      HIGH    — DONE across A/D/F + Wave 2
+7. Postgres-down on boot hangs gateway        HIGH    — pre-H: PARTIAL (control_plane only)
+8. Vendor model sunsets blind                 HIGH    — DONE in Phase A #A4
+```
+
+After Phase H: **all 8 closed**.
+
+### 29.1 H1 — restore-drill automation
+
+**Files:**
+* `deploy/scripts/restore-drill.sh` (NEW, 230 LOC).
+* `app/healing/monitors/restore_drill.py` (NEW, 130 LOC).
+
+`restore-drill.sh` is the operator-runnable quarterly drill:
+
+1. Locates the freshest `all_ok` backup set in
+   `workspace/backups/manifest.json` (Postgres + Neo4j + ChromaDB
+   archives that all succeeded together).
+2. Brings up an isolated compose project
+   (`andrusai-restore-drill`) so it never touches the live stack.
+3. Restores Postgres via `psql --set ON_ERROR_STOP=1`, Neo4j via
+   `neo4j-admin database load`, ChromaDB via tar-into-volume.
+4. Smoke-checks: count rows in `control_plane.audit_log`, count
+   nodes in Neo4j, hit ChromaDB heartbeat endpoint.
+5. Tears down the drill stack on success or failure (signal
+   trap).
+6. Updates `workspace/backups/restore_drill_manifest.json`.
+
+The healing monitor runs daily and watches the manifest. Alerts:
+
+* Manifest missing entirely → "no drill has ever run"
+  (`restore_drill:never_run` tag).
+* Most recent drill > `RESTORE_DRILL_STALE_DAYS` (default 100) →
+  "stale" (`restore_drill:stale` tag).
+* `last_drill_ok: false` → "FAILED" (same tag).
+
+14-day per-tag dedup so the alert isn't noisy.
+
+The monitor never RUNS the drill. Two reasons:
+
+1. Compose-from-inside-a-container risks cross-resource issues
+   (volume namespaces, port collisions, kill-the-parent on
+   teardown).
+2. The drill takes minutes; running it from a healing-monitor
+   pass would block the monitor driver thread.
+
+So the drill stays operator-scheduled (cron / launchd) and the
+monitor stays an alerter only.
+
+### 29.2 H2 — Signal 120-day re-registration keepalive
+
+**File:** `app/healing/monitors/signal_keepalive.py` (NEW, 110 LOC).
+
+Signal-cli registrations silently expire after ~4 months of zero
+device activity. Detection only happens when the operator notices
+replies missing — days or weeks later. The fix is a tagged
+"note-to-self" message every 30 days to keep the registration
+warm:
+
+```
+[andrusai-keepalive] 2026-05-10T01:23:45+00:00 — registration keepalive (~30d).
+```
+
+The `[andrusai-keepalive]` tag lets the operator filter or mute
+the thread on their phone. signal-cli treats outbound-to-self as
+valid keepalive traffic.
+
+After 3 consecutive failed keepalives (~90 days) the monitor
+Signal-alerts: "registration may be lost." Composes with the
+existing `signal_heartbeat` (Wave 2 #3) multi-channel escalation
+chain — Signal → PWA push → email after 7 fails.
+
+### 29.3 H3 — idle-scheduler half-open retry
+
+**File modified:** `app/idle_scheduler.py` (~80 LOC added).
+
+The 1-hour cooldown after 3 consecutive failures was sticky:
+transient outage at T+0 → the job stayed frozen until T+60min
+even after the outage cleared at T+5min.
+
+Now the cooldown allows probe attempts at 1/4, 1/2, 3/4 of the
+window:
+
+```
+T+0       cooldown set, skip_until = T+1h
+T+15min   probe 1 allowed → if succeeds, _clear_cooldown(). If fails, cooldown stays.
+T+30min   probe 2 (if not yet succeeded)
+T+45min   probe 3 (if not yet succeeded)
+T+60min   cooldown elapses normally
+```
+
+`_clear_cooldown(name)` wipes:
+
+* `_job_skip_until[name]` (in-memory + dbm via `_persist_clear_skip`)
+* `_job_failure_counts[name]` → 0
+* `_job_half_open_used[name]` (in-memory only — losing on restart
+  is fine; probes re-arm afresh)
+
+In-memory `_job_half_open_used: dict[name, set[float]]` tracks
+which probe-points (0.25 / 0.5 / 0.75) have been consumed for the
+current cooldown window. Each probe-point fires AT MOST ONCE per
+cooldown.
+
+### 29.4 H4 — Postgres-down on boot bounded retry for mem0
+
+**File modified:** `app/memory/mem0_manager.py` (~70 LOC added).
+
+The mem0 client's underlying `psycopg2.connect()` had no timeout.
+A network-unreachable Postgres at boot could hang the gateway
+indefinitely waiting on libpq's default connect timeout (~minutes
+on Linux, longer on stuck DNS).
+
+Two fixes:
+
+1. **`_get_config()`** appends `connect_timeout=N` (env
+   `MEM0_PG_CONNECT_TIMEOUT_S`, default 8 s) to the pgvector URL
+   so libpq honours the cap.
+2. **`get_client()`** retries `Memory.from_config()` 3× with
+   1/3/9 s backoff before marking `_init_failed`. Signal alert on
+   the first degraded boot ("init failed 3× — degraded boot, no
+   persistent memory") so the operator hears about it.
+
+Reproduces the Phase D #1 pattern from `app/control_plane/db.py`
+for the OTHER Postgres consumer in the system. Both PG-using
+modules now have bounded-retry boot paths.
+
+### 29.5 Master switches added
+
+| Variable | Default | What it gates |
+|---|---|---|
+| `RESTORE_DRILL_MONITOR_ENABLED` | `true` | H1 freshness alerter. |
+| `RESTORE_DRILL_STALE_DAYS` | `100` | H1 stale threshold. |
+| `SIGNAL_KEEPALIVE_ENABLED` | `true` | H2 30-day self-message. |
+| `MEM0_PG_CONNECT_TIMEOUT_S` | `8` | H4 libpq connect cap. |
+
+H3 has no env switch — it's a behaviour change in the existing
+idle-scheduler cooldown logic, on for everything that uses the
+scheduler.
+
+### 29.6 Files touched
+
+```
+app/idle_scheduler.py                       # H3 — half-open probes
+app/memory/mem0_manager.py                  # H4 — bounded retry
+app/healing/monitors/__init__.py            # cadence dict + monitor wiring
+app/healing/monitors/restore_drill.py       # H1 (NEW)
+app/healing/monitors/signal_keepalive.py    # H2 (NEW)
+deploy/scripts/restore-drill.sh             # H1 (NEW, executable)
+tests/healing/test_phase_h_followups.py     # H1-H4 pin tests (NEW, 15 tests)
+```
+
+### 29.7 Tests + verification
+
+15 new targeted tests in `tests/healing/test_phase_h_followups.py`:
+
+* H4 — `_get_config` appends connect_timeout (via inspect on
+  the source); 3-retry-then-Signal path on cold-boot failure.
+* H3 — probe allowed at 0.25 fraction; three probes at 0.25/0.5/
+  0.75; no probe right after cooldown set; `_clear_cooldown`
+  wipes all three state stores.
+* H2 — keepalive sends on first run; dedup within 30-day
+  window; alert fires after 3 consecutive failures; respects
+  master switch.
+* H1 — alerts on missing manifest; alerts on stale; alerts on
+  last-failed; quiet on recent-OK; 14-day dedup.
+
+394 cross-suite tests pass (healing + companion + concierge +
+fts5 + change_requests).
+
+### 29.8 Operator action remaining
+
+* **Schedule the restore drill.** Add to cron / launchd
+  quarterly:
+  ```
+  @quarterly cd /path/to/crewai-team && bash deploy/scripts/restore-drill.sh
+  ```
+  The H1 monitor will Signal-alert at day 100 if no drill has
+  run, so the system is self-reminding even if the cron entry is
+  forgotten.
+
+### 29.9 Combined session totals — Phase A → H
+
+* 8 commits over 24 hours.
+* ~14,000 lines of Python + ~3,500 lines of tests added.
+* 394 cross-suite tests passing.
+* 22 silent-failure bugs caught and fixed in the audit cycles E
+  + F.
+* 4 shared utilities extracted (`feed_parser`, `hash_embedding`,
+  `jsonl_retention`, `commands._handle_*`).
+* 22 new operator-tunable env switches; all default ON except
+  backup-related (operator deploys with their preferred runner).
+* All 8 silent-failure modes from the original years-of-uptime
+  audit closed.

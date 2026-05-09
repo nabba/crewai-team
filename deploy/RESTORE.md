@@ -275,17 +275,41 @@ and is the source of truth for "what happened."
 ## Drill cadence
 
 Restore is a procedure, not a fire-drill. Run a **dry restore on a
-scratch compose stack** every quarter:
+scratch compose stack** every quarter using the Phase H #1 drill
+script:
 
 ```bash
-# In a temporary worktree:
-git worktree add /tmp/restore-drill main
-cd /tmp/restore-drill
-cp /path/to/.env .
-cp -r /path/to/workspace/backups workspace/backups
-docker compose up -d postgres neo4j chromadb
-bash deploy/scripts/restore-drill.sh   # not yet shipped — TODO
+cd /path/to/crewai-team
+bash deploy/scripts/restore-drill.sh
 ```
+
+What it does:
+
+* Locates the freshest `all_ok` backup set in
+  `workspace/backups/manifest.json`.
+* Brings up an isolated compose project
+  (`andrusai-restore-drill`) so it never touches the live stack.
+* Restores Postgres + Neo4j + ChromaDB into the drill stack.
+* Smoke-checks: `count(*) FROM control_plane.audit_log`,
+  `MATCH (n) RETURN count(n)`, ChromaDB heartbeat.
+* Tears down the drill stack on success or failure (signal trap).
+* Updates `workspace/backups/restore_drill_manifest.json` with
+  the result.
+
+Schedule it from cron / launchd:
+
+```cron
+@quarterly cd /path/to/crewai-team && bash deploy/scripts/restore-drill.sh
+```
+
+The `restore_drill` healing monitor (Phase H #1) watches the
+manifest. It will Signal-alert at:
+
+* **day 0** — manifest missing (no drill has ever run).
+* **day 100** — most recent drill is stale (default
+  `RESTORE_DRILL_STALE_DAYS=100`).
+* **immediately** — most recent drill failed
+  (`last_drill_ok: false`).
 
 A clean drill = procedure works. A failed drill = fix the procedure
 **before** you need it for real.
