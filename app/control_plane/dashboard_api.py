@@ -1913,6 +1913,241 @@ def chat_send(body: ChatSendBody):
     return {"sender": sender, "message": text, "reply": str(reply)}
 
 
+# ── System status — comprehensive monitoring pane ──────────────────────────
+#
+# Single aggregator endpoint behind /cp/monitor. Probes each subsystem with
+# a short timeout, returns a flat list of status rows the React page groups
+# by category. Credit-exhaustion errors are interpreted via
+# firebase.publish.detect_credit_error and surfaced with their top-up link.
+
+
+def _probe(name: str, category: str, fn, *, link: str | None = None) -> dict:
+    """Run a probe with a soft deadline + uniform error surface."""
+    import time as _t
+    t0 = _t.monotonic()
+    try:
+        result = fn()
+        latency_ms = int((_t.monotonic() - t0) * 1000)
+        if isinstance(result, dict):
+            result.setdefault("name", name)
+            result.setdefault("category", category)
+            result.setdefault("latency_ms", latency_ms)
+            if link and "link" not in result:
+                result["link"] = link
+            return result
+        return {
+            "name": name, "category": category, "status": "ok",
+            "message": str(result) if result else "responding",
+            "latency_ms": latency_ms, "link": link,
+        }
+    except Exception as exc:
+        return {
+            "name": name, "category": category, "status": "error",
+            "message": _interpret_error(exc),
+            "link": _credit_link_for(exc) or link,
+            "latency_ms": int((_t.monotonic() - t0) * 1000),
+        }
+
+
+_KNOWN_ERROR_HINTS: tuple[tuple[str, str], ...] = (
+    ("connection refused", "Service is down or not listening"),
+    ("timeout",            "Service did not respond in time"),
+    ("name or service",    "DNS / hostname unresolved"),
+    ("no route to host",   "Network unreachable"),
+    ("unauthorized",       "Auth failed — check API key / credentials"),
+    ("authentication",     "Auth failed — check API key / credentials"),
+    ("permission denied",  "Auth / permission rejected"),
+    ("forbidden",          "Forbidden — check API key / scopes"),
+    ("insufficient",       "Out of credits — top up to continue"),
+    ("payment required",   "Out of credits — top up to continue"),
+    ("rate_limit",         "Provider rate-limited the request"),
+    ("quota",              "Quota exhausted"),
+    ("402",                "Out of credits — top up to continue"),
+    ("401",                "Auth failed — check API key"),
+    ("403",                "Forbidden — check API key / scopes"),
+    ("404",                "Endpoint not found"),
+    ("429",                "Rate-limited"),
+    ("500",                "Upstream server error"),
+    ("502",                "Upstream gateway error"),
+    ("503",                "Upstream service unavailable"),
+    ("504",                "Upstream gateway timeout"),
+)
+
+
+def _interpret_error(exc: Exception | str) -> str:
+    """Turn raw exceptions into a short human-readable hint."""
+    raw = str(exc).strip()
+    low = raw.lower()
+    for needle, hint in _KNOWN_ERROR_HINTS:
+        if needle in low:
+            return f"{hint} — {raw[:160]}"
+    return raw[:200] or type(exc).__name__ if isinstance(exc, Exception) else raw[:200]
+
+
+def _credit_link_for(exc: Exception | str) -> str | None:
+    """If the exception looks like credit exhaustion, return the
+    provider's top-up URL so the dashboard can render a 'Top up' button."""
+    try:
+        from app.firebase.publish import detect_credit_error, _CREDIT_URLS
+        provider = detect_credit_error(exc)
+        if provider:
+            return _CREDIT_URLS.get(provider)
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/system-status")
+def system_status():
+    """Aggregated monitoring view used by the React /cp/monitor page.
+
+    Each check is a row with ``status ∈ {ok, warn, error}``, a
+    one-line ``message``, an optional ``link`` (used for credit-
+    top-up CTAs), and a measured ``latency_ms``. Probes have a soft
+    timeout and never raise — failures land as ``error`` rows.
+    """
+    checks: list[dict] = []
+
+    # ── Containers ─────────────────────────────────────────────
+    def _pg():
+        from app.control_plane.db import execute_scalar
+        n = execute_scalar("SELECT COUNT(*) FROM control_plane.budgets")
+        return {"status": "ok", "message": f"connected · {n} budget rows"}
+    checks.append(_probe("PostgreSQL (control plane)", "Containers", _pg))
+
+    def _chroma():
+        from app.memory.chromadb_manager import get_client
+        client = get_client()
+        cols = client.list_collections() if client else []
+        return {"status": "ok", "message": f"connected · {len(cols)} collections"}
+    checks.append(_probe("ChromaDB", "Containers", _chroma))
+
+    def _neo4j():
+        from app.subia.belief import neo4j_mirror
+        drv = neo4j_mirror._get_driver()
+        if drv is None:
+            return {"status": "warn", "message": "driver not configured (NEO4J_URL unset?)"}
+        with drv.session() as s:
+            s.run("RETURN 1").consume()
+        return {"status": "ok", "message": "connected"}
+    checks.append(_probe("Neo4j", "Containers", _neo4j))
+
+    def _gateway():
+        return {"status": "ok", "message": "responding (you're reading me)"}
+    checks.append(_probe("Gateway HTTP", "Containers", _gateway))
+
+    # ── Gateways / messaging ───────────────────────────────────
+    def _signal():
+        import urllib.request as _u
+        from app.config import get_settings
+        s = get_settings()
+        url = (s.signal_http_url or "").rstrip("/")
+        if not url:
+            return {"status": "warn", "message": "signal_http_url not configured"}
+        with _u.urlopen(f"{url}/v1/about", timeout=2) as r:
+            ok = r.status == 200
+        return {
+            "status": "ok" if ok else "error",
+            "message": f"daemon responding ({s.signal_owner_number})" if ok else f"http {r.status}",
+        }
+    checks.append(_probe("Signal-cli daemon", "Messaging", _signal))
+
+    def _bridge():
+        import urllib.request as _u
+        from app.config import get_settings
+        s = get_settings()
+        if not s.bridge_enabled:
+            return {"status": "warn", "message": "host bridge disabled (BRIDGE_ENABLED=0)"}
+        url = f"http://{s.bridge_host}:{s.bridge_port}/health"
+        with _u.urlopen(url, timeout=2) as r:
+            ok = r.status == 200
+        return {"status": "ok" if ok else "error", "message": f"port {s.bridge_port}: http {r.status}"}
+    checks.append(_probe("Host bridge", "Messaging", _bridge))
+
+    # ── Internal subsystems ────────────────────────────────────
+    def _idle():
+        from app.idle_scheduler import is_enabled, _currently_running_job
+        running = _currently_running_job
+        if not is_enabled():
+            return {"status": "warn", "message": "background tasks OFF (Settings → Background tasks)"}
+        msg = f"running · current: {running}" if running else "running · idle"
+        return {"status": "ok", "message": msg}
+    checks.append(_probe("Idle scheduler", "Internal", _idle))
+
+    def _self_heal():
+        from app.healing.error_diagnosis import get_recent_errors, get_error_patterns
+        recent = list(get_recent_errors(50) or [])
+        patterns = dict(get_error_patterns() or {})
+        if recent:
+            top = sorted(patterns.items(), key=lambda kv: -kv[1])[:1]
+            top_str = f", top: {top[0][0]}×{top[0][1]}" if top else ""
+            sev = "warn" if recent else "ok"
+            return {"status": sev, "message": f"{len(recent)} recent errors{top_str}"}
+        return {"status": "ok", "message": "no recent errors"}
+    checks.append(_probe("Self-heal journal", "Internal", _self_heal))
+
+    def _budget_reconcile():
+        from app.control_plane.db import execute_one
+        row = execute_one(
+            "SELECT MAX(updated_at) AS last_ts FROM control_plane.budgets WHERE spent_usd > 0"
+        )
+        if not row or not row.get("last_ts"):
+            return {"status": "warn", "message": "no recent reconcile activity"}
+        return {"status": "ok", "message": f"last write {row['last_ts']}"}
+    checks.append(_probe("Budget reconcile", "Internal", _budget_reconcile))
+
+    # ── External services / credit alerts ──────────────────────
+    try:
+        from app.firebase.publish import _active_alerts, _CREDIT_URLS
+        for provider, alert in _active_alerts.items():
+            checks.append({
+                "name": f"{provider.capitalize()} credit",
+                "category": "External services",
+                "status": "error",
+                "message": (alert.get("error") or "credit exhausted")[:200],
+                "link": alert.get("url") or _CREDIT_URLS.get(provider),
+                "since": alert.get("ts"),
+                "latency_ms": 0,
+            })
+        if not _active_alerts:
+            checks.append({
+                "name": "LLM provider credits",
+                "category": "External services",
+                "status": "ok",
+                "message": "no active credit alerts",
+                "link": None,
+                "latency_ms": 0,
+            })
+    except Exception as exc:
+        checks.append({
+            "name": "Credit alerts feed",
+            "category": "External services",
+            "status": "warn",
+            "message": _interpret_error(exc),
+            "link": None,
+            "latency_ms": 0,
+        })
+
+    # ── Roll-up summary (counts + worst status) ────────────────
+    by_cat: dict[str, dict[str, int]] = {}
+    worst = "ok"
+    rank = {"ok": 0, "warn": 1, "error": 2}
+    for c in checks:
+        cat = c.get("category", "Other")
+        st = c.get("status", "ok")
+        bucket = by_cat.setdefault(cat, {"ok": 0, "warn": 0, "error": 0})
+        bucket[st] = bucket.get(st, 0) + 1
+        if rank.get(st, 0) > rank.get(worst, 0):
+            worst = st
+
+    return {
+        "checks": checks,
+        "by_category": by_cat,
+        "overall": worst,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/signal-commands")
 def signal_commands():
     """Hand-curated catalogue of every Signal slash / NL command.

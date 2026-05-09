@@ -58,6 +58,7 @@ export const endpoints = {
     `${CP}/chat/messages?sender=${encodeURIComponent(sender)}&limit=${limit}`,
   chatSend: () => `${CP}/chat/send`,
   signalCommands: () => `${CP}/signal-commands`,
+  systemStatus: () => `${CP}/system-status`,
 
   // Ops (self-heal / anomaly / self-deploy)
   errors: (limit = 20) => `${CP}/errors?limit=${limit}`,

@@ -68,6 +68,9 @@ const BrainstormPage = lazy(() =>
 const ChatPage = lazy(() =>
   import('./components/ChatPage').then((m) => ({ default: m.ChatPage })),
 );
+const MonitorPage = lazy(() =>
+  import('./components/MonitorPage').then((m) => ({ default: m.MonitorPage })),
+);
 const ChangesPage = lazy(() =>
   import('./components/ChangesPage').then((m) => ({ default: m.ChangesPage })),
 );
@@ -132,6 +135,7 @@ export default function App() {
             <Route path="/epistemic" element={<LazyRoute><EpistemicPage /></LazyRoute>} />
             <Route path="/brainstorm" element={<LazyRoute><BrainstormPage /></LazyRoute>} />
             <Route path="/chat" element={<LazyRoute><ChatPage /></LazyRoute>} />
+            <Route path="/monitor" element={<LazyRoute><MonitorPage /></LazyRoute>} />
             <Route path="/changes" element={<LazyRoute><ChangesPage /></LazyRoute>} />
             <Route path="/coding-sessions" element={<LazyRoute><CodingSessionsPage /></LazyRoute>} />
             <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />

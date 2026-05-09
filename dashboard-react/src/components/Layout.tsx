@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/affect', label: 'Affect', icon: '🌡️', exact: false },
   { to: '/epistemic', label: 'Epistemic', icon: '🪞', exact: false },
   { to: '/evolution', label: 'Evolution', icon: '🧬', exact: false },
+  { to: '/monitor', label: 'Monitor', icon: '🩺', exact: false },
   { to: '/ops', label: 'Ops', icon: '🛠️', exact: false },
   { to: '/llms', label: 'LLMs', icon: '🤖', exact: false },
   { to: '/knowledge', label: 'Knowledge', icon: '📚', exact: false },

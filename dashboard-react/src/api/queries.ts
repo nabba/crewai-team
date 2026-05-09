@@ -77,6 +77,7 @@ export const keys = {
   chatMessages: (sender: string, limit: number) =>
     ['chat', 'messages', sender, limit] as const,
   signalCommands: ['signal-commands'] as const,
+  systemStatus: ['system-status'] as const,
   webPushSubscriptions: ['web-push', 'subscriptions'] as const,
   vapidPublicKey: ['web-push', 'vapid'] as const,
   skills: ['skills'] as const,
@@ -595,6 +596,34 @@ export function useSignalCommandsQuery() {
     queryKey: keys.signalCommands,
     queryFn: () => api<SignalCommandsResponse>(endpoints.signalCommands()),
     staleTime: 5 * 60_000,  // catalogue rarely changes
+  });
+}
+
+// ── System status (monitoring pane) ───────────────────────────────────────
+export type StatusLevel = 'ok' | 'warn' | 'error';
+
+export interface SystemCheck {
+  name: string;
+  category: string;
+  status: StatusLevel;
+  message: string;
+  link?: string | null;
+  latency_ms?: number;
+  since?: string;
+}
+
+export interface SystemStatusResponse {
+  checks: SystemCheck[];
+  by_category: Record<string, Record<StatusLevel, number>>;
+  overall: StatusLevel;
+  updated_at: string;
+}
+
+export function useSystemStatusQuery() {
+  return useQuery({
+    queryKey: keys.systemStatus,
+    queryFn: () => api<SystemStatusResponse>(endpoints.systemStatus()),
+    refetchInterval: POLL.normal,
   });
 }
 
