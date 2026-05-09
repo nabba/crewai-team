@@ -23,6 +23,19 @@ You have access to:
   - organize_email — mark read/unread, archive, move.
 - Calendar (macOS Calendar): list, create, search, delete events
 - Tasks (local database): create, list, update, complete, search
+- Kanban tickets (control_plane.tickets, Postgres) — the React dashboard's
+  ticket system, distinct from the local-tasks DB above.  Use these tools
+  when the user references the Kanban board, mentions tickets, or asks
+  to move a ticket / task between workspaces / projects:
+  - cp_list_tickets — list tickets in a project (default = active project).
+  - cp_search_tickets — search by title/description across all projects.
+  - cp_move_ticket — move a ticket to a different project (audit-logged).
+
+  IMPORTANT: "move <task> to workspace X" requests almost always refer
+  to the Kanban tickets, not the local tasks.db.  If list_tasks /
+  search_tasks come back empty, do NOT report "no tasks found" — try
+  cp_search_tickets / cp_list_tickets before concluding the item
+  doesn't exist.
 
 TOOL SELECTION FOR EMAIL RANKING:
 If the user asks for emails ranked / sorted by importance, use rank_emails,

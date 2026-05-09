@@ -1018,3 +1018,249 @@ came in on — zero changes needed at the call sites.
 - Slash commands on Discord are plain text — registering them as
   native Discord slash commands needs a separate developer-portal
   setup (deferred).
+
+
+## 21. 2026-05 Workspace-routing remediation (PRs #67 → #72)
+
+**Trigger.** 2026-05-09 morning Signal log:
+
+```
+1:26 AM   me:  Switch to workspace eesti mets
+1:26 AM   bot: Switched to project: Eesti mets —     ← correct
+1:36 AM   me:  please write a 5-page essay about estonian forest
+1:41 AM   bot: <returns the essay>                   ← but ticket → PLG
+─── (gateway restart overnight) ───
+8:18 AM   me:  Please make a graphic about the change of forest age
+              distribution over time in Estonia
+              ↳ ran 20 min, 0 tokens, no output, ticket → PLG
+8:22 AM   me:  what is the current workspace?
+8:22 AM   bot: Project: PLG                          ← gateway forgot the switch
+8:25 AM   me:  react app shows that previous task about forest age
+              is appearing in PLG to do list
+8:25 AM   bot: That's a bug — want me to move it?
+8:25 AM   me:  Yes please
+8:26 AM   bot: I attempted to locate the task ... the database
+              returned no tasks                      ← hallucination
+```
+
+Three intertwined symptoms; one operator demand: **never let a task
+silently land in the wrong workspace, and always ask before
+switching**. Closed across six PRs.
+
+### 21.1 The six PRs
+
+| PR | Concern | Scope |
+|---|---|---|
+| **#67** | Active project lost across gateway restart | `ProjectManager._active_project_id` was pure class-level state. Persist `(project_id, source)` to `workspace/control_plane/active_project.json` via `JsonStore`; lazy-restore on first read with project-existence verification; auto-detector picks also persist. 13 tests. |
+| **#68** | `gee_run_script` 180 s budget too short for country-scale Earth Engine compute (the agent tried, timed out at 180 s, fell through to broken MCP code-interpreters, janitor killed it at 15 min idle, $0 cost / 0 tokens) | Add `"gee_run_script": 600` to `_PER_TOOL_OVERRIDES` in `app/tools_timeout.py`. Hansen-GFC reduction over Estonia 2000–2024 fits in 10 min. 6 tests freezing the override table. |
+| **#69** | Auto-detector blind to forest queries; PLG over-claimed bare geographies (`estonia`, `baltic`, `latvia`, `lithuania`) | Add `eesti_mets` profile + workspace dir + keyword list (forest / deforestation / hansen / landsat / sentinel / earth engine / biodiversity / RMK / kaitseala). Tighten PLG to brand + ticketing terms only. 15 tests including disambiguation. |
+| **#71** | KaiCart / Archibal / PLG keyword lists too narrow to match the operator's described topics | Expand all three: KaiCart catches Asian / SEA e-commerce + Vietnam / Indonesia / Philippines / Malaysia / Singapore + Shopee / Lazada / Shopify + marketplace + dropshipping; Archibal catches AI provenance + content credentials + deepfake + watermarking + PKI; PLG catches box office / festival / tour / promoter / event ticketing. 18 tests. |
+| **#72** | Mode-1 silent auto-switch (when no explicit user pick) was misrouting first-task-in-session | Collapse to two modes: detected ≠ current → propose via Signal, always; match or none → no-op. The `has_recent_decision` dedup window prevents re-asking. 6 source-grep + propose-contract tests. |
+| #66 *(prior week)* | Brainstorm signal_handler's active-session capture swallowed every commander command | Escape allowlist: `switch (to) (project|workspace) ...`, status questions, slash commands, bare tokens fall through. Same family of "user typed a command, system swallowed it" bugs. |
+
+### 21.2 What this changes for the operator
+
+End-state behaviour:
+
+| Situation | Result |
+|---|---|
+| User explicitly switches via Signal command | Persisted to disk; survives restart |
+| User on any workspace, types something matching a different one | 💡 Signal proposal "switch to *X*? 👍 / 👎" |
+| Detection matches current | No-op (silent) |
+| No keyword match (generic question) | No-op (silent) |
+| `gee_run_script` runs >3 min on country-scale compute | Continues until 10 min wallclock (was: killed at 3 min) |
+| `has_recent_decision` window after 👎 | Same proposal won't re-ask for ~30 min |
+
+The whole class of "silently misrouted task" failure can no longer
+recur — every workspace switch goes through explicit confirmation
+now (or persists from an earlier confirmation).
+
+### 21.3 Files touched
+
+```
+app/control_plane/projects.py            # PR #67 — persistence + lazy-restore
+app/tools_timeout.py                     # PR #68 — gee budget bump
+app/project_isolation.py                 # PR #69, #71 — keyword lists
+app/main.py                              # PR #72 — two-mode auto-detect
+workspace/projects/eesti_mets/           # PR #69 — profile dir
+tests/test_active_project_persistence.py # PR #67 — 13 tests
+tests/test_tools_timeout_overrides.py    # PR #68 — 6 tests
+tests/test_eesti_mets_detection.py       # PR #69 — 15 tests
+tests/test_all_workspace_detection.py    # PR #71 — 18 tests
+tests/test_main_auto_detect_always_asks.py  # PR #72 — 6 tests
+```
+
+Total: ~58 new tests across the routing surface, all green at
+merge time.
+
+### 21.4 Out of scope (deferred to follow-ups)
+
+* ~~**Move-ticket tool.**~~ ✅ Closed in §22 below.
+* **Broken MCP code-interpreter fallback servers.** When
+  `gee_run_script` timed out, the agent fell through to four MCP
+  servers (codeinterpreter / Gorav22/terminusai /
+  togethercomputer/mcp-server-tci / computesdk) — three needed
+  unconfigured tokens (401), one was 404. The `mcp_search_servers`
+  / `mcp_add_server` agent tools should pre-validate auth before
+  reporting "added successfully" so the agent doesn't keep
+  retrying broken servers. Separate concern.
+* **Proposal message richness.** The current message format
+  ("This message looks like it might belong to *X*") is plain.
+  Could include the keyword(s) that triggered the match — useful
+  when the user is surprised by the detection. Defer until the
+  current rule produces enough confused-user signal to justify.
+
+
+## 22. 2026-05 Cross-project ticket move (closing §21.4 follow-up)
+
+**Trigger.** Same 2026-05-09 Signal log as §21, lines 8:25–8:26:
+
+```
+8:25 AM   me:  react app shows that previous task about forest age
+              is appearing in PLG to do list
+8:25 AM   bot: That's a bug — want me to move it?
+8:25 AM   me:  Yes please
+8:26 AM   bot: I attempted to locate the task ... the database
+              returned no tasks                      ← hallucination
+```
+
+§21 fixed the routing layer (active project survives restart, the
+auto-detector proposes instead of silently switching, KaiCart /
+Archibal / PLG / eesti_mets keyword lists are tight). It did **not**
+fix the agent's ability to *move* a misrouted ticket — when the
+operator said "yes please move it," the agent searched
+`/app/workspace/tasks.db` (PIM SQLite, no `project_id` column),
+came back empty, and confidently reported "no tasks." The two real
+misrouted tickets were patched manually via raw SQL `UPDATE`. §22
+closes that loop.
+
+### 22.1 Root cause
+
+There are two ticket systems in the codebase, distinct in schema
+and surface:
+
+| Store | What it is | Has `project_id`? | Agent tooling |
+|---|---|---|---|
+| `/app/workspace/tasks.db` (SQLite) | PIM-style local tasks. Surfaced via `app/tools/task_tools.py` (`create_task`, `list_tasks`, `complete_task`, `update_task`, `search_tasks`). | No | Wired into PIM agent. |
+| `control_plane.tickets` (Postgres) | The React Kanban / Signal-message tickets. Source of truth for "what tickets is the dashboard rendering." | Yes (`project_id` UUID FK to `control_plane.projects`). | **Pre-§22: none. The agent had no surface here.** |
+
+So the agent was answering ticket-shaped questions out of the wrong
+store. Even with §21's fixes in place, *moving* a Postgres ticket
+between projects was impossible from inside the agent loop.
+
+### 22.2 Three changes, in dependency order
+
+**(a) New TicketManager method.** `app/control_plane/tickets.py`
+gains `move_ticket(ticket_id, target_project_name) -> dict | None`.
+Resolves the project via case-insensitive `ProjectManager.get_by_name`
+(mirroring the `switch` path's case-handling), updates
+`control_plane.tickets.project_id`, audit-logs as `ticket.moved`
+with both `from_project_id` and the canonical target name in the
+detail blob. Returns `None` if either side isn't found — callers
+translate to LLM-friendly error strings.
+
+The audit log shape mirrors `complete()` and `fail()` —
+`actor="user"` (it's user-initiated), `resource_type="ticket"`,
+`resource_id=str(ticket_id)`. The detail JSON carries the routing
+forensics (`from_project_id` / `to_project_id` / `to_project_name`)
+so the audit replay tooling can reconstruct misroute incidents
+after the fact.
+
+**(b) New capability tag.** `app/tool_registry/capabilities.py` —
+TIER_IMMUTABLE — gains a new `tickets` category with one tag:
+`manages-tickets`. Listing/searching reuses the existing
+`reads-deployment-state` tag; only the mutating *move* operation
+needed a narrow capability so the registry surface tracks who got
+write access to ticket state. Adding a tag to this file is
+governance-grade — normal-PR-with-review-level discipline as
+documented at the top of the module — same cadence as adding to
+`app/souls/`.
+
+**(c) Three new agent tools.** `app/tools/control_plane_tickets_tool.py`:
+
+| Tool | Capability | What it does |
+|---|---|---|
+| `cp_list_tickets(project_name="", status="")` | `reads-deployment-state` | List tickets in a project (default: currently active). Optional status filter. Cap 50. |
+| `cp_search_tickets(query)` | `reads-deployment-state` | Title/description ILIKE search across all projects. Cap 20. |
+| `cp_move_ticket(ticket_id, target_project_name)` | `manages-tickets` | Calls `TicketManager.move_ticket`. Mutating, audit-logged. |
+
+The factory follows the same shape as `currency_tools.py` /
+`system_state_tool.py`: a `create_cp_tickets_tools(agent_id)` plain
+factory plus three `@register_tool` factories that pluck named
+tools from the same factory output. Wrapping the `@register_tool`
+block in `try: ... except ImportError: pass` keeps the module
+importable on hosts where the registry isn't loaded.
+
+### 22.3 Wiring
+
+* `app/agents/pim_agent.py` — new `optional_tool_group('pim',
+  'cp_tickets')` block that loads the three tools after the
+  existing `task_tools` block. Failsafe: any factory error logs a
+  warning and continues with the other tools (mirrors the rest of
+  the file).
+* `app/crews/pim_crew.py` — `PIM_TASK_TEMPLATE` updated with a
+  paragraph distinguishing the two ticket systems plus the explicit
+  rule **"if `list_tasks` / `search_tasks` come back empty, do NOT
+  report 'no tasks found' — try `cp_search_tickets` /
+  `cp_list_tickets` first."** Closes the failure shape from
+  2026-05-09 8:26 AM directly.
+
+The Commander class itself (`app/agents/commander/orchestrator.py`)
+does **not** carry a CrewAI Agent inventory — it's a router that
+uses the LLM directly for routing decisions, then dispatches to
+crews via `crews/registry.py`. So PIM (the crew Commander would
+route ticket-move requests to) is the only meaningful wiring point.
+The unused `self.memory_tools = create_memory_tools(collection="commander")`
+line at line 567 of the orchestrator is pre-existing dead state —
+not touched.
+
+### 22.4 Files
+
+```
+app/control_plane/tickets.py             # +52 — move_ticket()
+app/tool_registry/capabilities.py        # +14 — new "tickets" category
+app/tools/control_plane_tickets_tool.py  # +293 — new file, 3 tools
+app/agents/pim_agent.py                  # +14 — optional_tool_group block
+app/crews/pim_crew.py                    # +14 — task-template paragraph
+tests/test_control_plane_tickets_move.py # +186 — 5 tests
+tests/test_cp_tickets_tool.py            # +247 — 15 tests
+```
+
+20 new tests, all green:
+
+```
+tests/test_control_plane_tickets_move.py — 5 passed
+  test_move_happy_path
+  test_move_unknown_ticket
+  test_move_unknown_target_project
+  test_move_writes_audit_entry_with_project_names
+  test_move_idempotent_remove
+
+tests/test_cp_tickets_tool.py — 15 passed
+  TestCpListTickets — 5 (active project default, named project, status
+                          filter, unknown project, empty result)
+  TestCpSearchTickets — 3 (hits, no hits, empty query short-circuit)
+  TestCpMoveTicket — 5 (happy, unknown→helpful error, both validation
+                        paths, exception→string)
+  TestCapabilityRegistration — 2 (manages-tickets in vocab,
+                                  reads-deployment-state still in vocab)
+```
+
+### 22.5 Out of scope
+
+* **Bulk move / move-by-search.** The current tools take a single
+  UUID — multi-ticket moves require multiple calls. Adequate for
+  the failure shape that triggered §22 (one or two misrouted
+  tickets per incident); revisit if operator-traffic shows
+  bulk-move requests landing.
+* **Ticket-create from agent.** `cp_*` deliberately does NOT
+  expose `create_ticket`. Tickets are created via the inbound
+  Signal queue path; surfacing creation to the agent invites
+  duplicate-ticket pollution. If a future workflow needs it,
+  route through `change_requests/` (Phase 5.3a) so the operator
+  can gate.
+* **React `/cp/changes`-style operator surface for moves.** Not
+  built — moves are agent-initiated only, audit-logged, and
+  visible in `/api/cp/audit?action_prefix=ticket.moved`. If
+  misrouted-move incidents accumulate, a thin "recent moves" tab
+  would help; defer until that signal exists.
