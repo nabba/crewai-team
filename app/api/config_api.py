@@ -211,6 +211,7 @@ async def set_runtime_settings_endpoint(request: Request):
     from app.runtime_settings import (
         set_voice_mode, set_vision_cu_enabled,
         set_vision_cu_monthly_cap_usd, set_concierge_persona_enabled,
+        set_tier3_amendment_enabled,
         snapshot,
     )
 
@@ -223,6 +224,8 @@ async def set_runtime_settings_endpoint(request: Request):
             set_vision_cu_monthly_cap_usd(float(payload["vision_cu_monthly_cap_usd"]))
         if "concierge_persona_enabled" in payload:
             set_concierge_persona_enabled(bool(payload["concierge_persona_enabled"]))
+        if "tier3_amendment_enabled" in payload:
+            set_tier3_amendment_enabled(bool(payload["tier3_amendment_enabled"]))
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

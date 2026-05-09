@@ -7,6 +7,7 @@ Holds the toggles the React dashboard can flip without a restart:
     vision_cu_enabled           bool
     vision_cu_monthly_cap_usd   float
     concierge_persona_enabled   bool
+    tier3_amendment_enabled     bool
 
 State is initialised from `Settings` defaults on first read, then persisted
 to ``workspace/runtime_settings.json`` so toggles survive process restarts.
@@ -42,11 +43,15 @@ _cache: dict[str, Any] | None = None
 
 def _defaults() -> dict[str, Any]:
     s = get_settings()
+    # ``tier3_amendment_enabled`` is read defensively because ``Settings``
+    # may not declare it on older deployments — the runtime-settings file
+    # is the single source of truth once written, env is just the seed.
     return {
         "voice_mode": s.voice_mode,
         "vision_cu_enabled": s.vision_cu_enabled,
         "vision_cu_monthly_cap_usd": float(s.vision_cu_monthly_cap_usd),
         "concierge_persona_enabled": s.concierge_persona_enabled,
+        "tier3_amendment_enabled": bool(getattr(s, "tier3_amendment_enabled", False)),
     }
 
 
@@ -130,6 +135,23 @@ def get_concierge_persona_enabled() -> bool:
 def set_concierge_persona_enabled(value: bool) -> None:
     _update({"concierge_persona_enabled": bool(value)})
     logger.info(f"runtime_settings: concierge_persona_enabled set to {bool(value)}")
+
+
+def get_tier3_amendment_enabled() -> bool:
+    """Master switch for the Tier-3 amendment protocol.
+
+    Read by ``app.governance_amendment.protocol.amendment_protocol_enabled``
+    so the React dashboard can flip the gate without a gateway restart.
+    Default is False — the protocol is opt-in.
+    """
+    return bool(_ensure_initialized()["tier3_amendment_enabled"])
+
+
+def set_tier3_amendment_enabled(value: bool) -> None:
+    _update({"tier3_amendment_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: tier3_amendment_enabled set to %s", bool(value),
+    )
 
 
 def _update(patch: dict[str, Any]) -> None:

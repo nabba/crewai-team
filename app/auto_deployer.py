@@ -185,6 +185,18 @@ TIER_IMMUTABLE = frozenset({
     # on the set being human-curated. The Self-Improver cannot grow
     # the vocabulary on its own; expansion requires a human PR.
     "app/tool_registry/capabilities.py",
+    # Tier-3 amendment protocol (May 2026) — the controlled path for
+    # legitimately amending TIER_IMMUTABLE files after a demonstrated
+    # track record. The protocol's own files MUST be in the same
+    # immutable tier or an agent could weaken its own gate. Bootstrap
+    # added by operator authorization 2026-05-09.
+    "app/governance_amendment/__init__.py",
+    "app/governance_amendment/_state.py",
+    "app/governance_amendment/audit.py",
+    "app/governance_amendment/eligibility.py",
+    "app/governance_amendment/protocol.py",
+    "app/governance_amendment/self_quarantine.py",
+    "app/governance_amendment/store.py",
 })
 
 # ── TIER_GATED (~25 files — evolution engine + soul prompts) ────────────────

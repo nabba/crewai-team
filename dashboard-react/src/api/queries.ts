@@ -485,6 +485,7 @@ export interface RuntimeSettings {
   vision_cu_enabled: boolean;
   vision_cu_monthly_cap_usd: number;
   concierge_persona_enabled: boolean;
+  tier3_amendment_enabled: boolean;
 }
 
 export function useRuntimeSettingsQuery() {

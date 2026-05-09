@@ -50,6 +50,7 @@ export function SettingsPage() {
       <VoiceModeCard settings={settingsQ.data} />
       <VisionComputerUseCard settings={settingsQ.data} />
       <ConciergePersonaCard settings={settingsQ.data} />
+      <Tier3AmendmentCard settings={settingsQ.data} />
       <WebPushCard />
     </div>
   );
@@ -376,6 +377,191 @@ function VisionComputerUseCard({ settings }: { settings: RuntimeSettings }) {
         </button>
         {error && <span className="text-[#f87171] text-sm">{error}</span>}
         {success && <span className="text-[#34d399] text-sm">{success}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Tier-3 amendment protocol ─────────────────────────────────────────────
+
+function Tier3AmendmentCard({ settings }: { settings: RuntimeSettings }) {
+  const update = useUpdateRuntimeSettings();
+  const [pendingNext, setPendingNext] = useState<boolean | null>(null);
+  const [success, setSuccess] = useState('');
+
+  const enabled = settings.tier3_amendment_enabled;
+
+  const handleToggleClick = (next: boolean) => {
+    if (update.isPending) return;
+    if (next === enabled) return;
+    // Don't apply immediately — open the confirmation modal first.
+    setPendingNext(next);
+    setSuccess('');
+  };
+
+  const cancel = () => setPendingNext(null);
+
+  const confirm = async () => {
+    if (pendingNext === null) return;
+    try {
+      await update.mutateAsync({ tier3_amendment_enabled: pendingNext });
+      setSuccess(pendingNext ? 'Tier-3 amendment protocol enabled.' : 'Tier-3 amendment protocol disabled.');
+      setTimeout(() => setSuccess(''), 3000);
+    } finally {
+      setPendingNext(null);
+    }
+  };
+
+  const error = update.error instanceof Error ? update.error.message : '';
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">
+          Tier-3 amendment protocol
+        </h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Lets agents propose modifications to <code className="text-[#60a5fa]">TIER_IMMUTABLE</code>{' '}
+          files (e.g. evolution-engine internals, prompt registry) after demonstrating
+          a clean track record. Every proposal still requires your manual approval at
+          the <em>operator-approve</em> step. Safety-core files
+          (<code className="text-[#60a5fa]">governance.py</code>,{' '}
+          <code className="text-[#60a5fa]">safety_guardian.py</code>,
+          eval/sandbox infrastructure, and the protocol's own files) are
+          self-quarantined and CANNOT be amended via this protocol —
+          ever — only by direct human PR. See{' '}
+          <code className="text-[#60a5fa]">docs/TIER3_AMENDMENT.md</code>.
+        </p>
+      </div>
+
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={enabled}
+          // The checkbox stays *visually* in lock-step with the persisted
+          // ``enabled`` prop — the user's intended toggle is captured via
+          // ``onClick`` + ``preventDefault`` so the DOM doesn't drift while
+          // the confirmation modal is open. Without preventDefault the
+          // browser flips the checkbox immediately and the user thinks
+          // the toggle "took effect" before they confirmed.
+          onChange={() => { /* controlled — handled by onClick */ }}
+          onClick={(e) => {
+            e.preventDefault();
+            if (update.isPending) return;
+            handleToggleClick(!enabled);
+          }}
+          disabled={update.isPending}
+          className="w-4 h-4 accent-[#60a5fa]"
+        />
+        <span className="text-sm text-[#e2e8f0]">
+          Enable Tier-3 amendment protocol
+        </span>
+        <span className="text-[10px] uppercase tracking-wider text-[#7a8599] ml-auto">
+          {enabled ? (
+            <span className="text-[#34d399]">ACTIVE</span>
+          ) : (
+            <span className="text-[#7a8599]">OFF</span>
+          )}
+        </span>
+      </label>
+
+      {error && <div className="text-[#f87171] text-sm">{error}</div>}
+      {success && <div className="text-[#34d399] text-sm">{success}</div>}
+
+      {pendingNext !== null && (
+        <Tier3ConfirmModal
+          enabling={pendingNext}
+          pending={update.isPending}
+          onConfirm={confirm}
+          onCancel={cancel}
+        />
+      )}
+    </div>
+  );
+}
+
+function Tier3ConfirmModal({
+  enabling,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  enabling: boolean;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-[#111820] border border-[#1e2738] rounded-xl p-6 max-w-lg w-[90vw] space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-[#e2e8f0]">
+            {enabling ? 'Enable Tier-3 amendment protocol?' : 'Disable Tier-3 amendment protocol?'}
+          </h3>
+          <p className="text-sm text-[#7a8599] mt-1">Are you sure?</p>
+        </div>
+
+        {enabling ? (
+          <div className="text-sm text-[#e2e8f0] space-y-2">
+            <p>
+              Enabling this lets agents propose modifications to{' '}
+              <code className="text-[#60a5fa]">TIER_IMMUTABLE</code> files. Each
+              proposal still goes through:
+            </p>
+            <ol className="list-decimal list-inside text-xs text-[#94a3b8] space-y-1 ml-2">
+              <li>Programmatic eligibility (≥200 promotions/90d, &lt;5% rollback rate, no active alignment warnings)</li>
+              <li>7-day cool-down window watching for any rollback signal</li>
+              <li>Your manual approval — they can't apply without your 👍</li>
+              <li>30-day post-apply monitoring with auto-rollback on regression</li>
+            </ol>
+            <p className="text-xs text-[#fbbf24]">
+              Safety-core files (governance.py, safety_guardian.py, eval/sandbox,
+              and ~30 others) are self-quarantined and unaffected by this toggle.
+            </p>
+          </div>
+        ) : (
+          <div className="text-sm text-[#e2e8f0] space-y-2">
+            <p>
+              Disabling stops agents from filing new amendment proposals immediately.
+            </p>
+            <ul className="list-disc list-inside text-xs text-[#94a3b8] space-y-1 ml-2">
+              <li>Pending proposals already in the pipeline are unaffected — they continue through their state machine.</li>
+              <li>Re-enabling later resumes acceptance of new proposals; existing audit trail is preserved.</li>
+              <li>Safe to flip on/off as needed.</li>
+            </ul>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            onClick={onCancel}
+            disabled={pending}
+            className="px-4 py-2 bg-[#0a0f18] border border-[#1e2738] hover:border-[#3b4659] disabled:opacity-50 rounded text-[#7a8599] hover:text-[#e2e8f0] text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={pending}
+            className={`px-4 py-2 rounded text-white text-sm disabled:opacity-50 ${
+              enabling
+                ? 'bg-[#dc2626] hover:bg-[#b91c1c]'
+                : 'bg-[#2563eb] hover:bg-[#1d4ed8]'
+            }`}
+          >
+            {pending
+              ? 'Saving…'
+              : enabling
+                ? 'Yes, enable'
+                : 'Yes, disable'}
+          </button>
+        </div>
       </div>
     </div>
   );
