@@ -1096,6 +1096,17 @@ merge time.
 ### 21.4 Out of scope (deferred to follow-ups)
 
 * ~~**Move-ticket tool.**~~ ✅ Closed in §22 below.
+* **Move-ticket tool.** When the user asked the agent to move the
+  misrouted forest-age ticket from PLG to Eesti mets, the agent
+  searched the wrong table (SQLite PIM-tasks) and hallucinated
+  "no tasks found." Two ticket systems exist:
+  `/app/workspace/tasks.db` (PIM, no `project_id`) vs
+  `control_plane.tickets` (Postgres, has `project_id`). The agent
+  has tools for the first, none for the second. Spawned task
+  covers a `move_ticket(ticket_id, target_project_name)` API +
+  `cp_*` agent tools + capability registration. The two real
+  misrouted tickets (essay + failed forest-age) were moved
+  manually via raw SQL during the incident.
 * **Broken MCP code-interpreter fallback servers.** When
   `gee_run_script` timed out, the agent fell through to four MCP
   servers (codeinterpreter / Gorav22/terminusai /
