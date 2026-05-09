@@ -85,6 +85,12 @@ def start_mode_listener() -> None:
                     _apply_mode_if_changed(mode)
             except Exception:
                 pass  # never crash the poll loop
+            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+            try:
+                from app.healing.listener_heartbeats import touch
+                touch("firebase-mode-poll")
+            except Exception:
+                pass
         logger.debug("firebase.listeners: mode poll stopped")
 
     t = threading.Thread(target=_poll_mode, daemon=True, name="firebase-mode-poll")
@@ -103,6 +109,12 @@ def start_kb_queue_poller() -> None:
         import tempfile
 
         while not _kb_poll_stop.wait(10):
+            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+            try:
+                from app.healing.listener_heartbeats import touch
+                touch("firebase-kb-poll")
+            except Exception:
+                pass
             db = _get_db()
             if not db:
                 continue
@@ -218,6 +230,12 @@ def start_phil_queue_poller() -> None:
 
     def _poll_phil():
         while not _phil_poll_stop.wait(10):
+            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+            try:
+                from app.healing.listener_heartbeats import touch
+                touch("firebase-phil-poll")
+            except Exception:
+                pass
             db = _get_db()
             if not db:
                 continue
@@ -359,6 +377,12 @@ def start_fiction_queue_poller() -> None:
 
     def _poll_fiction():
         while not _fiction_poll_stop.wait(10):
+            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+            try:
+                from app.healing.listener_heartbeats import touch
+                touch("firebase-fiction-poll")
+            except Exception:
+                pass
             db = _get_db()
             if not db:
                 continue
@@ -535,7 +559,14 @@ def _generic_kb_poller(
     Expects queue documents with: {status, action, content/text, metadata...}
     Actions: "upload" (default), "delete".
     """
+    listener_name = threading.current_thread().name
     while not _new_kb_poll_stop.wait(poll_interval):
+        # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+        try:
+            from app.healing.listener_heartbeats import touch
+            touch(listener_name)
+        except Exception:
+            pass
         db = _get_db()
         if not db:
             continue
@@ -773,6 +804,12 @@ def start_chat_inbox_poller(handle_fn) -> None:
 
         logger.info("firebase.listeners: chat inbox poller started (3s interval)")
         while not _stop.is_set():
+            # Per-listener heartbeat (Wave 0/1 #A3, 2026-05-09).
+            try:
+                from app.healing.listener_heartbeats import touch
+                touch("firebase-chat-poll")
+            except Exception:
+                pass
             try:
                 docs = (
                     db.collection("chat_inbox")

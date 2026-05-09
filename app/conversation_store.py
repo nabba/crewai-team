@@ -16,8 +16,10 @@ import hmac
 import logging
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any
 
 from app.config import get_gateway_secret
 
@@ -784,6 +786,56 @@ def prune_old_outbound(days: int = 7) -> int:
     except Exception:
         logger.exception("conversation_store: prune_old_outbound failed")
         return 0
+
+
+def vacuum() -> dict:
+    """Reclaim disk space + rebuild indexes after long-running prune cycles.
+
+    Wave 0/1 closure (#A6, 2026-05-09): ``prune_old_inbound`` /
+    ``prune_old_outbound`` delete rows but SQLite doesn't release the
+    pages back to the filesystem without an explicit VACUUM. Over years
+    that accumulates as latent disk usage. This monthly job:
+
+      1. Reports the size before / after.
+      2. Runs ``VACUUM`` (rewrites the whole DB; releases freed pages).
+      3. Runs ``ANALYZE`` (refreshes the SQLite query planner stats).
+
+    Returns a small summary dict for tests + audit. Best-effort; never
+    raises — vacuum failure shouldn't take the conversation store down.
+    """
+    summary: dict[str, Any] = {
+        "ok": False,
+        "bytes_before": 0,
+        "bytes_after": 0,
+        "freed_bytes": 0,
+        "duration_s": 0.0,
+    }
+    try:
+        if DB_PATH.exists():
+            summary["bytes_before"] = DB_PATH.stat().st_size
+        conn = _get_conn()
+        start = time.monotonic()
+        # VACUUM cannot run inside a transaction. SQLite python defaults
+        # the connection to "deferred" autocommit so this works as long
+        # as nothing else has an open transaction on the same connection.
+        conn.isolation_level = None
+        try:
+            conn.execute("VACUUM")
+            conn.execute("ANALYZE")
+        finally:
+            # Restore the default — the rest of conversation_store
+            # uses commit() explicitly so deferred is fine here.
+            conn.isolation_level = ""
+        summary["duration_s"] = round(time.monotonic() - start, 2)
+        if DB_PATH.exists():
+            summary["bytes_after"] = DB_PATH.stat().st_size
+        summary["freed_bytes"] = max(
+            0, summary["bytes_before"] - summary["bytes_after"]
+        )
+        summary["ok"] = True
+    except Exception:
+        logger.exception("conversation_store: vacuum failed")
+    return summary
 
 
 # ── FTS5 full-text search (T3-10) ────────────────────────────────────────────
