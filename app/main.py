@@ -1604,28 +1604,40 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             from app.config import get_settings as _gs
             _s = _gs()
             if _s.project_isolation_enabled:
-                # Three-mode workspace auto-detection (revised 2026-05-02):
+                # Two-mode workspace auto-detection (revised 2026-05-09):
                 #
-                #   1. No explicit user pick yet → AUTO-SWITCH (seed the
-                #      session with the keyword detector's best guess).
-                #   2. User has explicit pick AND detection differs →
-                #      ASK via Signal (👍 to switch, 👎 to stay). Don't
-                #      override silently; the user already chose.
-                #   3. Detection matches current OR no detection →
+                #   1. Detected project differs from current →
+                #      ASK via Signal (👍 to switch, 👎 to stay).
+                #      Always propose, even when no explicit user pick
+                #      exists yet — operators want consistent UX
+                #      ("never silently switch").
+                #   2. Detection matches current OR no detection →
                 #      no action.
                 #
-                # Pre-2026-05-02 every Signal message blew away the
-                # user's `switch workspace to eesti mets` whenever
-                # text contained "estonia" / "event" / "ticket" because
-                # those words triggered PLG's keyword list. Tickets
-                # ended up filed under PLG with no log explaining why.
+                # History (one revision per failure mode):
+                #
+                #   Pre-2026-05-02 — every Signal message blew away the
+                #   user's `switch workspace to eesti mets` whenever
+                #   text contained "estonia" / "event" / "ticket" because
+                #   those words triggered PLG's keyword list. Tickets
+                #   ended up filed under PLG with no log explaining why.
+                #   Fix: introduce sticky-user-pick + Mode 2 (ask) for
+                #   keyword-detected mismatches.
+                #
+                #   2026-05-02 → 2026-05-09 — kept Mode 1 (auto-switch
+                #   when no explicit pick) on the rationale "don't ask
+                #   the user a question on every fresh session." But
+                #   that meant the very first task in a session could
+                #   silently land in the wrong workspace if the user
+                #   hadn't typed `switch workspace` first. Operator
+                #   explicit feedback: "always ask, never auto-switch."
+                #   Fix: collapse to two modes — propose or no-op.
                 from app.project_isolation import get_manager as _get_pm
                 from app.control_plane.projects import get_projects as _gp
                 _pm = _get_pm()
                 detected = _pm.detect_project(text)
                 if detected:
                     cp = _gp()
-                    user_chose = cp._active_project_source == "user"
                     # Get the current workspace's display name for the ask
                     current_name = "default"
                     try:
@@ -1638,8 +1650,9 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 
                     if detected.lower() == current_name.lower():
                         pass  # already on it — no action
-                    elif user_chose:
-                        # Mode 2: ASK, don't override
+                    else:
+                        # ALWAYS propose (don't silently switch, even
+                        # when no explicit user pick exists yet).
                         try:
                             from app.workspace_switch_proposals import (
                                 has_recent_decision, propose,
@@ -1655,14 +1668,6 @@ async def handle_task(sender: str, text: str, attachments: list = None,
                                 "workspace switch proposal failed",
                                 exc_info=True,
                             )
-                    else:
-                        # Mode 1: seed-on-first-detection — auto-switch
-                        _pm.activate(detected)
-                        try:
-                            cp.switch(detected, source="auto")
-                        except Exception:
-                            logger.debug("control-plane project switch failed", exc_info=True)
-                        logger.debug(f"Project detected: {detected}")
         except Exception:
             logger.debug("Project detection failed", exc_info=True)
 
