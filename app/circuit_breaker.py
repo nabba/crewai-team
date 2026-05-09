@@ -173,6 +173,30 @@ def get_breaker(provider: str) -> CircuitBreaker:
     return _breakers[provider]
 
 
+def ensure_breaker(
+    provider: str,
+    *,
+    failure_threshold: int = 5,
+    cooldown_seconds: int = 30,
+) -> CircuitBreaker:
+    """Get or create a breaker WITH explicit config.
+
+    Differs from ``get_breaker``: dynamically-created breakers (e.g.
+    one per MCP server, one per Neo4j cluster shard) need the right
+    threshold/cooldown shape from the start, not the generic 5/30
+    defaults.  Returns the existing breaker unchanged if one is
+    already registered under ``provider`` (existing config wins —
+    we never silently re-config).
+    """
+    if provider not in _breakers:
+        _breakers[provider] = CircuitBreaker(
+            provider,
+            failure_threshold=failure_threshold,
+            cooldown_seconds=cooldown_seconds,
+        )
+    return _breakers[provider]
+
+
 def is_available(provider: str) -> bool:
     """Check if a provider's circuit is NOT open (i.e., safe to try)."""
     return not get_breaker(provider).is_open()
