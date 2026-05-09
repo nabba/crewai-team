@@ -66,19 +66,37 @@ def companion_tick() -> None:
 def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
     """Idle-scheduler job tuples — appended in ``_default_jobs()``.
 
-    Four jobs:
+    Companion ideation jobs:
       - ``companion-tick``       — MEDIUM, the ideation cycle
       - ``companion-ingest``     — LIGHT,  fetches external sources daily
       - ``companion-grand-task`` — MEDIUM, 12 h workspace-grand-task synthesis
       - ``companion-xworkspace`` — LIGHT,  cross-workspace transfer proposals
+
+    Life-companion proactive jobs (added 2026-05-09 — see
+    ``app/life_companion/`` for full design):
+      - ``life-companion-email``    — LIGHT, 10-min unread-inbox triage
+      - ``life-companion-briefing`` — LIGHT, morning/evening/weekly digest
+      - ``life-companion-routines`` — LIGHT, DOW+TOD pattern detection
+
+    All life-companion jobs cadence-check internally and respect the
+    ``LIFE_COMPANION_ENABLED`` master switch + per-feature flags.
     """
     from app.companion import cross_workspace as _xw
     from app.companion import grand_task as _grand_task
     from app.companion import ingest as _ingest
     from app.idle_scheduler import JobWeight
-    return [
+    jobs: list[tuple[str, Callable[[], None], str]] = [
         ("companion-tick", companion_tick, JobWeight.MEDIUM),
         *_ingest.get_idle_jobs(),
         *_grand_task.get_idle_jobs(),
         *_xw.get_idle_jobs(),
     ]
+    # Life-companion jobs are best-effort: any import failure (e.g.
+    # missing optional Google libraries on a slim deployment) must
+    # never block the rest of the companion pipeline.
+    try:
+        from app.life_companion import get_idle_jobs as _lc_get_idle_jobs
+        jobs.extend(_lc_get_idle_jobs())
+    except Exception:
+        logger.debug("companion.loop: life_companion jobs skipped", exc_info=True)
+    return jobs
