@@ -13,6 +13,8 @@ import {
   useRelaxGovernanceRatchet,
   useRunbookSettingsQuery,
   useToggleRunbook,
+  useBackgroundTasksQuery,
+  useSetBackgroundTasks,
   type RuntimeSettings,
   type VoiceMode,
   type GovernanceRatchetThreshold,
@@ -54,6 +56,7 @@ export function SettingsPage() {
         </p>
       </div>
 
+      <BackgroundTasksCard />
       <VoiceModeCard settings={settingsQ.data} />
       <VisionComputerUseCard settings={settingsQ.data} />
       <ConciergePersonaCard settings={settingsQ.data} />
@@ -65,6 +68,59 @@ export function SettingsPage() {
     </div>
   );
 }
+
+// ── Background tasks kill switch ──────────────────────────────────────────
+
+function BackgroundTasksCard() {
+  const q = useBackgroundTasksQuery();
+  const set = useSetBackgroundTasks();
+  const enabled = q.data?.enabled ?? false;
+  const loading = q.isLoading;
+
+  const flip = async () => {
+    if (loading || set.isPending) return;
+    try {
+      await set.mutateAsync(!enabled);
+    } catch {
+      /* error surfaces via set.error */
+    }
+  };
+
+  const errMsg = (q.error || set.error) instanceof Error
+    ? (q.error || set.error)!.toString()
+    : '';
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-medium text-[#e2e8f0]">Background tasks</h2>
+          <p className="text-xs text-[#7a8599] mt-1">
+            Master kill switch for the idle scheduler — fiction ingest, LLM
+            discovery, training collector, atlas competence sync, system
+            monitor, version snapshots, and ~30 other periodic jobs.
+            Turn off to stop all background spend immediately; user-initiated
+            crew runs (Signal, brainstorm, dashboard) keep working either way.
+          </p>
+        </div>
+        <button
+          onClick={flip}
+          disabled={loading || set.isPending}
+          className={
+            enabled
+              ? 'shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399] hover:bg-[#34d399]/20 disabled:opacity-50'
+              : 'shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#f87171]/40 bg-[#f87171]/10 text-[#f87171] hover:bg-[#f87171]/20 disabled:opacity-50'
+          }
+          title={enabled ? 'Click to pause all background jobs' : 'Click to resume background jobs'}
+        >
+          {loading ? '…' : enabled ? 'ON' : 'OFF'}
+        </button>
+      </div>
+      {errMsg && <p className="text-xs text-[#f87171]">{errMsg}</p>}
+    </div>
+  );
+}
+
 
 // ── Web Push (PWA notifications) ──────────────────────────────────────────
 

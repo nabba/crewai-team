@@ -146,6 +146,10 @@ export const endpoints = {
   // POST requires gateway secret (same as creative_mode).
   runtimeSettings: () => `/config/runtime_settings`,
 
+  // Idle-scheduler kill switch (legacy Firestore config/background_tasks
+  // exposed over HTTP). POST requires gateway secret.
+  backgroundTasks: () => `/config/background_tasks`,
+
   // Web Push (PWA notifications)
   vapidPublicKey: () => `/config/vapid_public_key`,
   webPushSubscribe: () => `/config/web_push/subscribe`,

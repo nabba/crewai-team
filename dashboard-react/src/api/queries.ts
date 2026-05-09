@@ -73,6 +73,7 @@ export const keys = {
   notesSearch: (root: string, q: string) => ['notes', 'search', root, q] as const,
   notesTags: (root: string) => ['notes', 'tags', root] as const,
   runtimeSettings: ['runtime-settings'] as const,
+  backgroundTasks: ['background-tasks'] as const,
   webPushSubscriptions: ['web-push', 'subscriptions'] as const,
   vapidPublicKey: ['web-push', 'vapid'] as const,
   skills: ['skills'] as const,
@@ -511,6 +512,31 @@ export function useUpdateRuntimeSettings() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.runtimeSettings }),
+  });
+}
+
+// ── Background tasks kill switch ──────────────────────────────────────────
+export interface BackgroundTasksState {
+  enabled: boolean;
+}
+
+export function useBackgroundTasksQuery() {
+  return useQuery({
+    queryKey: keys.backgroundTasks,
+    queryFn: () => api<BackgroundTasksState>(endpoints.backgroundTasks()),
+    refetchInterval: POLL.normal,
+  });
+}
+
+export function useSetBackgroundTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      api<{ status: string; enabled: boolean }>(endpoints.backgroundTasks(), {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.backgroundTasks }),
   });
 }
 

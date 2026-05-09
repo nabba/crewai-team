@@ -107,6 +107,47 @@ async def set_creative_mode_endpoint(request: Request):
     return {"status": "ok", **snapshot()}
 
 
+@router.get("/background_tasks")
+async def get_background_tasks_endpoint():
+    """Return whether the idle scheduler is currently allowed to run jobs.
+
+    Mirrors the legacy Firestore ``config/background_tasks`` document
+    used by the old HTML monitor — same kill-switch, surfaced over HTTP
+    so the React Settings page doesn't need a Firebase client.
+    """
+    from app.idle_scheduler import is_enabled
+    return {"enabled": bool(is_enabled())}
+
+
+@router.post("/background_tasks")
+async def set_background_tasks_endpoint(request: Request):
+    """Toggle the idle-scheduler kill switch."""
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(status_code=429, detail="Too many config changes. Try again later.")
+    payload = await request.json()
+    if "enabled" not in payload:
+        raise HTTPException(status_code=400, detail="missing 'enabled'")
+    enabled = bool(payload["enabled"])
+    from app.idle_scheduler import set_enabled
+    set_enabled(enabled)
+    # Mirror to Firestore so the legacy HTML monitor and any other
+    # listeners (the in-process Firestore listener at idle_scheduler.py:
+    # 2581 included) stay in sync.
+    try:
+        from app.firebase.infra import _get_db, _now_iso
+        db = _get_db()
+        if db is not None:
+            db.collection("config").document("background_tasks").set(
+                {"enabled": enabled, "updated_at": _now_iso()},
+                merge=True,
+            )
+    except Exception:
+        logger.debug("background_tasks: firestore mirror failed", exc_info=True)
+    return {"status": "ok", "enabled": enabled}
+
+
 # ── Web Push (PWA notifications, Phase 4 — May 2026) ────────────────────────
 
 @router.get("/vapid_public_key")
