@@ -47,7 +47,11 @@ _DEFAULT_CADENCE_S = {
     "idle_cooldown": 3600,       # hourly — cooldowns last hours
     "audit_chain_check": 23 * 3600,    # ~daily — Wave 1 (#5)
     "lock_housekeeper": 6 * 3600,      # 6h — Wave 1 (#9)
-    "adapter_lifecycle": 24 * 3600,    # daily probe — internal cadence is 30 days; Wave 2 (#4)
+    "adapter_lifecycle": 24 * 3600,    # daily probe — internal cadence 30 d; Wave 2 (#4)
+    "retention_chromadb": 24 * 3600,   # daily probe — internal cadence weekly; Wave 2 (#8)
+    "retention_worktrees": 12 * 3600,  # twice daily probe — internal cadence daily; Wave 2 (#8)
+    "retention_attachments": 12 * 3600,  # twice daily probe — internal cadence daily; Wave 2 (#8)
+    "signal_heartbeat": 12 * 3600,     # twice daily probe — internal cadence daily; Wave 2 (#3)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -122,6 +126,18 @@ def _driver() -> None:
         monitors.append(("adapter_lifecycle", adapter_lifecycle.run, _DEFAULT_CADENCE_S["adapter_lifecycle"], 0.0))
     except Exception:
         logger.debug("monitors: adapter_lifecycle import failed", exc_info=True)
+    try:
+        from app.healing.monitors import retention
+        monitors.append(("retention_chromadb", retention.run_chromadb, _DEFAULT_CADENCE_S["retention_chromadb"], 0.0))
+        monitors.append(("retention_worktrees", retention.run_worktrees, _DEFAULT_CADENCE_S["retention_worktrees"], 0.0))
+        monitors.append(("retention_attachments", retention.run_attachments, _DEFAULT_CADENCE_S["retention_attachments"], 0.0))
+    except Exception:
+        logger.debug("monitors: retention import failed", exc_info=True)
+    try:
+        from app.healing.monitors import signal_heartbeat
+        monitors.append(("signal_heartbeat", signal_heartbeat.run, _DEFAULT_CADENCE_S["signal_heartbeat"], 0.0))
+    except Exception:
+        logger.debug("monitors: signal_heartbeat import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")
