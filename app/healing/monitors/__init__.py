@@ -45,8 +45,9 @@ _DEFAULT_CADENCE_S = {
     "cron_liveness": 1800,       # 30 min — cron jobs are O(hour) cadence
     "vendor_sunset": 7 * 86400,  # weekly
     "idle_cooldown": 3600,       # hourly — cooldowns last hours
-    "audit_chain_check": 23 * 3600,  # ~daily — Wave 1 (#5)
-    "lock_housekeeper": 6 * 3600,    # 6h — Wave 1 (#9)
+    "audit_chain_check": 23 * 3600,    # ~daily — Wave 1 (#5)
+    "lock_housekeeper": 6 * 3600,      # 6h — Wave 1 (#9)
+    "adapter_lifecycle": 24 * 3600,    # daily probe — internal cadence is 30 days; Wave 2 (#4)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -116,6 +117,11 @@ def _driver() -> None:
         monitors.append(("lock_housekeeper", lock_housekeeper.run, _DEFAULT_CADENCE_S["lock_housekeeper"], 0.0))
     except Exception:
         logger.debug("monitors: lock_housekeeper import failed", exc_info=True)
+    try:
+        from app.training import adapter_lifecycle
+        monitors.append(("adapter_lifecycle", adapter_lifecycle.run, _DEFAULT_CADENCE_S["adapter_lifecycle"], 0.0))
+    except Exception:
+        logger.debug("monitors: adapter_lifecycle import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")
