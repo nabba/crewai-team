@@ -454,7 +454,12 @@ Pipeline:
 4. **Temporal decay** (opt-in) — boosts recent docs with a half-life
    weight.
 5. **Cross-encoder re-rank** — top-N candidates re-scored by a
-   cross-encoder model for better relevance.
+   cross-encoder model for better relevance. Two backends, dispatched
+   via `RETRIEVAL_RERANKER_BACKEND` env: `local` (default — local
+   sentence-transformers model, ~10ms/pair, free, offline) or
+   `openrouter` (OpenRouter `/rerank` endpoint with Cohere / Fireworks
+   models — higher quality, ~200-400ms latency, ~$1/1k requests; falls
+   through to local automatically on any HTTP / network failure).
 6. **Provenance tagging** — each result carries
    `provenance.collection`, `provenance.semantic_score`,
    `provenance.rerank_score`, `provenance.sub_query`.
@@ -2758,6 +2763,8 @@ Plus retrieval orchestrator config in
 RERANK_ENABLED:    bool = True
 RERANK_TOP_K_INPUT: int = 12
 RERANK_TOP_K_OUTPUT: int = 5
+RERANKER_BACKEND:        str = "local"  # or "openrouter"
+RERANKER_MODEL_OPENROUTER: str = "cohere/rerank-multilingual-v3.0"
 DECOMPOSITION_ENABLED: bool = True
 MAX_SUBQUERIES: int = 3
 TEMPORAL_ENABLED: bool = False     # opt-in per call

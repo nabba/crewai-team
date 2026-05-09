@@ -252,6 +252,9 @@ _BOOTSTRAP_CATALOG: dict[str, dict] = {
         "cost_input_per_m": 0.28, "cost_output_per_m": 0.42,
         "tool_use_reliability": 0.82,
         "supports_tools": True,
+        # Per DeepSeek V3 model card. Live builder will override from
+        # OpenRouter ``created_at`` once the snapshot refreshes.
+        "knowledge_cutoff": "2024-07-01",
         "description": "DeepSeek V3.2 — survival bootstrap (budget API fallback).",
         "strengths": {
             "coding": 0.87, "debugging": 0.87, "architecture": 0.85,
@@ -273,6 +276,8 @@ _BOOTSTRAP_CATALOG: dict[str, dict] = {
         "tool_use_reliability": 0.82,
         "supports_tools": True,
         "size_gb": 20, "ram_gb": 28, "speed": "very_fast",
+        # Per Qwen3.5 model card.
+        "knowledge_cutoff": "2024-09-01",
         "description": "Qwen3.5 35B-A3B (MoE Q4_K_M) — local survival "
                        "bootstrap. 35B total / 3B active per token. Vision "
                        "+ tools + thinking-mode capable. Replaces "

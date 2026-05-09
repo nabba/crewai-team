@@ -319,6 +319,17 @@ def _build_openrouter_entry(
     entry["model_id"] = _prefix_model_id(entry["provider"], entry["model_id"])
     entry["strengths"] = derive_strengths(aa_row, is_multimodal=is_mm, tier=tier)
     entry["tool_use_reliability"] = derive_tool_use_reliability(entry)
+    # Knowledge-cutoff proxy from OpenRouter publication date. /models exposes
+    # ``created_at`` (Unix epoch, UTC) — the day the model was added to
+    # OpenRouter, which trails real training cutoff by ~1-3 months but is a
+    # usable lower bound for the selector's recency filter. Optional: callers
+    # treat absence as "unknown, do not filter".
+    if (epoch := or_row.get("created_at")) is not None:
+        try:
+            cutoff = datetime.fromtimestamp(float(epoch), tz=timezone.utc).date()
+            entry["knowledge_cutoff"] = cutoff.isoformat()
+        except (TypeError, ValueError, OSError, OverflowError):
+            pass
     return entry
 
 
@@ -501,6 +512,7 @@ def merge_into_catalog(snapshot: dict[str, dict]) -> int:
             for field in (
                 "cost_input_per_m", "cost_output_per_m",
                 "strengths", "tool_use_reliability", "context", "multimodal",
+                "knowledge_cutoff",
             ):
                 if field in entry:
                     prior[field] = entry[field]

@@ -14,6 +14,7 @@ Selection algorithm:
 import contextvars
 import logging
 import os
+from datetime import date
 
 from app.config import get_settings
 from app.llm_catalog import (
@@ -24,6 +25,56 @@ from app.llm_catalog import (
 from app.llm_benchmarks import get_scores
 
 logger = logging.getLogger(__name__)
+
+
+# ── Knowledge-cutoff filter helpers (B3, May 2026) ───────────────────────
+
+def _below_min_recency(entry: dict, min_recency: date) -> bool:
+    """True iff entry has a ``knowledge_cutoff`` field strictly older than
+    ``min_recency``. Missing field is treated as unknown (returns False —
+    do not filter), so Ollama paths and pre-backfill catalogs still work.
+    """
+    cutoff_str = entry.get("knowledge_cutoff")
+    if not cutoff_str:
+        return False
+    try:
+        return date.fromisoformat(cutoff_str) < min_recency
+    except (TypeError, ValueError):
+        return False
+
+
+def _find_recency_compliant(
+    task_type: str,
+    min_recency: date,
+    settings,
+    max_ram_gb: float,
+    *,
+    avoid: str = "",
+) -> str | None:
+    """Walk catalog candidates by score for one whose ``knowledge_cutoff``
+    is at or after ``min_recency``. Asymmetric with ``_below_min_recency``:
+    here a missing ``knowledge_cutoff`` disqualifies the model — when the
+    caller asks for proof of recency, absence of evidence is not evidence.
+    Returns None when no model qualifies; caller falls back gracefully.
+    """
+    for tier in ("budget", "mid", "premium", "free"):
+        for name, _score in get_candidates_by_tier(task_type, [tier]):
+            if name == avoid:
+                continue
+            entry = get_model(name)
+            if not entry:
+                continue
+            cutoff_str = entry.get("knowledge_cutoff")
+            if not cutoff_str:
+                continue  # missing field — can't prove compliance
+            try:
+                if date.fromisoformat(cutoff_str) < min_recency:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            if _model_available(name, settings, max_ram_gb):
+                return name
+    return None
 
 
 # ── Active task-difficulty tracking (2026-04-26) ──────────────────────────
@@ -374,6 +425,7 @@ def select_model(
     expected_input_tokens: int = 2000,
     expected_output_tokens: int = 1500,
     budget_usd: float | None = None,
+    min_recency: date | None = None,
 ) -> str:
     """Resolve the catalog key for a role/task given the current cost
     mode, overlay assignments, telemetry, and external ranks.
@@ -386,6 +438,14 @@ def select_model(
         scores within ``quality_gap`` of the default.
       - Cross-tier Pareto kicks in when blended benchmark scores exist
         and the default is API-tier (local/free paths untouched).
+
+    Recency filter (B3, May 2026):
+      - ``min_recency`` rejects candidates whose catalog ``knowledge_cutoff``
+        predates the requested date. Models without a cutoff field are
+        passed through (treated as unknown). The filter is applied as a
+        single hard check after the multimodal swap; downstream score /
+        cost / budget steps may still drift, so callers needing strict
+        recency should also pass ``force_tier`` to narrow the pool.
     """
     settings = get_settings()
 
@@ -478,6 +538,34 @@ def select_model(
                     logger.info(f"llm_selector: multimodal → {default_model} → {mm_model}")
                     default_model = mm_model
                     break
+
+    # Step 3b — Knowledge-cutoff filter. When the caller needs fresh-data
+    # capable models (Researcher, Tech Radar, etc.) drop the default if
+    # its catalog ``knowledge_cutoff`` is older than ``min_recency`` and
+    # walk the candidates for a replacement. Graceful degradation: if no
+    # candidate qualifies, the default is kept and the caller is warned.
+    if min_recency is not None:
+        default_entry = _cached_get_model(default_model)
+        if default_entry and _below_min_recency(default_entry, min_recency):
+            replacement = _find_recency_compliant(
+                task_type, min_recency, settings, max_ram_gb,
+                avoid=default_model,
+            )
+            if replacement:
+                logger.info(
+                    "llm_selector: recency demotion %s → %s "
+                    "(min_recency=%s, default_cutoff=%s)",
+                    default_model, replacement, min_recency.isoformat(),
+                    default_entry.get("knowledge_cutoff", "?"),
+                )
+                default_model = replacement
+            else:
+                logger.warning(
+                    "llm_selector: no candidate meets min_recency=%s — "
+                    "keeping %s (cutoff=%s)",
+                    min_recency.isoformat(), default_model,
+                    default_entry.get("knowledge_cutoff", "?"),
+                )
 
     # Force tier if specified
     if force_tier:

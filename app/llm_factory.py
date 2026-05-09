@@ -22,6 +22,7 @@ import functools
 import logging
 import threading
 import time
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from crewai import LLM  # type hints only — no runtime import cost
@@ -426,12 +427,23 @@ def create_commander_llm() -> LLM:
     )
 
 
+# Roles that auto-apply a recency floor unless the caller passes
+# ``min_recency`` explicitly. Models without a ``knowledge_cutoff`` field
+# pass through the filter (treated as unknown), so this is opt-in pressure
+# rather than a hard constraint. See app/llm_selector.py:_below_min_recency.
+_DEFAULT_RECENCY_DAYS_BY_ROLE: dict[str, int] = {
+    "research": 180,      # web research / dossier collector / tech radar
+    "self_improve": 180,  # post-mortems benefit from current best-practice
+}
+
+
 def create_specialist_llm(
     max_tokens: int = 8192,
     role: str = "default",
     task_hint: str = "",
     force_tier: str | None = None,
     phase: str | None = None,
+    min_recency: date | None = None,
 ) -> LLM:
     """
     Create an LLM for a specialist role using the tier cascade.
@@ -469,6 +481,16 @@ def create_specialist_llm(
 
     from app.llm_selector import select_model
 
+    # Auto-apply role-based recency floor when the caller didn't override.
+    # Sentinel design: callers pass ``min_recency=None`` (default) to opt
+    # into the role-keyed default; pass an explicit ``date`` to override;
+    # pass ``min_recency=date.min`` to opt out entirely.
+    if min_recency is None:
+        if (days := _DEFAULT_RECENCY_DAYS_BY_ROLE.get(role)):
+            min_recency = date.today() - timedelta(days=days)
+    elif min_recency == date.min:
+        min_recency = None  # explicit opt-out
+
     # ── Restrictive modes (free / budget / quality / insane / anthropic)
     #    constrain the candidate pool, then run the regular LLM selector
     #    inside that pool. Every role still gets its normal score-driven
@@ -491,7 +513,9 @@ def create_specialist_llm(
         )
 
     # ── BALANCED mode: unconstrained selector + full cascade (default) ──
-    model_name = select_model(role, task_hint, force_tier=force_tier)
+    model_name = select_model(
+        role, task_hint, force_tier=force_tier, min_recency=min_recency,
+    )
     entry = get_model(model_name)
 
     if not entry:
