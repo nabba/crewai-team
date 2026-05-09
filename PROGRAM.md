@@ -1018,3 +1018,104 @@ came in on — zero changes needed at the call sites.
 - Slash commands on Discord are plain text — registering them as
   native Discord slash commands needs a separate developer-portal
   setup (deferred).
+
+
+## 21. 2026-05 Workspace-routing remediation (PRs #67 → #72)
+
+**Trigger.** 2026-05-09 morning Signal log:
+
+```
+1:26 AM   me:  Switch to workspace eesti mets
+1:26 AM   bot: Switched to project: Eesti mets —     ← correct
+1:36 AM   me:  please write a 5-page essay about estonian forest
+1:41 AM   bot: <returns the essay>                   ← but ticket → PLG
+─── (gateway restart overnight) ───
+8:18 AM   me:  Please make a graphic about the change of forest age
+              distribution over time in Estonia
+              ↳ ran 20 min, 0 tokens, no output, ticket → PLG
+8:22 AM   me:  what is the current workspace?
+8:22 AM   bot: Project: PLG                          ← gateway forgot the switch
+8:25 AM   me:  react app shows that previous task about forest age
+              is appearing in PLG to do list
+8:25 AM   bot: That's a bug — want me to move it?
+8:25 AM   me:  Yes please
+8:26 AM   bot: I attempted to locate the task ... the database
+              returned no tasks                      ← hallucination
+```
+
+Three intertwined symptoms; one operator demand: **never let a task
+silently land in the wrong workspace, and always ask before
+switching**. Closed across six PRs.
+
+### 21.1 The six PRs
+
+| PR | Concern | Scope |
+|---|---|---|
+| **#67** | Active project lost across gateway restart | `ProjectManager._active_project_id` was pure class-level state. Persist `(project_id, source)` to `workspace/control_plane/active_project.json` via `JsonStore`; lazy-restore on first read with project-existence verification; auto-detector picks also persist. 13 tests. |
+| **#68** | `gee_run_script` 180 s budget too short for country-scale Earth Engine compute (the agent tried, timed out at 180 s, fell through to broken MCP code-interpreters, janitor killed it at 15 min idle, $0 cost / 0 tokens) | Add `"gee_run_script": 600` to `_PER_TOOL_OVERRIDES` in `app/tools_timeout.py`. Hansen-GFC reduction over Estonia 2000–2024 fits in 10 min. 6 tests freezing the override table. |
+| **#69** | Auto-detector blind to forest queries; PLG over-claimed bare geographies (`estonia`, `baltic`, `latvia`, `lithuania`) | Add `eesti_mets` profile + workspace dir + keyword list (forest / deforestation / hansen / landsat / sentinel / earth engine / biodiversity / RMK / kaitseala). Tighten PLG to brand + ticketing terms only. 15 tests including disambiguation. |
+| **#71** | KaiCart / Archibal / PLG keyword lists too narrow to match the operator's described topics | Expand all three: KaiCart catches Asian / SEA e-commerce + Vietnam / Indonesia / Philippines / Malaysia / Singapore + Shopee / Lazada / Shopify + marketplace + dropshipping; Archibal catches AI provenance + content credentials + deepfake + watermarking + PKI; PLG catches box office / festival / tour / promoter / event ticketing. 18 tests. |
+| **#72** | Mode-1 silent auto-switch (when no explicit user pick) was misrouting first-task-in-session | Collapse to two modes: detected ≠ current → propose via Signal, always; match or none → no-op. The `has_recent_decision` dedup window prevents re-asking. 6 source-grep + propose-contract tests. |
+| #66 *(prior week)* | Brainstorm signal_handler's active-session capture swallowed every commander command | Escape allowlist: `switch (to) (project|workspace) ...`, status questions, slash commands, bare tokens fall through. Same family of "user typed a command, system swallowed it" bugs. |
+
+### 21.2 What this changes for the operator
+
+End-state behaviour:
+
+| Situation | Result |
+|---|---|
+| User explicitly switches via Signal command | Persisted to disk; survives restart |
+| User on any workspace, types something matching a different one | 💡 Signal proposal "switch to *X*? 👍 / 👎" |
+| Detection matches current | No-op (silent) |
+| No keyword match (generic question) | No-op (silent) |
+| `gee_run_script` runs >3 min on country-scale compute | Continues until 10 min wallclock (was: killed at 3 min) |
+| `has_recent_decision` window after 👎 | Same proposal won't re-ask for ~30 min |
+
+The whole class of "silently misrouted task" failure can no longer
+recur — every workspace switch goes through explicit confirmation
+now (or persists from an earlier confirmation).
+
+### 21.3 Files touched
+
+```
+app/control_plane/projects.py            # PR #67 — persistence + lazy-restore
+app/tools_timeout.py                     # PR #68 — gee budget bump
+app/project_isolation.py                 # PR #69, #71 — keyword lists
+app/main.py                              # PR #72 — two-mode auto-detect
+workspace/projects/eesti_mets/           # PR #69 — profile dir
+tests/test_active_project_persistence.py # PR #67 — 13 tests
+tests/test_tools_timeout_overrides.py    # PR #68 — 6 tests
+tests/test_eesti_mets_detection.py       # PR #69 — 15 tests
+tests/test_all_workspace_detection.py    # PR #71 — 18 tests
+tests/test_main_auto_detect_always_asks.py  # PR #72 — 6 tests
+```
+
+Total: ~58 new tests across the routing surface, all green at
+merge time.
+
+### 21.4 Out of scope (deferred to follow-ups)
+
+* **Move-ticket tool.** When the user asked the agent to move the
+  misrouted forest-age ticket from PLG to Eesti mets, the agent
+  searched the wrong table (SQLite PIM-tasks) and hallucinated
+  "no tasks found." Two ticket systems exist:
+  `/app/workspace/tasks.db` (PIM, no `project_id`) vs
+  `control_plane.tickets` (Postgres, has `project_id`). The agent
+  has tools for the first, none for the second. Spawned task
+  covers a `move_ticket(ticket_id, target_project_name)` API +
+  `cp_*` agent tools + capability registration. The two real
+  misrouted tickets (essay + failed forest-age) were moved
+  manually via raw SQL during the incident.
+* **Broken MCP code-interpreter fallback servers.** When
+  `gee_run_script` timed out, the agent fell through to four MCP
+  servers (codeinterpreter / Gorav22/terminusai /
+  togethercomputer/mcp-server-tci / computesdk) — three needed
+  unconfigured tokens (401), one was 404. The `mcp_search_servers`
+  / `mcp_add_server` agent tools should pre-validate auth before
+  reporting "added successfully" so the agent doesn't keep
+  retrying broken servers. Separate concern.
+* **Proposal message richness.** The current message format
+  ("This message looks like it might belong to *X*") is plain.
+  Could include the keyword(s) that triggered the match — useful
+  when the user is surprised by the detection. Defer until the
+  current rule produces enough confused-user signal to justify.
