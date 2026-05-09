@@ -118,7 +118,18 @@ from apscheduler.triggers.cron import CronTrigger
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
-scheduler = AsyncIOScheduler()
+# Generous misfire window: APScheduler's default ``misfire_grace_time``
+# is 1 s, so any cron job delayed by even 3-4 s during normal load
+# triggers ``Run time of job ... was missed by 0:00:03`` WARN spam in
+# errors.jsonl (613 occurrences/week as of 2026-05-09 pattern_learner
+# scan). Most of our jobs run on minute-or-coarser cadences, so a 60 s
+# grace tolerates routine scheduling jitter without losing visibility
+# into actual stalls (>60 s overruns still log). ``coalesce=True``
+# means when the scheduler catches up after a pause, multiple missed
+# runs collapse into one execution rather than firing in sequence.
+scheduler = AsyncIOScheduler(
+    job_defaults={"misfire_grace_time": 60, "coalesce": True},
+)
 
 # Dedicated thread pool for commander.handle() calls — ensures multiple
 # messages can be processed concurrently without saturating the default
