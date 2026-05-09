@@ -127,7 +127,19 @@ def sync_workspace(backup_repo: str) -> None:
     Commit any changes in workspace and push to the remote.
     Called on the configured cron schedule (default: hourly).
     Safe to call if backup_repo is empty — returns immediately.
+
+    Heartbeat: ``workspace/.git/HEAD`` mtime is bumped on every call
+    regardless of (a) whether ``backup_repo`` is configured or
+    (b) whether there were changes to commit.  ``cron_liveness``
+    uses this file's mtime to detect a dead scheduler — without the
+    touch, deployments without ``WORKSPACE_BACKUP_REPO`` never advance
+    the heartbeat and trip false-positive "stale cron" alerts every
+    12 hours.  The touch is content-free (mtime-only) so a no-backup
+    deployment still has a live heartbeat indicator.
     """
+    # Heartbeat first — always, even before the early-returns below.
+    _touch_workspace_sync_heartbeat()
+
     if not backup_repo:
         return
 
@@ -151,3 +163,24 @@ def sync_workspace(backup_repo: str) -> None:
         logger.error(f"workspace_sync: push failed — {out}")
     else:
         logger.info(f"workspace_sync: pushed at {ts}")
+
+
+def _touch_workspace_sync_heartbeat() -> None:
+    """Bump mtime on the cron-liveness footprint
+    (``/app/workspace/.git/HEAD``).
+
+    Cheap, no-op on missing parent (workspace not initialised as a git
+    repo yet — first sync will create it).  Failures are swallowed —
+    a failed touch only costs us a false-positive cron-stale alarm,
+    not the actual sync.
+    """
+    from pathlib import Path
+
+    heartbeat = Path("/app/workspace/.git/HEAD")
+    if not heartbeat.parent.exists():
+        return  # No git repo yet — setup_workspace_repo runs at boot
+    try:
+        if heartbeat.exists():
+            heartbeat.touch()
+    except OSError:
+        pass
