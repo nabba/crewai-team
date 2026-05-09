@@ -264,9 +264,16 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
     timer.start()
     global _currently_running_job
     _currently_running_job = name
+    # Tag every nested LLM call with the job name so reconcile_actual_spend
+    # writes to a budgets row keyed on it (e.g. "llm-discovery",
+    # "fiction-ingest", "training-collector") instead of the generic
+    # "unknown" fallback. This is what splits the historical "unknown"
+    # bucket into per-job line items.
+    from app.project_context import agent_scope
     try:
         _report_background_activity(name, "running")
-        fn()
+        with agent_scope(name):
+            fn()
         logger.info(f"idle_scheduler: '{name}' completed")
         _report_background_activity(name, "completed")
         _job_failure_counts[name] = 0  # Reset on success

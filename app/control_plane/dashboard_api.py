@@ -605,6 +605,13 @@ _KNOWN_CREWS: tuple[tuple[str, str], ...] = (
 def _is_internal_agent(name: str) -> bool:
     internal = {n for n, kind in _KNOWN_CREWS if kind == "internal"}
     internal |= {"self_improver", "meta_evolver", "observer", "introspector"}
+    # Idle-scheduler buckets (the rolled-up "idle_scheduler" plus every
+    # per-job name set by app/idle_scheduler.py:_run_single_job's
+    # agent_scope wrapper) are background work, not a user-addressable
+    # crew. Classify them as internal so the Cost-by-Crew chart stays
+    # uncluttered.
+    if name == "idle_scheduler" or "-" in name:  # job names use hyphens
+        return True
     return name in internal
 
 
