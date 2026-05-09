@@ -149,6 +149,19 @@ _breakers: dict[str, CircuitBreaker] = {
     "anthropic_credits": CircuitBreaker(
         "anthropic_credits", failure_threshold=1, cooldown_seconds=3600,
     ),
+    # Operator-action breakers.  Same pattern as anthropic_credits —
+    # the underlying issue (auth failure / wrong token) cannot be
+    # fixed by code; only the operator can rotate the credential.
+    # We trip on first failure with a long cooldown so the
+    # reconciler / client doesn't hammer the upstream once/minute.
+    # First trip logs WARN (operator alert); subsequent re-trips
+    # within the cooldown log INFO via the HALF_OPEN→OPEN path.
+    "neo4j_auth": CircuitBreaker(
+        "neo4j_auth", failure_threshold=1, cooldown_seconds=3600,
+    ),
+    "mcp_auth": CircuitBreaker(
+        "mcp_auth", failure_threshold=1, cooldown_seconds=3600,
+    ),
     "self_healer": CircuitBreaker("self_healer", failure_threshold=3, cooldown_seconds=600),
 }
 

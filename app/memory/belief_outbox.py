@@ -89,11 +89,52 @@ def _fetch_all_postgres_beliefs() -> list[dict[str, Any]]:
     ]
 
 
+_NEO4J_AUTH_ERROR_FRAGMENTS = (
+    # Neo4j Python driver wraps Cypher errors with the upstream
+    # GQL code in str(exc).  Auth-failure variants we've seen:
+    "Neo.ClientError.Security.Unauthorized",
+    "Neo.ClientError.Security.AuthenticationRateLimit",
+    "client is unauthorized",
+    "AuthenticationFailure",
+)
+
+
+def _is_neo4j_auth_error(exc: BaseException) -> bool:
+    """Match the auth-failure variants the Neo4j driver surfaces.
+
+    Operator-action errors (wrong password, rotated credential)
+    cannot be retried into success; we trip the breaker so the
+    reconciler stops hammering once/minute until the operator
+    fixes the credential.
+    """
+    s = str(exc)
+    return any(frag in s for frag in _NEO4J_AUTH_ERROR_FRAGMENTS)
+
+
 def _fetch_existing_neo4j_belief_ids() -> set[str] | None:
     """Return every ``:Belief`` node's ``belief_id`` from Neo4j.
 
     Returns None when Neo4j is unavailable (caller should skip the run).
+
+    Auth failures (operator must rotate the credential) trip the
+    ``neo4j_auth`` circuit breaker for 1 h to stop the reconciler
+    hammering the upstream.  The first failure logs WARN; subsequent
+    failures inside the cooldown short-circuit silently (the breaker's
+    HALF_OPEN→OPEN path logs at INFO via T1.3).
     """
+    # Short-circuit when the auth breaker is OPEN.  Saves the round
+    # trip and avoids re-logging the same failure.
+    try:
+        from app import circuit_breaker
+        if not circuit_breaker.is_available("neo4j_auth"):
+            logger.debug(
+                "belief_outbox: neo4j_auth breaker OPEN; skipping read"
+            )
+            return None
+    except Exception:
+        # Best-effort — never let breaker import break the reconciler.
+        pass
+
     try:
         from app.subia.belief import neo4j_mirror
     except Exception as exc:
@@ -112,7 +153,25 @@ def _fetch_existing_neo4j_belief_ids() -> set[str] | None:
             result = session.run("MATCH (b:Belief) RETURN b.belief_id AS id")
             return {record["id"] for record in result if record["id"]}
     except Exception as exc:
-        logger.warning("belief_outbox: neo4j read failed: %s", exc)
+        if _is_neo4j_auth_error(exc):
+            # Trip the operator-action breaker once.  Future calls in
+            # the next 1 h short-circuit at the top of this function.
+            try:
+                from app import circuit_breaker
+                circuit_breaker.record_failure("neo4j_auth")
+            except Exception:
+                pass
+            # The first trip logs WARN via the breaker itself; we log
+            # at INFO here so the operator alert isn't doubled.
+            logger.info(
+                "belief_outbox: neo4j auth failed — breaker OPEN, "
+                "deferred until operator rotates credential: %s",
+                exc,
+            )
+        else:
+            # Transient (connection, timeout, server-down).  Log WARN
+            # so legitimately-broken connectivity still surfaces.
+            logger.warning("belief_outbox: neo4j read failed: %s", exc)
         return None
 
 
