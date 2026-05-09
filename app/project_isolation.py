@@ -103,21 +103,61 @@ class ProjectContext:
 
 PROJECT_KEYWORDS: dict[str, list[str]] = {
     "plg": [
-        # Brand / product terms — the only signals we trust to mean
-        # "this is a PLG task." Generic geographies removed.
-        "plg", "piletilevi", "ticketing", "ticket", "tickets",
-        "live nation", "iabilet", "protect group",
-        "venue", "concert", "ticketing platform",
+        # Brand / product terms.  Tightened 2026-05-09 to drop bare
+        # geographies (estonia/baltic/latvia/lithuania) — those silently
+        # hijacked any task mentioning the region. The list below is
+        # the live-events-ticketing vocabulary; broaden carefully.
+        "plg", "piletilevi", "live nation", "iabilet", "protect group",
+        # Ticketing-as-a-product
+        "ticketing", "ticketing platform", "ticket", "tickets",
+        "ticket sales", "ticket platform", "ticket inventory",
+        "box office", "event ticket", "event ticketing",
+        "event registration", "ticket pricing", "seat map",
+        # Live-event surfaces
+        "venue", "venues", "concert", "concerts", "tour",
+        "festival", "live event", "live events", "promoter",
     ],
     "archibal": [
-        "archibal", "clearance", "c2pa", "provenance",
-        "content clearance", "pki", "ai detection", "content authenticity",
-        "digital provenance", "media authentication",
+        # Brand
+        "archibal",
+        # Provenance / content-clearance core vocabulary
+        "clearance", "content clearance", "rights clearance",
+        "provenance", "ai provenance", "digital provenance",
+        "content provenance", "media provenance",
+        # The C2PA / Content Credentials standard family
+        "c2pa", "content credentials", "content authenticity",
+        "media authentication", "image authentication",
+        "video authentication",
+        # Cryptographic plumbing
+        "pki", "public key infrastructure", "signing certificate",
+        # AI-generated-content detection / labelling
+        "ai detection", "ai-generated", "ai generated",
+        "synthetic media", "generative content",
+        "watermark", "watermarking", "content watermark",
+        "deepfake", "deepfake detection",
+        # Closely-related industry terms
+        "trust score", "media authentication", "fact-checking pipeline",
     ],
     "kaicart": [
-        "kaicart", "tiktok", "thai", "thailand", "smb seller",
-        "tiktok shop", "e-commerce", "ecommerce", "seller",
-        "southeast asia", "sea market",
+        # Brand + key partner platforms
+        "kaicart", "tiktok", "tiktok shop", "shopee", "lazada", "shopify",
+        # Asian / SEA e-commerce vocabulary (the user's framing)
+        "asian e-commerce", "asia e-commerce",
+        "southeast asia", "sea market", "sea region", "sea ecommerce",
+        "asean e-commerce", "asean commerce",
+        # SEA country names — distinct from Estonia/Baltic, low chance
+        # of cross-claim with other projects
+        "thai", "thailand", "vietnam", "vietnamese",
+        "indonesia", "indonesian", "philippines", "filipino",
+        "malaysia", "malaysian", "singapore",
+        # Generic e-commerce vocabulary (KaiCart is the only ecom
+        # project; safe to claim broadly)
+        "e-commerce", "ecommerce", "online seller", "online store",
+        "online marketplace", "marketplace", "small seller",
+        "smb seller", "merchant", "merchants",
+        "live commerce", "social commerce",
+        # Operational vocabulary that lands here
+        "fulfilment", "fulfillment", "drop-shipping", "dropshipping",
     ],
     # Project name uses a space (matches the Postgres CP record
     # "Eesti mets" — control_plane.projects.get_by_name is case-
