@@ -66,6 +66,8 @@ _DEFAULT_CADENCE_S = {
     "db_vacuum": 24 * 3600,            # daily probe — internal cadence 30 d; Wave 0/1 (#A6)
     "log_archival": 6 * 3600,          # 6 h probe — internal cadence daily; Wave 0/1 (#A5)
     "db_backup": 6 * 3600,             # 6 h probe — internal cadence weekly; Wave 0/1 (#A1)
+    "silent_regression_detector": 4 * 3600,  # 4 h probe — Phase C #2 (2026-05-09)
+    "pattern_learner": 24 * 3600,            # daily probe — Phase C #4 (2026-05-09)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -167,6 +169,22 @@ def _driver() -> None:
         monitors.append(("db_backup", db_backup.run, _DEFAULT_CADENCE_S["db_backup"], 0.0))
     except Exception:
         logger.debug("monitors: db_backup import failed", exc_info=True)
+    try:
+        from app.healing import silent_regression_detector
+        monitors.append((
+            "silent_regression_detector", silent_regression_detector.run,
+            _DEFAULT_CADENCE_S["silent_regression_detector"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: silent_regression_detector import failed", exc_info=True)
+    try:
+        from app.healing import pattern_learner
+        monitors.append((
+            "pattern_learner", pattern_learner.run,
+            _DEFAULT_CADENCE_S["pattern_learner"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: pattern_learner import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

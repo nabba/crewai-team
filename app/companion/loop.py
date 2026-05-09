@@ -113,4 +113,21 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.append(("interest-model", _interest_run, JobWeight.LIGHT))
     except Exception:
         logger.debug("companion.loop: interest_model job skipped", exc_info=True)
+
+    # Phase C (2026-05-09) — adapter performance / paper pipeline / governance auto-propose.
+    try:
+        from app.training.adapter_performance import run as _ap_run
+        jobs.append(("adapter-performance", _ap_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: adapter_performance job skipped", exc_info=True)
+    try:
+        from app.episteme.paper_pipeline import run as _pp_run
+        jobs.append(("paper-pipeline", _pp_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: paper_pipeline job skipped", exc_info=True)
+    try:
+        from app.governance_ratchet.auto_propose import run as _gov_run
+        jobs.append(("governance-auto-propose", _gov_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: governance_auto_propose job skipped", exc_info=True)
     return jobs
