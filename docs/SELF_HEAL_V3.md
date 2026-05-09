@@ -226,6 +226,76 @@ asymmetric (recent-inbound + stale-outbound > 7 d) or likely-dead
 (no traffic > 7 d). Multi-channel escalation: Signal → PWA push
 after 3 fails → email after 7 fails. Streak resets on recovery.
 
+### 12. DB backup engine + monitor (Phase A #A1, 2026-05-09)
+
+`app/healing/db_backup.py` — Postgres + Neo4j + ChromaDB backup
+engine driven from the gateway via Docker SDK (postgres + neo4j
+exec inside sibling containers; chromadb tarball directly).
+Manifest at `workspace/backups/manifest.json` records every run.
+
+`app/healing/monitors/db_backup.py` — opt-in (default OFF) weekly
+runner + freshness alerter at >14 d since last successful backup.
+
+`deploy/scripts/backup.sh` — operator-runnable equivalent (host-side
+docker exec) for environments where the gateway isn't the backup
+runner.
+
+See `crewai-team/deploy/RESTORE.md` for the operator-facing restore
+runbook.
+
+### 13. conversations.db monthly VACUUM (Phase A #A6, 2026-05-09)
+
+`app/healing/monitors/db_vacuum.py` — daily probe + 30-day internal
+cadence. Calls `app.conversation_store.vacuum()` which reclaims
+SQLite pages freed by `prune_old_*`. Alerts when >50 MB freed.
+
+### 14. Log archival (Phase A #A5 + Phase D #2, 2026-05-09)
+
+`app/healing/monitors/log_archival.py` — daily pass:
+
+* `errors.jsonl.{1,2,3}` rotated suffixes → gzip into monthly
+  archive at `workspace/logs/archive/<YYYY-MM>.jsonl.gz`.
+* `audit_journal.json` >10 MB → gzip + truncate.
+* `workspace/shinka_results/run_*` dirs >90 days → tarball into
+  `workspace/shinka_results/archive/<run>.tar.gz` (Phase D #2).
+* All archive subdirs purged at `LOG_ARCHIVE_RETENTION_DAYS`
+  (default 90).
+
+### 15. Silent-regression detector (Phase C #2, 2026-05-09)
+
+`app/healing/silent_regression_detector.py` — 4 h monitor. Walks
+`workspace/audit_journal.json` for cron-like events (error_resolution,
+code_audit, self_improve, evolution, retrospective, benchmark_snapshot,
+workspace_sync). For each, computes 13-day baseline rate; alerts
+on last-24h count <70% of baseline. Pairs the alert with recent
+git commits + control-plane CR/ratchet/amendment actions as
+suspects so the operator gets the WHAT and a likely WHY.
+
+### 16. Failure-pattern learner (Phase C #4, 2026-05-09)
+
+`app/healing/pattern_learner.py` — daily pass over
+`workspace/logs/errors.jsonl`. SHA-1 signature clustering using
+the same `compute_signature()` the runbook dispatcher uses.
+Filters out signatures already covered by a registered runbook
+(by reading `_REGISTERED_RUNBOOKS` directly). Flags signatures
+with ≥10 occurrences in the last 7 days; writes a markdown
+scaffold to `docs/proposed_fixes/learner_<sig>.md` for the
+operator to flesh into a real handler.
+
+### 17. Semantic LLM-output drift detector (Phase D #6, 2026-05-09)
+
+`app/healing/llm_output_drift.py` — weekly checkpoint. Runs a
+fixed set of golden probes (`workspace/healing/llm_drift_probes.json`,
+defaults at module-level), captures answer + embedding (real
+chroma if available, hash-trick fallback), persists baseline at
+`workspace/healing/llm_drift_baseline.json`. Subsequent runs cosine-
+compare new vs baseline; alerts at avg < 0.85.
+
+Embedder source recorded on each baseline entry; cross-source
+comparisons (chroma 768-d ↔ hash 256-d) refuse to compare and
+instead alert "rebase needed" — the dim/scale mismatch would
+otherwise cosine to 0 and fire false-positive drift.
+
 ---
 
 ## Wiring

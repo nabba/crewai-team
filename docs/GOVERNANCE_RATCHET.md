@@ -298,3 +298,58 @@ gh api '/api/cp/audit?actor=governance_ratchet&since=...'
 # Verify the ratchet audit chain is intact
 python -c 'from app.governance_ratchet import verify_audit_chain; print(verify_audit_chain())'
 ```
+
+---
+
+## Auto-proposers (Phase C #5 + Phase D #3, 2026-05-09)
+
+Two daily proposers watch governance state and suggest operator
+actions when conditions warrant. **Neither auto-applies.** Both
+write to `workspace/governance_proposals.jsonl` (capped 1000 via
+`jsonl_retention`); operator approves through the existing React
+`/cp/settings` ratchet card.
+
+### `app/governance_ratchet/auto_propose.py` — meta-governance ratchet
+
+Daily cadence. For each of `safety_minimum` and `quality_minimum`:
+
+1. Reads `control_plane.audit_log` for `action_prefix=promotion_`
+   over the last 7 days.
+2. Computes `score_avg` from each row's `detail_json`.
+3. Checks rollback rate (action prefix `rollback_` / `rejected_` /
+   `revert_` over the same window).
+4. Proposes raise from `effective` to `effective + 0.01` when:
+   * ≥20 promotions in window
+   * `score_avg ≥ effective + 0.03`
+   * rollback_rate < 5%
+   * no proposal for this threshold in last 14 days
+5. Caps at `0.99` (never propose 1.0 — nothing reaches it).
+
+Master switch: `GOVERNANCE_AUTO_PROPOSE_ENABLED` (default ON).
+
+### `app/governance_ratchet/goodhart_enforcing_proposer.py`
+
+Daily cadence. Fires only when the gate is in **Advisory** mode
+(skip Off, skip Enforcing). 14-day observation window.
+
+Proposes `Advisory → Enforcing` flip when:
+
+* ≥30 promotions in window.
+* `would_block_pct ≤ 5%` — fewer than 1 in 20 promotions would
+  have been blocked under Enforcing.
+* No sustained high-severity incidents (>2 high signals in window
+  blocks the proposal).
+* No proposal in last 14 days.
+
+The fire-once-per-flip-need pattern means the operator can dismiss
+the proposal by simply not acting; it won't re-propose for 14 days.
+
+Master switch: `GOODHART_ENFORCING_PROPOSER_ENABLED` (default ON).
+
+### Why proposers, not auto-applies
+
+The ratchet edits and the gate flip both touch governance behavior
+that affects every promotion. A bad auto-apply could quietly disqualify
+all future work. The cost of one operator click vs the cost of
+silent over-tightening is small — operator-in-the-loop on every
+governance change is the right default.

@@ -1926,3 +1926,290 @@ tests/test_routing_ticket_ops.py           # PR #77 (NEW) — 18 tests
   live (heartbeat now advances even with no remote, per #78), but
   if you want the workspace-state push to a backup repo, set the
   env var. Optional.
+
+---
+
+## 28. 2026-05-09→10 — Personal-agent + self-evolution sweep (Phases B → G)
+
+Seven sequential commits over a 24-hour window that close the rest
+of the resilience-gap roadmap and add the proactive-companion
+behaviour the operator asked for. Each phase landed clean (tests
+green at every commit) and audit feedback drove three follow-up
+phases (E, F, G) that surfaced silent-failure bugs in the prior
+deliveries.
+
+```
+A   2026-05-09  342bd554  Wave 0/1 self-heal closure (see §27)
+B   2026-05-09  ab76da03  5 personal-life features
+C   2026-05-09  1134dad1  5 self-improvement / observability
+D   2026-05-09  86770852  7 audit-finding gaps
+E   2026-05-09  72f3f6e9  Phase D audit cleanup
+F   2026-05-10  bc7fe94d  Phase E delivery-sweep cleanup
+G   2026-05-10  bd3cbef8  4 final companion gaps
+```
+
+Net deltas: ~13,000 LOC across `app/` + `tests/`. ~340 new tests.
+374 cross-suite tests green at the end.
+
+The doc index for this sweep is `docs/PROACTIVE_DELIVERY_INDEX.md`.
+
+### 28.1 Phase B — personal-life surface (5 features)
+
+| ID | What | Lives in |
+|----|------|----------|
+| B1 | Interest model — 12 h aggregator over conversations.db, inbox triage, calendar titles, FEEDBACK events, affect tags. Output `workspace/companion/interest_profile.json` with top-30 topics scored by recency × frequency × source-diversity. | [`interest_model.py`](app/companion/interest_model.py) |
+| B2 | Calendar prep — 5-min idle job; sends Signal prep 30 min before each event with title, attendees, agenda, per-attendee inbox + Mem0 enrichment. | [`calendar_prep.py`](app/life_companion/calendar_prep.py) |
+| B3 | Closed-loop feedback router — drains `feedback.events` and dispatches to skill counter / recipe ledger / companion event log. Sidechannel via `notify_meta` correlates reactions to source. | [`feedback_router.py`](app/companion/feedback_router.py), [`notify_meta.py`](app/companion/notify_meta.py) |
+| B4 | Long-arc commitment follow-up — daily walk over `SelfState.active_commitments`. 7d → 14d → 30d cadence by age + deadline-imminent + post-deadline nudges. | [`long_arc_follow_up.py`](app/life_companion/long_arc_follow_up.py) |
+| B5 | Personalized signal context — `ToneContext` (mood quadrant + local hour + top-3 interests) injected into the concierge rewriter prompt. | [`signal_context.py`](app/personality/signal_context.py) |
+
+39 tests. See `docs/COMPANION_FEEDBACK_LOOP.md` (B3 + D4 + G2 + F3 are one logical loop) and `docs/LIFE_COMPANION.md` (B2 + B4 + others).
+
+### 28.2 Phase C — self-improvement & observability (5 features)
+
+| ID | What | Lives in |
+|----|------|----------|
+| C1 | Adapter retirement performance arm — weekly snapshot of `workspace/training_adapters/registry.json`; computes `health_score = (eval_score / QUALITY_GATE) × age_decay × recipe_winrate` and proposes retirement to JSONL + Signal. | [`adapter_performance.py`](app/training/adapter_performance.py) |
+| C2 | Silent regression detector — 4 h monitor; walks `audit_journal.json` for cron-like events, computes 13-day baseline rate; alerts on >30% drop with recent git commits + control-plane CR/ratchet/amendment actions as suspects. | [`silent_regression_detector.py`](app/healing/silent_regression_detector.py) |
+| C3 | Paper-to-experiment pipeline — weekly arXiv ATOM fetch keyed off interest_model topics; Haiku 4.5 strict-JSON `{summary, implications, experiment, relevance}`; top-3 by relevance into Signal digest. | [`paper_pipeline.py`](app/episteme/paper_pipeline.py) |
+| C4 | Failure-pattern learner — daily pass over `workspace/logs/errors.jsonl`; SHA-1 signature clustering (matches runbook dispatcher); excludes already-registered runbooks; writes scaffolds to `docs/proposed_fixes/learner_<sig>.md`. | [`pattern_learner.py`](app/healing/pattern_learner.py) |
+| C5 | Meta-governance auto-propose — daily evaluation of audit_log promotions; proposes ratchet UP when avg ≥ effective + 0.03, ≥20 promotions, rollback rate < 5%; operator approves via React `/cp/settings`. | [`auto_propose.py`](app/governance_ratchet/auto_propose.py) |
+
+31 tests. See `docs/SELF_HEAL_V3.md` (C2 + C4 added there) and `docs/GOVERNANCE_RATCHET.md` (C5 added there).
+
+### 28.3 Phase D — 7 audit-finding gaps
+
+Closes the partial / mismatched items from the user's audit against the original Wave 0/1/2/3 plan.
+
+| ID | What | Lives in |
+|----|------|----------|
+| D1 | PG startup circuit breaker — bounded retry (1/3/9 s × 3) + 60 s breaker + Signal alert + connect_timeout in DSN. | [`db.py`](app/control_plane/db.py) (modified) |
+| D2 | Evolution audit 90 d archive — `_archive_evolution_runs()` tarballs `shinka_results/run_*` after 90 days. | [`log_archival.py`](app/healing/monitors/log_archival.py) (modified) |
+| D3 | Goodhart enforcing flip auto-proposer — daily watch of the gate while it sits in Advisory mode; proposes flip when conditions warrant. | [`goodhart_enforcing_proposer.py`](app/governance_ratchet/goodhart_enforcing_proposer.py) |
+| D4 | Feedback → scheduler downweighting — 👎 multiplies workspace weight by 0.8 with 3 d halflife decay. | [`feedback_weights.py`](app/companion/feedback_weights.py), [`scheduler.py`](app/companion/scheduler.py) (modified) |
+| D5 | Personalized weekly digest — Friday 09:00 Signal digest from RSS feeds + GitHub user events + arXiv-by-author + Google News for ventures. Stdlib-only feed parser. | [`personalized_digest.py`](app/life_companion/personalized_digest.py) |
+| D6 | Semantic LLM-output drift — weekly checkpoint of golden-probe outputs vs baseline embedding; alerts at avg cosine < 0.85. | [`llm_output_drift.py`](app/healing/llm_output_drift.py) |
+| D7 | Rejected-hypothesis lessons KB — daily clusterer over rejected change-requests + 👎 companion feedback + medium/high Goodhart signals. Public `check_against()` API for synthesis modules. | [`lessons_learned.py`](app/companion/lessons_learned.py) |
+
+51 tests. See `docs/GOVERNANCE_RATCHET.md` (D3) and `docs/SELF_HEAL_V3.md` (D6).
+
+### 28.4 Phase E — Phase D audit cleanup
+
+Audit pass after Phase D revealed 15 issues. 13 fixed cleanly, 2 deferred.
+
+P0 silent bugs:
+* E1 — `feedback_router._resolve_send_ts` queried non-existent `feedback.responses`; fixed to hit real `feedback.response_metadata`.
+* E2 — `pattern_learner._registered_signatures` imported non-existent `_LOCK`; fixed to `_registry_lock`.
+* E3 — `calendar_prep` imported `_list_messages` (doesn't exist; actual is `_list_recent`) and `get_manager` (doesn't exist; actual is `search_memory`).
+
+P1 logic:
+* E4 — interest_model included 👎 comments as POSITIVE interest signal; fixed to filter to `polarity == "up"`.
+* E5 — paper_pipeline `_save_seen` evicted arbitrary IDs (set ordering); fixed to `dict[id, ts]` sorted-by-ts.
+* E6 — paper_pipeline regex XML parsing replaced with shared `feed_parser`.
+
+P2 architecture:
+* E7 — extracted `app/utils/hash_embedding.py` (lessons_learned + llm_output_drift had identical 256-d hashing-trick).
+* E9 — pattern_learner scaffolds unified to `docs/proposed_fixes/` (alongside auditor_bridge).
+* E10 — llm_output_drift uses `chromadb_manager.embed` with hash fallback. `_embed` returns `(vector, source)`. Cross-source comparison refused.
+* E12 — boot_reset stops creating empty dbm placeholder files.
+* E13 — scheduler hoists `_affect_weight()` out of per-candidate loop.
+* E14 — runtime_settings reads via `getattr(s, …, default)` so a stripped-down test Settings doesn't crash on import.
+
+12 follow-up tests pin behavior. Deferred: E8 (state-dir unification, ~20 tests would migrate) + E11 (cosmetic field rename).
+
+### 28.5 Phase F — Phase A-E delivery audit
+
+Honest end-to-end audit revealed 11 more issues. All shipped clean.
+
+P0 silent bugs (3):
+* F1 — `interest_model._feedback_events_text` and `lessons_learned._from_companion_feedback` read non-existent single `events.jsonl`; events are sharded per workspace under `events/<ws_id>.jsonl`. Added `events.iter_all_workspaces` helper; both consumers walk it correctly.
+* F2 — `adapter_performance._recipe_winrate_for_adapter` iterated `RecipeOutcome.tool_names` (doesn't exist; field is on `AgentRecipe.extra_tool_names`). Rewrote as two-step join: `list_recipes` → match adapter in `extra_tool_names` → `list_outcomes(recipe_id)` per match.
+* F3 — `notify(metadata=…)` had zero callers; B3 closed-loop's entry point was dead. Extended `notify_on_complete` decorator to accept `metadata`, wired schedule_manager_tools, added 4th sink to feedback_router (`job_id` → `workspace/companion/job_feedback.jsonl`).
+
+P1 logic (3):
+* F4 — signal_context circadian integration imported non-existent `current_segment`. Fixed to `current_circadian_mode` + map modes (`active_hours` → afternoon, `deep_work_hours` → evening, etc.) to the four time-of-day buckets.
+* F5 — `lessons_learned.check_against()` had no consumer. Wired into `change_requests/lifecycle.create_request`: when a new proposal matches a prior-rejected pattern (≥0.4 cosine), the CR `reason` gets a "⚠️ Matches lesson abc12" annotation.
+* F6 — interest_profile under-consumed. Added "🧭 Topics you've cared about" section to `daily_briefing._compose_weekly`. Daily morning/evening stay clean.
+
+P1 retention + efficiency (2):
+* F7 — `app/utils/jsonl_retention.py` (`cap_jsonl` + `append_with_cap`). Wired into 5 unbounded JSONLs:
+  ```
+  workspace/training/adapter_quality_history.jsonl  (cap 5000)
+  workspace/healing/llm_drift_history.jsonl         (cap 1000)
+  workspace/governance_proposals.jsonl              (cap 1000)
+  workspace/proposed_experiments.jsonl              (cap 2000)
+  workspace/training/retirement_proposals.jsonl     (cap 1000)
+  ```
+* F8 — `feedback_router._fetch_new_events` collapsed N+1 into single LEFT JOIN against `feedback.response_metadata`. msg_timestamp now comes back on each event row.
+
+P2 (3):
+* F9 — `listener_heartbeat` monitor now alerts on KNOWN_LISTENERS that have NO heartbeat (when subsystem is on). Catches "thread crashed before first touch" cases.
+* F10 — `/commitment list|fulfilled|broken|deferred|unmute <id>` slash command. Operator can now respond to long_arc nudges via Signal — write through to `SelfState.active_commitments`.
+* F11 — paper_pipeline ranking: embedding cosine against interest_model centroid (primary), LLM-self-rated relevance kept as tiebreaker.
+
+21 follow-up tests. 287 → 364 cross-suite tests pass.
+
+### 28.6 Phase G — 4 final companion gaps
+
+Audit against the original Wave 2 personal-companion spec showed 4 gaps still open after F.
+
+| ID | What | Lives in |
+|----|------|----------|
+| G1 | 72 h calendar horizon scan + conflicts + density-cluster detection. Daily 08:00 trigger; one Signal alert with overlaps + 3+ back-to-back warnings; quiet otherwise. | [`calendar_horizon.py`](app/life_companion/calendar_horizon.py) |
+| G2 | Topic-level feedback weights — parallel to D4 workspace weights but bound to topics. Wired into `feedback_router._dispatch` (extracts mentions from comment vs current profile) and `interest_model._score_terms` (multiplies score per term). | [`topic_weights.py`](app/companion/topic_weights.py) |
+| G3 | Topic-dormancy long-arc nudge — `interest_model` now appends per-pass timeseries to `interest_history.jsonl` (capped via `jsonl_retention`); daily check — peak in [60, 365] d > 1.0 AND last-14 d avg < 0.3 → "you were deep on X six months ago — still blocked?" Signal nudge. `/topic mute|unmute <name>` command. | [`topic_dormancy.py`](app/life_companion/topic_dormancy.py) |
+| G4 | Finland-seasonal nudges — once-per-year triggers: first-frost watch, kaamos onset, winter solstice, polar-night-ends, Vappu, Juhannus warning. Location-gated to Finland. | [`seasonal_nudges.py`](app/life_companion/seasonal_nudges.py) |
+
+26 tests. See `docs/LIFE_COMPANION.md` (all four added there).
+
+### 28.7 New shared utilities (extracted during the cleanup)
+
+* `app/utils/feed_parser.py` (E6) — stdlib RSS/Atom parser; both `paper_pipeline` and `personalized_digest` delegate.
+* `app/utils/hash_embedding.py` (E7) — deterministic 256-d hashing-trick embedding; both `lessons_learned` and `llm_output_drift` delegate.
+* `app/utils/jsonl_retention.py` (F7) — `cap_jsonl` + `append_with_cap`; 5 unbounded JSONLs now bounded.
+
+### 28.8 Files touched (B → G aggregated)
+
+```
+app/companion/
+├── feedback_router.py        # B3 + D4 + F3 + F8 + G2
+├── feedback_weights.py       # D4
+├── interest_model.py         # B1 + E4 + F1 + G2 + G3
+├── lessons_learned.py        # D7 + E7 + F1
+├── notify_meta.py            # B3
+├── topic_weights.py          # G2 (NEW)
+└── events.py                 # F1 (added iter_all_workspaces)
+
+app/life_companion/
+├── calendar_horizon.py       # G1 (NEW)
+├── calendar_prep.py          # B2 + E3 + F-bugfix
+├── daily_briefing.py         # F6 (added Topics section)
+├── long_arc_follow_up.py     # B4 + F10
+├── personalized_digest.py    # D5 + E6
+├── seasonal_nudges.py        # G4 (NEW)
+└── topic_dormancy.py         # G3 (NEW)
+
+app/healing/
+├── auditor_bridge.py         # (Phase A; unchanged in B-G)
+├── boot_reset.py             # E12
+├── db_backup.py              # (Phase A)
+├── llm_output_drift.py       # D6 + E7 + E10
+├── pattern_learner.py        # C4 + E2 + E9
+├── silent_regression_detector.py  # C2
+├── monitors/db_backup.py     # (Phase A)
+├── monitors/db_vacuum.py     # (Phase A)
+├── monitors/listener_heartbeat.py  # F9
+├── monitors/log_archival.py  # D2
+└── monitors/__init__.py      # cadence + wiring updates
+
+app/training/
+└── adapter_performance.py    # C1 + F2 + F7
+
+app/episteme/
+└── paper_pipeline.py         # C3 + E5 + E6 + F11 + F7
+
+app/governance_ratchet/
+├── auto_propose.py           # C5 + F7
+└── goodhart_enforcing_proposer.py  # D3 + F7
+
+app/personality/
+└── signal_context.py         # B5 + F4
+
+app/notify/api.py             # B3 + F3 (metadata sidechannel)
+app/control_plane/db.py       # D1 (PG startup breaker)
+app/runtime_settings.py       # E14 (defensive getattr reads)
+app/agents/commander/commands.py  # F10 (/commitment) + G3 (/topic)
+app/change_requests/lifecycle.py  # F5 (lessons KB consult)
+
+app/utils/                    # NEW package (F7 + E6 + E7)
+├── __init__.py
+├── feed_parser.py
+├── hash_embedding.py
+└── jsonl_retention.py
+```
+
+### 28.9 Tests added (B → G aggregated)
+
+```
+tests/companion/
+├── test_calendar_prep.py
+├── test_feedback_router.py   # + F3 + F8 + G2 wiring tests
+├── test_feedback_weights.py
+├── test_interest_model.py
+├── test_lessons_learned.py
+├── test_long_arc_follow_up.py
+├── test_notify_meta.py
+├── test_personalized_digest.py
+└── test_signal_context.py
+
+tests/healing/
+├── test_adapter_performance.py
+├── test_db_backup.py         # (Phase A)
+├── test_db_vacuum.py         # (Phase A)
+├── test_evolution_archive.py
+├── test_goodhart_enforcing_proposer.py
+├── test_governance_auto_propose.py
+├── test_listener_heartbeat_monitor.py  # + F9 missing-heartbeat tests
+├── test_listener_heartbeats.py         # (Phase A)
+├── test_llm_output_drift.py
+├── test_log_archival.py                # (Phase A)
+├── test_paper_pipeline.py
+├── test_pattern_learner.py
+├── test_pg_startup_breaker.py
+├── test_silent_regression.py
+├── test_phase_e_followups.py           # E1-E14 pin tests
+├── test_phase_f_followups.py           # F1-F11 pin tests
+└── test_phase_g_followups.py           # G1-G4 pin tests
+```
+
+374 tests pass cross-suite (healing + companion + concierge + fts5 + change_requests).
+
+### 28.10 Master switches added
+
+| Variable | Default | What it gates |
+|---|---|---|
+| `FEEDBACK_ROUTER_ENABLED` | `true` | B3 closed-loop drain |
+| `COMPANION_FEEDBACK_WEIGHTS_ENABLED` | `true` | D4 workspace downweighting |
+| `COMPANION_TOPIC_WEIGHTS_ENABLED` | `true` | G2 topic downweighting |
+| `ADAPTER_PERFORMANCE_ENABLED` | `true` | C1 retirement proposer |
+| `RETIREMENT_THRESHOLD` | `0.6` | C1 health-score threshold |
+| `HEALING_SILENT_REGRESSION_ENABLED` | `true` | C2 throughput drift detector |
+| `SILENT_REGRESSION_PCT` | `0.30` | C2 alert threshold |
+| `PAPER_PIPELINE_ENABLED` | `true` | C3 weekly arXiv digest |
+| `HEALING_PATTERN_LEARNER_ENABLED` | `true` | C4 unseen-pattern proposer |
+| `GOVERNANCE_AUTO_PROPOSE_ENABLED` | `true` | C5 ratchet auto-proposer |
+| `GOODHART_ENFORCING_PROPOSER_ENABLED` | `true` | D3 gate-flip proposer |
+| `PERSONALIZED_DIGEST_ENABLED` | `true` | D5 weekly digest |
+| `LLM_OUTPUT_DRIFT_ENABLED` | `true` | D6 semantic drift detector |
+| `LESSONS_LEARNED_ENABLED` | `true` | D7 rejection clusterer |
+| `CALENDAR_HORIZON_ENABLED` | `true` | G1 72 h scan |
+| `TOPIC_DORMANCY_ENABLED` | `true` | G3 dormancy nudge |
+| `SEASONAL_NUDGES_ENABLED` | `true` | G4 Finland triggers |
+| `CONTROL_PLANE_CONNECT_TIMEOUT_S` | `8` | D1 PG connect timeout (seconds) |
+| `DB_BACKUP_RETENTION_DAYS` | `30` | (Phase A) |
+| `LOG_ARCHIVE_RETENTION_DAYS` | `90` | (Phase A) |
+
+All defaults ON except backup-related (per-deploy operator choice).
+
+### 28.11 What still needs operator action
+
+* **Goodhart hard gate flip Advisory → Enforcing.** D3 watches the
+  gate and proposes the flip when conditions warrant. The flip
+  itself is operator-only via React `/cp/settings`. Wait at least
+  14 days of Advisory observation before flipping.
+* **Personalized digest config.** D5 reads
+  `workspace/companion/personalized_feeds.json` for RSS feeds +
+  GitHub username + arXiv author list. Empty by default. Operator
+  curates once.
+* **arXiv-following authors.** D5 + paper_pipeline read
+  `ARXIV_FOLLOWING_AUTHORS` env (comma-separated). Set if you want
+  per-author tracking.
+
+### 28.12 Combined session totals (Phase A → G)
+
+* 7 commits (342bd554, ab76da03, 1134dad1, 86770852, 72f3f6e9, bc7fe94d, bd3cbef8).
+* ~13,000 lines of Python + ~3,400 lines of tests added.
+* 374 cross-suite tests passing.
+* 22 silent-failure bugs caught + fixed across the audit cycles E + F (would have shipped silently otherwise).
+* 3 shared utilities extracted (`feed_parser`, `hash_embedding`, `jsonl_retention`).
+* 18 new operator-tunable env switches; all default ON except backup.
