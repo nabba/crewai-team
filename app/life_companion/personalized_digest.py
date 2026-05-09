@@ -38,11 +38,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -54,6 +52,7 @@ from app.life_companion._common import (
     send_signal_alert,
     write_state_json,
 )
+from app.utils import feed_parser
 
 logger = logging.getLogger(__name__)
 
@@ -127,72 +126,14 @@ def _load_feeds_config() -> dict:
         return {}
 
 
-# ── RSS / Atom parser ────────────────────────────────────────────────────
+# Feed parsing delegated to ``app.utils.feed_parser`` (Phase E #6) so
+# this module and ``app.episteme.paper_pipeline`` share one tested
+# implementation.
 
 
 def _parse_feed(xml_text: str, max_items: int) -> list[dict]:
-    """Return up to ``max_items`` entries from an RSS or Atom feed.
-
-    Each entry: {title, link, summary, published}. [] on parse failure.
-    """
-    if not xml_text:
-        return []
-    out: list[dict] = []
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
-    # Strip namespaces — most feed parsers do this so callers can use
-    # plain tag names. The arXiv Atom feed uses `atom:` etc.
-    def _localname(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1] if "}" in tag else tag
-
-    # RSS 2.0: items live under channel/item.
-    for item in root.iter():
-        if _localname(item.tag) != "item":
-            continue
-        title, link, summary, published = "", "", "", ""
-        for child in item:
-            local = _localname(child.tag).lower()
-            text = (child.text or "").strip()
-            if local == "title":
-                title = text
-            elif local == "link":
-                link = text or (child.attrib.get("href") or "")
-            elif local in ("description", "summary"):
-                summary = re.sub(r"<[^>]+>", "", text)[:240]
-            elif local in ("pubdate", "published", "updated"):
-                published = text
-        if title and link:
-            out.append({"title": title[:200], "link": link,
-                        "summary": summary, "published": published})
-        if len(out) >= max_items:
-            return out
-
-    # Atom: entries are <entry>.
-    if not out:
-        for entry in root.iter():
-            if _localname(entry.tag).lower() != "entry":
-                continue
-            title, link, summary, published = "", "", "", ""
-            for child in entry:
-                local = _localname(child.tag).lower()
-                if local == "title":
-                    title = (child.text or "").strip()[:200]
-                elif local == "link":
-                    link = child.attrib.get("href") or (child.text or "").strip()
-                elif local in ("summary", "content"):
-                    summary = re.sub(
-                        r"<[^>]+>", "", (child.text or "").strip(),
-                    )[:240]
-                elif local in ("published", "updated"):
-                    published = (child.text or "").strip()
-            if title and link:
-                out.append({"title": title, "link": link,
-                            "summary": summary, "published": published})
-            if len(out) >= max_items:
-                break
-    return out
+    """Thin wrapper over ``feed_parser.parse`` for back-compat in tests."""
+    return feed_parser.parse(xml_text, max_items=max_items)
 
 
 def _gather_rss(feeds: list[str], seen: set[str]) -> list[dict]:

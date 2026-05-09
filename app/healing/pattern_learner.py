@@ -57,7 +57,12 @@ logger = logging.getLogger(__name__)
 
 _STATE_FILE = "pattern_learner.json"
 _ERRORS_LOG = Path("/app/workspace/logs/errors.jsonl")
-_PROPOSED_DIR = Path("/app/workspace/proposed_runbooks")
+# Phase E #9 (2026-05-09): unified with auditor_bridge's mirror dir
+# (``docs/proposed_fixes/``) so operators have one location to scan
+# for proposed self-heal scaffolds. The two writers use distinct
+# filename conventions (``learner_<sig>.md`` vs
+# ``<pattern>__attempt_<n>.md``) so they don't collide.
+_PROPOSED_DIR = Path("/app/docs/proposed_fixes")
 _RUN_CADENCE_S = 24 * 3600
 _LOOKBACK_DAYS = 7
 _MIN_OCCURRENCES = 10
@@ -156,30 +161,50 @@ def _group_by_signature(rows: list[dict]) -> dict[str, dict]:
 
 
 def _registered_signatures() -> set[str]:
-    """Return signatures already covered by registered runbooks."""
+    """Return signatures already covered by registered runbooks.
+
+    The runbooks module is TIER_IMMUTABLE; we read its private state
+    directly (``_REGISTERED_RUNBOOKS`` keyed by runbook name; locking
+    via ``_registry_lock``). Wrapped in try/except so a future symbol
+    rename never silently breaks our covered-signature check — the
+    fallback returns an empty set, which makes us re-propose patterns
+    that ARE covered, which then surfaces the rename instead of
+    hiding it.
+    """
     try:
-        from app.healing.runbooks import _REGISTERED_RUNBOOKS, _LOCK
+        from app.healing.runbooks import _REGISTERED_RUNBOOKS, _registry_lock
     except Exception:
+        logger.debug(
+            "pattern_learner: runbooks registry symbols unavailable",
+            exc_info=True,
+        )
         return set()
     sigs: set[str] = set()
     try:
-        with _LOCK:
-            for entry in _REGISTERED_RUNBOOKS.values():
-                # Pattern field stored on the entry; convert to a string
-                # representation. Some entries have a regex with `.*`
-                # — those are catch-alls and shouldn't claim every
-                # uncovered signature, so skip them.
-                pat_str = ""
+        with _registry_lock:
+            for name, entry in _REGISTERED_RUNBOOKS.items():
+                # Two registration shapes co-exist in the dispatcher:
+                #   (a) by SHA-1 signature — name IS the hex hash.
+                #   (b) by regex pattern — name is human-readable.
+                # We treat (a) as a covered signature directly, and skip
+                # catch-all regex patterns (can't claim every signature).
+                if (
+                    isinstance(name, str)
+                    and len(name) >= 8
+                    and all(c in "0123456789abcdef" for c in name)
+                ):
+                    sigs.add(name)
+                    continue
                 pat = getattr(entry, "pattern", None)
+                pat_str = ""
                 if pat is not None:
                     pat_str = getattr(pat, "pattern", str(pat))
-                if pat_str in (".*", ".+", ""):
-                    continue
-                # The dispatcher's hash registration uses the runbook
-                # name verbatim if it looks like a hex hash. Fall back
-                # to nothing — the proposer's filter is an additive
-                # heuristic, not a hard guarantee.
-                if all(c in "0123456789abcdef" for c in pat_str) and len(pat_str) >= 8:
+                if (
+                    pat_str
+                    and pat_str not in (".*", ".+")
+                    and len(pat_str) >= 8
+                    and all(c in "0123456789abcdef" for c in pat_str)
+                ):
                     sigs.add(pat_str)
     except Exception:
         logger.debug("pattern_learner: registry walk failed", exc_info=True)
@@ -193,7 +218,9 @@ def _write_scaffold(signature: str, group: dict) -> Path:
     """Materialize a markdown scaffold for one new signature."""
     _PROPOSED_DIR.mkdir(parents=True, exist_ok=True)
     short = signature[:12]
-    target = _PROPOSED_DIR / f"{short}.md"
+    # ``learner_`` prefix distinguishes from auditor_bridge's
+    # ``<pattern>__attempt_<n>.md`` files in the same dir.
+    target = _PROPOSED_DIR / f"learner_{short}.md"
 
     top_logger = group["logger_names"].most_common(1)
     top_logger_str = top_logger[0][0] if top_logger else "(unknown)"

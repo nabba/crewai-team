@@ -168,8 +168,15 @@ def _calendar_titles_text(lookback_days: int) -> Iterable[tuple[str, float]]:
 
 
 def _feedback_events_text(lookback_days: int) -> Iterable[tuple[str, float]]:
-    """Yield comments from companion FEEDBACK events (negative thumbs-down
-    comments are especially useful as signals of "topics user dislikes").
+    """Yield comments from POSITIVE companion FEEDBACK events only.
+
+    Originally this yielded all FEEDBACK comments, but the consumer
+    treats every snippet as a positive-weight contribution. A 👎
+    comment on "forest carbon" was therefore upweighting "forest
+    carbon" in the interest profile — wrong directionality. We now
+    filter to ``polarity == "up"`` so only thumbs-up comments
+    contribute to interest scoring. Negative feedback flows through
+    ``feedback_weights`` (workspace selection) instead.
     """
     events_path = Path("/app/workspace/companion/events.jsonl")
     if not events_path.exists():
@@ -187,10 +194,12 @@ def _feedback_events_text(lookback_days: int) -> Iterable[tuple[str, float]]:
                     continue
                 if ev.get("type") != "FEEDBACK":
                     continue
+                payload = ev.get("payload") or {}
+                if (payload.get("polarity") or "").lower() != "up":
+                    continue
                 ts = float(ev.get("ts", 0))
                 if ts < cutoff:
                     continue
-                payload = ev.get("payload") or {}
                 comment = (payload.get("comment") or "").strip()
                 if comment:
                     age_days = max(0.0, (time.time() - ts) / 86400)

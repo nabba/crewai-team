@@ -70,15 +70,18 @@ _cache: dict[str, Any] | None = None
 
 def _defaults() -> dict[str, Any]:
     s = get_settings()
-    # Settings may not declare every key on older deployments — read
-    # defensively. The runtime-settings file is the single source of
-    # truth once written; env vars are just the first-boot seed so an
-    # existing ``.env`` setup isn't silently flipped off.
+    # Settings may not declare every key on older deployments or in
+    # the v2 test shim — read defensively. Phase E #14 (2026-05-09):
+    # made the previously-direct attribute reads use ``getattr`` with
+    # explicit defaults so a stripped-down test ``Settings`` (or an
+    # older deployment without these fields) doesn't crash on import.
+    # The runtime-settings file is the single source of truth once
+    # written; env defaults below are first-boot seeds.
     return {
-        "voice_mode": s.voice_mode,
-        "vision_cu_enabled": s.vision_cu_enabled,
-        "vision_cu_monthly_cap_usd": float(s.vision_cu_monthly_cap_usd),
-        "concierge_persona_enabled": s.concierge_persona_enabled,
+        "voice_mode": getattr(s, "voice_mode", "off"),
+        "vision_cu_enabled": bool(getattr(s, "vision_cu_enabled", False)),
+        "vision_cu_monthly_cap_usd": float(getattr(s, "vision_cu_monthly_cap_usd", 10.0)),
+        "concierge_persona_enabled": bool(getattr(s, "concierge_persona_enabled", False)),
         "tier3_amendment_enabled": bool(getattr(s, "tier3_amendment_enabled", False)),
         # Self-heal subsystem master switches.
         "error_runbooks_enabled": _env_bool("ERROR_RUNBOOKS_ENABLED", False),

@@ -57,6 +57,9 @@ def collect_candidates(now_local_hour: int | None = None) -> list[Candidate]:
         now_local_hour = _local_hour()
 
     skip_reason_for_affect = _affect_blocks_cycles()
+    # Phase E #13 (2026-05-09): _affect_weight() reads global state
+    # and is identical for every candidate this call — compute once.
+    affect_weight_for_call = _affect_weight()
 
     for row in rows:
         pid = row.get("id")
@@ -84,7 +87,9 @@ def collect_candidates(now_local_hour: int | None = None) -> list[Candidate]:
             fb_multiplier = float(current_multiplier(pid))
         except Exception:
             fb_multiplier = 1.0
-        candidates.append(Candidate(pid, cfg, st, _affect_weight() * fb_multiplier))
+        candidates.append(
+            Candidate(pid, cfg, st, affect_weight_for_call * fb_multiplier),
+        )
     return candidates
 
 

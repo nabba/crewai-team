@@ -42,13 +42,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from app.utils import feed_parser
 
 logger = logging.getLogger(__name__)
 
@@ -136,47 +137,31 @@ def _fetch_arxiv_atom(query: str, max_results: int) -> str:
         return ""
 
 
-# Minimal regex parser — atom XML, one entry block at a time. Avoids
-# pulling lxml as a dep just for this. Title / abstract / ID / date /
-# categories — that's what we need.
-_ENTRY_RE = re.compile(r"<entry>(.*?)</entry>", re.DOTALL)
-_ID_RE = re.compile(r"<id>(.*?)</id>", re.DOTALL)
-_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
-_SUMMARY_RE = re.compile(r"<summary>(.*?)</summary>", re.DOTALL)
-_PUBLISHED_RE = re.compile(r"<published>(.*?)</published>", re.DOTALL)
-_CATEGORY_RE = re.compile(r'<category[^>]*term="([^"]+)"', re.DOTALL)
-
-
 def _parse_atom(xml: str, lookback_days: int) -> list[dict]:
-    """Extract paper records from ATOM XML.
+    """Extract recent paper records from arXiv ATOM XML.
 
-    Returns list of dicts with id (arxiv URL), title, abstract,
-    published, categories (list).
+    Wraps the shared feed parser (``app.utils.feed_parser``) and
+    augments each entry with our schema (``abstract`` instead of
+    ``summary``; ``published`` parsed and filtered by lookback).
+    Returns list of ``{id, title, abstract, published, categories}``.
     """
-    if not xml:
-        return []
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     out: list[dict] = []
-    for entry in _ENTRY_RE.findall(xml):
-        m_id = _ID_RE.search(entry)
-        m_title = _TITLE_RE.search(entry)
-        m_abs = _SUMMARY_RE.search(entry)
-        m_pub = _PUBLISHED_RE.search(entry)
-        if not (m_id and m_title and m_abs and m_pub):
-            continue
+    for entry in feed_parser.parse(xml, max_items=_MAX_PAPERS_PER_PASS * 4):
         try:
-            pub_dt = datetime.fromisoformat(m_pub.group(1).strip().replace("Z", "+00:00"))
-        except Exception:
+            pub_dt = datetime.fromisoformat(
+                entry["published"].replace("Z", "+00:00"),
+            )
+        except (ValueError, TypeError):
             continue
         if pub_dt < cutoff:
             continue
-        cats = _CATEGORY_RE.findall(entry)
         out.append({
-            "id": m_id.group(1).strip(),
-            "title": " ".join(m_title.group(1).split()),
-            "abstract": " ".join(m_abs.group(1).split()),
+            "id": entry["id"] or entry["link"],
+            "title": " ".join(entry["title"].split()),
+            "abstract": " ".join(entry["summary"].split()),
             "published": pub_dt.isoformat(),
-            "categories": cats,
+            "categories": [],  # categories are parser-side; not exposed here
         })
     return out
 
@@ -184,22 +169,49 @@ def _parse_atom(xml: str, lookback_days: int) -> list[dict]:
 # ── Dedup ────────────────────────────────────────────────────────────────
 
 
-def _load_seen() -> set[str]:
+def _load_seen() -> dict[str, float]:
+    """Return ``{paper_id: first_seen_ts}``. Empty on miss.
+
+    The on-disk format is a list of ``[id, ts]`` pairs (or a bare list
+    of ids for back-compat with older runs). We always normalize to
+    a dict so the caller has insertion-ordered access.
+    """
     if not _SEEN_PATH.exists():
-        return set()
+        return {}
     try:
         data = json.loads(_SEEN_PATH.read_text(encoding="utf-8"))
-        return set(data) if isinstance(data, list) else set()
     except Exception:
-        return set()
+        return {}
+    out: dict[str, float] = {}
+    if isinstance(data, list):
+        now = time.time()
+        for entry in data:
+            if isinstance(entry, list) and len(entry) == 2:
+                pid, ts = entry
+                try:
+                    out[str(pid)] = float(ts)
+                except (TypeError, ValueError):
+                    out[str(pid)] = now
+            elif isinstance(entry, str):
+                out[entry] = now  # legacy: no ts available
+    return out
 
 
-def _save_seen(seen: set[str]) -> None:
+def _save_seen(seen: dict[str, float]) -> None:
+    """Persist ``seen``; cap to the 5000 newest entries by ts.
+
+    Storing ts means the cap evicts ACTUAL oldest entries — the prior
+    set-based implementation could evict arbitrary IDs (set ordering
+    is not insertion order across Python runs).
+    """
     _SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        # Cap at 5000 — papers we've never proposed in N years are unlikely to matter.
-        entries = list(seen)[-5000:]
-        _SEEN_PATH.write_text(json.dumps(entries), encoding="utf-8")
+        # Sort by ts ascending → tail = newest 5000.
+        ordered = sorted(seen.items(), key=lambda kv: kv[1])[-5000:]
+        _SEEN_PATH.write_text(
+            json.dumps([[pid, ts] for pid, ts in ordered]),
+            encoding="utf-8",
+        )
     except OSError:
         logger.debug("paper_pipeline: seen save failed", exc_info=True)
 
@@ -344,7 +356,7 @@ def run() -> dict[str, Any]:
         if not llm_out:
             continue
         _append_proposal(p, llm_out)
-        seen.add(p["id"])
+        seen[p["id"]] = time.time()
         proposals.append((p, llm_out))
 
     summary["proposed"] = len(proposals)

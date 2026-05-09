@@ -51,13 +51,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import math
 import os
-import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+from app.utils.hash_embedding import embed as _hash_embed, cosine as _hash_cosine
 
 logger = logging.getLogger(__name__)
 
@@ -84,47 +84,20 @@ def _enabled() -> bool:
     )
 
 
-# ── Embedding (hashing trick — deterministic, no deps) ───────────────────
-
-
-_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z\-]{2,}")
-_STOPWORDS = frozenset({
-    "the", "and", "for", "from", "with", "this", "that", "should",
-    "would", "could", "into", "agent", "system", "also",
-})
-
-
-def _tokenize(text: str) -> list[str]:
-    return [
-        t for t in (m.group(0).lower() for m in _TOKEN_RE.finditer(text or ""))
-        if t not in _STOPWORDS and len(t) >= 3
-    ]
+# ── Embedding ─────────────────────────────────────────────────────────────
+# Phase E #7: delegated to ``app.utils.hash_embedding`` so the same
+# deterministic hashing-trick used by ``llm_output_drift`` is the
+# single source. The thresholds in this module (CLUSTER_THRESHOLD /
+# MATCH_THRESHOLD) were tuned against THAT distribution; aligning the
+# implementations means the thresholds remain meaningful.
 
 
 def _embed(text: str, dim: int = _EMBED_DIM) -> list[float]:
-    """Hashing-trick embedding. Stable across runs."""
-    vec = [0.0] * dim
-    for tok in _tokenize(text):
-        h = hashlib.sha1(tok.encode("utf-8")).digest()
-        for i, byte in enumerate(h):
-            slot = (i * 13 + byte) % dim
-            sign = 1.0 if byte % 2 == 0 else -1.0
-            vec[slot] += sign
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm == 0:
-        return vec
-    return [x / norm for x in vec]
+    return _hash_embed(text, dim=dim)
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    num = sum(x * y for x, y in zip(a, b))
-    da = math.sqrt(sum(x * x for x in a))
-    db = math.sqrt(sum(y * y for y in b))
-    if da == 0 or db == 0:
-        return 0.0
-    return num / (da * db)
+def _cosine(a, b):
+    return _hash_cosine(a, b)
 
 
 # ── Sources ──────────────────────────────────────────────────────────────

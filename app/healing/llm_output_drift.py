@@ -40,12 +40,13 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+from app.utils.hash_embedding import embed as _hash_embed_util, cosine as _cosine_util
 
 logger = logging.getLogger(__name__)
 
@@ -156,59 +157,31 @@ def _ask_llm(question: str) -> Optional[str]:
 # ── Embedding ────────────────────────────────────────────────────────────
 
 
-def _embed(text: str) -> Optional[list[float]]:
-    """Return an embedding vector for ``text``. None on any failure.
+def _embed(text: str) -> tuple[Optional[list[float]], str]:
+    """Return ``(vector, source)``. Source ∈ {"chroma", "hash"}.
 
-    Tries the project's existing embedding helper first; falls back to
-    a zero-deps lexical fingerprint that's good enough for drift
-    detection (cosine on TF-32 hashing produces useful signal even
-    without a real LLM embedding endpoint).
+    Prefers the project's real embedding helper at
+    ``app.memory.chromadb_manager.embed``; falls back to the
+    deterministic hashing-trick util in ``app.utils.hash_embedding``
+    so drift detection still works in test/dev environments without a
+    live embedding endpoint. Returning the source lets the caller
+    refuse cross-source comparisons (which would always cosine to 0
+    because of dim mismatch + scale mismatch).
     """
-    # Prefer the project's mem0 / chroma helper when available.
     try:
-        from app.memory.embedding import embed_text  # type: ignore[import-not-found]
-        v = embed_text(text)
+        from app.memory.chromadb_manager import embed as _chroma_embed
+        v = _chroma_embed(text)
         if v:
-            return list(v)
+            return list(v), "chroma"
     except Exception:
-        pass
-
-    # Fallback: 256-dim hashing trick (deterministic, no deps).
-    return _hash_embed(text, dim=256)
-
-
-def _hash_embed(text: str, dim: int = 256) -> list[float]:
-    """Deterministic hashing-trick embedding. Stable across runs.
-
-    Not as semantic as a real embedding model but good for change
-    detection on identical-text-vs-different-text — which is what
-    drift watches for. Same text → same vector → similarity 1.0.
-    """
-    import hashlib
-    vec = [0.0] * dim
-    tokens = [t for t in text.lower().split() if t]
-    for tok in tokens:
-        h = hashlib.sha1(tok.encode("utf-8")).digest()
-        # Distribute the hash across dim slots — stable under string equality.
-        for i, byte in enumerate(h):
-            slot = (i * 13 + byte) % dim
-            sign = 1.0 if byte % 2 == 0 else -1.0
-            vec[slot] += sign
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm == 0:
-        return vec
-    return [x / norm for x in vec]
+        logger.debug("llm_drift: chroma embed unavailable; using hash fallback",
+                     exc_info=True)
+    return _hash_embed_util(text), "hash"
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    num = sum(x * y for x, y in zip(a, b))
-    da = math.sqrt(sum(x * x for x in a))
-    db = math.sqrt(sum(y * y for y in b))
-    if da == 0 or db == 0:
-        return 0.0
-    return num / (da * db)
+# Back-compat wrappers for tests.
+_hash_embed = _hash_embed_util
+_cosine = _cosine_util
 
 
 # ── Baseline IO ──────────────────────────────────────────────────────────
@@ -279,6 +252,8 @@ def run() -> dict[str, Any]:
     similarities: list[float] = []
     detail_rows: list[dict] = []
 
+    embedder_mismatch_seen = False
+
     for probe in probes:
         pid = probe.get("id") or ""
         question = probe.get("question") or ""
@@ -289,7 +264,7 @@ def run() -> dict[str, Any]:
             # LLM unavailable — degrade silently. Don't pollute baseline
             # with empty answers.
             continue
-        emb = _embed(answer)
+        emb, source = _embed(answer)
         if emb is None:
             continue
 
@@ -298,6 +273,7 @@ def run() -> dict[str, Any]:
                 "question": question,
                 "answer_first_seen": answer,
                 "embedding": emb,
+                "embedding_source": source,
                 "captured_at": datetime.now(timezone.utc).isoformat(),
             }
             similarities.append(1.0)
@@ -312,12 +288,27 @@ def run() -> dict[str, Any]:
                 baseline[pid] = {
                     "question": question, "answer_first_seen": answer,
                     "embedding": emb,
+                    "embedding_source": source,
                     "captured_at": datetime.now(timezone.utc).isoformat(),
                 }
                 similarities.append(1.0)
                 detail_rows.append({
                     "id": pid, "similarity": 1.0,
                     "answer_now": answer[:200], "answer_baseline": "(new probe)",
+                })
+                continue
+            # Refuse to compare across embedder sources — the vector
+            # space differs (chroma 768-d vs hash 256-d), so cosine
+            # would always read 0 and we'd alert spuriously. Surface
+            # the mismatch instead.
+            baseline_source = entry.get("embedding_source", "hash")
+            if baseline_source != source:
+                embedder_mismatch_seen = True
+                detail_rows.append({
+                    "id": pid, "similarity": None,
+                    "answer_now": answer[:200],
+                    "answer_baseline": entry.get("answer_first_seen", "")[:200],
+                    "note": f"embedder source changed: {baseline_source} → {source}",
                 })
                 continue
             ref_emb = entry.get("embedding") or []
@@ -328,6 +319,23 @@ def run() -> dict[str, Any]:
                 "answer_now": answer[:200],
                 "answer_baseline": entry.get("answer_first_seen", "")[:200],
             })
+
+    if embedder_mismatch_seen:
+        # One-off Signal alert; don't pollute the drift signal.
+        if not new_baseline_seeded and now_ts - float(state.get("last_alert_at", 0)) >= _DEDUP_WINDOW_S:
+            state["last_alert_at"] = now_ts
+            try:
+                send_signal_alert(
+                    "🎯 LLM-output drift: embedder source changed "
+                    "(real chroma ↔ hash fallback) — vectors aren't "
+                    "comparable. Delete `workspace/healing/"
+                    "llm_drift_baseline.json` to rebase.",
+                    tag="llm_output_drift",
+                )
+            except Exception:
+                logger.debug("llm_drift: mismatch alert failed", exc_info=True)
+        write_state_json(_STATE_FILE, state)
+        return summary
 
     if not similarities:
         write_state_json(_STATE_FILE, state)

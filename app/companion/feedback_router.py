@@ -127,16 +127,14 @@ def _fetch_new_events(since_id: str, limit: int = 200) -> list[dict[str, Any]]:
 def _resolve_send_ts(event: dict[str, Any]) -> Optional[int]:
     """Find the Signal-cli send timestamp this event reacted to.
 
-    The IMMUTABLE feedback_pipeline doesn't currently surface the
-    ``target_timestamp`` directly through ``feedback.events`` — it
-    looks up response metadata internally and stores ``original_task``
-    / ``original_response`` strings. To get the ts, we cross-reference
-    ``feedback.responses`` (the same writer's response-table) by
-    response_id.
-
-    If the response table is unavailable / schema differs, we degrade
-    silently — the dispatcher will fall through to the
-    ``original_response``-text-based heuristics below.
+    The IMMUTABLE feedback_pipeline correlates reactions to the
+    original message via ``feedback.response_metadata.msg_timestamp``
+    (see ``app/feedback_pipeline.py:_lookup_response_metadata``). We
+    walk that table by ``(sender_id, response_text)`` to find the
+    matching ``msg_timestamp`` for each event. The ``response_text``
+    column is the same one the pipeline stored on send (truncated to
+    2000 chars) and replicated to ``feedback.events.original_response``
+    on react — so equal-by-prefix is exact.
     """
     try:
         from sqlalchemy import create_engine, text  # type: ignore[import-not-found]
@@ -147,16 +145,23 @@ def _resolve_send_ts(event: dict[str, Any]) -> Optional[int]:
     db_url = getattr(s, "mem0_postgres_url", None)
     if not db_url:
         return None
+
+    sender_id = event.get("sender_id") or ""
+    response_text = (event.get("original_response") or "")[:2000]
+    if not response_text:
+        return None
     try:
         engine = create_engine(db_url, pool_size=1, max_overflow=1)
         with engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT target_timestamp FROM feedback.responses "
+                "SELECT msg_timestamp FROM feedback.response_metadata "
                 "WHERE response_text = :resp "
-                "ORDER BY recorded_at DESC LIMIT 1"
-            ), {"resp": (event.get("original_response") or "")[:2000]}).fetchone()
+                "  AND (:sender = '' OR sender_id = :sender) "
+                "ORDER BY msg_timestamp DESC LIMIT 1"
+            ), {"resp": response_text, "sender": sender_id}).fetchone()
         return int(row[0]) if row and row[0] else None
     except Exception:
+        logger.debug("feedback_router: response_metadata join failed", exc_info=True)
         return None
 
 

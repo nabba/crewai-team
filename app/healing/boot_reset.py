@@ -46,7 +46,14 @@ _already_ran = False
 
 
 def _resolve_dbm_path() -> Path | None:
-    """Find the actual dbm file on disk. Returns None if neither exists."""
+    """Find an existing dbm file on disk. Returns None if NONE exists.
+
+    Phase E #12 (2026-05-09): previously fell back to the canonical
+    first candidate even when no file existed, causing
+    ``dbm.open(..., "c")`` to create an empty placeholder dbm on every
+    fresh boot. Now we return None when nothing is on disk so the
+    caller skips the open() entirely.
+    """
     for p in _DBM_PATH_CANDIDATES:
         if p.exists():
             return p
@@ -55,9 +62,7 @@ def _resolve_dbm_path() -> Path | None:
             candidate = p.with_suffix(suffix) if p.suffix == "" else None
             if candidate and candidate.exists():
                 return p  # pass the base path; dbm.open finds the rest
-    # Fall back to the canonical first candidate even if absent — dbm.open
-    # without a suffix is the right idiom on this codebase.
-    return _DBM_PATH_CANDIDATES[0]
+    return None
 
 
 def reset_stale_cooldowns() -> dict:

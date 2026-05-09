@@ -115,14 +115,25 @@ def _list_upcoming_events_with_description(
 
 
 def _recent_inbox_from(attendee: str, n: int = 3) -> list[str]:
-    """Top-N recent inbox subject lines from this attendee. Empty on miss."""
+    """Top-N recent inbox subject lines from this attendee. Empty on miss.
+
+    Uses ``app.tools.gmail_tools._list_recent`` (the actual helper —
+    earlier code referred to a non-existent ``_list_messages``).
+    """
     try:
-        from app.tools.gmail_tools import _list_messages  # type: ignore[import-not-found]
+        from app.tools.gmail_tools import _list_recent
     except Exception:
+        logger.debug("calendar_prep: gmail_tools unavailable", exc_info=True)
         return []
     try:
-        msgs = _list_messages(query=f"from:{attendee} newer_than:7d", max_results=n)
+        msgs = _list_recent(
+            query=f"from:{attendee} newer_than:7d", limit=n,
+        )
     except Exception:
+        logger.debug(
+            "calendar_prep: gmail _list_recent failed for %s",
+            attendee, exc_info=True,
+        )
         return []
     out: list[str] = []
     for m in msgs or []:
@@ -133,15 +144,23 @@ def _recent_inbox_from(attendee: str, n: int = 3) -> list[str]:
 
 
 def _mem0_facts_about(attendee: str, n: int = 3) -> list[str]:
-    """Top-N Mem0 facts mentioning this attendee. Empty on miss."""
+    """Top-N Mem0 facts mentioning this attendee. Empty on miss.
+
+    Uses ``app.memory.mem0_manager.search_memory`` (the actual helper —
+    earlier code referred to a non-existent ``get_manager``).
+    """
     try:
-        from app.memory.mem0_manager import get_manager
+        from app.memory.mem0_manager import search_memory
     except Exception:
+        logger.debug("calendar_prep: mem0 search unavailable", exc_info=True)
         return []
     try:
-        mgr = get_manager()
-        facts = mgr.search(query=attendee, limit=n)
+        facts = search_memory(query=attendee, n=n)
     except Exception:
+        logger.debug(
+            "calendar_prep: mem0 search_memory failed for %s",
+            attendee, exc_info=True,
+        )
         return []
     out: list[str] = []
     for f in facts or []:
