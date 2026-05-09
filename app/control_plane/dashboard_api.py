@@ -1839,16 +1839,47 @@ class ChatSendBody(BaseModel):
     message: str
 
 
+_PRIMARY_USER_ALIASES = frozenset({"andrus", "owner", "primary", "me", "user"})
+
+
+def _resolve_chat_sender(raw: str | None) -> str:
+    """Resolve the chat-tab ``sender`` query value to the wire-level id
+    Signal writes under so the React Chat tab and the Signal channel
+    share one conversation thread.
+
+    Signal messages are keyed on ``settings.signal_owner_number`` (a
+    phone number); the React tab passes ``"andrus"`` for ergonomics.
+    Without this translation the dashboard would read an empty bucket
+    keyed on ``HMAC("andrus")`` while the real history sat under
+    ``HMAC("+372...")``.
+    """
+    s = (raw or "").strip()
+    if not s or s.lower() in _PRIMARY_USER_ALIASES:
+        try:
+            from app.config import get_settings
+            owner = (get_settings().signal_owner_number or "").strip()
+            if owner:
+                return owner
+        except Exception:
+            pass
+        return "andrus"
+    return s
+
+
 @router.get("/chat/messages")
 def chat_messages(sender: str = Query("andrus"), limit: int = Query(50, ge=1, le=500)):
     """Recent conversation history with the given sender.
 
     Returns oldest-first so the React UI can append-render straight to a
     scroll area without reversing. Each entry: ``{role, content, ts}``.
+    The ``sender`` query is resolved to the configured primary-user
+    phone number when it equals "andrus" / "owner" / "me" so the React
+    Chat tab sees the same thread Signal writes to.
     """
+    resolved = _resolve_chat_sender(sender)
     try:
         from app.conversation_store import get_recent_messages
-        rows = get_recent_messages(sender, limit=limit)
+        rows = get_recent_messages(resolved, limit=limit)
     except Exception as exc:
         logger.debug("chat_messages: read failed: %s", exc)
         return {"sender": sender, "messages": [], "error": str(exc)}
@@ -1863,13 +1894,13 @@ def chat_send(body: ChatSendBody):
     Routes through ``Commander.handle()`` so every existing slash
     command, recovery loop, project router, and lifecycle hook fires
     exactly as if the message had arrived from Signal. Sender defaults
-    to ``andrus`` (the configured primary user) so the affect attachment
-    hook updates the right OtherModel.
+    to ``andrus`` and is resolved to ``settings.signal_owner_number``
+    so the conversation thread is shared with Signal.
     """
     text = (body.message or "").strip()
     if not text:
         raise HTTPException(400, "empty message")
-    sender = (body.sender or "andrus").strip() or "andrus"
+    sender = _resolve_chat_sender(body.sender)
     try:
         from app.agents.commander import Commander
     except Exception as exc:

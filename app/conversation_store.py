@@ -281,7 +281,22 @@ def get_recent_messages(sender: str, limit: int = 10) -> list[dict]:
     except Exception:
         logger.exception("conversation_store: failed to retrieve recent messages")
         return []
-    return [{"role": r[0], "content": r[1], "ts": float(r[2])} for r in rows]
+    out: list[dict] = []
+    for r in rows:
+        ts_raw = r[2]
+        # ts column is ISO-8601 in current rows, float in legacy ones —
+        # normalise to a unix timestamp so callers don't have to care.
+        if isinstance(ts_raw, (int, float)):
+            ts_val = float(ts_raw)
+        else:
+            try:
+                ts_val = datetime.fromisoformat(
+                    str(ts_raw).replace("Z", "+00:00")
+                ).timestamp()
+            except Exception:
+                ts_val = 0.0
+        out.append({"role": r[0], "content": r[1], "ts": ts_val})
+    return out
 
 
 def get_last_assistant_message(sender: str) -> str:
