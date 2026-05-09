@@ -1,15 +1,26 @@
 """Proactive monitors — close the silent-failure gaps for years-of-uptime.
 
-Five monitors run periodically in a daemon thread started at import time.
-None of them mutate code or schedule, all just observe and alert on
-conditions the existing reactive runbooks can't see (because nothing
-throws):
+Monitors run periodically in a daemon thread started at import time.
+None of them mutate code or schedule (with the exception of opt-in
+gated runners like ``db_backup`` and ``db_vacuum``); they observe and
+alert on conditions the existing reactive runbooks can't see (because
+nothing throws).
 
-  * ``disk_quota``         — free disk below threshold → Signal alert.
-  * ``listener_heartbeat`` — Firestore polling threads gone silent.
-  * ``cron_liveness``      — scheduled jobs that haven't fired on time.
-  * ``vendor_sunset``      — provider models flagged deprecated.
-  * ``idle_cooldown``      — idle-scheduler job stuck in cooldown >24 h.
+Currently registered monitors:
+
+  * ``disk_quota``               — free disk below threshold → Signal.
+  * ``listener_heartbeat``       — Firestore polling threads gone silent.
+  * ``cron_liveness``            — scheduled jobs that haven't fired on time.
+  * ``vendor_sunset``            — provider models flagged deprecated; files CRs.
+  * ``idle_cooldown``            — idle-scheduler job stuck in cooldown >24 h.
+  * ``audit_chain_check``        — re-verify the hash-chained audit JSONL daily.
+  * ``lock_housekeeper``         — sweep stale lock files weekly.
+  * ``adapter_lifecycle``        — orphan / dead-pointer / bloat in workspace/lora.
+  * ``retention_chromadb`` etc.  — bounded growth on KB indices, worktrees, attachments.
+  * ``signal_heartbeat``         — multi-channel escalation if Signal is wedged.
+  * ``db_vacuum``                — monthly conversations.db VACUUM (Wave 0/1 #A6).
+  * ``log_archival``             — daily errors.jsonl + audit_journal rotate (Wave 0/1 #A5).
+  * ``db_backup``                — opt-in weekly Postgres+Neo4j+ChromaDB (Wave 0/1 #A1).
 
 The driver runs each monitor on its own cadence inside a single daemon
 thread. Failure in one monitor never breaks the others — every step is
@@ -52,6 +63,9 @@ _DEFAULT_CADENCE_S = {
     "retention_worktrees": 12 * 3600,  # twice daily probe — internal cadence daily; Wave 2 (#8)
     "retention_attachments": 12 * 3600,  # twice daily probe — internal cadence daily; Wave 2 (#8)
     "signal_heartbeat": 12 * 3600,     # twice daily probe — internal cadence daily; Wave 2 (#3)
+    "db_vacuum": 24 * 3600,            # daily probe — internal cadence 30 d; Wave 0/1 (#A6)
+    "log_archival": 6 * 3600,          # 6 h probe — internal cadence daily; Wave 0/1 (#A5)
+    "db_backup": 6 * 3600,             # 6 h probe — internal cadence weekly; Wave 0/1 (#A1)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -138,6 +152,21 @@ def _driver() -> None:
         monitors.append(("signal_heartbeat", signal_heartbeat.run, _DEFAULT_CADENCE_S["signal_heartbeat"], 0.0))
     except Exception:
         logger.debug("monitors: signal_heartbeat import failed", exc_info=True)
+    try:
+        from app.healing.monitors import db_vacuum
+        monitors.append(("db_vacuum", db_vacuum.run, _DEFAULT_CADENCE_S["db_vacuum"], 0.0))
+    except Exception:
+        logger.debug("monitors: db_vacuum import failed", exc_info=True)
+    try:
+        from app.healing.monitors import log_archival
+        monitors.append(("log_archival", log_archival.run, _DEFAULT_CADENCE_S["log_archival"], 0.0))
+    except Exception:
+        logger.debug("monitors: log_archival import failed", exc_info=True)
+    try:
+        from app.healing.monitors import db_backup
+        monitors.append(("db_backup", db_backup.run, _DEFAULT_CADENCE_S["db_backup"], 0.0))
+    except Exception:
+        logger.debug("monitors: db_backup import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

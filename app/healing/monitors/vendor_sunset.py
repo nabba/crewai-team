@@ -23,6 +23,7 @@ import logging
 import os
 import time
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from app.healing.handlers._common import (
@@ -172,6 +173,17 @@ def run() -> None:
     if not new_findings:
         return
 
+    # Wave 0/1 closure (#A4, 2026-05-09) — file a CR for each finding so
+    # the runtime LLM router blocks the model on its own (operator
+    # approves via Signal 👍 / `/cp/changes`). Pre-existing alert path
+    # below stays — the CR is the persistent action; the alert is the
+    # heads-up.
+    cr_ids: list[str] = []
+    for f in new_findings:
+        cr_id = _file_sunset_cr(f)
+        if cr_id:
+            cr_ids.append(cr_id)
+
     lines = [
         f"  • [{f['provider']}] `{f['model']}`"
         for f in new_findings[:10]
@@ -183,6 +195,11 @@ def run() -> None:
         + "\n\nPlan migration to a supported alternative. Tracked in "
           "`workspace/self_heal/vendor_sunset.json`."
     )
+    if cr_ids:
+        body += (
+            f"\n\nChange-request(s) filed to add to the runtime "
+            f"blocklist: {', '.join(cr_ids[:5])}. Approve in `/cp/changes`."
+        )
     send_signal_alert(body, tag="vendor_sunset")
 
     # Mark them alerted so we don't re-spam next week.
@@ -191,3 +208,74 @@ def run() -> None:
         if key in sunset_map:
             sunset_map[key]["alerted"] = True
     write_state_json(_STATE_FILE, state)
+
+
+def _file_sunset_cr(finding: dict) -> str | None:
+    """File a change-request that adds the sunset model to the runtime
+    blocklist file. Returns the CR id, or None if filing failed.
+
+    The CR target is ``workspace/healing/sunset_models.json`` — a
+    runtime config file (not a code path). The LLM-router code reads
+    this file at request time to skip blocked models. Operator
+    approves via Signal 👍 / `/cp/changes`.
+    """
+    try:
+        from app.healing.handlers._common import file_change_request
+    except Exception:
+        return None
+
+    provider = finding.get("provider", "unknown")
+    model = finding.get("model", "unknown")
+
+    block_path = Path("/app/workspace/healing/sunset_models.json")
+    if block_path.exists():
+        try:
+            existing = json.loads(block_path.read_text())
+            if not isinstance(existing, dict):
+                existing = {"sunset": []}
+        except (OSError, json.JSONDecodeError):
+            existing = {"sunset": []}
+    else:
+        existing = {"sunset": []}
+
+    sunset_list = existing.setdefault("sunset", [])
+    new_entry = {
+        "provider": provider,
+        "model": model,
+        "first_missed_at": finding.get("first_missed_at", time.time()),
+        "added_via": "vendor_sunset_monitor",
+    }
+    if any(
+        e.get("provider") == provider and e.get("model") == model
+        for e in sunset_list
+    ):
+        return None  # already blocked, don't refile
+    new_list = list(sunset_list)
+    new_list.append(new_entry)
+    new_payload = {**existing, "sunset": new_list}
+
+    # Look up replacement recommendation if operator has curated one.
+    replacements_path = Path("/app/workspace/healing/vendor_sunset_replacements.json")
+    replacement_hint = ""
+    try:
+        if replacements_path.exists():
+            recs = json.loads(replacements_path.read_text())
+            if isinstance(recs, dict):
+                rec = recs.get(f"{provider}::{model}") or recs.get(model)
+                if rec:
+                    replacement_hint = f" Recommended replacement: `{rec}`."
+    except Exception:
+        pass
+
+    return file_change_request(
+        path="workspace/healing/sunset_models.json",
+        new_content=json.dumps(new_payload, indent=2, sort_keys=True),
+        old_content=json.dumps(existing, indent=2, sort_keys=True) if block_path.exists() else "",
+        reason=(
+            f"Self-heal: vendor_sunset detected `{model}` ({provider}) is "
+            f"no longer listed by the provider's /v1/models API. Adding "
+            f"to the runtime blocklist so future calls fail-fast instead "
+            f"of erroring at the upstream.{replacement_hint}"
+        ),
+        requestor="vendor_sunset_monitor",
+    )

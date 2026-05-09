@@ -65,6 +65,16 @@ try:
 except Exception:
     _log.warning("app.healing: watchdog wiring failed", exc_info=True)
 
+# Boot-time stale-cooldown reset (Wave 0/1 #A7, 2026-05-09). Sweeps
+# already-expired ``skip:<jobname>`` keys from
+# workspace/memory/idle_job_state so a fresh boot doesn't carry
+# expired cooldowns from the previous process. Idempotent.
+try:
+    from app.healing.boot_reset import reset_stale_cooldowns as _reset_cooldowns
+    _reset_cooldowns()
+except Exception:
+    _log.warning("app.healing: boot cooldown reset failed", exc_info=True)
+
 __all__ = [
     "diagnose_and_fix",
     "log_error",
