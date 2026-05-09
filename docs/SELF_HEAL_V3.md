@@ -1,10 +1,71 @@
-# Self-Heal v3 — Operational Runbooks + Proactive Monitors + Auditor Bridge
+# Self-Heal v3 — Comprehensive Reference
 
 > Shipped 2026-05-09. Builds on Self-Heal v2 (Tool Supervisor + Runbook
 > Dispatcher; PROGRAM.md §14) by registering operational runbooks against
-> the dispatcher, adding five proactive monitors that observe what
-> reactive runbooks can't see, and surfacing the auditor's silently
-> accumulating fix proposals to Signal.
+> the dispatcher, adding ten proactive monitors that observe what
+> reactive runbooks can't see, surfacing the auditor's silently
+> accumulating fix proposals to Signal, supervising every healing daemon
+> with a watchdog reaper, and exposing the master switches as
+> runtime-toggleable React controls.
+>
+> See PROGRAM.md §23 for the chronological change-log entry.
+
+## Architecture in one diagram
+
+```
+                   error_monitor.py (errors.jsonl scanner)
+                                │
+                                ▼
+                       app/healing/runbooks.py  (TIER_IMMUTABLE — dispatcher)
+                                │
+                                ▼  (matches signature → calls handler)
+                       app/healing/handlers/   ← 6 reactive runbooks
+                       (db_pool, scheduler, schema_drift, code_drift,
+                        model_capability, multi_router)
+                                │
+                       ┌────────┼────────┐
+                       │        │        │
+                  Signal alert  CR file  audit log
+                                │
+                  (operator action: /cp/changes for CRs)
+
+
+                       app/healing/monitors/  ← 10 proactive monitors
+                       │
+                       ├─ disk_quota          (5 min)
+                       ├─ listener_heartbeat  (10 min)
+                       ├─ cron_liveness       (30 min)
+                       ├─ vendor_sunset       (1 wk)
+                       ├─ idle_cooldown       (1 h)
+                       ├─ audit_chain_check   (~1 d)
+                       ├─ lock_housekeeper    (6 h)
+                       ├─ adapter_lifecycle   (~30 d)
+                       ├─ retention.run_chromadb / _worktrees / _attachments
+                       └─ signal_heartbeat    (1 d)
+                                │
+                       Single daemon driver in __init__.py
+                       (60 s tick + per-monitor cadence guards)
+                                │
+                       Watched by app/healing/watchdog.py
+                                │
+                       (re-spawns dead daemons; gives up after
+                        3 crashes/hr; emits Signal alert + Heartbeat
+                        footprint at workspace/healing/watchdog_heartbeat
+                        consumed by cron_liveness)
+
+
+                       app/healing/auditor_bridge.py
+                       (polls audit_journal.json → Signal + CR mirror)
+
+
+                       app/safe_io.py
+                       (raises DiskQuotaError below DISK_FREE_THRESHOLD_MB)
+
+
+                       app/coding_session/audit_verify.py
+                       (read-only chain integrity for the existing
+                        coding-sessions audit log; called by audit_chain_check)
+```
 
 ---
 
@@ -84,38 +145,133 @@ Dedup window: 14 days. Considers proposals from the last 7 days.
 CR-system failure is non-fatal — Signal alert always goes out so the
 operator is never blind because of CR plumbing trouble.
 
+### 4. Auditor → CR + Signal bridge
+
+(See `app/healing/auditor_bridge.py`.) Polls `audit_journal.json` for
+`error_fix_proposed` events; emits one Signal alert per (pattern,
+attempt) with a deep-link to `/cp/proposals`, AND files a CR mirror
+at `docs/proposed_fixes/<pattern>__attempt_<n>.md` so approving
+puts a permanent paper trail in the repo. CR failure is non-fatal
+(Signal alert always goes out).
+
+### 5. Daemon-thread watchdog (Wave 2 #7)
+
+`app/healing/watchdog.py` is the reaper for everything above. 60 s
+loop walks `threading.enumerate()`; for any registered daemon that's
+not alive, calls its `start()` (idempotent). 3-crashes-per-hour
+backoff with give-up + Signal alert. Touches a heartbeat footprint
+at `workspace/healing/watchdog_heartbeat` so the cron_liveness
+monitor can detect a watchdog death (closes the "watches the
+watchman" gap).
+
+For the watchdog's re-spawn to actually work, every supervised
+`start()` had to be made truly idempotent — gating on thread
+liveness via `threading.enumerate()` rather than a stale `_started`
+flag. Updated:
+`app/healing/monitors/__init__.py:start`,
+`app/healing/auditor_bridge.py:start`,
+`app/healing/watchdog.py:start`.
+
+### 6. Disk-quota guard (Wave 1 #1)
+
+`app/safe_io.py` `safe_write` and `safe_append` raise
+`DiskQuotaError(OSError)` when free space drops below
+`DISK_FREE_THRESHOLD_MB` (default 200 MB). Probes fail OPEN. Each
+refusal audited as `actor='safe_io', action='disk_quota_block'`.
+
+### 7. Coding-session audit-chain verifier (Wave 1 #5)
+
+`app/coding_session/audit_verify.py` walks
+`workspace/coding_sessions/audit.jsonl` forward from genesis,
+recomputing each `entry_hash`. Read-only — never modifies the chain.
+Wired through the daily `audit_chain_check` monitor; alerts on
+breaks (cooldown 24 h or new break-line).
+
+### 8. Lock-file housekeeper (Wave 1 #9)
+
+`app/healing/monitors/lock_housekeeper.py` walks watched dirs for
+`.lock` files. Two-condition guard before unlink: age > 1 h AND
+fcntl-uncontested (defends against PID reuse). Pile-up alert at
+>50 files (signals a leak); 24 h cooldown.
+
+### 9. Adapter lifecycle (Wave 2 #4)
+
+`app/training/adapter_lifecycle.py` (open-tier) does monthly
+orphan cleanup of `workspace/training_adapters/` +
+`workspace/trained_models/`, dead-pointer detection (registry
+entries whose path doesn't exist on disk), bloat alert >5 GB,
+history snapshot trail at
+`workspace/healing/adapter_lifecycle_history.jsonl`.
+
+### 10. Retention jobs (Wave 2 #8)
+
+`app/healing/monitors/retention.py`. Three independent monitors:
+
+  * `run_chromadb` (weekly) — per-collection record cap (default
+    100k); deletes oldest by metadata timestamp.
+  * `run_worktrees` (daily) — terminal coding-session sessions
+    (submitted / discarded / expired / failed) >7 d old → unlink
+    JSON + rmtree worktree.
+  * `run_attachments` (daily) — Pass 1 age-delete (>30 d), Pass 2
+    size-cap oldest-first (>1 GB total).
+
+`RETENTION_DRY_RUN=true` for the first month is recommended.
+
+### 11. Signal-channel heartbeat (Wave 2 #3)
+
+`app/healing/monitors/signal_heartbeat.py` watches
+`workspace/conversations.db` mtime (inbound proxy) +
+`workspace/signal_outbound.json` (outbound proxy). Flags
+asymmetric (recent-inbound + stale-outbound > 7 d) or likely-dead
+(no traffic > 7 d). Multi-channel escalation: Signal → PWA push
+after 3 fails → email after 7 fails. Streak resets on recovery.
+
 ---
 
 ## Wiring
 
 `app/main.py` already imports `from app.healing.error_diagnosis import
 diagnose_and_fix`, which triggers `app/healing/__init__.py`. That now
-also imports `handlers`, `monitors`, and `auditor_bridge` — each
-self-registers via import side-effects. **No TIER_IMMUTABLE files were
-modified.**
+imports four side-effect modules:
 
 ```
-app/main.py (IMMUTABLE)
+app/main.py (TIER_IMMUTABLE — no edits required)
    └─ from app.healing.error_diagnosis import diagnose_and_fix
        └─ triggers app/healing/__init__.py
             ├─ from app.healing import handlers          # registers runbooks
-            ├─ from app.healing import monitors           # starts daemon
-            └─ from app.healing import auditor_bridge     # starts daemon
+            ├─ from app.healing import monitors           # starts monitors daemon
+            ├─ from app.healing import auditor_bridge     # starts auditor-bridge daemon
+            └─ from app.healing import watchdog           # starts watchdog reaper
 ```
+
+No TIER_IMMUTABLE / TIER_GATED files were modified for the wiring.
+Reader updates (master-switch sources) ARE Tier-3 edits — operator-
+authorized as part of the React-toggle work below.
 
 ---
 
 ## Master switches
 
-You need to flip three env flags for self-heal to actually take action.
-None require code changes.
+Five env-only flags became runtime-toggleable from `/cp/settings`
+on 2026-05-09. The reader functions try `runtime_settings.get_*()`
+first and fall back to the env var if the runtime-settings module
+raises (tests / degraded boot). New keys are env-seeded on first
+read so an existing `.env` setup keeps its current behaviour.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `ERROR_RUNBOOKS_ENABLED` | `false` (off) | Master gate for the runbook dispatcher. **Set this `true` to enable runbooks at all.** |
-| `TOOL_SUPERVISOR_ENABLED` | `false` (off) | Tool exception classify→retry→substitute (already shipped). Recommend `true`. |
-| `RECOVERY_LOOP_ENABLED` | `false` (off) | LLM-refusal recovery (already shipped). Recommend `true`. |
-| `HEALING_MONITORS_ENABLED` | `true` (on) | Master gate for the new monitors. Set `false` to disable the daemon. |
+| Variable | Reader location | React toggle | Default |
+|---|---|---|---|
+| `ERROR_RUNBOOKS_ENABLED` | `app/healing/runbooks.py:runbooks_enabled` | Self-heal subsystems → Runbook dispatcher | `false` |
+| `TOOL_SUPERVISOR_ENABLED` | `app/tool_runtime/supervisor.py:is_enabled` | Self-heal subsystems → Tool exception supervisor | `false` |
+| `RECOVERY_LOOP_ENABLED` | `app/recovery/loop.py:is_enabled` | Self-heal subsystems → Refusal recovery loop | `false` |
+| `HEALING_MONITORS_ENABLED` | `app/healing/monitors/__init__.py:_enabled` | (env-only) | `true` |
+| `HEALING_AUDITOR_BRIDGE_ENABLED` | `app/healing/auditor_bridge.py:_enabled` | (env-only) | `true` |
+| `HEALING_WATCHDOG_ENABLED` | `app/healing/watchdog.py:_enabled` | (env-only) | `true` |
+| `GOODHART_HARD_GATE_DISABLED` | `app/governance.py:_goodhart_hard_gate_disabled` | Goodhart hard gate → Off | `false` |
+| `GOODHART_HARD_GATE_ENFORCING` | `app/governance.py:_goodhart_hard_gate_enforcing` | Goodhart hard gate → Enforcing | `false` |
+
+Per-runbook on/off lives in `workspace/self_heal/runbook_settings.json`,
+toggleable via the runbook list in the React Self-heal subsystems
+card OR by direct file edit.
 | `HEALING_AUDITOR_BRIDGE_ENABLED` | `true` (on) | Master gate for the auditor → Signal bridge. |
 | `HEALING_DISK_FREE_WARN_GB` | `5.0` | Disk-quota WARN threshold. |
 | `HEALING_DISK_FREE_CRIT_GB` | `1.0` | Disk-quota CRITICAL threshold. |

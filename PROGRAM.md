@@ -1288,3 +1288,290 @@ tests/test_cp_tickets_tool.py — 15 passed
   visible in `/api/cp/audit?action_prefix=ticket.moved`. If
   misrouted-move incidents accumulate, a thin "recent moves" tab
   would help; defer until that signal exists.
+
+
+## 23. 2026-05-09 Self-Heal v3 + 9-gap resilience closure
+
+**Trigger.** Years-of-uptime audit on 2026-05-09 identified 9
+silent-failure modes the existing healing pass (§14) didn't cover.
+Self-Heal v2 had shipped the dispatcher infrastructure but only the
+no-op `log_only` runbook was registered, and the auditor ran every
+30 minutes for a month logging *"0 resolved, 1 attempted, 23 total
+patterns"* without applying any fixes. Three waves close the gap.
+
+### 23.1 Self-Heal v3 — operational handlers + proactive monitors + auditor bridge
+
+`docs/SELF_HEAL_V3.md` is the canonical reference. Layout:
+
+  * `app/healing/handlers/` — 6 reactive runbook handlers registered
+    against the v2 dispatcher: `db_pool_reset` (auto-reset on
+    "connection pool exhausted" — 51% of error volume),
+    `apscheduler_overrun_alert`, `numeric_overflow_widen_cr` (files
+    a CR with a generated migration), `cost_mode_undefined_alert`
+    (×2), `anthropic_str_content_cr` (files a CR for a defensive
+    parser-guard module), and a catch-all `self_heal_router` for
+    variant-heavy patterns (embed-misroute, mem0-no-function-calling,
+    schema-missing-column).
+  * `app/healing/monitors/` — proactive monitors:
+    `disk_quota` / `listener_heartbeat` / `cron_liveness` /
+    `vendor_sunset` / `idle_cooldown` / `audit_chain_check` /
+    `lock_housekeeper` / `signal_heartbeat`. Plus `retention.py`
+    (chromadb / worktree / attachment) and `adapter_lifecycle.py`.
+    All run inside a single daemon driver in
+    `app/healing/monitors/__init__.py`; each monitor cadence-guards
+    internally. The driver gates on
+    `HEALING_MONITORS_ENABLED` (default ON).
+  * `app/healing/auditor_bridge.py` — closes the silent
+    "0 resolved" gap by polling `audit_journal.json` for
+    `error_fix_proposed` events; one Signal alert per
+    (pattern, attempt) plus a CR mirror at
+    `docs/proposed_fixes/<pattern>__attempt_<n>.md`. CR failure
+    is non-fatal; Signal alert always goes out.
+  * `app/healing/watchdog.py` — daemon-thread reaper that
+    re-spawns the healing-monitors and healing-auditor-bridge
+    threads if they die. 60 s loop, 3-crashes-per-hour give-up,
+    24 h reset window. Touches `workspace/healing/watchdog_heartbeat`
+    every iteration so the existing `cron_liveness` monitor can
+    detect a watchdog death.
+
+### 23.2 Disk-quota guard
+
+`app/safe_io.py` `safe_write` and `safe_append` now raise
+`DiskQuotaError(OSError)` when free space on the target volume drops
+below `DISK_FREE_THRESHOLD_MB` (default 200 MB). Probe failures
+fail OPEN — we never let a buggy guard halt the system. Each refusal
+is best-effort audited as `actor='safe_io', action='disk_quota_block'`.
+
+### 23.3 Audit-chain verifier
+
+`app/coding_session/audit_verify.py` is a read-only verifier that
+walks the chain in `workspace/coding_sessions/audit.jsonl` forward
+from genesis, reporting every break (tampered payload / prev-hash
+mismatch / malformed JSON / missing payload). The daily monitor at
+`app/healing/monitors/audit_chain_check.py` runs it and Signal-alerts
+on the first break (cooldown 24 h or new break-line). The verifier
+NEVER modifies the chain — recovery is an operator call.
+
+### 23.4 Lock-file housekeeper
+
+`app/healing/monitors/lock_housekeeper.py` walks `workspace/locks/`,
+`workspace/dreams/`, `workspace/`. Deletes `*.lock` files that
+satisfy BOTH guards: age > 1 h AND fcntl-uncontested. The fcntl
+probe is the source of truth on whether the lock is held — it
+defends against PID-reuse hazards. Pile-up alert at >50 lock files
+(suggests a leaking subsystem); 24 h cooldown.
+
+### 23.5 Idempotent `start()` + watchdog precondition
+
+For the watchdog to safely re-spawn dead daemons, every supervised
+`start()` must be truly idempotent — checking thread liveness on
+every call, not gating on a `_started` boolean flag that drifts out
+of sync after a thread dies. Updated:
+
+  * `app/healing/monitors/__init__.py:start` — uses `_is_running()`
+    that walks `threading.enumerate()`.
+  * `app/healing/auditor_bridge.py:start` — same pattern.
+  * `app/healing/watchdog.py:start` — same.
+
+Without these updates, the watchdog's re-spawn calls would silently
+no-op.
+
+### 23.6 Adapter lifecycle (gap #4)
+
+`app/training/adapter_lifecycle.py` (open-tier; reads
+`app.training_pipeline` constants without modifying it) does
+monthly orphan cleanup of `workspace/training_adapters/` and
+`workspace/trained_models/`, dead-pointer detection for registry
+entries whose `adapter_path` doesn't exist, total-disk-usage bloat
+alert at >5 GB, and a history snapshot trail at
+`workspace/healing/adapter_lifecycle_history.jsonl` (closes the
+rollback-blind-spot where overwriting a slot loses prior state).
+
+### 23.7 Retention jobs (gap #8)
+
+`app/healing/monitors/retention.py` registers three independent
+cadence-guarded monitors:
+
+  * `run_chromadb` — weekly. Per-collection record cap (default
+    100k); deletes oldest records by metadata timestamp. Dry-run
+    via `RETENTION_DRY_RUN=true`.
+  * `run_worktrees` — daily. Removes coding-session JSON +
+    worktree dir for sessions in terminal states (submitted /
+    discarded / expired / failed) older than 7 days. Pile-up alert
+    at >50 examined records.
+  * `run_attachments` — daily. Two passes: age-delete (>30 days
+    old) then size-cap (oldest-first when surviving total > 1 GB).
+    Walks `$SIGNAL_ATTACHMENTS_DIR` (default `/app/attachments`).
+
+### 23.8 Signal-channel heartbeat (gap #3)
+
+`app/healing/monitors/signal_heartbeat.py` re-scopes the original
+"120-day re-registration" gap (signal-cli bot accounts don't
+auto-deregister on idle but the daemon DOES die silently) to
+end-to-end heartbeat detection. Watches `workspace/conversations.db`
+mtime for inbound activity vs `workspace/signal_outbound.json` for
+outbound; flags asymmetric (recent-inbound + stale-outbound for >7d)
+or likely-dead (no traffic for >7d). Multi-channel escalation:
+Signal alert (might fail if Signal is the failure mode), PWA push
+after 3 consecutive fails, email after 7. Streak resets on
+recovery.
+
+### 23.9 Tests
+
+76 tests across `tests/healing/`. Combined with the existing
+`test_self_heal_runbooks.py` and `test_self_healing_comprehensive.py`,
+the healing surface has 142+ regression tests.
+
+### 23.10 Wave 4 React control surface (commits 5+6 of the day)
+
+Five env-only flags became runtime-toggleable from
+`/cp/settings`:
+
+  * `goodhart_hard_gate_disabled` + `goodhart_hard_gate_enforcing` →
+    a 3-way segmented control (Off / Advisory / Enforcing) with
+    explanatory copy per option.
+  * `error_runbooks_enabled` + `tool_supervisor_enabled` +
+    `recovery_loop_enabled` → 3 master toggles in the new
+    `Self-heal subsystems` card. A per-runbook on/off list below
+    drives `workspace/self_heal/runbook_settings.json` directly
+    (the dispatcher re-reads on every anomaly).
+
+Five reader functions gained the runtime-settings → env-fallback
+hierarchy: `governance._goodhart_hard_gate_disabled` /
+`_enforcing`, `healing.runbooks.runbooks_enabled`,
+`tool_runtime.supervisor.is_enabled`, `recovery.loop.is_enabled`.
+Each tries `runtime_settings.get_*()` first; falls back to the
+env var if `runtime_settings` raises (tests / degraded boot). New
+keys are env-seeded on first read so existing `.env` setups
+preserve their behaviour. Operator-authorized as part of the
+React-toggle work.
+
+## 24. 2026-05-09 Wave 2 Life Companion (proactive personal-life surface)
+
+`docs/LIFE_COMPANION.md` is the canonical reference. New package
+`app/life_companion/` adds three proactive features that watch the
+operator's life rather than the system's health:
+
+  * `email_monitor` — wraps `app/tools/email_importance.py` heuristic
+    in a 10-min cadence-guarded loop. Fetches up to 25 unread inbox
+    messages via `gmail_tools._list_recent`, scores each, surfaces
+    top-3 above urgency threshold to Signal. Per-message-id dedup
+    with 500-entry FIFO so repeat alerts can't happen.
+  * `daily_briefing` — three flavours (morning 07:00 / evening 18:00
+    / weekly Mon 09:00). Synthesises calendar events (next 24 h via
+    `gcal_tools`) + top-3 urgent unread + open project tickets +
+    companion-surfaced ideas. Idempotent within each scheduled
+    window.
+  * `routine_detector` — reads
+    `workspace/affect/episode_affect_tags.jsonl` over an 8-week
+    window. Clusters episodes by (weekday, hour-bucket, crew); flags
+    clusters with ≥4 occurrences spanning ≥2 ISO weeks AND ≥60 %
+    concentration to the weekday. Emits a Signal alert when a NEW
+    routine is detected; a separate nudge fires when a routine's
+    window is approaching today.
+
+All three ride the existing idle scheduler via
+`app.companion.loop.get_idle_jobs()` — no TIER_IMMUTABLE / TIER_GATED
+files modified. Master switch `LIFE_COMPANION_ENABLED` (default ON);
+each component honours `idle_scheduler.is_enabled()` kill switch.
+
+12 tests in `tests/life_companion/`.
+
+## 25. 2026-05-09 Governance hardening — Tier-3 amendment + ratchet + Goodhart gate
+
+Three operator-authorized governance subsystems shipped in one day,
+all sharing a common architectural pattern (typed exceptions +
+hash-chained audit + React toggle). Distinct concerns:
+
+### 25.1 Tier-3 Amendment Protocol
+
+`docs/TIER3_AMENDMENT.md` is canonical. New package
+`app/governance_amendment/` lets the system *legitimately* propose
+modifications to TIER_IMMUTABLE files after a demonstrated track
+record. 10-state state machine
+(PROPOSED → STAGED → COOLDOWN_OK → APPROVED → APPLIED → STABLE,
+plus terminal branches), eligibility check (≥200 promotions/90 d,
+<5 % rollback rate, no active alignment warnings, runbook health
+≥50 %), `self_quarantine.py` (~30 files NO agent can amend even
+with full eligibility), hash-chained JSONL + Postgres mirror audit
+(`actor=tier3_amendment`).
+
+Master switch `tier3_amendment_enabled` defaults OFF — exposed as a
+React `/cp/settings` toggle with confirmation modal that explains
+the 4-stage gate before flipping.
+
+`auto_deployer.py` (TIER_IMMUTABLE) was operator-authorized to add
+the seven `app/governance_amendment/*.py` files to TIER_IMMUTABLE so
+the protocol's own files can't be mutated through the regular
+change-request flow.
+
+### 25.2 Governance Ratchet (#6 of the resilience-gap closure plan)
+
+`docs/GOVERNANCE_RATCHET.md` is canonical. New package
+`app/governance_ratchet/` provides operator-controlled raising /
+relaxing of `SAFETY_MINIMUM` and `QUALITY_MINIMUM` above the
+hardcoded `*_FLOOR` constants in `governance.py`. Four typed
+exceptions enforce the invariants:
+`MonotonicViolation` / `FloorViolation` / `CeilingViolation` /
+`UnknownThresholdViolation`. The `effective_value(name)` function
+clamps to `max(FLOOR, ratcheted_current)` — even a corrupted state
+file or maliciously-edited JSON can't drop below FLOOR.
+
+Operator-authorized edits to:
+
+  * `app/governance.py` — renamed constants to `*_FLOOR`, added
+    `threshold_floor()` + `effective_safety_minimum()` +
+    `effective_quality_minimum()`, wired into `evaluate_promotion`.
+  * `app/auto_deployer.py` — added 5 `app/governance_ratchet/*.py`
+    files to TIER_IMMUTABLE.
+
+React UI: `GovernanceRatchetCard` with two flows:
+
+  * **Ratchet up** (simple confirm) — validates `new_value > current`
+    and `≤ 1.0` before submit.
+  * **Relax down** (typed-phrase confirm) — validates
+    `floor ≤ new_value < current`, mandatory ≥10-char reason, AND
+    typed phrase `RELAX <THRESHOLD>` matches exactly. Backend
+    re-checks the phrase server-side as a UX-correctness check.
+
+V1 is operator-only — no agent path; mutation flows through React
+→ `/config/governance_ratchet/*` (gateway-bearer-secret gated).
+
+### 25.3 Goodhart Hard Gate (#2 of the resilience-gap closure plan)
+
+`docs/GOVERNANCE_RATCHET.md` §"Goodhart hard gate" is canonical.
+Operator-authorized edits to `app/goodhart_guard.py` (TIER_IMMUTABLE)
+add public read-only `recent_severity(lookback_hours=24)` and
+`recent_signal_summary(lookback_hours=24)`. Operator-authorized
+edits to `app/governance.py` add `_goodhart_hard_gate_disabled` /
+`_enforcing` env readers + `_evaluate_goodhart_gate()` which runs
+as **Gate 0 in `evaluate_promotion`** — before safety + quality.
+
+Three-phase rollout in V1, controlled by the React 3-way segmented
+control (`Off / Advisory / Enforcing`):
+
+  * **Off (emergency disable)** — incident response when a buggy
+    detector blocks legitimate promotions.
+  * **Advisory (default ON)** — gate runs and records severity in
+    `gate_results["goodhart"]` for audit; does NOT block. Operators
+    watch the false-positive rate for ~2 weeks.
+  * **Enforcing** — `severity == "high"` BLOCKS promotion.
+    `severity == "medium" / "low"` are not blocking by design (the
+    detector's medium/low signals are advisory by nature).
+
+The gate fails OPEN when the detector itself raises (a buggy
+detector should never halt every promotion).
+
+### 25.4 Tests
+
+20 governance-amendment tests + 18 governance-ratchet tests + 18
+goodhart-gate tests = 56 new governance tests. Zero TIER_IMMUTABLE
+test paths broken.
+
+### 25.5 Combined session totals
+
+10 commits, ~13,000 LOC, 148 tests passing, 7 of 9 resilience gaps
+fully closed (#3, #4, #5, #6, #7, #8, #9), 2 partially closed (#1
+covers prevention but not retroactive cleanup; #2 in advisory mode
+by default — flipping to enforcing is a separate operator action
+after the FP-rate observation period).
