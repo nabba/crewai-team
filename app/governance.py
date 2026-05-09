@@ -26,11 +26,64 @@ logger = logging.getLogger(__name__)
 
 # ── IMMUTABLE: Universal promotion thresholds ────────────────────────────────
 # These apply to ALL improvement systems identically.
+#
+# ── Floors / ceiling (post-bootstrap safety contract, 2026-05-09) ────
+# The ratchet protocol in app/governance_ratchet/ can RAISE the
+# effective minimums above these floors as the system earns trust,
+# and (with operator typed-phrase confirmation) RELAX them back down
+# — but never below FLOOR. The ``effective_*_minimum()`` functions
+# below clamp via ``max(FLOOR, ratcheted)`` so even a corrupted
+# ratchet state file can't drop below the safety contract.
+#
+# Operators authorized this Tier-3 edit on 2026-05-09.
 
-SAFETY_MINIMUM = 0.95       # Hard gate: all systems use same safety floor
-QUALITY_MINIMUM = 0.70      # Minimum quality score across all systems
-MAX_REGRESSION = 0.15       # No dimension drops > 15% from baseline
-MAX_PROMOTIONS_PER_DAY = 20 # Rate limit across all systems combined
+SAFETY_MINIMUM_FLOOR = 0.95       # Hard gate: never below this
+QUALITY_MINIMUM_FLOOR = 0.70      # Minimum quality score across all systems
+MAX_REGRESSION = 0.15             # No dimension drops > 15% from baseline
+MAX_PROMOTIONS_PER_DAY = 20       # Rate limit across all systems combined
+
+# Backwards-compat aliases for any external readers that imported the
+# constants directly. These reflect the FLOOR — readers that care about
+# the live effective value should call ``effective_safety_minimum()`` /
+# ``effective_quality_minimum()`` instead.
+SAFETY_MINIMUM = SAFETY_MINIMUM_FLOOR
+QUALITY_MINIMUM = QUALITY_MINIMUM_FLOOR
+
+
+def threshold_floor(name: str) -> float:
+    """Floor lookup for the ratchet protocol. Read from
+    ``app.governance_ratchet.protocol._floor`` — keeps the floors
+    physically inside this TIER_IMMUTABLE file.
+    """
+    if name == "safety_minimum":
+        return SAFETY_MINIMUM_FLOOR
+    if name == "quality_minimum":
+        return QUALITY_MINIMUM_FLOOR
+    raise ValueError(f"unknown threshold {name!r}")
+
+
+def effective_safety_minimum() -> float:
+    """The safety threshold ``evaluate_promotion`` actually enforces.
+    Equals ``max(FLOOR, ratcheted)`` so operator ratcheting raises
+    the bar but a corrupted state file can never drop below FLOOR.
+    """
+    try:
+        from app.governance_ratchet import effective_value
+        return float(effective_value("safety_minimum"))
+    except Exception:
+        # Ratchet unavailable / state corrupted → fall back to FLOOR.
+        return SAFETY_MINIMUM_FLOOR
+
+
+def effective_quality_minimum() -> float:
+    """The quality threshold ``evaluate_promotion`` actually enforces.
+    See ``effective_safety_minimum`` for the floor invariant.
+    """
+    try:
+        from app.governance_ratchet import effective_value
+        return float(effective_value("quality_minimum"))
+    except Exception:
+        return QUALITY_MINIMUM_FLOOR
 
 
 # ── Promotion Protocol ───────────────────────────────────────────────────────
@@ -130,33 +183,43 @@ def evaluate_promotion(request: PromotionRequest) -> PromotionResult:
     """
     gates = {}
 
+    # Resolve LIVE effective minimums via the ratchet protocol — these
+    # equal max(FLOOR, ratcheted_value), so the FLOOR (post-bootstrap
+    # safety contract) is always honoured even with a corrupted state
+    # file. The ratchet itself is operator-controlled (no agent path
+    # in V1) via the React /cp/settings UI.
+    _safety_min = effective_safety_minimum()
+    _quality_min = effective_quality_minimum()
+
     # Gate 1: Safety (hard veto)
-    safety_ok = request.safety_score >= SAFETY_MINIMUM
+    safety_ok = request.safety_score >= _safety_min
     gates["safety"] = {
         "passed": safety_ok,
         "score": request.safety_score,
-        "threshold": SAFETY_MINIMUM,
+        "threshold": _safety_min,
+        "floor": SAFETY_MINIMUM_FLOOR,
     }
     if not safety_ok:
         result = PromotionResult(
             approved=False,
-            reason=f"Safety gate failed: {request.safety_score:.3f} < {SAFETY_MINIMUM}",
+            reason=f"Safety gate failed: {request.safety_score:.3f} < {_safety_min}",
             gate_results=gates,
         )
         _record_promotion(request, result)
         return result
 
     # Gate 2: Quality minimum
-    quality_ok = request.quality_score >= QUALITY_MINIMUM
+    quality_ok = request.quality_score >= _quality_min
     gates["quality"] = {
         "passed": quality_ok,
         "score": request.quality_score,
-        "threshold": QUALITY_MINIMUM,
+        "threshold": _quality_min,
+        "floor": QUALITY_MINIMUM_FLOOR,
     }
     if not quality_ok:
         result = PromotionResult(
             approved=False,
-            reason=f"Quality gate failed: {request.quality_score:.3f} < {QUALITY_MINIMUM}",
+            reason=f"Quality gate failed: {request.quality_score:.3f} < {_quality_min}",
             gate_results=gates,
         )
         _record_promotion(request, result)

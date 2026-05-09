@@ -507,6 +507,75 @@ export function useUpdateRuntimeSettings() {
   });
 }
 
+// ── Governance ratchet (Wave 3 #6 — May 2026) ─────────────────────────────
+
+export interface GovernanceRatchetEntry {
+  ts: string;
+  direction: 'up' | 'down' | 'baseline';
+  old_value: number;
+  new_value: number;
+  source: string;
+  reason: string;
+  audit_chain: string;
+}
+
+export interface GovernanceRatchetThreshold {
+  name: 'safety_minimum' | 'quality_minimum';
+  floor: number;
+  current: number;
+  effective: number;
+  history: GovernanceRatchetEntry[];
+}
+
+export interface GovernanceRatchetState {
+  thresholds: GovernanceRatchetThreshold[];
+}
+
+export function useGovernanceRatchetQuery() {
+  return useQuery({
+    queryKey: ['governance_ratchet'],
+    queryFn: () =>
+      api<GovernanceRatchetState>('/config/governance_ratchet/state'),
+  });
+}
+
+export function useSetGovernanceRatchet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; new_value: number; reason: string }) =>
+      api<{ status: string; state: GovernanceRatchetThreshold }>(
+        '/config/governance_ratchet/set',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['governance_ratchet'] }),
+  });
+}
+
+export function useRelaxGovernanceRatchet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      new_value: number;
+      reason: string;
+      confirmation: string;
+    }) =>
+      api<{ status: string; state: GovernanceRatchetThreshold }>(
+        '/config/governance_ratchet/relax',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['governance_ratchet'] }),
+  });
+}
+
 // ── Web Push ──────────────────────────────────────────────────────────────
 
 export interface VapidPublicKey { public_key: string; }

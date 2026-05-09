@@ -197,6 +197,17 @@ TIER_IMMUTABLE = frozenset({
     "app/governance_amendment/protocol.py",
     "app/governance_amendment/self_quarantine.py",
     "app/governance_amendment/store.py",
+    # Governance ratchet (Wave 3 #6, May 2026) — operator-controlled
+    # raising / relaxing of SAFETY_MINIMUM and QUALITY_MINIMUM above
+    # the hardcoded FLOOR in governance.py. Same TIER_IMMUTABLE
+    # rationale: an agent that could rewrite the ratchet validation
+    # could lower thresholds catastrophically. Operator-authorized
+    # 2026-05-09.
+    "app/governance_ratchet/__init__.py",
+    "app/governance_ratchet/_state.py",
+    "app/governance_ratchet/audit.py",
+    "app/governance_ratchet/protocol.py",
+    "app/governance_ratchet/store.py",
 })
 
 # ── TIER_GATED (~25 files — evolution engine + soul prompts) ────────────────

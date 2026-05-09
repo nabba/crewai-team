@@ -243,6 +243,115 @@ async def set_runtime_settings_endpoint(request: Request):
     return {"status": "ok", **snapshot()}
 
 
+# ── Governance ratchet (Wave 3 #6 — May 2026) ──────────────────────────────
+# Operator-controlled raising/relaxing of SAFETY_MINIMUM and
+# QUALITY_MINIMUM above the hardcoded FLOOR in governance.py. Both
+# routes are gateway-bearer-secret gated. Relax requires an explicit
+# typed-phrase confirmation in the request body — UI-side typed
+# confirmation is a UX gate; THIS check is the authoritative one.
+
+
+@router.get("/governance_ratchet/state")
+async def get_governance_ratchet_state():
+    """Snapshot of every ratchet-controlled threshold + history."""
+    from app.governance_ratchet import list_thresholds
+    return {"thresholds": list_thresholds()}
+
+
+@router.post("/governance_ratchet/set")
+async def set_governance_ratchet_endpoint(request: Request):
+    """Raise a threshold floor.
+
+    Body: ``{"name": "safety_minimum"|"quality_minimum",
+             "new_value": 0.0..1.0,
+             "reason": str}``.
+
+    Refuses (400) if ``new_value <= current`` (use ``/relax`` for
+    downward changes). Refuses (400) if ``new_value > 1.0``.
+    """
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(status_code=429, detail="Too many config changes. Try again later.")
+    payload = await request.json()
+    from app.governance_ratchet import (
+        set_ratchet, MonotonicViolation, CeilingViolation,
+        UnknownThresholdViolation,
+    )
+    name = (payload.get("name") or "").strip()
+    new_value = payload.get("new_value")
+    reason = (payload.get("reason") or "").strip()
+    try:
+        state = set_ratchet(
+            name=name,
+            new_value=float(new_value),
+            source="operator_react",
+            reason=reason,
+        )
+    except (MonotonicViolation, CeilingViolation, UnknownThresholdViolation) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "ok", "state": state.to_dict()}
+
+
+@router.post("/governance_ratchet/relax")
+async def relax_governance_ratchet_endpoint(request: Request):
+    """Lower a threshold floor (operator-only, typed-confirmation gated).
+
+    Body: ``{"name": ..., "new_value": ...,
+             "confirmation": "RELAX <THRESHOLD>",
+             "reason": str}``.
+
+    The ``confirmation`` field is the typed-phrase gate. If the UI
+    forgets to send it (or a script tries to bypass the React form),
+    the request fails 400. This is *not* security — the gateway-secret
+    is — but it's a UX correctness check that catches accidental
+    automation.
+    """
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(status_code=429, detail="Too many config changes. Try again later.")
+    payload = await request.json()
+    from app.governance_ratchet import (
+        relax_ratchet, MonotonicViolation, FloorViolation,
+        CeilingViolation, UnknownThresholdViolation,
+    )
+    name = (payload.get("name") or "").strip()
+    new_value = payload.get("new_value")
+    reason = (payload.get("reason") or "").strip()
+    confirmation = (payload.get("confirmation") or "").strip().upper()
+
+    expected = f"RELAX {name.upper()}"
+    if confirmation != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"missing or wrong confirmation phrase — relax "
+                f"requires confirmation == {expected!r}"
+            ),
+        )
+    if not reason:
+        raise HTTPException(
+            status_code=400,
+            detail="relax requires a non-empty 'reason'",
+        )
+    try:
+        state = relax_ratchet(
+            name=name,
+            new_value=float(new_value),
+            source="operator_react",
+            reason=reason,
+        )
+    except (MonotonicViolation, FloorViolation, CeilingViolation,
+            UnknownThresholdViolation) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "ok", "state": state.to_dict()}
+
+
 @router.post("/creative_run")
 async def creative_run_endpoint(request: Request):
     """Force-dispatch a task to the creative crew, bypassing the router.

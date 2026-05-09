@@ -8,8 +8,12 @@ import {
   useWebPushSubscribe,
   useWebPushUnsubscribe,
   useWebPushTest,
+  useGovernanceRatchetQuery,
+  useSetGovernanceRatchet,
+  useRelaxGovernanceRatchet,
   type RuntimeSettings,
   type VoiceMode,
+  type GovernanceRatchetThreshold,
 } from '../api/queries';
 import {
   getPushSubscription,
@@ -51,6 +55,7 @@ export function SettingsPage() {
       <VisionComputerUseCard settings={settingsQ.data} />
       <ConciergePersonaCard settings={settingsQ.data} />
       <Tier3AmendmentCard settings={settingsQ.data} />
+      <GovernanceRatchetCard />
       <WebPushCard />
     </div>
   );
@@ -560,6 +565,389 @@ function Tier3ConfirmModal({
               : enabling
                 ? 'Yes, enable'
                 : 'Yes, disable'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Governance ratchet (Wave 3 #6) ────────────────────────────────────────
+
+function GovernanceRatchetCard() {
+  const stateQ = useGovernanceRatchetQuery();
+  const [activeRelaxName, setActiveRelaxName] = useState<string | null>(null);
+  const [activeRatchetName, setActiveRatchetName] = useState<string | null>(null);
+
+  if (stateQ.isLoading) {
+    return (
+      <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4">
+        <h2 className="text-base font-semibold text-[#e2e8f0]">Governance ratchet</h2>
+        <div className="text-[#7a8599] text-sm mt-2">Loading thresholds…</div>
+      </div>
+    );
+  }
+  if (stateQ.error || !stateQ.data) {
+    return (
+      <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4">
+        <h2 className="text-base font-semibold text-[#e2e8f0]">Governance ratchet</h2>
+        <div className="text-[#f87171] text-sm mt-2">
+          Could not load ratchet state: {stateQ.error instanceof Error ? stateQ.error.message : 'unknown error'}
+        </div>
+      </div>
+    );
+  }
+
+  const thresholds = stateQ.data.thresholds || [];
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">Governance ratchet</h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Operator-controlled raising / relaxing of the promotion-gate
+          floors in <code className="text-[#60a5fa]">app/governance.py</code>.
+          Ratcheting <em>up</em> tightens the bar; relaxing <em>down</em> loosens
+          it (but never below the hardcoded <code className="text-[#60a5fa]">FLOOR</code>).
+          Both actions are audited as{' '}
+          <code className="text-[#60a5fa]">actor=governance_ratchet</code>{' '}
+          in the global Postgres audit log.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {thresholds.map((t) => (
+          <ThresholdRow
+            key={t.name}
+            threshold={t}
+            onRatchetClick={() => setActiveRatchetName(t.name)}
+            onRelaxClick={() => setActiveRelaxName(t.name)}
+          />
+        ))}
+      </div>
+
+      {activeRatchetName && (
+        <RatchetUpModal
+          threshold={thresholds.find((t) => t.name === activeRatchetName)!}
+          onClose={() => setActiveRatchetName(null)}
+        />
+      )}
+      {activeRelaxName && (
+        <RatchetRelaxModal
+          threshold={thresholds.find((t) => t.name === activeRelaxName)!}
+          onClose={() => setActiveRelaxName(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ThresholdRow({
+  threshold,
+  onRatchetClick,
+  onRelaxClick,
+}: {
+  threshold: GovernanceRatchetThreshold;
+  onRatchetClick: () => void;
+  onRelaxClick: () => void;
+}) {
+  const { name, floor, current, effective, history } = threshold;
+  const lastEntry = history[history.length - 1];
+  const aboveFloor = current > floor;
+  return (
+    <div className="bg-[#0a0f18] border border-[#1e2738] rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium text-[#e2e8f0]">
+            {name === 'safety_minimum' ? 'Safety minimum' : 'Quality minimum'}
+          </div>
+          <div className="text-xs text-[#7a8599] mt-1">
+            Floor: <code className="text-[#94a3b8]">{floor.toFixed(3)}</code>{' '}
+            · Current: <code className="text-[#94a3b8]">{current.toFixed(3)}</code>
+            {aboveFloor && (
+              <span className="text-[#34d399] ml-2">
+                ↑ {((current - floor) * 100).toFixed(1)}% above floor
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-[#7a8599]">
+            Effective threshold the gates enforce:{' '}
+            <code className="text-[#60a5fa]">{effective.toFixed(3)}</code>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 ml-4 shrink-0">
+          <button
+            onClick={onRatchetClick}
+            className="px-3 py-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] rounded text-white text-xs"
+          >
+            Ratchet up ↑
+          </button>
+          <button
+            onClick={onRelaxClick}
+            disabled={!aboveFloor}
+            className="px-3 py-1.5 bg-[#0a0f18] border border-[#dc2626]/40 hover:border-[#dc2626] disabled:opacity-30 disabled:cursor-not-allowed rounded text-[#f87171] text-xs"
+          >
+            Relax ↓
+          </button>
+        </div>
+      </div>
+      {lastEntry && (
+        <div className="text-[10px] text-[#64748b] pt-2 border-t border-[#1e2738]">
+          Last change: {lastEntry.direction === 'up' ? '↑' : lastEntry.direction === 'down' ? '↓' : '◇'}{' '}
+          {lastEntry.old_value.toFixed(3)} → {lastEntry.new_value.toFixed(3)} by{' '}
+          <code>{lastEntry.source}</code> on {lastEntry.ts.slice(0, 10)}
+          {lastEntry.reason && (
+            <span className="ml-1 text-[#94a3b8]">— {lastEntry.reason.slice(0, 60)}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RatchetUpModal({
+  threshold,
+  onClose,
+}: {
+  threshold: GovernanceRatchetThreshold;
+  onClose: () => void;
+}) {
+  const setRatchet = useSetGovernanceRatchet();
+  const [newValue, setNewValue] = useState(
+    Math.min(threshold.current + 0.01, 1.0).toFixed(3),
+  );
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+
+  const proposed = parseFloat(newValue);
+  const valid =
+    !isNaN(proposed) && proposed > threshold.current && proposed <= 1.0;
+
+  const submit = async () => {
+    if (!valid) return;
+    setError('');
+    try {
+      await setRatchet.mutateAsync({
+        name: threshold.name,
+        new_value: proposed,
+        reason: reason.trim(),
+      });
+      onClose();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Unknown error');
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#111820] border border-[#1e2738] rounded-xl p-6 max-w-lg w-[90vw] space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-[#e2e8f0]">
+            Ratchet up {threshold.name === 'safety_minimum' ? 'safety' : 'quality'} minimum
+          </h3>
+          <p className="text-sm text-[#7a8599] mt-1">
+            Tighten the floor. Subsequent promotions must clear this stricter bar.
+            Monotonic up — must be greater than current.
+          </p>
+        </div>
+
+        <div className="text-xs text-[#94a3b8] space-y-1">
+          <div>Current: <code className="text-[#e2e8f0]">{threshold.current.toFixed(3)}</code></div>
+          <div>Floor (post-bootstrap contract): <code className="text-[#e2e8f0]">{threshold.floor.toFixed(3)}</code></div>
+        </div>
+
+        <label className="block">
+          <span className="text-sm text-[#e2e8f0]">New value (0–1)</span>
+          <input
+            type="number"
+            step="0.001"
+            min={threshold.current}
+            max="1.0"
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            className="mt-1 w-full bg-[#0a0f18] border border-[#1e2738] rounded px-3 py-2 text-[#e2e8f0] text-sm font-mono"
+          />
+          {!valid && proposed <= threshold.current && (
+            <span className="text-[10px] text-[#f87171]">
+              Must be greater than current ({threshold.current.toFixed(3)})
+            </span>
+          )}
+        </label>
+
+        <label className="block">
+          <span className="text-sm text-[#e2e8f0]">Reason (optional but recommended)</span>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. last 50 promotions all scored ≥ 0.97 safety; raising bar from 0.95 to 0.96"
+            className="mt-1 w-full bg-[#0a0f18] border border-[#1e2738] rounded px-3 py-2 text-[#e2e8f0] text-sm"
+          />
+        </label>
+
+        {error && <div className="text-sm text-[#f87171]">{error}</div>}
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={setRatchet.isPending}
+            className="px-4 py-2 bg-[#0a0f18] border border-[#1e2738] hover:border-[#3b4659] disabled:opacity-50 rounded text-[#7a8599] hover:text-[#e2e8f0] text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={!valid || setRatchet.isPending}
+            className="px-4 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] disabled:opacity-50 rounded text-white text-sm"
+          >
+            {setRatchet.isPending ? 'Saving…' : `Ratchet up to ${proposed.toFixed(3)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RatchetRelaxModal({
+  threshold,
+  onClose,
+}: {
+  threshold: GovernanceRatchetThreshold;
+  onClose: () => void;
+}) {
+  const relax = useRelaxGovernanceRatchet();
+  const [newValue, setNewValue] = useState(
+    Math.max(threshold.current - 0.01, threshold.floor).toFixed(3),
+  );
+  const [reason, setReason] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+
+  const expectedPhrase = `RELAX ${threshold.name.toUpperCase()}`;
+  const proposed = parseFloat(newValue);
+  const valid =
+    !isNaN(proposed) &&
+    proposed < threshold.current &&
+    proposed >= threshold.floor;
+  const phraseMatches = confirmation.trim().toUpperCase() === expectedPhrase;
+  const reasonOk = reason.trim().length >= 10;
+
+  const canSubmit = valid && phraseMatches && reasonOk;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setError('');
+    try {
+      await relax.mutateAsync({
+        name: threshold.name,
+        new_value: proposed,
+        reason: reason.trim(),
+        confirmation: expectedPhrase,
+      });
+      onClose();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Unknown error');
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#111820] border border-[#dc2626]/40 rounded-xl p-6 max-w-lg w-[90vw] space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-[#f87171]">
+            ⚠️ Relax {threshold.name === 'safety_minimum' ? 'safety' : 'quality'} minimum
+          </h3>
+          <p className="text-sm text-[#fbbf24] mt-1">
+            This <em>lowers</em> the gate that all promotions must clear.
+            Future agent self-improvements pass at a looser bar. Cannot
+            drop below the hardcoded FLOOR (post-bootstrap safety contract).
+          </p>
+        </div>
+
+        <div className="text-xs text-[#94a3b8] space-y-1 bg-[#0a0f18] p-2 rounded">
+          <div>Current: <code className="text-[#e2e8f0]">{threshold.current.toFixed(3)}</code></div>
+          <div>FLOOR (cannot go below): <code className="text-[#fbbf24]">{threshold.floor.toFixed(3)}</code></div>
+        </div>
+
+        <label className="block">
+          <span className="text-sm text-[#e2e8f0]">New value (must be ≥ {threshold.floor.toFixed(3)} and &lt; {threshold.current.toFixed(3)})</span>
+          <input
+            type="number"
+            step="0.001"
+            min={threshold.floor}
+            max={threshold.current}
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            className="mt-1 w-full bg-[#0a0f18] border border-[#dc2626]/40 rounded px-3 py-2 text-[#e2e8f0] text-sm font-mono"
+          />
+          {!isNaN(proposed) && proposed < threshold.floor && (
+            <span className="text-[10px] text-[#f87171]">Below FLOOR — refused.</span>
+          )}
+          {!isNaN(proposed) && proposed >= threshold.current && (
+            <span className="text-[10px] text-[#f87171]">Must be lower than current.</span>
+          )}
+        </label>
+
+        <label className="block">
+          <span className="text-sm text-[#e2e8f0]">Reason (≥ 10 chars, mandatory)</span>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="why are we relaxing the gate?"
+            className="mt-1 w-full bg-[#0a0f18] border border-[#dc2626]/40 rounded px-3 py-2 text-[#e2e8f0] text-sm"
+          />
+          {!reasonOk && reason.length > 0 && (
+            <span className="text-[10px] text-[#f87171]">At least 10 chars.</span>
+          )}
+        </label>
+
+        <label className="block">
+          <span className="text-sm text-[#e2e8f0]">
+            Type <code className="text-[#fbbf24]">{expectedPhrase}</code> to confirm:
+          </span>
+          <input
+            type="text"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            placeholder={expectedPhrase}
+            className="mt-1 w-full bg-[#0a0f18] border border-[#dc2626]/40 rounded px-3 py-2 text-[#e2e8f0] text-sm font-mono"
+          />
+          {confirmation && !phraseMatches && (
+            <span className="text-[10px] text-[#f87171]">
+              Phrase doesn't match.
+            </span>
+          )}
+        </label>
+
+        {error && <div className="text-sm text-[#f87171]">{error}</div>}
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={relax.isPending}
+            className="px-4 py-2 bg-[#0a0f18] border border-[#1e2738] hover:border-[#3b4659] disabled:opacity-50 rounded text-[#7a8599] hover:text-[#e2e8f0] text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={!canSubmit || relax.isPending}
+            className="px-4 py-2 bg-[#dc2626] hover:bg-[#b91c1c] disabled:opacity-30 rounded text-white text-sm"
+          >
+            {relax.isPending ? 'Saving…' : `Relax to ${proposed.toFixed(3)}`}
           </button>
         </div>
       </div>
