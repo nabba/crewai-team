@@ -1775,3 +1775,154 @@ governance + runbook endpoints. Settings persist across restarts
 and are audit-trailed under
 `runtime_settings_change` / `governance.ratchet.*` /
 `runbook.toggle` action types.
+
+
+## 27. 2026-05-09 (afternoon) — Change-request runtime + 6 follow-ups
+
+After the morning's workspace-routing remediation (§21) and ticket-
+move tool (§22), the afternoon session put the change-request system
+into actual production use end-to-end and closed six adjacent gaps
+the first real run exposed.
+
+### 27.1 Trigger
+
+The honest reproduction of "agent proposed a fix, operator 👍'd
+it, gateway answered with a contradiction":
+
+```
+✅ Change request eb677b22… approved + applied.
+  ok: False
+  branch: ?
+  PR: (failed to open)
+  module reload: None
+  ERROR: host bridge unreachable; cannot write file or run git
+```
+
+The headline said success; the body said failure. Two distinct
+problems compounded:
+
+1. The gateway's host bridge (filesystem + git tunnel from
+   container to host) was **completely unconfigured on this
+   deployment** — `HOST_BRIDGE_URL` empty, `BRIDGE_SHARED_SECRET`
+   length 0, `get_bridge('change_requests')` returned `None`.
+   Every approval landed in `APPLY_FAILED`.
+2. The Signal-ack formatter hardcoded `✅ approved + applied`
+   regardless of the actual `apply_result.ok` value, hiding
+   failures in plain sight.
+
+### 27.2 The six PRs
+
+| PR | Concern | Scope |
+|---|---|---|
+| **#74** | The §21 follow-up: agent search-wrong-DB hallucination ("the database returned no tasks") when asked to move a Kanban ticket | Adds `move_ticket(ticket_id, target_project_name)` to `app/control_plane/tickets.py` + 3 agent tools (`cp_list_tickets` / `cp_search_tickets` / `cp_move_ticket`) on a new `manages-tickets` capability + PIM template guidance distinguishing local SQLite vs Postgres ticket systems. Audit-logged. See §22. |
+| **#77** | After #74 the tools existed but the routing didn't reliably reach PIM for ticket-ops queries (`move that task to X`, `list my tickets`, `what's on my kanban`) | `_PIM_NOUN_RE` gains `tickets?\|kanban`; `_PIM_QUALIFIER_RE` gains `move\|migrate\|reassign\|search\|list\|show\|find`; `_CREW_BASE_PURPOSE["pim"]` mentions Kanban + control_plane.tickets explicitly so the LLM router catches the rest. Routes PIM via the existing dual-signal short-circuit (which runs BEFORE the follow-up filter — critical because "move that task" trips weak-anaphora rules on length<40). |
+| **#78** | Self-heal alarm fired with two false positives: `error_resolution` "stale 7098 min" and `workspace_sync` "stale 39611 min" | Both jobs were running fine but only updated their footprint when there was actual work. Fix: heartbeat-touch the footprint at end of every run regardless of work. `run_error_resolution` always touches `workspace/error_tracker.json` (creates `{}` on first run); `sync_workspace` always touches `workspace/.git/HEAD` via a new `_touch_workspace_sync_heartbeat()` helper, even when `WORKSPACE_BACKUP_REPO` is empty. |
+| **#79** | The contradictory ack message (`✅ approved + applied / ok: False`) | Branch the Signal-ack on `apply_result.ok`. Success path keeps `✅ approved + applied`; failure path uses `⚠️` + `apply FAILED` headline + explicit pointer at the `Retry apply` button in `/cp/changes`. Reject-path (`❌`) unchanged. |
+| **#81** | Calling the `/api/cp/changes/{id}/retry-apply` endpoint or the React UI's "Retry apply" button raised `ValueError: cannot approve … in status apply_failed` — the lifecycle's `approve()` only accepted PENDING but the endpoint assumed APPLY_FAILED was also accepted | Extend `approve()` to accept both `PENDING → APPROVED` (first-time, unchanged) and `APPLY_FAILED → APPROVED` (retry path, new). Already-`APPROVED` stays idempotent. Audit-event distinction: first approval logs `approved`, retry logs `re-approved-for-retry`. |
+| **#82** | Self-heal Wave 0/1 — closes 7 of 8 resilience gaps from the years-of-uptime audit | DB backup engine (Postgres + Neo4j + ChromaDB; opt-in `HEALING_DB_BACKUP_ENABLED`); per-listener heartbeats (each Firestore poller touches `workspace/heartbeats/<thread>.heartbeat` per loop iteration; `listener_heartbeat` monitor moves from workspace-wide proxy to per-listener targeting); `vendor_sunset` files CRs instead of alert-only; `log_archival` monitor (gzip-rotation of errors.jsonl, audit_journal.json size cap, 90-day purge); `conversations.db` monthly VACUUM. Cross-references §23. |
+
+### 27.3 Host-bridge runtime wiring (operator deployment step, NOT in source)
+
+Source code for the change-request system shipped in #54 (May 2026,
+§17). The runtime wiring on this specific deployment was missing:
+
+```
+host_bridge/capabilities.json     gained a `change_requests` agent
+                                  entry: filesystem.read/list/write
+                                  + execute on
+                                    app/, tests/, docs/,
+                                    dashboard-react/, deploy/,
+                                    scripts/
+                                    + PROGRAM.md / README.md.
+                                  Blocked: souls/, forge/,
+                                  auto_deployer.py, host_bridge/.
+                                  risk_ceiling=high.
+.env                              + BRIDGE_TOKEN_CHANGE_REQUESTS=cr-…
+launchctl stop/start              reload the host bridge so
+  com.crewai.bridge               capabilities.json reloads.
+docker compose up -d              gateway picks up the new
+  --force-recreate gateway        BRIDGE_TOKEN_CHANGE_REQUESTS env.
+```
+
+Once those four steps complete:
+
+```
+docker exec gateway python3 -c \
+  "from app.bridge_client import get_bridge; \
+   b = get_bridge('change_requests'); \
+   print(b.is_available())"
+True
+```
+
+The change-request system can now hot-apply approved changes. The
+first end-to-end run was the morning's `eb677b22…` change request
+(file `docs/proposed_fixes/research_ConnectionError_1.md`, requested
+by `self_heal_handler` in #82 §A4): retried after the bridge wiring,
+applied to `auto/change_eb677b222479` (commit `0ee71627`), auto-PR
+opened as **#80**, merged.
+
+### 27.4 The full closure
+
+Combined with #67 (active project persists across restart), #68
+(gee_run_script timeout 600 s), #69 (eesti_mets profile), #71
+(KaiCart/Archibal/PLG keyword expansion), #72 (always-ask routing),
+the morning's failure shape can no longer recur silently. Combined
+with #74/#77 (move-ticket API + routing), the agent can now answer
+"move that task to Eesti mets" honestly. Combined with #79/#81
+(honest ack + retry-apply lifecycle), the operator gets accurate
+status on every change-request decision and can self-serve retries.
+Combined with #82 (Wave 0/1 self-heal), DB backups, per-listener
+heartbeats, and log archival are all live.
+
+The 8th Wave 0/1 gap (the one PR #82 deliberately deferred) is the
+remaining open item from this audit; everything else from the
+2026-05-09 reports is in production.
+
+### 27.5 Files touched (afternoon-session-only)
+
+```
+app/agents/commander/routing.py            # PR #77
+app/auditor.py                             # PR #78
+app/change_requests/lifecycle.py           # PR #81
+app/control_plane/tickets.py               # PR #74
+app/healing/db_backup.py                   # PR #82 (NEW)
+app/healing/listener_heartbeats.py         # PR #82 (NEW)
+app/healing/monitors/db_vacuum.py          # PR #82 (NEW)
+app/healing/monitors/listener_heartbeat.py # PR #82
+app/healing/monitors/log_archival.py       # PR #82 (NEW)
+app/healing/monitors/vendor_sunset.py      # PR #82
+app/firebase/listeners.py                  # PR #82
+app/main.py                                # PR #79
+app/tools/control_plane_tickets_tool.py    # PR #74 (NEW)
+app/tool_registry/capabilities.py          # PR #74 (manages-tickets)
+app/workspace_sync.py                      # PR #78
+host_bridge/capabilities.json              # runtime wiring
+.env                                       # runtime wiring
+RESTORE.md                                 # PR #82 (NEW)
+scripts/backup.sh                          # PR #82 (NEW)
+
+tests/healing/test_db_backup.py            # PR #82 (NEW)
+tests/healing/test_db_vacuum.py            # PR #82 (NEW)
+tests/healing/test_listener_heartbeat_monitor.py # PR #82 (NEW)
+tests/healing/test_listener_heartbeats.py  # PR #82 (NEW)
+tests/healing/test_log_archival.py         # PR #82 (NEW)
+tests/healing/test_vendor_sunset_cr.py     # PR #82 (NEW)
+tests/test_change_request_retry_apply.py   # PR #81 (NEW) — 10 tests
+tests/test_change_request_signal_ack.py    # PR #79 (NEW) — 6 tests
+tests/test_cp_tickets_tool.py              # PR #74 (NEW)
+tests/test_control_plane_tickets_move.py   # PR #74 (NEW)
+tests/test_cron_heartbeats.py              # PR #78 (NEW) — 7 tests
+tests/test_routing_ticket_ops.py           # PR #77 (NEW) — 18 tests
+```
+
+### 27.6 What still needs operator action
+
+* **The 8th Wave 0/1 gap** deferred from #82 — confirm intent via
+  the audit report, schedule for Wave 0/2.
+* **`HEALING_DB_BACKUP_ENABLED` is opt-in** by default. If you
+  want gateway-driven backups, flip the env var and restart;
+  otherwise `scripts/backup.sh` runs host-side from cron / launchd.
+* **`WORKSPACE_BACKUP_REPO` remains unset.** Workspace sync is
+  live (heartbeat now advances even with no remote, per #78), but
+  if you want the workspace-state push to a backup repo, set the
+  env var. Optional.
