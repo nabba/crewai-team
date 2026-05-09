@@ -243,9 +243,22 @@ workspaces without leaking workspace-specific details.
 | 13 | Cross-workspace transfer (hybrid model) | `2656ed2` |
 | 4.5 + 9.5 + 10.5 | Production wire-ups (router, signal, mem0) | `e2e89e4` |
 | Merge | `f862c9e` (Workspace Companion → main) | — |
+| 11.5 | Cold-start seed bootstrap from CP mission + tickets | `b81771fc` (PR #75 → `43b24137`) |
 
-**313 backend tests** in `tests/test_companion_*.py`; React UI verified
-on the preview server. Full design + API surface + operational guide:
+**Phase 11.5 closes the chicken-and-egg gap exposed by post-merge audit:
+none of the operator's 5 workspaces had `seed_prompt` set, so every
+cycle aborted in 13 ms with `no_seed_prompt`. Phase 11 grand-task
+synthesis couldn't help — its activation gate requires ≥3 polished
+ideas. Phase 11.5 reads `control_plane.projects.mission` + the last 15
+ticket titles for the project, calls a cheap-tier LLM once (~$0.0002),
+persists the synthesised seed via Phase 6.5 `config.save`, emits a
+`SEED_DERIVED` event, and continues the same cycle with the new seed.
+The `default` workspace is blocklisted (catch-all, mixed signal); user
+override via `POST /api/cp/companion/config/{ws}` always wins.
+
+**336 backend tests** in `tests/test_companion_*.py` (313 prior + 23
+new for Phase 11.5); React UI verified on the preview server. Full
+design + API surface + operational guide:
 [`docs/COMPANION_LAYER.md`](docs/COMPANION_LAYER.md).
 
 ---

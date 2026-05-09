@@ -362,8 +362,10 @@ Phases 0 through 16a shipped. Each phase shipped behind green tests and is indep
 
 A separate per-workspace idle-time contemplation system shipped on top of
 the existing infrastructure. Lives in [`app/companion/`](./app/companion/);
-React tab on `/cp/ops`. The user provides an overarching seed prompt;
-during idle windows the Companion runs the [Creative MAS](./app/crews/creative_crew.py)
+React tab on `/cp/ops`. The user provides an overarching seed prompt
+(or **the system auto-derives one** from the project's mission +
+recent tickets — Phase 11.5 cold-start bootstrap); during idle windows
+the Companion runs the [Creative MAS](./app/crews/creative_crew.py)
 pipeline against the workspace's accumulated context, scores outputs across
 four dimensions (novelty, quality, transferability, 5-persona critic
 panel), surfaces only ideas that clear thresholds via Signal + React,
@@ -373,7 +375,7 @@ documents and registers them across **four memory layers** at once
 transfer is hybrid — abstract `GLOBAL_META` kernels propose to peers under
 two safety gates (sanitiser + relevance) — so Estonian forests stays
 focused but a structural insight from KaiCart can still flow through.
-**313 backend tests** across 23 test files in
+**336 backend tests** across 24 test files in
 [`tests/test_companion_*.py`](./tests/). Full design + API surface +
 operational guide in [`docs/COMPANION_LAYER.md`](./docs/COMPANION_LAYER.md).
 
