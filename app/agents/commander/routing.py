@@ -46,14 +46,22 @@ _INSTANT_REPLIES: dict[re.Pattern, str] = {
 # qualifier.
 _PIM_NOUN_RE = re.compile(
     r"\b(?:e-?mails?|inbox(?:es)?|mailbox(?:es)?|gmail|imap|"
-    r"calendar|appointments?|meetings?|events?|tasks?|todos?|to-?dos?)\b",
+    r"calendar|appointments?|meetings?|events?|tasks?|todos?|to-?dos?|"
+    # Ticket / Kanban operations land in PIM (post-2026-05-09 — PIM is
+    # the only crew with cp_list_tickets / cp_search_tickets /
+    # cp_move_ticket; see app/crews/pim_crew.py task template).
+    r"tickets?|kanban)\b",
     re.IGNORECASE,
 )
 _PIM_QUALIFIER_RE = re.compile(
     r"\b(?:my|today|today's|yesterday|this\s+(?:morning|afternoon|evening|week|weekend|month)"
     r"|over\s+(?:the\s+)?weekend|past\s+\d+|received|got|important|urgent|"
     r"top(?:\s+\d+)?|new|unread|recent|latest|priorit(?:y|ize|ised|ized)|"
-    r"rank|attention|action|reply\s+to|respond\s+to|missed)\b",
+    r"rank|attention|action|reply\s+to|respond\s+to|missed|"
+    # Ticket-ops verbs (post-2026-05-09 — for PIM Kanban routing).
+    # "move" pairs with "task"/"ticket" to catch "move the X task to Y";
+    # the others cover list / search shapes.
+    r"move|migrate|reassign|search|list|show|find)\b",
     re.IGNORECASE,
 )
 
@@ -132,6 +140,13 @@ _FAST_ROUTE_PATTERNS = [
     (re.compile(r"^(?:check|read|send|reply|forward)\s+(?:my\s+)?(?:email|inbox|mail)", re.IGNORECASE), "pim", 3),
     (re.compile(r"^(?:check|show|create|schedule|cancel)\s+(?:my\s+)?(?:calendar|events?|meetings?|appointments?)", re.IGNORECASE), "pim", 3),
     (re.compile(r"^(?:add|create|show|list|complete|update|delete)\s+(?:a\s+)?tasks?", re.IGNORECASE), "pim", 2),
+    # NOTE: Kanban-ticket / cp_tickets operations route to PIM via the
+    # _looks_like_pim_question short-circuit (line ~509), not here —
+    # _PIM_NOUN_RE includes "tickets?|kanban" and _PIM_QUALIFIER_RE
+    # includes the ticket-ops verbs (move/migrate/reassign/search/
+    # list/show/find).  That path runs BEFORE the follow-up filter,
+    # which is necessary for short queries like "move that task to X"
+    # ("that" otherwise triggers the weak-anaphora follow-up gate).
     # Company dossier → company_dossier (matched BEFORE the financial
     # rule because the financial rule matches the bare word
     # "investment" and would otherwise capture "investment-grade
@@ -656,7 +671,13 @@ _CREW_BASE_PURPOSE: dict[str, str] = {
     "creative":  "open-ended ideation: brainstorming, alternatives, novel solution design, "
                  "cross-domain framing, strategic options under uncertainty (pick over 'writing' "
                  "when the user wants exploration, not transcription)",
-    "pim":       "email triage, calendar management, task tracking",
+    "pim":       (
+        "email triage, calendar management, task tracking, AND "
+        "Kanban-ticket operations (list / search / move tickets "
+        "between workspaces — control_plane.tickets in Postgres). "
+        "Pick PIM whenever the user references the dashboard tickets, "
+        "Kanban board, or asks to move a task between workspaces."
+    ),
     "financial": "stock data, financial analysis, SEC filings, valuation models, investment reports",
     "company_dossier": (
         "investment-grade company DOSSIER: structured 10-15 page PDF with sourced "
