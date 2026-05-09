@@ -123,6 +123,22 @@ CAPABILITIES: Final[dict[str, dict[str, str]]] = {
         "reads-deployment-state": "Read git head + gateway uptime + recent crew outcomes + tool-registry size.",
     },
 
+    # ── tickets: control-plane Postgres ticket / project ops ────────
+    # The Kanban tickets visible in the React dashboard live in
+    # ``control_plane.tickets`` (Postgres) and have a ``project_id``
+    # column.  This is distinct from the SQLite local-tasks system
+    # used by the PIM agent's ``create_task`` / ``list_tasks`` tools.
+    # Listing/searching is read-only (``reads-deployment-state`` covers
+    # similar ground), but moving a ticket between projects is a
+    # mutating op and gets its own narrowly-scoped tag so we can audit
+    # which agents have been granted it.
+    "tickets": {
+        "manages-tickets": (
+            "Move a control_plane.tickets row between projects. "
+            "Mutates production state; audit-logged."
+        ),
+    },
+
     # ── code-development: agent-driven code modification with a    ──
     #    human gate. Phase 5.4 — see docs/CODING_SESSIONS.md.
     #    "Coding sessions" are ephemeral worktrees where the agent

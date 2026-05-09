@@ -174,6 +174,60 @@ class TicketManager:
             detail={"result_preview": result_summary[:200]},
         )
 
+    def move_ticket(
+        self, ticket_id: str, target_project_name: str
+    ) -> dict | None:
+        """Move a ticket to a different project (by project name).
+
+        Resolves ``target_project_name`` via
+        ``ProjectManager.get_by_name`` (case-insensitive).  Returns the
+        updated ticket row, or ``None`` if either the ticket or the
+        target project is unknown.
+
+        Idempotent: re-moving a ticket to the project it already
+        belongs to writes the same UPDATE and re-emits an audit entry,
+        but produces no observable state change.
+        """
+        from app.control_plane.projects import get_projects
+
+        target_project = get_projects().get_by_name(target_project_name)
+        if not target_project:
+            return None
+
+        target_project_id = str(target_project["id"])
+        target_canonical_name = target_project.get("name") or target_project_name
+
+        existing = execute_one(
+            "SELECT id, project_id FROM control_plane.tickets WHERE id = %s",
+            (ticket_id,),
+        )
+        if not existing:
+            return None
+
+        from_project_id = existing.get("project_id") if isinstance(existing, dict) else existing[1]
+        from_project_id_str = str(from_project_id) if from_project_id is not None else None
+
+        row = execute_one(
+            """UPDATE control_plane.tickets
+                  SET project_id = %s, updated_at = NOW()
+                WHERE id = %s
+            RETURNING id, title, status, project_id, priority,
+                      assigned_crew, assigned_agent, created_at, updated_at""",
+            (target_project_id, ticket_id),
+        )
+        if row:
+            self.audit.log(
+                actor="user", action="ticket.moved",
+                project_id=target_project_id,
+                resource_type="ticket", resource_id=str(ticket_id),
+                detail={
+                    "from_project_id": from_project_id_str,
+                    "to_project_id": target_project_id,
+                    "to_project_name": target_canonical_name,
+                },
+            )
+        return row
+
     def fail(self, ticket_id: str, error: str) -> None:
         """Mark ticket as failed."""
         execute(

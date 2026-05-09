@@ -41,6 +41,20 @@ def create_pim_agent(force_tier: str | None = None) -> Agent:
         if task_tools:
             tools.extend(task_tools)
 
+    # Control-plane Kanban ticket tools (cp_list_tickets / cp_search_tickets
+    # / cp_move_ticket).  Distinct from the SQLite task_tools above:
+    # those operate on /app/workspace/tasks.db (no project_id), these
+    # operate on control_plane.tickets in Postgres (the React Kanban
+    # board, with project_id).  Without these the agent can't fulfil
+    # "move that task to workspace X" requests — it would search the
+    # wrong store and hallucinate "no tasks found" (live failure
+    # 2026-05-09).
+    with optional_tool_group('pim', 'cp_tickets'):
+        from app.tools.control_plane_tickets_tool import create_cp_tickets_tools
+        cp_ticket_tools = create_cp_tickets_tools("pim")
+        if cp_ticket_tools:
+            tools.extend(cp_ticket_tools)
+
     # Photos tools (macOS Photos.app via AppleScript through bridge)
     with optional_tool_group('pim', 'photos_tools'):
         from app.tools.photos_tools import create_photos_tools
