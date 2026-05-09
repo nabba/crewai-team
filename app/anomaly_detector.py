@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 # Rolling window: 24h of 60s samples = 1440 data points
 _WINDOW_SIZE = 1440
 _SIGMA_THRESHOLD = 2.0  # alert when > 2σ from mean
+_WARN_SIGMA_THRESHOLD = 5.0  # only emit WARN for extreme deviations;
+# 2–5σ is recorded in `_alerts` (visible to dashboard / API) and logged
+# at INFO so the audit trail still shows it, but it doesn't pollute
+# errors.jsonl with stat-noise that re-signs every time the rolling mean
+# shifts (pattern_learner sees one signature per outlier — pure churn).
 _MIN_SAMPLES = 30  # need at least 30 samples before alerting
 
 
@@ -135,10 +140,17 @@ def record_sample(metric_name: str, value: float) -> AnomalyAlert | None:
             alert_type=alert_type,
         )
         _alerts.append(alert)
-        logger.warning(
+        # Log level is sigma-aware: extreme deviations (≥5σ) WARN so they
+        # surface in errors.jsonl + Signal feed; routine 2–5σ noise INFOs
+        # (still in _alerts for dashboard, but not in the error stream).
+        msg = (
             f"ANOMALY: {metric_name}={value:.4f} "
             f"(mean={window.mean:.4f} ±{sd:.4f}, {sigma_dist:.1f}σ {direction})"
         )
+        if sigma_dist >= _WARN_SIGMA_THRESHOLD:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
         return alert
 
 
