@@ -886,3 +886,135 @@ should be triaged as evaluation drift through
 `app/subia/wiki_surface/drift_detection.py`. No phenomenal-experience
 claim — vocabulary stays functional. The consciousness-risk gate
 remains observability-only and never feeds back into reward / fitness.
+
+## 20. 2026-05 Personal Agent Surface (Phases 0–8 + Discord + Files)
+
+Eight feature phases plus two follow-up surfaces (Discord, Files API)
+that close the gap between AndrusAI and the May 2026 personal-agent
+products surveyed at
+[creatoreconomy.so/p/the-race-to-build-a-personal-ai-agent-openclaw-hermes-claude-codex-gemini](https://creatoreconomy.so/p/the-race-to-build-a-personal-ai-agent-openclaw-hermes-claude-codex-gemini).
+Every subsystem is opt-in and gated behind a runtime toggle, an env
+flag, or a missing-credentials early-return — the gateway boots cleanly
+even with all of them off.
+
+### 20.1 The 10 article criteria (before / after)
+
+| # | Criterion | Before | After |
+|---|---|---|---|
+| 1 | Email / Calendar / Docs / Sheets / Slides | partial | ✓ all five via native Google APIs (Phase 3) + slide deck generator (Phase 2) |
+| 2 | APIs / MCPs / CLIs | strong | strong (unchanged) |
+| 3 | Recurring + triggered tasks | strong | ✓ all triggered tasks notify (Phase 7) |
+| 4 | Persistent user memory | very strong | very strong (unchanged) |
+| 5 | Web + mobile parity | partial | ✓ PWA + Web Push (Phase 4) + Discord (this section) + Signal |
+| 6 | Text + voice | text only | ✓ dual-mode local + cloud (Phase 1) |
+| 7 | Engaging personality | terse | ✓ optional concierge layer (Phase 8) |
+| 8 | Computer + browser control | strong | ✓ + vision fallback at Haiku (Phase 6) |
+| 9 | Reliability | very strong | very strong (unchanged) |
+| 10 | Data protection / security | strong | strong (unchanged) |
+
+### 20.2 Phase map
+
+| Phase | What | Toggle | Module(s) |
+|---|---|---|---|
+| 0 | Runtime settings | (root) | `app/runtime_settings.py` |
+| 1 | Voice (local + cloud) | `voice_mode` | `app/voice/` |
+| 2 | Slides | always on | `app/tools/document_generator.py:create_pptx` |
+| 3 | Google Workspace | OAuth + bootstrap | `app/google_workspace/` + 5 tool modules |
+| 4 | PWA + Web Push | VAPID keys | `app/web_push/` + `dashboard-react/public/sw.js` |
+| 5 | Skill registry | always on | `app/skills/` |
+| 6 | Vision computer use | `vision_cu_enabled` | `app/computer_use/` |
+| 7 | Completion notifications | always on | `app/notify/` |
+| 8 | Concierge persona | `concierge_persona_enabled` | `app/personality/concierge_wrapper.py` |
+| + | Discord connector | `DISCORD_ENABLED` | `app/discord_client/` |
+| + | Files API + downloads | always on | `app/api/files_api.py` + `app/delivery/` |
+
+### 20.3 Reply-routing dispatcher
+
+Discord dispatch lives at a single point: `SignalClient.send` checks
+the recipient prefix and reroutes `discord:<user_id>` calls to
+`app.discord_client.send_via_discord` via `asyncio.to_thread`. Every
+existing call site in `handle_task` (load-shed message, in-flight
+notice, final reply, error fallback, idle reminder) automatically
+routes to the right surface based on which messaging app the user
+came in on — zero changes needed at the call sites.
+
+### 20.4 Hard safety properties
+
+- TIER_IMMUTABLE: none of the new modules touch immutable tier
+- Secrets: every new key (`GROQ_API_KEY`, `GOOGLE_CLOUD_TTS_KEY`,
+  `GOOGLE_OAUTH_CLIENT_*`, `VAPID_*`, `DISCORD_BOT_TOKEN`) goes through
+  ESO + `.env` + container env vars; same firebase-service-account.json
+  pattern for the GCP service file
+- Auth: every new mutating `/api/cp/*` and `/config/*` endpoint goes
+  through `require_gateway_auth` (Bearer token); owner-only Signal
+  sender check unchanged; Discord owner-only DM gate
+- Audit: hash-chained entries for every mutation —
+  `runtime_settings_change`, `web_push_test`, `skill_save`,
+  `skill_run`, `computer_use_step`, `gworkspace_write`,
+  `concierge_toggle`, `files_send`
+- Budget guards: vision-CU per-task ($0.50) + monthly (default $10,
+  React-adjustable); Google TTS char count cap; voice mode falls
+  back local→cloud and cloud→local on backend failure
+- Failsafe: every new tool factory returns `[]` on import error or
+  missing config — the agent simply doesn't see the tool
+
+### 20.5 Shipped artefacts
+
+| Layer | Files |
+|-------|-------|
+| Runtime + settings | `app/runtime_settings.py`, `app/api/config_api.py` (extended) |
+| Voice | `app/voice/{__init__,stt,tts,local,cloud,inbound_state}.py` |
+| Slides | `app/tools/document_generator.py` (extended), `app/souls/writer.md` (extended) |
+| Google Workspace | `app/google_workspace/{__init__,auth,service,bootstrap}.py`, `app/tools/g{mail,cal,docs,sheets,slides}_tools.py` |
+| PWA + Web Push | `app/web_push/{__init__,subscriptions,sender,bootstrap}.py`, `dashboard-react/public/{manifest.webmanifest,sw.js,icon-{192,512}.png,apple-touch-icon.png}`, `dashboard-react/src/api/pwa.ts`, `dashboard-react/index.html` (extended), `dashboard-react/src/main.tsx` (extended) |
+| Skills | `app/skills/{__init__,registry,runner}.py`, `app/api/skills_api.py`, `dashboard-react/src/components/SkillsPage.tsx`, `app/conversation_store.py` (added `get_recent_messages`) |
+| Vision CU | `app/computer_use/{__init__,budget,audit,browser_backend,runner}.py`, `app/tools/computer_use_tool.py`, `app/crews/base_crew.py` (extended), `app/souls/commander.md` (extended) |
+| Notify | `app/notify/{__init__,api}.py`, `main.py` + `app/main.py` (extended), `app/tools/schedule_manager_tools.py` (extended) |
+| Concierge | `app/personality/concierge_wrapper.py`, `app/souls/concierge.md`, `app/main.py` (extended) |
+| Discord | `app/discord_client/{__init__,bot,sender}.py`, `app/main.py` (lifespan), `app/signal_client.py` (dispatcher) |
+| Files | `app/api/files_api.py`, `app/delivery/{__init__,signal_send,email_send}.py`, `dashboard-react/src/components/FilesPage.tsx`, `dashboard-react/src/api/{queries,endpoints}.ts` (extended) |
+| Settings UI | `dashboard-react/src/components/SettingsPage.tsx` (4 cards: voice / vision-CU / concierge / Web Push) |
+| Nav + routes | `dashboard-react/src/{App.tsx,components/Layout.tsx}` (extended): `/cp/{settings,skills,files}` |
+| Host install | `host_bridge/install_voice.sh` |
+| Tests | `tests/test_{voice,document_generator_pptx,google_workspace,web_push,slash_commands,skills,computer_use,notify,concierge,delivery_files}.py` — **134 hermetic tests** |
+| Docs | `docs/PERSONAL_AGENT.md` (this layer's reference), `CLAUDE.md` (extended), `PROGRAM.md` §20 (this section) |
+
+### 20.6 Composition with existing program
+
+- **Commander routing.** Soul updated with `API → Playwright →
+  AppleScript → computer_use` precedence. Specialists reaching for
+  `computer_use` must explain why cheaper paths can't apply.
+- **Memory architecture.** Skills layer optionally writes a
+  `RecipeOutcome` to the meta-agent ledger (§15) when that subsystem
+  is enabled. Voice transcripts feed back into the same conversation
+  store the rest of the system reads from.
+- **Tool registry.** Five Google tool factories + `computer_use` are
+  registered through the existing tool-plugin pathway — they
+  participate in the registry's metadata + capability search just
+  like browser_tools.
+- **Affect / Epistemic.** No interaction by design. The new layer is
+  purely user-facing surface; affect telemetry isn't touched.
+- **Self-healing (§14).** New mutations (skill_save, skill_run,
+  computer_use_step, files_send) emit security_events the existing
+  hash-chained audit + the error_monitor pick up automatically.
+- **Coding-session (§17 5.4).** No interaction.
+- **Brainstorm (§18).** Concierge layer respects brainstorm-flagged
+  outputs (slash-command help format) and bypasses the rewrite for
+  them so the structured Q/A flow isn't paraphrased.
+
+### 20.7 Honest non-goals
+
+- Voice replies are TTS attachments, not native Signal voice notes.
+  Signal-cli accepts the `.opus`/`.wav` file as a regular attachment;
+  rendering it as a "voice note" in iOS would require a `voiceNote=true`
+  flag on the send call (deferred — single line, but iOS-side
+  rendering varies).
+- Vision computer use ships with a browser-only backend. Full desktop
+  control via X11/KasmVNC is the next iteration; the runner has an
+  injectable `_Backend` so the swap is local.
+- Estonian Piper voice is not shipped (rhasspy/piper-voices doesn't
+  carry one). Local mode falls back to English; cloud mode (Google
+  Cloud `et-EE-Standard-A`) is the proper Estonian path.
+- Slash commands on Discord are plain text — registering them as
+  native Discord slash commands needs a separate developer-portal
+  setup (deferred).
