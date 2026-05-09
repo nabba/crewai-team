@@ -1575,3 +1575,203 @@ fully closed (#3, #4, #5, #6, #7, #8, #9), 2 partially closed (#1
 covers prevention but not retroactive cleanup; #2 in advisory mode
 by default — flipping to enforcing is a separate operator action
 after the FP-rate observation period).
+
+## 26. 2026-05-09 React dashboard hardening
+
+The dashboard accumulated several known-broken or known-stale
+surfaces over the prior week. This pass closed them and added the
+operator controls that the legacy HTML monitor had but the React
+build was missing.
+
+### 26.1 Cost telemetry — Postgres-resident, per-agent, no "unknown"
+
+Five layered changes that together turn the Costs tab into a
+trustworthy spend log:
+
+  1. **Per-project tagging on every LLM call.** `record_tokens()`
+     in `app/llm_benchmarks.py` resolves the project from a
+     ContextVar (`app/project_context.py:_project_id`) and writes
+     it on every SQLite `token_usage` + `request_costs` row. The
+     ContextVar is set at gateway request boundaries and at
+     `Commander.handle()`.
+  2. **Reconcile every observed cost into Postgres budgets.**
+     `app/control_plane/budgets.py:reconcile_actual_spend()` is a
+     plain UPSERT into `control_plane.budgets (project_id,
+     agent_role, period)` keyed on the agent role from the new
+     `_agent_role` ContextVar. `record_tokens()` calls it for any
+     row with `cost_usd > 0`. The pre-call enforcement hook
+     (`lifecycle_hooks._create_budget_hook`) only fires on the
+     commander path; this reconcile catches every other LLM call
+     that previously went unbudgeted.
+  3. **`agent_scope()` wrappers.** `crew_lifecycle` (every user
+     crew), each internal crew (critic, retrospective,
+     self_improver), `Commander.handle`, and finally
+     `idle_scheduler._run_single_job(name, fn, …)` each wrap their
+     work in `agent_scope(role)`. Every nested LLM call sees the
+     right role. The idle-scheduler one is what lets every
+     background job (`llm-discovery`, `fiction-ingest`,
+     `training-collector`, `atlas-competence-sync`, …) attribute
+     to its own row instead of falling back to `unknown`.
+  4. **Three Cost panels with distinct semantics:**
+       * **Cost by Crew** — `request_costs.crew_name` from the
+         long-lived SQLite tracker, year window. Compound names
+         like `research+coding` split equally across components.
+       * **Cost by Agent** — derived from Cost-by-Crew via
+         `_CREW_TO_AGENT` mapping (`coding → coder`, `research →
+         researcher`, …) so the chart has real data even before
+         budgets accumulates. Falls back to budgets for roles the
+         mapping doesn't cover.
+       * **Cost by Internal Agent** — `control_plane.budgets`
+         filtered to commander/critic/retrospective/self_improver
+         + idle-scheduler job names (anything hyphenated).
+  5. **Migration `022_relabel_unknown_to_idle_scheduler.sql`** —
+     historical "unknown" rows merged into a single
+     `idle_scheduler` row per project. Future spend subdivides
+     into per-job rows automatically thanks to (3).
+
+Other cost fixes in the same pass:
+
+  * `tickets.complete()` looks up `project_id` and passes it to
+    `audit.log()`; `migrations/020_backfill_audit_project_id.sql`
+    backfilled 175 historical `ticket.completed` rows that had
+    `project_id IS NULL`. Cost-tab daily/by-agent endpoints now
+    return the historical $15.96 of work attributed to the
+    correct projects (173 → default, 2 → PLG).
+  * Audit feed limit raised 100 → 300 + "Only rows with cost"
+    toggle; cost-bearing rows are sparse (`ticket.completed` only)
+    so the default last-100 window had been all-null.
+
+### 26.2 Tasks off Firestore — `control_plane.crew_tasks`
+
+The `/cp/tasks` endpoint hit Firestore's 50 k-read/day free-tier
+quota by late evening, surfacing as `tasks read: 429 Quota
+exceeded` in the Crew Activity header.
+
+  * Migration `021_crew_tasks.sql` creates
+    `control_plane.crew_tasks` with indexes on `(started_at)`,
+    `(project_id, started_at)`, `(state, started_at)`,
+    `(crew, started_at)`, and a partial index on `parent_task_id`.
+  * `app/control_plane/crew_tasks.py` provides CRUD helpers
+    (`start_task`, `complete_task`, `fail_task`, `update_eta`,
+    `mark_delegated`, `update_sub_agent_progress`, `mark_healed`),
+    a `cleanup_zombies(max_age_hours=6)` for startup, and
+    `list_recent` / `crew_statuses` (DISTINCT ON deriving per-crew
+    latest from the same table — no separate `crews` row needed).
+  * `app/firebase/crew_tracking.py` dual-writes: every entry
+    point writes to Postgres FIRST, then the legacy Firestore
+    mirror as fire-and-forget. Backwards observability preserved
+    for any other consumer; the dashboard read path no longer
+    depends on Firestore.
+  * `/api/cp/tasks` reads from `crew_tasks` + `crew_statuses` and
+    merges with the canonical `_KNOWN_CREWS` registry so every
+    crew (including idle ones) renders. Response shape unchanged
+    so the React side needed zero updates.
+
+### 26.3 Budget operator controls
+
+  * **Pause / Resume button on every Budget card.**
+    `BudgetEnforcer.set_paused()` flips `is_paused` on the
+    current-period row and audit-logs `budget.paused` /
+    `budget.unpaused`. Backed by `POST /api/cp/budgets/pause`.
+    Resume is highlighted green so it's obvious how to clear a
+    stale pause.
+  * **Background tasks kill switch on `/cp/settings`.**
+    `GET/POST /config/background_tasks` mirrors the legacy
+    Firestore `config/background_tasks` document over HTTP. POST
+    flips `idle_scheduler.set_enabled(...)` AND mirrors back to
+    Firestore so the in-process listener at
+    `idle_scheduler.py:2581` and the legacy HTML monitor stay in
+    sync. Single ON / OFF toggle on the React Settings page.
+  * `BudgetDashboard` row key is now `${project}:${role}:${period}`
+    (was `agent_role` alone, which collided across projects under
+    the "All projects" view). Each card appends `· PROJECT_NAME`
+    so the four identical "researcher" cards under "All projects"
+    are distinguishable.
+
+### 26.4 Affect — sender id threading + last_seen wiring
+
+The primary user's `last_seen_ts` was pinned at first-seen
+(`2026-04-28`) because the affect attachment hook reads `sender_id`
+from `HookContext`, but `Commander` constructed every PRE_TASK /
+ON_COMPLETE context without populating it. Brainstorm had the
+same gap on a different code path.
+
+Fix: new `_sender_id` ContextVar in `app/project_context.py` with
+`sender_scope()` helper. `Commander.handle` wraps dispatch in
+`sender_scope(sender)`. Brainstorm's `_resolve_sender` publishes
+the resolved sender into the ContextVar. `affect/hooks.py` falls
+back to `resolve_current_sender_id()` when the `HookContext`
+doesn't carry one. Every Signal message and every brainstorm
+session now bumps `last_seen_ts` automatically.
+
+### 26.5 Consciousness probes — durability + plumbing
+
+Three independent fixes that pulled probe scores off the floor:
+
+  * **GWT broadcasts persist + hydrate.** Every broadcast goes
+    into Postgres `subia_broadcasts`; `GlobalWorkspace.__new__`
+    rehydrates the most recent 50 rows on startup. Previously the
+    in-memory deque emptied at every gateway restart and the GWT
+    probe pinned at 0.4 ("no broadcasts, sent test") for ~1 hour
+    while it refilled.
+  * **HOT-2 hand-off.** `lifecycle_hooks` ON_TASK_COMPLETE now
+    copies `_meta_cognitive_state.strategy_assessment` into
+    `internal_states.meta_strategy_assessment` before persistence;
+    the probe filters exactly on that column.
+  * **SM-A role→crew translation.** `SELF_MODELS` is keyed on
+    role names (`researcher`, `coder`, `writer`); agent_state
+    keys per-crew (`research`, `coding`, `writing`). Added a
+    translation table so `stats.get(role, {})` resolves correctly
+    instead of pinning the metric at the 0.5 "no data" fallback.
+
+`/api/cp/consciousness` also returns a `homeostasis` payload now
+(cognitive_energy / frustration / confidence / curiosity / etc.)
+so the legacy 4-bar strip the old HTML monitor had is reproduced
+in `ConsciousnessIndicators.tsx`.
+
+### 26.6 Dashboard plumbing — proxy + build hygiene
+
+  * Node proxy whitelist (`dashboard/server.mjs`) gained
+    `/epistemic/` (claim ledger; was confused with `/episteme/`,
+    the research KB) and `/affect/`. Both tabs were 404'ing on
+    every panel before this.
+  * `npm run build` had been silently failing at `tsc -b` for
+    weeks because of six pre-existing TS errors in
+    `affect/ReferencePanelGrid.tsx`, `affect/AffectStatusStrip.tsx`,
+    `api/affect.ts`, `CompanionTab.tsx`, and `EpistemicPage.tsx`
+    (×2). Build skipped to vite, postbuild never ran, and
+    `dashboard/serve-root/cp/` stayed pinned at an Apr-30
+    snapshot — Brainstorm / Coding Sessions / Settings tabs that
+    landed in source after that date never reached the production
+    server on `:3100`. All six fixed; `npm run build` runs end
+    to end again.
+  * UI direction convention (Costs daily chart, Evolution history
+    table, Evolution variants list, Ops errors / anomalies /
+    deploys lists): lists are newest-first at the top, charts
+    run left→right = oldest→newest. The Cost-Daily chart used to
+    plot `4/21 → 4/4` left-to-right (backwards); now plots
+    `4/4 → 4/21`.
+
+### 26.7 New: Settings page (`/cp/settings`)
+
+Single-page hub for personal-agent runtime toggles. Cards added
+in this pass:
+
+  * Background tasks ON / OFF (idle scheduler kill switch — §26.3).
+  * Voice mode (off / local / cloud — wired into the runtime
+    settings store from §20).
+  * Vision computer use (enabled + monthly USD cap).
+  * Concierge persona (on / off).
+  * Web Push subscriptions (per-device, with test send).
+  * Governance ratchet (read + ratchet up + relax-down with typed
+    confirm — see §25).
+  * Goodhart hard gate (Off / Advisory / Enforcing — see §25).
+  * Self-heal subsystems (per-runbook toggles + tool-supervisor
+    on/off — see §23 / `docs/SELF_HEALING.md`).
+
+Backed by `GET/POST /config/runtime_settings` (gateway-secret on
+POST), `GET/POST /config/background_tasks`, and the existing
+governance + runbook endpoints. Settings persist across restarts
+and are audit-trailed under
+`runtime_settings_change` / `governance.ratchet.*` /
+`runbook.toggle` action types.
