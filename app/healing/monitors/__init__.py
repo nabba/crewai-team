@@ -45,6 +45,8 @@ _DEFAULT_CADENCE_S = {
     "cron_liveness": 1800,       # 30 min — cron jobs are O(hour) cadence
     "vendor_sunset": 7 * 86400,  # weekly
     "idle_cooldown": 3600,       # hourly — cooldowns last hours
+    "audit_chain_check": 23 * 3600,  # ~daily — Wave 1 (#5)
+    "lock_housekeeper": 6 * 3600,    # 6h — Wave 1 (#9)
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -104,6 +106,16 @@ def _driver() -> None:
         monitors.append(("idle_cooldown", idle_cooldown.run, _DEFAULT_CADENCE_S["idle_cooldown"], 0.0))
     except Exception:
         logger.debug("monitors: idle_cooldown import failed", exc_info=True)
+    try:
+        from app.healing.monitors import audit_chain_check
+        monitors.append(("audit_chain_check", audit_chain_check.run, _DEFAULT_CADENCE_S["audit_chain_check"], 0.0))
+    except Exception:
+        logger.debug("monitors: audit_chain_check import failed", exc_info=True)
+    try:
+        from app.healing.monitors import lock_housekeeper
+        monitors.append(("lock_housekeeper", lock_housekeeper.run, _DEFAULT_CADENCE_S["lock_housekeeper"], 0.0))
+    except Exception:
+        logger.debug("monitors: lock_housekeeper import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

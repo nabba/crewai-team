@@ -31,7 +31,7 @@ handlers against the SHA-1 signatures the error-monitor produces.
 Together these address ~99% of the recurring error volume in
 `workspace/logs/errors.jsonl`.
 
-### 2. Five proactive monitors under `app/healing/monitors/`
+### 2. Seven proactive monitors under `app/healing/monitors/`
 
 Reactive runbooks fire on errors. Some failure modes never throw — these
 monitors close that gap. All run in a single daemon thread with per-monitor
@@ -44,9 +44,23 @@ cadences.
 | `cron_liveness` | 30 min | APScheduler cron jobs whose footprint hasn't been touched in 3× expected interval. |
 | `vendor_sunset` | 1 week | In-use models no longer listed by their provider's `/v1/models`. |
 | `idle_cooldown` | 1 hour | Idle-scheduler jobs with `skip_until` > 24 h or `failures` > 15. |
+| `audit_chain_check` ⭐ | ~daily | Coding-session audit-chain integrity. Reads `workspace/coding_sessions/audit.jsonl` via `app.coding_session.audit_verify` and alerts on any chain break (tampered payload, prev-hash mismatch, malformed JSON). Read-only — never modifies the chain. |
+| `lock_housekeeper` ⭐ | 6 h | Orphaned `.lock` files. Walks `workspace/locks/`, `workspace/dreams/`, `workspace/`. fcntl-probes each to confirm uncontested before deletion (defends against PID-reuse) AND requires age ≥ 1 h. Pile-up alert at >50 files. |
+
+⭐ added 2026-05-09 as Wave 1 of the resilience-gap closure plan.
 
 Tunable via env vars; defaults are conservative (alerts fire only on
 sustained signal, not transients).
+
+### 2a. Disk-quota guard in `app.safe_io` (Wave 1, 2026-05-09)
+
+`safe_write` and `safe_append` now refuse to write when free disk space
+on the target volume drops below `DISK_FREE_THRESHOLD_MB` (default
+200 MB). Refusal raises `DiskQuotaError`, a subclass of `OSError` so
+existing handlers route correctly. Set the env var to `0` to disable
+the check entirely; the guard fails OPEN if `shutil.disk_usage` itself
+errors. Each refusal is best-effort audited as
+`actor='safe_io', action='disk_quota_block'`.
 
 ### 3. Auditor bridge under `app/healing/auditor_bridge.py`
 
