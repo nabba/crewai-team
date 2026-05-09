@@ -20,6 +20,32 @@ from app.mcp.transports import (
 logger = logging.getLogger(__name__)
 
 
+# Auth-failure substrings.  When any appears in a connect()/init()
+# error message, we treat it as an operator-action failure (wrong
+# token / expired credential) and trip a per-server circuit breaker
+# instead of retrying every connect() call.  Pattern_learner reported
+# 'STUzhy/py_execute_mcp' init failed: HTTP 401: {"error":"invalid_token"}
+# at a high enough volume to require this fix.
+_MCP_AUTH_ERROR_FRAGMENTS = (
+    "HTTP 401",
+    "HTTP 403",
+    "invalid_token",
+    "Unauthorized",
+    "Forbidden",
+)
+
+
+def _is_mcp_auth_error(exc_text: str) -> bool:
+    """Return True if the error message looks like an auth failure."""
+    return any(frag in exc_text for frag in _MCP_AUTH_ERROR_FRAGMENTS)
+
+
+def _mcp_breaker_name(server_name: str) -> str:
+    """Per-server breaker key.  Auth failures on one MCP server must
+    not block connections to other servers."""
+    return f"mcp_auth:{server_name}"
+
+
 @dataclass
 class MCPServerConfig:
     name: str
@@ -70,7 +96,58 @@ class MCPClient:
             self._transport = StdioTransport(config.command, config.args, config.env)
         self._initialized = False
 
+    def _record_failure_log(self, exc_or_text, action: str) -> None:
+        """Log a connect/init failure at the right level.
+
+        Auth failures (401/403/invalid_token) trip the per-server
+        breaker and log INFO (the breaker's own CLOSED→OPEN log
+        provides the operator-visible WARN once).  Transient/other
+        failures log WARN as before so connectivity issues stay
+        visible.
+        """
+        text = str(exc_or_text)
+        if _is_mcp_auth_error(text):
+            try:
+                from app import circuit_breaker
+                circuit_breaker.record_failure(
+                    _mcp_breaker_name(self.config.name)
+                )
+            except Exception:
+                pass
+            logger.info(
+                f"mcp_client: '{self.config.name}' auth-{action} — "
+                f"breaker tripped, deferred until operator rotates "
+                f"credential: {text}"
+            )
+        else:
+            logger.warning(
+                f"mcp_client: '{self.config.name}' {action}: {text}"
+            )
+
     def connect(self) -> bool:
+        # Per-server circuit breaker for auth failures.  Created lazily
+        # with operator-action shape (1 failure → 1 h cooldown).  When
+        # OPEN, we silently skip; the breaker logs once per
+        # CLOSED→OPEN transition (operator alert) and INFO on
+        # subsequent re-trips.
+        try:
+            from app import circuit_breaker
+            circuit_breaker.ensure_breaker(
+                _mcp_breaker_name(self.config.name),
+                failure_threshold=1, cooldown_seconds=3600,
+            )
+            if not circuit_breaker.is_available(
+                _mcp_breaker_name(self.config.name)
+            ):
+                logger.debug(
+                    f"mcp_client: '{self.config.name}' auth breaker OPEN; "
+                    f"skipping connect"
+                )
+                return False
+        except Exception:
+            # Best-effort; never let breaker import break the client.
+            pass
+
         try:
             self._transport.start()
         except Exception as exc:
@@ -86,10 +163,10 @@ class MCPClient:
                 try:
                     self._transport.start()
                 except Exception as exc2:
-                    logger.warning(f"mcp_client: '{self.config.name}' HTTP also failed: {exc2}")
+                    self._record_failure_log(exc2, "HTTP also failed")
                     return False
             else:
-                logger.warning(f"mcp_client: '{self.config.name}' start failed: {exc}")
+                self._record_failure_log(exc, "start failed")
                 return False
 
         # Initialize handshake
@@ -100,10 +177,13 @@ class MCPClient:
                 "clientInfo": {"name": "AndrusAI", "version": "1.0"},
             }))
             if "error" in resp:
-                logger.warning(f"mcp_client: '{self.config.name}' init error: {resp['error']}")
+                # JSON-RPC error envelope — check for auth in the
+                # error code/message.
+                err_text = json.dumps(resp.get("error", {}))
+                self._record_failure_log(err_text, "init error")
                 return False
         except Exception as exc:
-            logger.warning(f"mcp_client: '{self.config.name}' init failed: {exc}")
+            self._record_failure_log(exc, "init failed")
             return False
 
         self._transport.send_notification(jsonrpc_notification("notifications/initialized"))
