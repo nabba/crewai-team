@@ -1174,16 +1174,30 @@ async def receive_signal(request: Request):
                             apply_result = await loop.run_in_executor(
                                 None, _cr_apply, cr_id,
                             )
-                            ack_msg = (
-                                f"✅ Change request {cr_id} approved + "
-                                f"applied.\n"
-                                f"  ok: {apply_result.ok}\n"
-                                f"  branch: {apply_result.git_branch or '?'}\n"
-                                f"  PR: {apply_result.pr_url or '(failed to open)'}\n"
-                                f"  module reload: {apply_result.module_reload_note}"
-                            )
-                            if not apply_result.ok:
-                                ack_msg += f"\n  ERROR: {apply_result.error}"
+                            # Honest ack: pre-2026-05-09 we always wrote
+                            # "✅ approved + applied" regardless of
+                            # whether the apply actually succeeded —
+                            # contradicting the "ok: False" / "ERROR: …"
+                            # lines below. Now the headline reflects
+                            # the outcome.
+                            if apply_result.ok:
+                                ack_msg = (
+                                    f"✅ Change request {cr_id} approved + applied.\n"
+                                    f"  branch: {apply_result.git_branch or '?'}\n"
+                                    f"  PR: {apply_result.pr_url or '(failed to open)'}\n"
+                                    f"  module reload: {apply_result.module_reload_note}"
+                                )
+                            else:
+                                ack_msg = (
+                                    f"⚠️ Change request {cr_id} approved, "
+                                    f"but apply FAILED.\n"
+                                    f"  ERROR: {apply_result.error}\n"
+                                    f"  Status is now APPLY_FAILED — use the "
+                                    f"'Retry apply' button in /cp/changes once "
+                                    f"the underlying issue is resolved.\n"
+                                    f"  branch: {apply_result.git_branch or '(none)'}\n"
+                                    f"  PR: {apply_result.pr_url or '(not opened)'}"
+                                )
                         else:
                             await loop.run_in_executor(
                                 None,
