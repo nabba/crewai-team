@@ -15,11 +15,11 @@
 > sanitiser for cross-workspace gating. No parallel structures where a seam
 > already existed.
 
-**Status.** Live on `main`. 14 commits across phases 0–13 + production
-follow-ups. Module surface in `app/companion/`; FastAPI routes in
-`app/api/companion_api.py`; React UI as a sub-tab on `/cp/ops`. **313
-backend tests** in `tests/test_companion_*.py`. Verified end-to-end on the
-preview server.
+**Status.** Live on `main`. 15 commits across phases 0–13 + Phase 11.5
+cold-start seed bootstrap + production follow-ups. Module surface in
+`app/companion/`; FastAPI routes in `app/api/companion_api.py`; React UI
+as a sub-tab on `/cp/ops`. **336 backend tests** across 24 files in
+`tests/test_companion_*.py`. Verified end-to-end on the preview server.
 
 ---
 
@@ -792,7 +792,7 @@ merged to `main` as `f862c9e`.
 | 9 | Workspace wiki + Mem0 + system-wiki cross-layer registration | `262e264` + `31e924d` |
 | 10 | React `/cp/ops/Companion` tab + API client | `b21cb81` |
 | 11 | Grand-task synthesis (12 h cadence) | `827a647` + `f6be025` |
-| 11.5 | Cold-start seed bootstrap from CP mission + tickets | (see commit log) |
+| 11.5 | Cold-start seed bootstrap from CP mission + tickets | `b81771fc` (PR #75 → `43b24137`) |
 | 12 | Per-workspace MAP-Elites diversity hook | `8a6a51b` |
 | 13 | Cross-workspace transfer (hybrid model) | `2656ed2` |
 | 4.5 + 9.5 + 10.5 | Production wire-ups (router, signal, mem0) | `e2e89e4` |
