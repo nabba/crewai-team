@@ -43,6 +43,8 @@ class EventType(str, Enum):
     CROSS_WORKSPACE_INBOX = "cross_workspace_inbox"
     CROSS_WORKSPACE_ACCEPTED = "cross_workspace_accepted"
     CROSS_WORKSPACE_DISMISSED = "cross_workspace_dismissed"
+    # Phase 11.5 — cold-start seed bootstrap from CP mission + tickets
+    SEED_DERIVED = "seed_derived"
 
 
 @dataclass

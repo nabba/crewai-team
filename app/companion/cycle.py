@@ -20,11 +20,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.companion import config as _config_mod
 from app.companion import critique as _critique
 from app.companion import diversity as _diversity
+from app.companion import events as _events
 from app.companion import idea_store as _idea_store
 from app.companion import reflexion as _reflexion
 from app.companion import scoring as _scoring
+from app.companion import seed_bootstrap as _seed_bootstrap
 from app.companion import surfacing as _surfacing
 from app.companion import workspace_kb
 from app.companion.config import CompanionConfig
@@ -76,12 +79,19 @@ def run_cycle(workspace_id: str, config: CompanionConfig) -> CycleResult:
     cycle_id = f"cyc_{uuid.uuid4().hex[:12]}"
     seed = (config.seed_prompt or "").strip()
     if not seed:
-        return CycleResult(
-            workspace_id=workspace_id,
-            cycle_id=cycle_id,
-            aborted_reason="no_seed_prompt",
-            duration_s=time.monotonic() - started,
-        )
+        # Phase 11.5: cold-start seed bootstrap from CP mission + tickets.
+        # Persist + emit SEED_DERIVED so the React Settings tab can flag
+        # the seed as auto-derived; user retains override.
+        derived = _maybe_bootstrap_seed(workspace_id, config, cycle_id)
+        if derived is None:
+            return CycleResult(
+                workspace_id=workspace_id,
+                cycle_id=cycle_id,
+                aborted_reason="no_seed_prompt",
+                duration_s=time.monotonic() - started,
+            )
+        seed = derived
+        config.seed_prompt = seed
 
     snippets = workspace_kb.compose(
         workspace_id=workspace_id,
@@ -293,6 +303,65 @@ def _invoke_creative_crew(task_description: str):
     """
     from app.crews.creative_crew import run_creative_crew
     return run_creative_crew(task_description=task_description, creativity="high")
+
+
+def _maybe_bootstrap_seed(workspace_id: str, config: CompanionConfig,
+                           cycle_id: str) -> str | None:
+    """Phase 11.5: derive a seed from CP mission + tickets, persist it,
+    emit SEED_DERIVED. Returns the new seed text or None when the
+    bootstrap declined (no signal, blocklisted name, LLM failure).
+
+    All paths absorb their own exceptions — the cycle continues with
+    ``no_seed_prompt`` rather than crashing.
+    """
+    try:
+        derivation = _seed_bootstrap.derive_seed(workspace_id)
+    except Exception as exc:
+        logger.debug("companion.cycle: seed_bootstrap raised: %s", exc)
+        return None
+    if derivation is None:
+        return None
+
+    config.seed_prompt = derivation.text
+    try:
+        saved = _config_mod.save(workspace_id, config)
+    except Exception as exc:
+        logger.warning(
+            "companion.cycle: bootstrap seed save failed for %s: %s",
+            workspace_id, exc,
+        )
+        return None
+    if not saved:
+        logger.warning(
+            "companion.cycle: bootstrap seed save returned False for %s",
+            workspace_id,
+        )
+        return None
+
+    try:
+        _events.append(_events.Event(
+            workspace_id=workspace_id,
+            idea_id=cycle_id,
+            type=_events.EventType.SEED_DERIVED,
+            payload={
+                "seed": derivation.text,
+                "source_signal": derivation.source_signal,
+                "ticket_count": derivation.ticket_count,
+                "has_mission": derivation.has_mission,
+                "rationale": derivation.rationale,
+            },
+        ))
+    except Exception as exc:
+        logger.debug(
+            "companion.cycle: SEED_DERIVED event append failed: %s", exc)
+
+    logger.info(
+        "companion.cycle: seed auto-derived for %s — signal=%s, "
+        "ticket_count=%d, has_mission=%s",
+        workspace_id, derivation.source_signal,
+        derivation.ticket_count, derivation.has_mission,
+    )
+    return derivation.text
 
 
 def _compose_prompt(seed: str, snippets: list[workspace_kb.KBSnippet],

@@ -52,7 +52,12 @@ preview server.
 ## TL;DR
 
 The Workspace Companion runs as four cooperative idle-time jobs registered
-through [`idle_scheduler._default_jobs()`](../app/idle_scheduler.py):
+through [`idle_scheduler._default_jobs()`](../app/idle_scheduler.py).
+**Cold-start is automatic**: the first cycle on a workspace with no
+`seed_prompt` reads `control_plane.projects.mission` + recent tickets the
+operator filed against the project, synthesises a candidate seed via one
+cheap-tier LLM call, persists it, and continues. The user retains
+override via the React Settings tab.
 
 | Job | Weight | Cadence | Purpose |
 |---|---|---|---|
@@ -288,6 +293,51 @@ One pass, 60–180 s wall clock (capped by `idle_scheduler` MEDIUM weight):
 Failures of any individual step are absorbed: the cycle reports the failure
 in `CycleResult.aborted_reason` or `surface_reason`; the scheduler still
 records the tick.
+
+---
+
+## Cold-start seed bootstrap (Phase 11.5)
+
+Before a workspace has any polished Companion ideas, Phase 11 grand-task
+synthesis can't fire (its activation gate requires ≥3 polished ideas).
+Without that, a workspace whose `seed_prompt` is None would produce
+nothing forever — chicken-and-egg.
+
+[`seed_bootstrap.derive_seed`](../app/companion/seed_bootstrap.py) closes
+the loop by reading the human signal that's already there:
+
+1. `control_plane.projects.mission` (always populated for real projects)
+2. Recent tickets for the project (`control_plane.tickets.title`,
+   newest 15)
+
+If either yields material, one cheap-tier LLM call synthesises a seed.
+[`cycle._maybe_bootstrap_seed`](../app/companion/cycle.py) persists it
+via [Phase 6.5 `config.save`](../app/companion/config.py), emits a
+`SEED_DERIVED` event with `source_signal ∈ {mission+tickets, tickets_only,
+mission_only}`, then continues the same cycle with the new seed (no
+extra tick burnt).
+
+Activation gates (infrastructure-bounded):
+- `default` workspace is blocklisted (catch-all, mixed signal)
+- Mission below `MIN_MISSION_CHARS = 10` doesn't count as signal
+- Need at least one ticket OR a real mission
+
+Failure modes — all absorbed:
+- LLM unavailable / parse failure → `derive_seed` returns None →
+  cycle aborts with `no_seed_prompt` (same as before Phase 11.5)
+- `config.save` fails → bootstrap aborts the cycle without continuing
+  (no Creative MAS spend on a seed that didn't persist)
+- DB unreachable → `_recent_tickets` returns `[]`, `_get_project`
+  returns None — both seams swallow exceptions internally
+
+The user retains full override at the React Settings tab; on edit, the
+manually-supplied seed wins (`seed_prompt` is set unconditionally on
+POST /config). Phase 11 grand-task synthesis takes over for ongoing
+refinement once polished ideas accumulate.
+
+A future Phase 11.5b will add a third source — recent conversation turns
+routed to the workspace — once `conversation_store.add_message` captures
+`project_id`.
 
 ---
 
@@ -742,6 +792,7 @@ merged to `main` as `f862c9e`.
 | 9 | Workspace wiki + Mem0 + system-wiki cross-layer registration | `262e264` + `31e924d` |
 | 10 | React `/cp/ops/Companion` tab + API client | `b21cb81` |
 | 11 | Grand-task synthesis (12 h cadence) | `827a647` + `f6be025` |
+| 11.5 | Cold-start seed bootstrap from CP mission + tickets | (see commit log) |
 | 12 | Per-workspace MAP-Elites diversity hook | `8a6a51b` |
 | 13 | Cross-workspace transfer (hybrid model) | `2656ed2` |
 | 4.5 + 9.5 + 10.5 | Production wire-ups (router, signal, mem0) | `e2e89e4` |
