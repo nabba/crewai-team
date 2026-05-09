@@ -220,13 +220,28 @@ def _cached_llm(
 
         # ── OpenRouter provider exclusion ──
         # OpenRouter's anonymous "Stealth" sub-provider class periodically
-        # returns 502 `Invalid URL: ''` (3 174/50k errors as of 2026-04-30).
-        # We exclude such providers by default via OpenRouter's documented
-        # provider-routing API. Active role-assigned models (Claude / Gemma /
-        # DeepSeek paid variants) all have non-Stealth routes, so this is a
-        # reliability gain with no functional loss. Override via env var
+        # returns 502 `Invalid URL: ''` (3 174/50k errors as of 2026-04-30,
+        # then 630/week as of 2026-05-09 once we noticed the filter wasn't
+        # firing on prefix-routed calls — see below).  We exclude such
+        # providers by default via OpenRouter's documented provider-routing
+        # API.  Active role-assigned models (Claude / Gemma / DeepSeek paid
+        # variants) all have non-Stealth routes, so this is a reliability
+        # gain with no functional loss.  Override via env var
         # OPENROUTER_IGNORE_PROVIDERS (CSV); set it empty to disable filtering.
-        if "openrouter.ai" in (base_url or ""):
+        #
+        # 2026-05-10 fix (T3.3) — the original ``"openrouter.ai" in base_url``
+        # check missed every prefix-routed call (e.g.
+        # ``model_id="openrouter/deepseek/deepseek-chat"`` with no explicit
+        # base_url, which litellm routes to OpenRouter via env-var
+        # ``OPENROUTER_API_KEY``).  Those calls are the bulk of our
+        # OpenRouter traffic, so the filter was effectively no-op.  Extend
+        # the trigger to also fire when ``model_id`` starts with
+        # ``openrouter/``.
+        _is_openrouter_call = (
+            "openrouter.ai" in (base_url or "")
+            or (model_id or "").startswith("openrouter/")
+        )
+        if _is_openrouter_call:
             import os as _os
             env_ignore = _os.environ.get("OPENROUTER_IGNORE_PROVIDERS", "Stealth")
             ignore_list = [n.strip() for n in env_ignore.split(",") if n.strip()]
