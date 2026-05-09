@@ -237,7 +237,12 @@ class CreditAwareAnthropicCompletion(AnthropicCompletion):
             if fallback is None:
                 raise
             cause = "credit-exhausted 400" if is_credit_exhausted_error(exc) else "wall-clock timeout"
-            logger.warning(
+            # INFO not WARN: failover IS the by-design behavior of
+            # this layer.  The original credit-exhausted 400 already
+            # tripped the breaker (which logs once at OPEN); the
+            # downstream call goes to OpenRouter and recovers.  No
+            # operator action is needed beyond the breaker alert.
+            logger.info(
                 "CreditAwareAnthropicCompletion: %s from Anthropic — "
                 "failing over mid-call to OpenRouter Claude.", cause,
             )
@@ -260,7 +265,9 @@ class CreditAwareAnthropicCompletion(AnthropicCompletion):
             if fallback is None:
                 raise
             cause = "credit-exhausted 400" if is_credit_exhausted_error(exc) else "wall-clock timeout"
-            logger.warning(
+            # INFO not WARN: see sync-path note above — failover is the
+            # designed behavior; the breaker logs once at OPEN.
+            logger.info(
                 "CreditAwareAnthropicCompletion: %s from Anthropic (async) — "
                 "failing over mid-call to OpenRouter Claude.", cause,
             )

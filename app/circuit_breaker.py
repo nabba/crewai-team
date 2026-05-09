@@ -108,10 +108,18 @@ class CircuitBreaker:
         with self._lock:
             self._failure_count += 1
             if self._state == HALF_OPEN:
-                # One failure in half-open → back to open
+                # One failure in half-open → back to open.  This is the
+                # "still broken" transition — we tried to probe recovery
+                # and the underlying issue is still there.  INFO not
+                # WARN: the operator already saw the original CLOSED→
+                # OPEN warning when the issue first appeared, and the
+                # breaker is doing its job by re-opening.  Logging this
+                # as WARN every cooldown cycle (e.g. once/hour for
+                # anthropic_credits) just spams errors.jsonl with the
+                # same root cause.
                 self._state = OPEN
                 self._opened_at = time.monotonic()
-                logger.warning(
+                logger.info(
                     f"circuit_breaker[{self.name}]: HALF_OPEN → OPEN "
                     f"(probe failed, cooldown {self.cooldown_seconds}s)"
                 )

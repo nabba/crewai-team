@@ -523,7 +523,13 @@ def create_proposal(
         from app.auto_deployer import validate_proposal_paths
         path_violations = validate_proposal_paths(files)
         if path_violations:
-            logger.warning(f"Proposal rejected — path violations: {path_violations}")
+            # INFO not WARN: this is the validator working as designed.
+            # The caller gets the rejection signal (-1) and is expected
+            # to handle it; we don't need to add the rejection to
+            # errors.jsonl on top.  Frequent path-violation rejections
+            # would indicate a buggy LLM proposer, but that's surfaced
+            # by the proposer's metrics, not by error noise.
+            logger.info(f"Proposal rejected — path violations: {path_violations}")
             return -1  # Signal rejection to caller
 
     # Q10: Validate content of code proposals — reject LLM hallucinations

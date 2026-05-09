@@ -93,6 +93,20 @@ def setup_structured_logging(
             }, default=str)
 
     handler.setFormatter(JsonFormatter())
+
+    # Noise filter — drops a fixed allowlist of known third-party
+    # WARNs that we already handle (e.g. discord.py PyNaCl, Anthropic
+    # credit-balance 400 caught by CreditAwareAnthropicCompletion,
+    # OpenRouter Stealth 502 already excluded by provider blocker).
+    # Attached to the JSONL handler ONLY — stdout/docker logs still
+    # show every WARN for live debugging.
+    try:
+        from app.logging_filters import JsonlNoiseFilter
+        handler.addFilter(JsonlNoiseFilter())
+    except Exception:
+        # Filter setup is best-effort — never block error logging.
+        logger.debug("noise filter not installed", exc_info=True)
+
     logging.getLogger().addHandler(handler)
     logger.info(f"Structured logging enabled: {log_path}")
 
