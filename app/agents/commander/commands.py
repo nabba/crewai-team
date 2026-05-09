@@ -48,6 +48,14 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── Phase G #3 (2026-05-09) — topic dormancy mute/unmute ──────────
+    # /topic mute <name>                            silence dormancy nudges
+    # /topic unmute <name>                          resume nudges
+    if lower.startswith("/topic") or lower.startswith("topic "):
+        sub = _handle_topic_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -1921,3 +1929,47 @@ def _handle_commitment_command(user_input: str) -> str | None:
     if sub == "unmute":
         return _commitment_unmute(arg)
     return _commitment_help()
+
+
+# ── Topic dormancy mute/unmute (Phase G #3) ──────────────────────────────
+
+
+def _topic_help() -> str:
+    return (
+        "Topic dormancy commands:\n"
+        "  /topic mute <name>      silence dormancy nudges for <name>\n"
+        "  /topic unmute <name>    resume nudges\n"
+    )
+
+
+def _handle_topic_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/topic"):
+        text = text[len("/topic"):].strip()
+    elif text.lower().startswith("topic "):
+        text = text[len("topic "):].strip()
+    if not text or text.lower() in ("help", "?", "/help"):
+        return _topic_help()
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+    if not arg:
+        return _topic_help()
+    if sub == "mute":
+        try:
+            from app.life_companion.topic_dormancy import mute as _mute
+            _mute(arg)
+            return f"Muted dormancy nudges for topic {arg!r}."
+        except Exception:
+            return "Could not update mute state."
+    if sub == "unmute":
+        try:
+            from app.life_companion.topic_dormancy import unmute as _unmute
+            was = _unmute(arg)
+            return (
+                f"Resumed dormancy nudges for topic {arg!r}."
+                if was else f"Topic {arg!r} was not muted."
+            )
+        except Exception:
+            return "Could not update mute state."
+    return _topic_help()

@@ -230,6 +230,37 @@ def _dispatch(event: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]
                 exc_info=True,
             )
 
+    # ── Topic-level downweight (Phase G #2) ─────────────────────────
+    # Extract topic mentions from the 👎/👍 comment + bias topic
+    # selection in interest_model. Workspace and topic weights are
+    # complementary: workspace narrows WHICH workspace runs next;
+    # topic narrows WHICH topic surfaces inside the cycle.
+    comment = event.get("original_response") or ""
+    if comment and not success:
+        try:
+            from app.companion.topic_weights import (
+                record_negative_from_comment as _record_topic_neg,
+            )
+            _record_topic_neg(comment)
+        except Exception:
+            logger.debug(
+                "feedback_router: topic-weight sink failed",
+                exc_info=True,
+            )
+    elif comment and success:
+        try:
+            from app.companion.topic_weights import (
+                record_positive,
+                _candidate_topics_in_comment,
+            )
+            for topic in _candidate_topics_in_comment(comment):
+                record_positive(topic)
+        except Exception:
+            logger.debug(
+                "feedback_router: topic-positive sink failed",
+                exc_info=True,
+            )
+
     # ── Background-job feedback log (Phase F #3) ────────────────────
     # When a completion-ping carries ``job_id`` metadata (set via
     # ``notify_on_complete(metadata={"job_id": ...})``), record the

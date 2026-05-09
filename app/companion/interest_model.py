@@ -63,6 +63,11 @@ logger = logging.getLogger(__name__)
 
 _STATE_FILE = "interest_model.json"
 _PROFILE_PATH = Path("/app/workspace/companion/interest_profile.json")
+# Phase G #3: per-pass timeseries so topic_dormancy can detect
+# "deep months ago, silent now" without retaining the full top-30
+# table in every history row.
+_HISTORY_PATH = Path("/app/workspace/companion/interest_history.jsonl")
+_HISTORY_MAX_LINES = 20000  # ~365 days × 30 topics × 2 passes/day cap
 _RUN_CADENCE_S = 12 * 3600
 _LOOKBACK_DAYS = 14
 _TOP_N_TOPICS = 30
@@ -298,13 +303,23 @@ def compile_interest_profile(lookback_days: int = _LOOKBACK_DAYS) -> dict[str, A
     }
     raw_scores = _score_terms(streams)
 
+    # Phase G #2: pull topic-level feedback multipliers so 👎 reduces
+    # the term's score in the next idle cycle (and 👍 partially
+    # restores). Read once per pass (not per-term) — the multiplier
+    # function reads the JSON state file, so a single batch keeps I/O
+    # bounded.
+    try:
+        from app.companion.topic_weights import current_multiplier as _topic_mult
+    except Exception:
+        _topic_mult = lambda _t: 1.0  # noqa: E731
+
     topics: list[dict[str, Any]] = []
     for term, row in raw_scores.items():
         sources = dict(row["sources"])
         total_count = sum(sources.values())
         if total_count < _MIN_FREQ:
             continue
-        score = row["score"] * _diversity_bonus(sources)
+        score = row["score"] * _diversity_bonus(sources) * _topic_mult(term)
         topics.append({
             "name": term,
             "score": round(score, 3),
@@ -327,6 +342,23 @@ def compile_interest_profile(lookback_days: int = _LOOKBACK_DAYS) -> dict[str, A
         tmp.replace(_PROFILE_PATH)
     except Exception:
         logger.debug("interest_model: profile write failed", exc_info=True)
+
+    # Phase G #3: append the current top-30 to history so dormancy
+    # detection has real timeseries data. Cap retention to keep the
+    # JSONL bounded.
+    try:
+        from app.utils.jsonl_retention import append_with_cap
+        ts_iso = profile["generated_at"]
+        for t in topics:
+            row = {
+                "ts": ts_iso, "name": t["name"], "score": t["score"],
+            }
+            append_with_cap(
+                _HISTORY_PATH, json.dumps(row, sort_keys=True),
+                _HISTORY_MAX_LINES,
+            )
+    except Exception:
+        logger.debug("interest_model: history append failed", exc_info=True)
 
     return profile
 

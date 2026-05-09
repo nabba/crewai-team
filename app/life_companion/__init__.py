@@ -70,4 +70,31 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], Any]]:
         )
     except Exception:
         pass
+    # Phase G #1 (2026-05-09) — daily 72h calendar horizon scan.
+    try:
+        from app.life_companion import calendar_horizon
+        jobs.append(
+            ("life-companion-calendar-horizon",
+             calendar_horizon.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
+    # Phase G #3 (2026-05-09) — topic-dormancy long-arc nudge.
+    try:
+        from app.life_companion import topic_dormancy
+        jobs.append(
+            ("life-companion-topic-dormancy",
+             topic_dormancy.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
+    # Phase G #4 (2026-05-09) — Finland-seasonal nudges.
+    try:
+        from app.life_companion import seasonal_nudges
+        jobs.append(
+            ("life-companion-seasonal-nudges",
+             seasonal_nudges.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
     return jobs
