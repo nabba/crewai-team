@@ -69,6 +69,8 @@ _DEFAULT_CADENCE_S = {
     "silent_regression_detector": 4 * 3600,  # 4 h probe — Phase C #2 (2026-05-09)
     "pattern_learner": 24 * 3600,            # daily probe — Phase C #4 (2026-05-09)
     "llm_output_drift": 24 * 3600,           # daily probe — Phase D #6 (2026-05-09)
+    "signal_keepalive": 24 * 3600,           # daily probe — internal 30-day gate; Phase H #2
+    "restore_drill": 24 * 3600,              # daily probe — alerts at 100d stale; Phase H #1
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -194,6 +196,22 @@ def _driver() -> None:
         ))
     except Exception:
         logger.debug("monitors: llm_output_drift import failed", exc_info=True)
+    try:
+        from app.healing.monitors import signal_keepalive
+        monitors.append((
+            "signal_keepalive", signal_keepalive.run,
+            _DEFAULT_CADENCE_S["signal_keepalive"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: signal_keepalive import failed", exc_info=True)
+    try:
+        from app.healing.monitors import restore_drill
+        monitors.append((
+            "restore_drill", restore_drill.run,
+            _DEFAULT_CADENCE_S["restore_drill"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: restore_drill import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

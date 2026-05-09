@@ -171,6 +171,56 @@ def _persist_job_skip(name: str, until: float) -> None:
         pass
 
 
+def _persist_clear_skip(name: str) -> None:
+    """Remove skip-until persistence for ``name``. Phase H #3 — half-open
+    probe success path needs to clear the cooldown across restarts."""
+    try:
+        import dbm.sqlite3
+        with dbm.sqlite3.open(_JOB_STATE_PATH, "c") as db:
+            key = f"skip:{name}"
+            if key in db:
+                del db[key]
+    except Exception:
+        pass
+
+
+# Phase H #3 (2026-05-10) — half-open probe state. In-memory only;
+# losing it on restart just means probes re-arm afresh, which is
+# fine. Tracks which probe points (0.25, 0.5, 0.75 of the cooldown
+# window) have been consumed so we don't probe twice at the same
+# fraction.
+_job_half_open_used: dict[str, set[float]] = {}
+
+
+def _half_open_probe_allowed(name: str, skip_until: float, now: float) -> bool:
+    """True iff a half-open probe at the current cooldown fraction is allowed.
+
+    Probes at 1/4, 1/2, 3/4 of the cooldown window. Each probe-point
+    fires AT MOST ONCE per cooldown — so a transient outage can be
+    detected as cleared without waiting for the full hour.
+    """
+    cooldown_started = skip_until - JOB_COOLDOWN_AFTER_FAILURES_S
+    elapsed = now - cooldown_started
+    if elapsed <= 0 or JOB_COOLDOWN_AFTER_FAILURES_S <= 0:
+        return False
+    fraction = elapsed / JOB_COOLDOWN_AFTER_FAILURES_S
+    used = _job_half_open_used.setdefault(name, set())
+    for probe in (0.25, 0.5, 0.75):
+        if fraction >= probe and probe not in used:
+            used.add(probe)
+            return True
+    return False
+
+
+def _clear_cooldown(name: str) -> None:
+    """Reset all cooldown state for ``name``. Called on probe success."""
+    _job_skip_until.pop(name, None)
+    _job_failure_counts[name] = 0
+    _job_half_open_used.pop(name, None)
+    _persist_clear_skip(name)
+    _persist_job_failure(name, 0)
+
+
 # Load on module init
 _load_job_state()
 
@@ -252,11 +302,27 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
 
     Returns True if job succeeded, False if failed.
     Jobs that fail 3 consecutive times are skipped for 1 hour.
+
+    Phase H #3 (2026-05-10): the cooldown allows probe attempts at
+    1/4, 1/2, 3/4 of the window. A transient outage at T+0 with the
+    cooldown set to T+1h is now detected as cleared at T+15min on
+    the first probe, instead of waiting the full hour. Probe success
+    clears all cooldown state; probe failure leaves cooldown in
+    place but consumes that probe-point.
     """
-    # Check if job is in skip cooldown (wall clock — survives restarts)
+    # Check if job is in skip cooldown (wall clock — survives restarts).
     skip_until = _job_skip_until.get(name, 0)
-    if skip_until and time.time() < skip_until:
-        return False
+    is_half_open_probe = False
+    now = time.time()
+    if skip_until and now < skip_until:
+        if _half_open_probe_allowed(name, skip_until, now):
+            is_half_open_probe = True
+            logger.info(
+                "idle_scheduler: '%s' half-open probe (cooldown until %s)",
+                name, time.strftime("%H:%M", time.localtime(skip_until)),
+            )
+        else:
+            return False
 
     _job_timeout.clear()
     timer = threading.Timer(timeout_s, _job_timeout.set)
@@ -279,6 +345,15 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _job_failure_counts[name] = 0  # Reset on success
         _persist_job_failure(name, 0)
         _record_job_outcome(name, success=True)
+        if is_half_open_probe:
+            # Phase H #3 — outage cleared. Wipe cooldown state so the
+            # job returns to normal cadence.
+            _clear_cooldown(name)
+            logger.info(
+                "idle_scheduler: '%s' half-open probe SUCCEEDED — "
+                "cooldown cleared",
+                name,
+            )
         return True
     except Exception as exc:
         _job_failure_counts[name] = _job_failure_counts.get(name, 0) + 1

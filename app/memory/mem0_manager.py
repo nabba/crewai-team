@@ -70,6 +70,17 @@ def _get_config() -> dict:
     if not pg_url:
         raise ValueError("mem0: MEM0_POSTGRES_PASSWORD not set — cannot connect to postgres")
 
+    # Phase H #4 (2026-05-10) — bound the underlying psycopg2.connect()
+    # call so a Postgres-down / DNS-unreachable scenario can't hang the
+    # gateway boot indefinitely. The pgvector backend that mem0 uses
+    # internally doesn't expose a timeout knob; libpq honours
+    # ``connect_timeout`` from the URL.
+    import os as _os
+    timeout = _os.getenv("MEM0_PG_CONNECT_TIMEOUT_S", "8").strip()
+    if "connect_timeout=" not in pg_url:
+        sep = "&" if "?" in pg_url else "?"
+        pg_url = f"{pg_url}{sep}connect_timeout={timeout}"
+
     # ── LLM provider selection ────────────────────────────────────────
     # mem0's litellm provider has an unconditional pre-flight gate at
     # mem0/llms/litellm.py:70:
@@ -142,7 +153,15 @@ def _get_config() -> dict:
     return config
 
 def get_client():
-    """Thread-safe singleton Mem0 Memory client."""
+    """Thread-safe singleton Mem0 Memory client.
+
+    Phase H #4 (2026-05-10) — bounded retry on cold creation so a
+    transient PG hiccup doesn't permanently mark mem0 as unavailable
+    for the rest of the process lifetime. ``connect_timeout`` in the
+    URL (added by ``_get_config``) prevents OS-level hangs; this
+    retry layer tries up to 3 times with 1/3/9 s backoff before
+    giving up and setting ``_init_failed``.
+    """
     global _client, _init_failed
     if _init_failed:
         return None
@@ -162,14 +181,50 @@ def get_client():
 
             from mem0 import Memory
             config = _get_config()
-            _client = Memory.from_config(config)
-            logger.info("mem0: client initialised (pgvector)")
-            return _client
         except Exception as exc:
-            logger.warning(f"mem0: init failed, running without persistent memory: {_sanitize_exc(exc)}")
+            logger.warning(f"mem0: init failed (config build), running without persistent memory: {_sanitize_exc(exc)}")
             _init_failed = True
             _bump_error_counter()
             return None
+
+        import time as _time
+        last_err: Exception | None = None
+        for attempt, backoff in enumerate((1, 3, 9), start=1):
+            try:
+                _client = Memory.from_config(config)
+                logger.info(
+                    "mem0: client initialised (pgvector, attempt=%d)",
+                    attempt,
+                )
+                return _client
+            except Exception as exc:
+                last_err = exc
+                logger.warning(
+                    "mem0: init failed (attempt %d/3): %s",
+                    attempt, _sanitize_exc(exc),
+                )
+                if attempt < 3:
+                    _time.sleep(backoff)
+
+        logger.warning(
+            "mem0: init failed after 3 attempts, running without persistent "
+            "memory: %s", _sanitize_exc(last_err) if last_err else "unknown",
+        )
+        # Best-effort Signal alert — first failure surface so the
+        # operator knows degraded boot happened.
+        try:
+            from app.healing.handlers._common import send_signal_alert
+            send_signal_alert(
+                f"🛑 mem0: client init failed 3× — degraded boot, no "
+                f"persistent memory. Last error: "
+                f"{_sanitize_exc(last_err)[:200] if last_err else 'unknown'}",
+                tag="mem0_init_failed",
+            )
+        except Exception:
+            pass
+        _init_failed = True
+        _bump_error_counter()
+        return None
 
 def _get_user_id() -> str:
     """Default user_id for the single-user system."""
