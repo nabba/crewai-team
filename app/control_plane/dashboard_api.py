@@ -1823,3 +1823,75 @@ def transfer_memory_promote(record_id: str):
     if not ok:
         raise HTTPException(409, "Promotion rejected — record ineligible or update failed")
     return {"promoted": True, "skill_record_id": record_id}
+
+
+# ── Chat surface (mirror of the Signal conversation) ────────────────────────
+#
+# Two endpoints back the React /cp/chat tab:
+#   GET  /api/cp/chat/messages?sender=...&limit=50  — recent history (oldest→newest)
+#   POST /api/cp/chat/send   {sender, message}      — dispatch through Commander
+# Plus a static catalogue:
+#   GET  /api/cp/signal-commands                    — every slash / NL command
+
+
+class ChatSendBody(BaseModel):
+    sender: str = "andrus"
+    message: str
+
+
+@router.get("/chat/messages")
+def chat_messages(sender: str = Query("andrus"), limit: int = Query(50, ge=1, le=500)):
+    """Recent conversation history with the given sender.
+
+    Returns oldest-first so the React UI can append-render straight to a
+    scroll area without reversing. Each entry: ``{role, content, ts}``.
+    """
+    try:
+        from app.conversation_store import get_recent_messages
+        rows = get_recent_messages(sender, limit=limit)
+    except Exception as exc:
+        logger.debug("chat_messages: read failed: %s", exc)
+        return {"sender": sender, "messages": [], "error": str(exc)}
+    rows.reverse()  # store returns DESC; chat wants ASC for append
+    return {"sender": sender, "messages": rows}
+
+
+@router.post("/chat/send")
+def chat_send(body: ChatSendBody):
+    """Send a chat message — same dispatch path as a Signal message.
+
+    Routes through ``Commander.handle()`` so every existing slash
+    command, recovery loop, project router, and lifecycle hook fires
+    exactly as if the message had arrived from Signal. Sender defaults
+    to ``andrus`` (the configured primary user) so the affect attachment
+    hook updates the right OtherModel.
+    """
+    text = (body.message or "").strip()
+    if not text:
+        raise HTTPException(400, "empty message")
+    sender = (body.sender or "andrus").strip() or "andrus"
+    try:
+        from app.agents.commander import Commander
+    except Exception as exc:
+        raise HTTPException(503, f"commander unavailable: {exc}")
+    try:
+        reply = Commander().handle(text, sender=sender) or ""
+    except Exception as exc:
+        logger.warning("chat_send: commander dispatch failed: %s", exc, exc_info=True)
+        raise HTTPException(500, f"dispatch failed: {exc}")
+    return {"sender": sender, "message": text, "reply": str(reply)}
+
+
+@router.get("/signal-commands")
+def signal_commands():
+    """Hand-curated catalogue of every Signal slash / NL command.
+
+    Source of truth: ``app/agents/commander/command_registry.py``.
+    Used by the React /cp/chat sidebar so the user can scan the full
+    surface without scrolling through ``commands.py`` source.
+    """
+    from app.agents.commander.command_registry import to_payload, categories
+    return {
+        "categories": categories(),
+        "commands": to_payload(),
+    }

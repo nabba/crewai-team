@@ -74,6 +74,9 @@ export const keys = {
   notesTags: (root: string) => ['notes', 'tags', root] as const,
   runtimeSettings: ['runtime-settings'] as const,
   backgroundTasks: ['background-tasks'] as const,
+  chatMessages: (sender: string, limit: number) =>
+    ['chat', 'messages', sender, limit] as const,
+  signalCommands: ['signal-commands'] as const,
   webPushSubscriptions: ['web-push', 'subscriptions'] as const,
   vapidPublicKey: ['web-push', 'vapid'] as const,
   skills: ['skills'] as const,
@@ -537,6 +540,61 @@ export function useSetBackgroundTasks() {
         body: JSON.stringify({ enabled }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.backgroundTasks }),
+  });
+}
+
+// ── Chat (Signal mirror) ──────────────────────────────────────────────────
+export interface ChatMessage {
+  role: 'user' | 'assistant' | string;
+  content: string;
+  ts: number;
+}
+
+export interface ChatHistoryResponse {
+  sender: string;
+  messages: ChatMessage[];
+  error?: string;
+}
+
+export function useChatMessagesQuery(sender = 'andrus', limit = 50) {
+  return useQuery({
+    queryKey: keys.chatMessages(sender, limit),
+    queryFn: () => api<ChatHistoryResponse>(endpoints.chatMessages(sender, limit)),
+    refetchInterval: POLL.fast,
+  });
+}
+
+export function useChatSend() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { sender?: string; message: string }) =>
+      api<{ sender: string; message: string; reply: string }>(endpoints.chatSend(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat'] }),
+  });
+}
+
+// ── Signal commands catalogue ─────────────────────────────────────────────
+export interface SignalCommandEntry {
+  command: string;
+  aliases: string[];
+  syntax: string;
+  description: string;
+  category: string;
+}
+
+export interface SignalCommandsResponse {
+  categories: string[];
+  commands: SignalCommandEntry[];
+}
+
+export function useSignalCommandsQuery() {
+  return useQuery({
+    queryKey: keys.signalCommands,
+    queryFn: () => api<SignalCommandsResponse>(endpoints.signalCommands()),
+    staleTime: 5 * 60_000,  // catalogue rarely changes
   });
 }
 

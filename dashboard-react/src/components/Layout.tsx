@@ -5,6 +5,7 @@ import { useHealthQuery } from '../api/queries';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '📊', exact: true },
+  { to: '/chat', label: 'Chat', icon: '💬', exact: false },
   { to: '/tickets', label: 'Tickets', icon: '🎫', exact: false },
   { to: '/tasks', label: 'Tasks', icon: '⚡', exact: false },
   { to: '/budgets', label: 'Budgets', icon: '💰', exact: false },

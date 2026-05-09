@@ -53,6 +53,12 @@ export const endpoints = {
       : `${CP}/tasks?limit=${limit}`,
   taskTimeline: (taskId: string) => `${CP}/tasks/${encodeURIComponent(taskId)}/timeline`,
 
+  // Chat surface (Signal mirror) + slash-command catalogue
+  chatMessages: (sender = 'andrus', limit = 50) =>
+    `${CP}/chat/messages?sender=${encodeURIComponent(sender)}&limit=${limit}`,
+  chatSend: () => `${CP}/chat/send`,
+  signalCommands: () => `${CP}/signal-commands`,
+
   // Ops (self-heal / anomaly / self-deploy)
   errors: (limit = 20) => `${CP}/errors?limit=${limit}`,
   anomalies: (limit = 20) => `${CP}/anomalies?limit=${limit}`,
