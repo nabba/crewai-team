@@ -1,8 +1,44 @@
 {
   "runbooks": {
+    "db_pool_reset": {
+      "enabled": true,
+      "min_recurrence": 5,
+      "_comment": "Auto-resets the control_plane connection pool on exhaustion. Rate-limited 1/30min internally. Dominant production error (~51% of volume); enabling this is the biggest single win."
+    },
+    "apscheduler_overrun_alert": {
+      "enabled": true,
+      "min_recurrence": 3,
+      "_comment": "Tracks job overruns; alerts after 3 in 24h per job."
+    },
+    "numeric_overflow_widen_cr": {
+      "enabled": true,
+      "min_recurrence": 3,
+      "_comment": "Files a change-request with a proposed schema-widening migration. Operator must fill in TABLE/COLUMN."
+    },
+    "cost_mode_undefined_alert": {
+      "enabled": true,
+      "min_recurrence": 3,
+      "_comment": "NameError in self_improvement_crew. Surfaces to Signal once per 24h until fixed."
+    },
+    "cost_mode_undefined_alert_v1": {
+      "enabled": true,
+      "min_recurrence": 3,
+      "_comment": "Same as above for the evolution crew."
+    },
+    "anthropic_str_content_cr": {
+      "enabled": true,
+      "min_recurrence": 5,
+      "_comment": "Files a change-request with a defensive coerce_response() helper module. Operator wires it into the call path after approving."
+    },
+    "self_heal_router": {
+      "enabled": true,
+      "min_recurrence": 5,
+      "_comment": "Catch-all multi-router for variant-heavy patterns: model-misroute (B), no-function-calling (H), missing-column (F — now CR-gated)."
+    },
     "log_only": {
       "enabled": true,
-      "min_recurrence": 1
+      "min_recurrence": 1,
+      "_comment": "Fallback handler — only fires if the multi-router is disabled or fails to claim an anomaly."
     }
   }
 }
