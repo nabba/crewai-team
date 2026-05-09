@@ -560,7 +560,14 @@ def select_model(
                 )
                 default_model = replacement
             else:
-                logger.warning(
+                # INFO not WARN: graceful degradation IS the documented
+                # behavior — caller asked for a recent model; we tell
+                # them we kept the incumbent because nothing newer
+                # qualified. Surfacing this 100+×/week as WARNING just
+                # pollutes errors.jsonl. Operators tracking model
+                # coverage can subscribe to llm_selector's INFO stream
+                # specifically.
+                logger.info(
                     "llm_selector: no candidate meets min_recency=%s — "
                     "keeping %s (cutoff=%s)",
                     min_recency.isoformat(), default_model,

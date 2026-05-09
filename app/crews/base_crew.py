@@ -849,7 +849,12 @@ def run_single_agent_crew(
         before = len(agent.tools)
         agent.tools = _cap_tools_by_priority(agent.tools, _cap)
         provider = _detect_llm_provider(getattr(agent, "llm", None))
-        logger.warning(
+        # INFO not WARN: tool-capping is by-design (provider context
+        # budgets enforced post-binding).  Surfacing every crew run as
+        # a WARNING would require operators to read 50+/day in the
+        # error stream just to learn "we did the thing we were
+        # supposed to do."
+        logger.info(
             f"{crew_name} [{provider}]: capped tools {before} → {len(agent.tools)} "
             f"(provider cap={_cap})"
         )
@@ -1340,7 +1345,10 @@ def _patch_agent_for_plugins() -> None:
                     if t not in tools_after
                 ][:8]
                 provider = _detect_llm_provider(llm)
-                logger.warning(
+                # INFO not WARN: pre-init capping is the same by-design
+                # behavior as the post-init pass above; logging at
+                # WARNING just doubles the noise in errors.jsonl.
+                logger.info(
                     f"Agent('{kwargs.get('role', '?')}' [{provider}]): "
                     f"capped tools {len(tools)} → {len(tools_after)} "
                     f"(dropped {dropped}: {dropped_names})"
