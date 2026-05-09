@@ -87,12 +87,27 @@ class ProjectContext:
         return self.variables.get(key)
 
 # ── IMMUTABLE: project detection keywords ─────────────────────────────────────
+#
+# 2026-05-09 lesson: PLG used to claim "estonia"/"baltic"/"latvia"/
+# "lithuania" as keywords. Anything Estonia-related auto-routed to
+# PLG even when the topic was clearly forest research. Geographic
+# regions are not project signals — PLG is a ticketing platform that
+# happens to operate in those countries. Tightened to PLG-specific
+# brand / domain terms only.
+#
+# Eesti mets (added 2026-05-09) covers Estonian forest research,
+# biodiversity analysis, and remote-sensing work (Hansen GFC,
+# Landsat, Sentinel, Earth Engine). The keyword list is deliberately
+# broader than the project name itself — "forest age distribution"
+# should match without the user typing "eesti mets" verbatim.
 
 PROJECT_KEYWORDS: dict[str, list[str]] = {
     "plg": [
-        "plg", "piletilevi", "ticketing", "ticket", "live nation",
-        "baltic", "estonia", "latvia", "lithuania", "iabilet",
-        "protect group", "event", "venue", "concert",
+        # Brand / product terms — the only signals we trust to mean
+        # "this is a PLG task." Generic geographies removed.
+        "plg", "piletilevi", "ticketing", "ticket", "tickets",
+        "live nation", "iabilet", "protect group",
+        "venue", "concert", "ticketing platform",
     ],
     "archibal": [
         "archibal", "clearance", "c2pa", "provenance",
@@ -103,6 +118,32 @@ PROJECT_KEYWORDS: dict[str, list[str]] = {
         "kaicart", "tiktok", "thai", "thailand", "smb seller",
         "tiktok shop", "e-commerce", "ecommerce", "seller",
         "southeast asia", "sea market",
+    ],
+    # Project name uses a space (matches the Postgres CP record
+    # "Eesti mets" — control_plane.projects.get_by_name is case-
+    # insensitive). The project_isolation directory is
+    # ``workspace/projects/eesti_mets/`` (underscore — dirs avoid
+    # spaces); the config.yaml's ``name`` field is what registers
+    # under this key.
+    "eesti mets": [
+        # Direct project / domain
+        "eesti mets", "estonian forest", "estonia forest", "eesti metsa",
+        "metsa", "rmk", "kaitseala",
+        # Forest concepts (any of these alone is a strong signal)
+        "forest", "forests", "forestry", "deforestation",
+        "reforestation", "afforestation",
+        "forest age", "forest health", "forest cover", "forest loss",
+        "tree cover", "canopy",
+        # Trees + species commonly studied in Estonian forests
+        "spruce", "pine", "birch", "aspen", "alder",
+        # Remote sensing — the toolchain Eesti mets analyses use
+        "satellite", "landsat", "sentinel", "modis",
+        "hansen", "global forest change", "gfc",
+        "earth engine", "google earth engine", "gee",
+        # Conservation / biodiversity intersection
+        "biodiversity", "conservation", "wildlife corridor",
+        "protected area", "national park", "nature reserve",
+        "carbon stock", "forest carbon",
     ],
 }
 
