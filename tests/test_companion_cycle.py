@@ -32,7 +32,15 @@ def _make_creative_result(*, p1=3, p2=2, final="The idea", cost=0.05,
     )
 
 
-def test_no_seed_returns_aborted():
+@pytest.fixture
+def _no_bootstrap(monkeypatch):
+    """Most cycle tests assume bootstrap is silent — patch it to return None
+    so the no_seed_prompt abort path is exercised cleanly."""
+    from app.companion import seed_bootstrap as _sb
+    monkeypatch.setattr(_sb, "derive_seed", lambda ws, **kw: None)
+
+
+def test_no_seed_returns_aborted(_no_bootstrap):
     cfg = CompanionConfig(seed_prompt=None).clamp()
     result = _cycle.run_cycle("ws-1", cfg)
     assert result.aborted_reason == "no_seed_prompt"
@@ -40,7 +48,7 @@ def test_no_seed_returns_aborted():
     assert result.phase_1_count == 0
 
 
-def test_blank_seed_returns_aborted():
+def test_blank_seed_returns_aborted(_no_bootstrap):
     cfg = CompanionConfig(seed_prompt="   ").clamp()
     result = _cycle.run_cycle("ws-1", cfg)
     assert result.aborted_reason == "no_seed_prompt"
@@ -281,10 +289,141 @@ def test_run_cycle_skips_persistence_when_empty_final():
     assert result.converged_idea_id is None
 
 
-def test_run_cycle_emits_cycle_id_even_on_abort():
+def test_run_cycle_emits_cycle_id_even_on_abort(_no_bootstrap):
     cfg = CompanionConfig(seed_prompt=None).clamp()
     result = _cycle.run_cycle("ws-1", cfg)
     assert result.cycle_id.startswith("cyc_")
+    assert result.aborted_reason == "no_seed_prompt"
+
+
+# ── Phase 11.5: cold-start seed bootstrap ─────────────────────────────────
+
+def _stub_derivation(text="auto-derived seed about ticketing platforms",
+                      signal="mission+tickets", ticket_count=4,
+                      has_mission=True, rationale="distilled from your activity"):
+    from app.companion.seed_bootstrap import SeedDerivation
+    return SeedDerivation(
+        workspace_id="ws-1",
+        text=text,
+        source_signal=signal,
+        ticket_count=ticket_count,
+        has_mission=has_mission,
+        rationale=rationale,
+    )
+
+
+def test_bootstrap_persists_seed_and_continues_cycle():
+    """When seed is None and bootstrap returns a derivation, the cycle
+    should persist the seed, emit SEED_DERIVED, and continue to Creative MAS."""
+    cfg = CompanionConfig(seed_prompt=None,
+                           novelty_threshold=0.5,
+                           surface_threshold=0.5,
+                           panel_threshold=0.4).clamp()
+    fake_creative = _make_creative_result(p1=2, p2=1, final="An idea body")
+    saves: list = []
+    from app.companion.critique import PanelReport
+
+    with patch("app.companion.seed_bootstrap.derive_seed",
+               lambda ws, **kw: _stub_derivation()), \
+         patch("app.companion.config.save",
+               lambda ws, c: saves.append((ws, c.seed_prompt)) or True), \
+         patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake_creative), \
+         patch("app.companion.idea_store.persist",
+               lambda r: r.idea_id), \
+         patch("app.companion.scoring.compute_novelty",
+               lambda *a, **kw: 0.9), \
+         patch("app.companion.scoring.compute_quality", lambda t: 0.9), \
+         patch("app.companion.scoring.compute_transferability",
+               lambda t: 0.5), \
+         patch("app.companion.critique.run_panel",
+               lambda *a, **kw: PanelReport(scores=[], aggregate=0.9,
+                                             passed=True)), \
+         patch("app.companion.surfacing.surface", lambda *a, **kw: True):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    # Bootstrap persisted the seed.
+    assert saves == [("ws-1", "auto-derived seed about ticketing platforms")]
+    # Cycle continued to Creative MAS, scores landed.
+    assert result.aborted_reason is None
+    assert result.phase_1_count == 2
+    assert result.novelty == pytest.approx(0.9)
+
+
+def test_bootstrap_emits_seed_derived_event():
+    cfg = CompanionConfig(seed_prompt=None).clamp()
+    fake_creative = _make_creative_result(aborted="ok-skip-creative")
+
+    with patch("app.companion.seed_bootstrap.derive_seed",
+               lambda ws, **kw: _stub_derivation(signal="mission+tickets",
+                                                  ticket_count=7)), \
+         patch("app.companion.config.save", lambda ws, c: True), \
+         patch("app.companion.workspace_kb.compose", lambda **kw: []), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: fake_creative):
+        _cycle.run_cycle("ws-1", cfg)
+
+    derived = [
+        e for e in _events.read_for_idea("ws-1", "")
+        if False  # placeholder
+    ]
+    # Read across all events (idea_id may be the cycle_id)
+    all_events = _events.read_all("ws-1")
+    seed_events = [e for e in all_events
+                    if e.type == _events.EventType.SEED_DERIVED]
+    assert len(seed_events) == 1
+    payload = seed_events[0].payload
+    assert payload["source_signal"] == "mission+tickets"
+    assert payload["ticket_count"] == 7
+    assert payload["has_mission"] is True
+    assert "auto-derived" in payload["seed"]
+
+
+def test_bootstrap_returns_none_falls_through_to_no_seed_prompt():
+    """When derive_seed returns None, the cycle aborts as before."""
+    cfg = CompanionConfig(seed_prompt=None).clamp()
+    saves: list = []
+
+    with patch("app.companion.seed_bootstrap.derive_seed",
+               lambda ws, **kw: None), \
+         patch("app.companion.config.save",
+               lambda ws, c: saves.append(c) or True):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.aborted_reason == "no_seed_prompt"
+    assert saves == []  # never tried to save
+
+
+def test_bootstrap_save_failure_aborts_cycle():
+    """If config.save fails, treat as no_seed_prompt and don't continue."""
+    cfg = CompanionConfig(seed_prompt=None).clamp()
+    captured_creative_calls: list = []
+
+    with patch("app.companion.seed_bootstrap.derive_seed",
+               lambda ws, **kw: _stub_derivation()), \
+         patch("app.companion.config.save", lambda ws, c: False), \
+         patch("app.companion.cycle._invoke_creative_crew",
+               lambda *a, **kw: captured_creative_calls.append(True) or
+                                  _make_creative_result()):
+        result = _cycle.run_cycle("ws-1", cfg)
+
+    assert result.aborted_reason == "no_seed_prompt"
+    assert captured_creative_calls == []
+
+
+def test_bootstrap_absorbs_derive_exception(_no_bootstrap):
+    """If derive_seed itself raises, cycle aborts cleanly. The
+    _no_bootstrap fixture replaces derive_seed with one that returns None
+    — to test the exception path we override locally."""
+    cfg = CompanionConfig(seed_prompt=None).clamp()
+
+    def _broken(ws, **kw):
+        raise RuntimeError("bootstrap blew up")
+
+    with patch("app.companion.seed_bootstrap.derive_seed", _broken):
+        result = _cycle.run_cycle("ws-1", cfg)
+
     assert result.aborted_reason == "no_seed_prompt"
 
 
