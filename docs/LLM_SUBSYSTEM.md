@@ -149,6 +149,7 @@ the resolver scores against. Structure of each entry:
     "cost_input_per_m": 5.00,
     "cost_output_per_m": 25.00,
     "tool_use_reliability": 0.97,
+    "knowledge_cutoff": "2025-09-01",  # optional — see §5.3 below
     "strengths": {
         "coding":       0.95,
         "debugging":    0.93,
@@ -225,7 +226,28 @@ empty to disable filtering. The mechanism mirrors the parallel block
 that injects `extra_headers` for Anthropic prompt-caching, so adding
 more provider names later is a one-line change.
 
-### 5.3 Strengths map (9 canonical task types)
+### 5.3 Knowledge cutoff
+
+Optional `knowledge_cutoff: str` field (ISO date, `YYYY-MM-DD`) records
+the model's training-data horizon. Two sources populate it:
+
+* **Live builder** — `_build_openrouter_entry` extracts `created_at`
+  from the OpenRouter `/models` payload (Unix epoch UTC, the day the
+  model was added to OpenRouter). This trails the real training cutoff
+  by 1-3 months but is a usable lower bound.
+* **Bootstrap** — survival entries hardcode published cutoffs from each
+  model card (`deepseek-v3.2 → 2024-07-01`, `qwen3.5:35b → 2024-09-01`).
+  The merge step refreshes these from live data when available.
+
+The field is optional — entries without it pass selector filters (the
+absence of evidence isn't evidence of absence). Anthropic entries
+currently have no automatic source for the cutoff; backfilling them
+from a static map is a tracked follow-up.
+
+The selector's `min_recency` parameter (see §7.1 step 3b) consumes this
+field to drop stale models when the caller needs current information.
+
+### 5.4 Strengths map (9 canonical task types)
 
 ```
 coding, debugging, architecture, research, writing,
@@ -352,6 +374,16 @@ about.
 3. **Task-type detection** — `canonical_task_type(role, task_hint)`
    keyword-scans the hint (`"debug stack trace"` → debugging,
    `"image"` → multimodal) and may swap the pick.
+3b. **Recency filter** — when `min_recency: date` is passed, drop the
+   default if its catalog `knowledge_cutoff` is strictly older and walk
+   the candidates by score for a replacement. Models without a
+   `knowledge_cutoff` field pass through (treated as unknown). If no
+   compliant candidate exists, the default is kept and a warning is
+   logged (graceful degradation). Single-pass at this step;
+   downstream score / cost / budget swaps may still drift, so callers
+   wanting strict guarantees should also pass `force_tier`. Filter is
+   only active in `mode == "balanced"` — restrictive modes go through
+   `_pool_constrained_select` which doesn't yet thread `min_recency`.
 4. **Special rules** — e.g. multimodal hint forces a multimodal model
    regardless of strengths score.
 5. **Benchmark adjustment** — `get_scores(task_type)` may shift the
@@ -397,8 +429,26 @@ loaded. RAM headroom of 16 GB is reserved for the OS + embeddings.
 ## 8. The factory (single gateway)
 
 `app/llm_factory.py:create_specialist_llm(max_tokens, role, task_hint,
-force_tier, phase)` is the only function that constructs `LLM`
-instances.
+force_tier, phase, min_recency)` is the only function that constructs
+`LLM` instances.
+
+### Recency auto-default
+
+`_DEFAULT_RECENCY_DAYS_BY_ROLE` maps a small set of roles to a default
+lookback in days; when the caller doesn't pass `min_recency`, the
+factory derives `date.today() - timedelta(days=N)` for those roles
+before calling `select_model`. Currently:
+
+| Role | Lookback | Why |
+|---|---|---|
+| `research` | 180 d | Web research / dossier collector / tech radar — outputs depend on current information |
+| `self_improve` | 180 d | Post-mortems benefit from current best-practice |
+
+Other roles (coding, writing, vetting, etc.) get no auto-default.
+Callers can override at any call site by passing an explicit
+`min_recency=date(...)`, or opt out with the sentinel
+`min_recency=date.min`. This keeps the recency floor in one place
+rather than spread across every research-adjacent caller.
 
 ### 8.1 Mode dispatch
 

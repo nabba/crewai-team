@@ -17,6 +17,21 @@ RERANKER_MODEL: str = os.environ.get(
     "RETRIEVAL_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
 )
 
+# Backend dispatch — "local" runs the cross-encoder above on CPU (fast,
+# free, offline); "openrouter" routes through OpenRouter's /rerank endpoint
+# (Cohere / Fireworks rerankers — higher quality, ~200-400ms latency,
+# ~$1/1k requests). On any HTTP / network failure the OpenRouter path
+# falls through to local automatically. Default ``local`` keeps the
+# system free + offline-capable; flip to ``openrouter`` only after
+# observing the rerank-call telemetry justifies the cost surface.
+RERANKER_BACKEND: str = os.environ.get("RETRIEVAL_RERANKER_BACKEND", "local").lower()
+
+# OpenRouter reranker model id. Cohere multilingual v3 is a good default
+# for mixed-language corpora; switch via env without a code change.
+RERANKER_MODEL_OPENROUTER: str = os.environ.get(
+    "RETRIEVAL_RERANKER_MODEL_OPENROUTER", "cohere/rerank-multilingual-v3.0"
+)
+
 # First stage retrieves this many candidates via vector similarity …
 RERANK_TOP_K_INPUT: int = int(os.environ.get("RETRIEVAL_RERANK_INPUT", "20"))
 # … then the cross-encoder re-ranks and returns this many.

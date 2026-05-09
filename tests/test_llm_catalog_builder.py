@@ -180,6 +180,69 @@ class TestBuildSnapshot:
         assert entry["provider"] == "ollama"
         assert entry["model_id"] == "ollama_chat/llama3.3:70b"
 
+    def test_openrouter_cutoff_extracted_from_created_at(self):
+        """OpenRouter ``created_at`` (epoch seconds) → ``knowledge_cutoff`` (ISO date)."""
+        from app import llm_catalog_builder as b
+
+        openrouter = [{
+            "id": "vendor/some-model",
+            "name": "Some Model",
+            "context_length": 128_000,
+            "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+            "architecture": {"modality": "text"},
+            "supported_parameters": ["tools"],
+            "created_at": 1735689600,  # 2025-01-01 00:00:00 UTC
+        }]
+        with (
+            patch.object(b, "_fetch_openrouter", return_value=openrouter),
+            patch.object(b, "_fetch_artificial_analysis", return_value=[]),
+            patch.object(b, "_fetch_ollama_tags", return_value=[]),
+        ):
+            snap = b.build_snapshot()
+        assert snap["some-model"]["knowledge_cutoff"] == "2025-01-01"
+
+    def test_openrouter_cutoff_absent_when_field_missing(self):
+        """No ``created_at`` → field omitted. Selector treats absence as 'unknown'."""
+        from app import llm_catalog_builder as b
+
+        openrouter = [{
+            "id": "vendor/no-date",
+            "name": "No Date Model",
+            "context_length": 128_000,
+            "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+            "architecture": {"modality": "text"},
+            "supported_parameters": ["tools"],
+        }]
+        with (
+            patch.object(b, "_fetch_openrouter", return_value=openrouter),
+            patch.object(b, "_fetch_artificial_analysis", return_value=[]),
+            patch.object(b, "_fetch_ollama_tags", return_value=[]),
+        ):
+            snap = b.build_snapshot()
+        assert "knowledge_cutoff" not in snap["no-date"]
+
+    def test_openrouter_cutoff_invalid_epoch_swallowed(self):
+        """Garbage ``created_at`` doesn't crash the build — entry built without cutoff."""
+        from app import llm_catalog_builder as b
+
+        openrouter = [{
+            "id": "vendor/junk-date",
+            "name": "Junk Date",
+            "context_length": 128_000,
+            "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+            "architecture": {"modality": "text"},
+            "supported_parameters": ["tools"],
+            "created_at": "not-a-number",
+        }]
+        with (
+            patch.object(b, "_fetch_openrouter", return_value=openrouter),
+            patch.object(b, "_fetch_artificial_analysis", return_value=[]),
+            patch.object(b, "_fetch_ollama_tags", return_value=[]),
+        ):
+            snap = b.build_snapshot()
+        assert "junk-date" in snap
+        assert "knowledge_cutoff" not in snap["junk-date"]
+
 
 class TestMergeIntoCatalog:
     def test_bootstrap_preserved_fields_refreshed(self, fresh_catalog):
@@ -237,6 +300,29 @@ class TestMergeIntoCatalog:
         assert "opus-hypothetical-5.0" in fresh_catalog
         # Bootstrap entries still there
         assert "claude-sonnet-4.6" in fresh_catalog
+
+    def test_merge_refreshes_knowledge_cutoff(self, fresh_catalog):
+        """Bootstrap ``knowledge_cutoff`` is refreshed by the merge step so
+        OpenRouter-derived dates supersede the hand-coded fallback."""
+        from app.llm_catalog_builder import merge_into_catalog
+
+        snapshot = {
+            "deepseek-v3.2": {
+                "tier": "budget", "provider": "openrouter",
+                "model_id": "openrouter/deepseek/deepseek-chat",
+                "knowledge_cutoff": "2025-03-01",  # newer than bootstrap
+                "cost_input_per_m": 0.14, "cost_output_per_m": 0.28,
+                "strengths": {t: 0.9 for t in (
+                    "coding", "debugging", "architecture", "research",
+                    "writing", "reasoning", "multimodal", "vetting", "general",
+                )},
+                "tool_use_reliability": 0.85,
+                "context": 128_000, "multimodal": False,
+                "_auto": True, "_source": "test",
+            },
+        }
+        merge_into_catalog(snapshot)
+        assert fresh_catalog["deepseek-v3.2"]["knowledge_cutoff"] == "2025-03-01"
 
 
 # ── Resolver behaviour ───────────────────────────────────────────────────
