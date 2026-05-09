@@ -241,9 +241,25 @@ def run_error_resolution() -> str:
     Scan for recurring unresolved errors. For each pattern, generate a fix,
     apply it, and track whether it resolves the error. Loop until resolved
     or max attempts reached.
+
+    Heartbeat: ``ERROR_TRACKER`` is touched on every run regardless of
+    whether work was done.  ``cron_liveness`` uses this file's mtime to
+    detect a dead scheduler — without the touch, no-op runs (the common
+    case when errors are already resolved) leave a stale mtime and
+    trigger false-positive "stale cron" alerts.  See
+    ``app/healing/monitors/cron_liveness.py`` for the watcher side.
     """
     with _audit_lock:
-        return _run_error_resolution_locked()
+        result = _run_error_resolution_locked()
+    try:
+        if not ERROR_TRACKER.exists():
+            ERROR_TRACKER.write_text("{}")
+        ERROR_TRACKER.touch()
+    except OSError:
+        # Filesystem failure is non-fatal — the next run will retry.
+        # Worst case: cron_liveness fires a false alarm; the job still ran.
+        pass
+    return result
 
 
 def _run_error_resolution_locked() -> str:
