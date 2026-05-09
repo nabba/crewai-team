@@ -1,3 +1,173 @@
 """Shared utilities. Anything generic enough that two unrelated
 subsystems would otherwise duplicate it lives here.
+
+Centralizes:
+  - safe_json_parse: Robust JSON parsing for LLM output
+  - now_iso: UTC timestamp string (replaces 20+ inline datetime calls)
+  - load_json_file / save_json_file: Journal-style file I/O
+  - truncate: Safe string truncation (replaces 80+ inline [:N] slices)
+
+Sibling submodules (importable as ``from app.utils import <name>`` —
+the symbol is bound here):
+  - feed_parser
+  - hash_embedding
+  - jsonl_retention
+
+Pre-2026-05-10 history. The module ``app/utils.py`` lived alongside
+the package directory ``app/utils/``. Python prefers the package, so
+``from app.utils import now_iso`` failed with ``ImportError`` because
+``__init__.py`` was a docstring-only file. Symptom: the React
+Evolution Monitor's Genealogy tab showed ``cannot import name
+'now_iso' from 'app.utils'`` because ``app/variant_archive.py``
+top-level ``from app.utils import now_iso`` raised at module-load.
+The fix consolidates the legacy module into this ``__init__.py`` and
+deletes the shadowed ``app/utils.py``.
 """
+from __future__ import annotations
+
+import json
+import logging
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from app.utils import feed_parser, hash_embedding, jsonl_retention  # noqa: F401
+
+logger = logging.getLogger(__name__)
+
+_MAX_JSON_SIZE = 100_000  # bytes
+
+
+# ── Timestamp ────────────────────────────────────────────────────────────────
+
+def now_iso() -> str:
+    """Return current UTC time as ISO 8601 string. Replaces 20+ inline calls."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ── JSON File I/O ────────────────────────────────────────────────────────────
+
+def load_json_file(path: Path, default=None):
+    """Load a JSON file, returning default on any error.
+
+    Replaces the identical load pattern in healing/error_diagnosis.py,
+    benchmarks.py, auditor.py, variant_archive.py, proposals.py, etc.
+    """
+    if default is None:
+        default = []
+    try:
+        if path.exists():
+            return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        pass
+    return default
+
+
+def save_json_file(path: Path, data, max_entries: int = 0) -> bool:
+    """Save data as JSON, optionally capping list entries.
+
+    Returns True on success, False on failure.
+    Replaces the identical save pattern in healing/error_diagnosis.py,
+    benchmarks.py, etc.
+    """
+    try:
+        if max_entries > 0 and isinstance(data, list):
+            data = data[-max_entries:]
+        from app.safe_io import safe_write_json
+        safe_write_json(path, data)
+        return True
+    except OSError:
+        logger.debug(f"Failed to write {path}", exc_info=True)
+        return False
+
+
+# ── String helpers ───────────────────────────────────────────────────────────
+
+def truncate(text: str, max_len: int = 200) -> str:
+    """Truncate a string to max_len chars. Replaces 80+ inline [:N] slices."""
+    if not text:
+        return ""
+    return text[:max_len]
+
+
+def safe_json_parse(
+    text: str,
+    max_size: int = _MAX_JSON_SIZE,
+) -> tuple[Any | None, str]:
+    """Parse JSON from LLM output, stripping markdown fences and validating size.
+
+    Returns:
+        (parsed_value, "") on success
+        (None, error_message) on failure
+    """
+    if not text or not isinstance(text, str):
+        return None, "empty or non-string input"
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    cleaned = re.sub(r'^```(?:json)?\s*', '', text.strip())
+    cleaned = re.sub(r'\s*```$', '', cleaned)
+
+    # Size check
+    if len(cleaned.encode('utf-8', errors='replace')) > max_size:
+        return None, f"JSON too large ({len(cleaned)} chars, max {max_size} bytes)"
+
+    try:
+        result = json.loads(cleaned)
+        return result, ""
+    except json.JSONDecodeError:
+        pass
+
+    # LLMs often return prose preamble before JSON — extract first { ... } or [ ... ]
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start = cleaned.find(start_char)
+        if start == -1:
+            continue
+        depth = 0
+        in_string = False
+        escape_next = False
+        for i in range(start, len(cleaned)):
+            c = cleaned[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if c == '\\' and in_string:
+                escape_next = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == start_char:
+                depth += 1
+            elif c == end_char:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        result = json.loads(cleaned[start:i + 1])
+                        return result, ""
+                    except json.JSONDecodeError:
+                        break  # malformed, try next start_char
+
+    # Nothing worked — report error from original text
+    try:
+        json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        pos = exc.pos or 0
+        snippet = cleaned[max(0, pos - 20):pos + 20]
+        return None, f"JSON parse error at pos {pos}: {exc.msg} near '{snippet}'"
+    return None, "no JSON object/array found in text"
+
+
+__all__ = [
+    "now_iso",
+    "load_json_file",
+    "save_json_file",
+    "truncate",
+    "safe_json_parse",
+    # Submodules re-exported by `from app.utils import <name>`:
+    "feed_parser",
+    "hash_embedding",
+    "jsonl_retention",
+]
