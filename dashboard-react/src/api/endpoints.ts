@@ -153,6 +153,10 @@ export const endpoints = {
   // POST requires gateway secret (same as creative_mode).
   runtimeSettings: () => `/config/runtime_settings`,
 
+  // Life-companion control panel — per-job on/off + tunable env vars.
+  // GET is read-only; POST requires gateway secret.
+  lifeCompanion: () => `/config/life_companion`,
+
   // Idle-scheduler kill switch (legacy Firestore config/background_tasks
   // exposed over HTTP). POST requires gateway secret.
   backgroundTasks: () => `/config/background_tasks`,

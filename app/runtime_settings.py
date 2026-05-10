@@ -90,6 +90,13 @@ def _defaults() -> dict[str, Any]:
         # Goodhart hard-gate three-way control.
         "goodhart_hard_gate_disabled": _env_bool("GOODHART_HARD_GATE_DISABLED", False),
         "goodhart_hard_gate_enforcing": _env_bool("GOODHART_HARD_GATE_ENFORCING", False),
+        # Life-companion per-feature overrides — populated by the
+        # /cp/life-companion control panel.  Schema:
+        #   {<feature_key>: {"enabled": bool|None,
+        #                    "tunables": {<env_key>: <stringified value>}}}
+        # ``enabled = None`` means "fall back to env / default";
+        # missing tunable keys also fall back.
+        "life_companion_overrides": {},
     }
 
 
@@ -263,3 +270,129 @@ def _update(patch: dict[str, Any]) -> None:
         state.update(patch)
         _save(state)
         _cache = state
+
+
+# ── Life-companion per-feature overrides ────────────────────────────
+
+
+def life_companion_get_overrides() -> dict[str, Any]:
+    """Read-only snapshot of all life-companion feature overrides.
+
+    Schema: ``{<feature_key>: {"enabled": bool|None, "tunables":
+    {<env_key>: <str_value>}}}``.  Empty dict on first boot.
+    Mutations go through :func:`life_companion_set_feature_override`.
+    """
+    return dict(_ensure_initialized().get("life_companion_overrides") or {})
+
+
+def life_companion_get_feature_enabled(feature_key: str) -> bool | None:
+    """Return the override-controlled enabled state for a feature, or
+    None if no override is set (caller falls back to env default).
+
+    Splits cleanly so ``feature_enabled()`` in life_companion._common
+    can do: ``override or env-default``.
+    """
+    override = life_companion_get_overrides().get(feature_key)
+    if not isinstance(override, dict):
+        return None
+    if "enabled" not in override:
+        return None
+    val = override["enabled"]
+    if val is None:
+        return None
+    return bool(val)
+
+
+def life_companion_get_tunable(env_key: str) -> str | None:
+    """Return the override-controlled tunable value, or None when no
+    override is set.
+
+    Returned as a string so the caller can apply its own type
+    coercion (mirrors os.getenv semantics).  This intentionally
+    matches what the registry's UI sends — the React control
+    panel emits everything as a string.
+    """
+    overrides = life_companion_get_overrides()
+    for feat_key, entry in overrides.items():
+        if not isinstance(entry, dict):
+            continue
+        tuns = entry.get("tunables") or {}
+        if env_key in tuns and tuns[env_key] is not None:
+            return str(tuns[env_key])
+    return None
+
+
+# Sentinel for "don't touch this kwarg" — distinguishes from
+# ``None`` which explicitly clears the toggle override.
+_LEAVE_UNTOUCHED = object()
+
+
+def life_companion_set_feature_override(
+    feature_key: str,
+    *,
+    enabled: bool | None | object = _LEAVE_UNTOUCHED,
+    tunables: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist an override for one life-companion feature.
+
+    Three distinct paths for ``enabled``:
+
+      * Omitted (default ``_LEAVE_UNTOUCHED``) — leave the toggle
+        override exactly as it was; useful when the operator only
+        edited tunables.
+      * ``None`` — clear the toggle override; the feature reverts
+        to its env-var default.
+      * ``True`` / ``False`` — set the override explicitly.
+
+    ``tunables`` is merged into the existing tunable dict — pass
+    an empty value (``{"<key>": ""}``) to clear a single tunable
+    override and let env defaults take back over.
+
+    Returns the new overrides snapshot.
+    """
+    if not isinstance(feature_key, str) or not feature_key:
+        raise ValueError("feature_key must be a non-empty string")
+
+    global _cache
+    with _lock:
+        state = _cache if _cache is not None else _load()
+        all_overrides = dict(state.get("life_companion_overrides") or {})
+        entry = dict(all_overrides.get(feature_key) or {})
+        existing_tunables = dict(entry.get("tunables") or {})
+
+        if enabled is _LEAVE_UNTOUCHED:
+            pass  # leave untouched
+        elif enabled is None:
+            entry.pop("enabled", None)  # clear override
+        else:
+            entry["enabled"] = bool(enabled)
+
+        if tunables is not None:
+            for k, v in tunables.items():
+                if v in (None, ""):
+                    existing_tunables.pop(k, None)
+                else:
+                    existing_tunables[k] = str(v)
+            entry["tunables"] = existing_tunables
+
+        # If the entry is now empty (no enabled override AND no
+        # tunables), drop it so the JSON stays tidy.
+        if (
+            "enabled" not in entry
+            and not (entry.get("tunables") or {})
+        ):
+            all_overrides.pop(feature_key, None)
+        else:
+            all_overrides[feature_key] = entry
+
+        state["life_companion_overrides"] = all_overrides
+        _save(state)
+        _cache = state
+
+    logger.info(
+        "runtime_settings: life_companion override %s — enabled=%s tunables=%s",
+        feature_key,
+        "leave" if enabled is _LEAVE_UNTOUCHED else enabled,
+        list(tunables.keys()) if tunables else [],
+    )
+    return all_overrides

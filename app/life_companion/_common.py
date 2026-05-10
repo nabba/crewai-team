@@ -38,15 +38,58 @@ def _master_enabled() -> bool:
 
 
 def feature_enabled(feature: str) -> bool:
-    """``feature`` is one of ``email`` / ``briefing`` / ``routines``.
+    """``feature`` is one of ``email`` / ``briefing`` / ``routines`` etc.
 
-    Master switch wins: if ``LIFE_COMPANION_ENABLED=false``, every feature
-    is off regardless of per-feature flags.
+    Resolution order:
+
+      1. Master switch ``LIFE_COMPANION_ENABLED`` — if false, every
+         feature is off regardless of per-feature flags.
+      2. Runtime override (set via the React /cp/life-companion
+         control panel).  Persisted in
+         ``workspace/runtime_settings.json`` so toggles survive
+         restarts.
+      3. Env-var fallback ``LIFE_COMPANION_<FEATURE>_ENABLED``
+         (boot default).
     """
     if not _master_enabled():
         return False
+    # Runtime override wins over env so operators can flip features
+    # via the React control panel without a gateway restart.
+    try:
+        from app.runtime_settings import life_companion_get_feature_enabled
+        override = life_companion_get_feature_enabled(feature)
+        if override is not None:
+            return override
+    except Exception:
+        pass
     var = f"LIFE_COMPANION_{feature.upper()}_ENABLED"
     return os.getenv(var, "true").lower() in ("true", "1", "yes")
+
+
+def get_tunable(env_key: str, default: str = "") -> str:
+    """Read a tunable env var with runtime-override priority.
+
+    Resolution order:
+
+      1. Runtime override (from the React /cp/life-companion
+         control panel) — persisted in
+         ``workspace/runtime_settings.json``.
+      2. Env-var fallback (the boot default).
+      3. ``default`` argument (only used when the env var is also
+         unset).
+
+    Always returns a string, mirroring ``os.getenv`` semantics.
+    Callers do their own type coercion — same shape they had when
+    they read straight from the env.
+    """
+    try:
+        from app.runtime_settings import life_companion_get_tunable
+        override = life_companion_get_tunable(env_key)
+        if override is not None:
+            return override
+    except Exception:
+        pass
+    return os.getenv(env_key, default)
 
 
 # ── State files ───────────────────────────────────────────────────────────

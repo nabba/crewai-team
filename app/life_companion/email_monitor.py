@@ -32,6 +32,7 @@ from app.life_companion._common import (
     audit_event,
     background_enabled,
     feature_enabled,
+    get_tunable,
     read_state_json,
     send_signal_alert,
     user_email_address,
@@ -49,17 +50,15 @@ _ALERTED_IDS_CAP = 500
 
 
 def _check_interval_s() -> int:
-    import os
     try:
-        return int(os.getenv("LIFE_COMPANION_EMAIL_CHECK_MIN", "10")) * 60
+        return int(get_tunable("LIFE_COMPANION_EMAIL_CHECK_MIN", "10")) * 60
     except ValueError:
         return _DEFAULT_CHECK_INTERVAL_S
 
 
 def _urgency_threshold() -> float:
-    import os
     try:
-        return float(os.getenv("LIFE_COMPANION_EMAIL_URGENCY_THRESHOLD", "1.0"))
+        return float(get_tunable("LIFE_COMPANION_EMAIL_URGENCY_THRESHOLD", "1.0"))
     except ValueError:
         return _DEFAULT_URGENCY_THRESHOLD
 
