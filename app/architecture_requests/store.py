@@ -46,6 +46,16 @@ def _base_dir() -> Path:
     return _base_dir_override or _DEFAULT_BASE_DIR
 
 
+def get_base_dir() -> Path:
+    """Public accessor for the active base dir.
+
+    The scaffolder reads this so it stages files in the same root as
+    the store's per-record JSON files. Tests inject a tmp_path via
+    :func:`reset_for_tests`; production uses ``_DEFAULT_BASE_DIR``.
+    """
+    return _base_dir()
+
+
 def _ensure_dir() -> None:
     _base_dir().mkdir(parents=True, exist_ok=True)
 

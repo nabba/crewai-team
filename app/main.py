@@ -1246,6 +1246,79 @@ async def receive_signal(request: Request):
                 )
                 # Fall through
 
+        # ── Architecture-request approval via reaction (Piece 2) ───────
+        # 👍 on an ARCHITECTURE REQUEST message approves the design;
+        # 👎 rejects. The lifecycle is package-granularity — approval
+        # only moves PROPOSED → APPROVED. Scaffolding (writing stubs to
+        # the staging dir) is a separate operator step in the React UI;
+        # per-file landing flows through the existing change_request
+        # gate. Mirrors the change_request reaction-handler pattern.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.architecture_requests import (
+                    ArchStatus as _AR_Status,
+                    DecisionSource as _AR_DS,
+                    approve as _ar_approve,
+                    find_request_by_signal_ts as _ar_find,
+                    get as _ar_get,
+                    reject as _ar_reject,
+                )
+                ar_id = _ar_find(target_ts)
+                if ar_id is not None:
+                    is_approve = emoji in ("👍", "+1")
+                    ar_now = _ar_get(ar_id)
+                    if ar_now is not None and ar_now.status == _AR_Status.PROPOSED:
+                        loop = asyncio.get_running_loop()
+                        if is_approve:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _ar_approve(
+                                    ar_id, source=_AR_DS.SIGNAL_THUMBS_UP,
+                                ),
+                            )
+                            ack_msg = (
+                                f"✅ Architecture request {ar_id} approved.\n"
+                                f"  package: {ar_now.package_path}\n"
+                                f"  next: scaffold the stubs in /cp/architecture-requests, "
+                                f"then per-file CRs land via /cp/changes."
+                            )
+                        else:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _ar_reject(
+                                    ar_id,
+                                    source=_AR_DS.SIGNAL_THUMBS_DOWN,
+                                    decision_reason="rejected via 👎 in Signal",
+                                ),
+                            )
+                            ack_msg = f"❌ Architecture request {ar_id} rejected."
+
+                        logger.info(
+                            "Reaction %s on architecture_request %s → %s",
+                            emoji, ar_id,
+                            "approved" if is_approve else "rejected",
+                        )
+                        try:
+                            client = SignalClient()
+                            await client.send(sender, ack_msg)
+                        except Exception:
+                            logger.debug(
+                                "Failed to send arch-request ack", exc_info=True,
+                            )
+                        return {
+                            "status": "accepted",
+                            "architecture_request_action": (
+                                "approved" if is_approve else "rejected"
+                            ),
+                            "request_id": ar_id,
+                        }
+            except Exception:
+                logger.debug(
+                    "Reaction-based architecture_request handling failed",
+                    exc_info=True,
+                )
+                # Fall through
+
         try:
             from app.feedback_pipeline import FeedbackPipeline
             from app.config import get_settings
@@ -2148,6 +2221,24 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 # ── API routers (extracted from main.py to app/api/) ──────────────────────────
 from app.api.config_api import router as config_router
 app.include_router(config_router, prefix="/config")
+
+# ── Architecture-request control plane (Piece 2 follow-up) ──────────────────
+try:
+    from app.control_plane.architecture_requests_api import (
+        router as architecture_requests_router,
+    )
+    app.include_router(architecture_requests_router)
+except Exception:
+    logger.debug(
+        "Architecture-requests router registration failed", exc_info=True,
+    )
+
+# ── Inquiry essays (Piece 4 follow-up; read-only listing) ──────────────────
+try:
+    from app.control_plane.inquiries_api import router as inquiries_router
+    app.include_router(inquiries_router)
+except Exception:
+    logger.debug("Inquiries router registration failed", exc_info=True)
 
 # ── Skill registry (Phase 5 — May 2026) ──────────────────────────────────────
 try:

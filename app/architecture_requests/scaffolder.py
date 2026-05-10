@@ -44,12 +44,17 @@ from app.architecture_requests.models import ArchitectureRequest, FileSpec
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_STAGING_ROOT = Path("/app/workspace/architecture_requests")
+def _resolve_base() -> Path:
+    """Default staging root: the same base dir the store uses, so tests
+    that inject a tmp_path through :func:`store.reset_for_tests` see
+    scaffolds land alongside per-record JSON files."""
+    from app.architecture_requests import store
+    return store.get_base_dir()
 
 
 def staging_dir_for(request_id: str, base: Path | None = None) -> Path:
     """Return the canonical staging directory path for a request id."""
-    root = base or _DEFAULT_STAGING_ROOT
+    root = base if base is not None else _resolve_base()
     return root / request_id / "scaffold"
 
 

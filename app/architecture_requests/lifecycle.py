@@ -208,6 +208,18 @@ def expire(request_id: str) -> ArchitectureRequest:
     return req
 
 
+def attach_signal_ts(request_id: str, signal_ts: int) -> ArchitectureRequest:
+    """Record the Signal message timestamp for later reaction correlation.
+
+    Called by :mod:`signal` after sending the ASK message. Does NOT
+    transition state; just persists the correlation field.
+    """
+    req = _get_or_raise(request_id)
+    req.signal_message_ts = signal_ts
+    store.save(req)  # no audit event — pure metadata correlation
+    return req
+
+
 def _get_or_raise(request_id: str) -> ArchitectureRequest:
     req = store.get(request_id)
     if req is None:
