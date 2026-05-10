@@ -2431,6 +2431,20 @@ try:
 except Exception:
     logger.debug("Action-requests router registration failed", exc_info=True)
 
+# ── Long-horizon thread control plane (§4.1 follow-up) ─────────────────────
+try:
+    from app.control_plane.threads_api import router as threads_router
+    app.include_router(threads_router)
+except Exception:
+    logger.debug("Threads router registration failed", exc_info=True)
+
+# ── Proposals aggregator (capability_gap + library_radar + recipe) ─────────
+try:
+    from app.control_plane.proposals_api import router as proposals_router
+    app.include_router(proposals_router)
+except Exception:
+    logger.debug("Proposals router registration failed", exc_info=True)
+
 # ── Skill registry (Phase 5 — May 2026) ──────────────────────────────────────
 try:
     from app.api.skills_api import router as skills_router

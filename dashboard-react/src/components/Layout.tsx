@@ -14,6 +14,8 @@ const NAV_ITEMS = [
   { to: '/changes', label: 'Changes', icon: '✏️', exact: false },
   { to: '/architecture-requests', label: 'Architecture', icon: '🏛', exact: false },
   { to: '/action-requests', label: 'Actions', icon: '✉️', exact: false },
+  { to: '/threads', label: 'Threads', icon: '🧵', exact: false },
+  { to: '/proposals', label: 'Proposals', icon: '📋', exact: false },
   { to: '/org-chart', label: 'Org Chart', icon: '🏢', exact: false },
   { to: '/costs', label: 'Costs', icon: '📈', exact: false },
   { to: '/workspaces', label: 'Workspaces', icon: '🧠', exact: false },

@@ -94,6 +94,16 @@ const ActionRequestsPage = lazy(() =>
     default: m.ActionRequestsPage,
   })),
 );
+const ThreadsPage = lazy(() =>
+  import('./components/ThreadsPage').then((m) => ({
+    default: m.ThreadsPage,
+  })),
+);
+const ProposalsPage = lazy(() =>
+  import('./components/ProposalsPage').then((m) => ({
+    default: m.ProposalsPage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import('./components/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
@@ -156,6 +166,8 @@ export default function App() {
             <Route path="/coding-sessions" element={<LazyRoute><CodingSessionsPage /></LazyRoute>} />
             <Route path="/inquiries" element={<LazyRoute><InquiriesPage /></LazyRoute>} />
             <Route path="/action-requests" element={<LazyRoute><ActionRequestsPage /></LazyRoute>} />
+            <Route path="/threads" element={<LazyRoute><ThreadsPage /></LazyRoute>} />
+            <Route path="/proposals" element={<LazyRoute><ProposalsPage /></LazyRoute>} />
             <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
             <Route path="/skills" element={<LazyRoute><SkillsPage /></LazyRoute>} />
             <Route path="/files" element={<LazyRoute><FilesPage /></LazyRoute>} />

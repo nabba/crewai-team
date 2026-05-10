@@ -71,6 +71,8 @@ _DEFAULT_CADENCE_S = {
     "llm_output_drift": 24 * 3600,           # daily probe — Phase D #6 (2026-05-09)
     "signal_keepalive": 24 * 3600,           # daily probe — internal 30-day gate; Phase H #2
     "restore_drill": 24 * 3600,              # daily probe — alerts at 100d stale; Phase H #1
+    "version_upgrade_drill": 24 * 3600,      # daily probe — alerts at 100d stale; §2.5
+    "provider_contract_drift": 7 * 24 * 3600,  # weekly probe; §2.7
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -212,6 +214,25 @@ def _driver() -> None:
         ))
     except Exception:
         logger.debug("monitors: restore_drill import failed", exc_info=True)
+    try:
+        from app.healing.monitors import version_upgrade_drill
+        monitors.append((
+            "version_upgrade_drill",
+            lambda: version_upgrade_drill.run(),  # accept default args
+            _DEFAULT_CADENCE_S["version_upgrade_drill"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: version_upgrade_drill import failed", exc_info=True)
+    try:
+        from app.healing.monitors import provider_contract_drift
+        monitors.append((
+            "provider_contract_drift", provider_contract_drift.run,
+            _DEFAULT_CADENCE_S["provider_contract_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: provider_contract_drift import failed", exc_info=True,
+        )
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")
