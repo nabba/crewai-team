@@ -55,9 +55,17 @@ export function Layout() {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar
+          iOS PWA safe-area: when installed as standalone with
+          `apple-mobile-web-app-status-bar-style: black-translucent`
+          (see public/index.html), the viewport extends UNDER the
+          status bar.  Without `pt-[env(safe-area-inset-top)]` here,
+          the BotArmy logo block lands behind the clock and signal
+          icons.  Same for the home-indicator at the bottom edge —
+          `pb-[env(safe-area-inset-bottom)]` keeps the "AndrusAI
+          v0.1" footer above it. */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-56 flex flex-col bg-[#111820] border-r border-[#1e2738] transition-transform duration-200 ${
+        className={`fixed lg:static inset-y-0 left-0 z-30 w-56 flex flex-col bg-[#111820] border-r border-[#1e2738] transition-transform duration-200 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -102,8 +110,13 @@ export function Layout() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 bg-[#111820] border-b border-[#1e2738] flex-shrink-0">
+        {/* Header
+            iOS PWA safe-area: ``pt-[calc(0.75rem+env(safe-area-inset-top))]``
+            preserves the existing 0.75rem (py-3) padding AND adds the
+            status-bar inset on top, so the hamburger button + workspace
+            dropdown + status pill aren't covered by the iPhone clock /
+            signal / battery indicators in standalone-PWA mode. */}
+        <header className="flex items-center justify-between px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] bg-[#111820] border-b border-[#1e2738] flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -122,8 +135,11 @@ export function Layout() {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        {/* Page content
+            ``pb-[calc(1rem+env(safe-area-inset-bottom))]`` keeps the
+            scroll target above the iOS home indicator on devices with
+            no physical home button. */}
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <Outlet />
         </main>
       </div>
