@@ -142,10 +142,44 @@ function WebPushCard() {
     return () => { alive = false; };
   }, [subsQ.data?.count]);
 
-  const supported =
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in (typeof window !== 'undefined' ? window : ({} as Window));
+  // Detailed diagnostic — Web Push on iOS is unusually picky:
+  //   * iOS 16.4+ is required.
+  //   * The page must be launched FROM THE HOME-SCREEN ICON (display
+  //     mode "standalone"); a regular Safari tab can't subscribe even
+  //     after Add-to-Home-Screen has run.
+  //   * On iOS, serviceWorker is exposed in tabs but PushManager only
+  //     surfaces in standalone PWAs — that asymmetry is what trips
+  //     most users up.
+  const hasNav = typeof navigator !== 'undefined';
+  const ua = hasNav ? navigator.userAgent : '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const hasServiceWorker = hasNav && 'serviceWorker' in navigator;
+  const hasPushManager =
+    typeof window !== 'undefined' && 'PushManager' in window;
+  const isStandalone =
+    typeof window !== 'undefined' &&
+    (window.matchMedia?.('(display-mode: standalone)').matches ||
+      // iOS Safari < 18 still uses the legacy `navigator.standalone`.
+      (navigator as unknown as { standalone?: boolean }).standalone === true);
+  const supported = hasServiceWorker && hasPushManager;
+
+  // What to tell the user when supported === false.
+  const unsupportedReason = (() => {
+    if (supported) return '';
+    if (isIOS && !isStandalone) {
+      return 'iOS only allows Web Push when the app is launched from the home-screen icon. Tap the AndrusAI icon on your home screen instead of opening this URL in Safari. (If the icon is missing, go through Safari → Share → Add to Home Screen first.)';
+    }
+    if (isIOS && !hasPushManager) {
+      return 'iOS 16.4 or later is required for Web Push. Update iOS in Settings → General → Software Update, then re-add the app to your home screen.';
+    }
+    if (!hasServiceWorker) {
+      return 'This browser has no service-worker support — try a Chromium- or WebKit-based browser.';
+    }
+    if (!hasPushManager) {
+      return 'This browser exposes service workers but not PushManager. Most likely you are in private-browsing mode; switch to a normal window.';
+    }
+    return 'Web Push is unavailable in this context.';
+  })();
 
   const vapid = vapidQ.data?.public_key ?? '';
   const configured = subsQ.data?.configured ?? false;
@@ -206,8 +240,15 @@ function WebPushCard() {
       </div>
 
       {!supported && (
-        <div className="text-xs text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 rounded p-2">
-          This browser doesn't support Web Push. Install the PWA and try again.
+        <div className="text-xs text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/30 rounded p-2 space-y-1">
+          <div className="font-medium">Web Push not available here.</div>
+          <div>{unsupportedReason}</div>
+          <div className="text-[10px] text-[#7a8599] mt-1">
+            diagnostics: {isIOS ? 'iOS' : 'non-iOS'} ·
+            {' '}standalone={isStandalone ? 'yes' : 'no'} ·
+            {' '}serviceWorker={hasServiceWorker ? 'yes' : 'no'} ·
+            {' '}pushManager={hasPushManager ? 'yes' : 'no'}
+          </div>
         </div>
       )}
       {supported && !configured && (
