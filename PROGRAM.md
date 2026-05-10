@@ -3785,3 +3785,190 @@ all 9 firebase listeners heartbeating, no errors in last 24 h.
   can't silently regress to `os.getenv`.
 * **Dashboard route**: `/cp/life-companion` (sidebar entry
   🌿 Life Companion, between Files and Settings).
+
+## 34. 2026-05-10 — Personal-data ingestion (§§5.1, 5.4) + post-ship audit
+
+Closes the two open §5 items from the decade-class audit roadmap and
+walks through the 13-finding correctness + elegance pass that
+followed.
+
+### 34.1 §5.1 Apple Health ingestion
+
+Personal health data parsed from the user's own iPhone Health export
+into typed JSONL streams the daily/evening/weekly briefings can
+reason over.
+
+**Modules** (`app/health/`, ~1,100 LOC):
+
+* `types.py` — typed records (HeartRateRecord, StepsRecord,
+  ActiveEnergyRecord, BodyMassRecord, SleepRecord, WorkoutRecord)
+  with stable field names; HKQuantity identifiers stay at the parser
+  boundary.
+* `import_apple.py` — bounded-memory `iterparse` walker with
+  `root.remove(elem)` after each yield (true bounded memory across
+  decade-scale exports). Apple's `2026-05-09 17:30:00 +0300` strings
+  become ISO-8601 UTC. Zip extraction happens inside a
+  `tempfile.TemporaryDirectory()` context manager — always cleaned
+  up. Failure-isolated `ImportResult` with status fields; never
+  raises.
+* `store.py` — append-only JSONL per kind at
+  `WORKSPACE_ROOT/health/<kind>.jsonl` (env-overridable via
+  `HEALTH_BASE_DIR`). Dedupe on `(start_iso, source_version)` so
+  re-importing the same export adds zero records. Public
+  `resolve_base()` lets sibling modules (idle_job, briefing) derive
+  paths from the same source of truth.
+* `summary.py` — `summarise_window(days=7)` rolls up: mean HR, p10
+  resting HR proxy, total + per-day steps, total + per-day active
+  kcal, latest body mass + window delta, mean sleep hours per night,
+  workout count + distance.
+* `anomaly.py` — recent-vs-baseline z-score (default 3 days vs 30
+  days, |z| ≥ 2.0) for resting HR, steps/day, sleep hours/night.
+  Returns observational `HealthAnomaly` records — never auto-routes.
+* `idle_job.py` — once-per-~24h `health-summary` LIGHT job. Marker
+  file at `<HEALTH_BASE_DIR>/.last_summary_at`. Logs structured
+  output the daily-briefing composer reads.
+
+**Privacy invariants** (load-bearing — health data is high-leverage):
+
+  - **No external API calls.** No ChromaDB embedding, no LLM
+    inference over raw records. The composer in
+    `app/life_companion/daily_briefing.py` only sees summary
+    statistics (mean / total / z-score), never individual records.
+  - **Default-OFF.** `HEALTH_INGESTION_ENABLED=false` until the
+    user explicitly opts in.
+  - **Append-only.** No deletion path; `rm -rf
+    $WORKSPACE_ROOT/health/` is the only reset.
+  - **Idempotent re-import.** Dedupe key absorbs duplicate exports.
+
+**Access path** — there is no programmatic way for a Mac/Linux process
+to read iPhone HealthKit (it's iOS-only, requires an iOS app with
+explicit consent). The only realistic path is **manual export**:
+iPhone Health app → profile picture → "Export All Health Data" →
+AirDrop/iCloud Drive/email to host → drop the resulting
+`apple_health_export.zip` into `workspace/inbox/` (which the §5.4
+inbox watcher routes to the importer automatically). Documented at
+`docs/HEALTH_INGESTION.md`.
+
+### 34.2 §5.4 Multi-modal inbox ingestion
+
+Unified file-drop interface for the personal-agent surface. The user
+drops anything into `workspace/inbox/`; the watcher classifies +
+routes + archives.
+
+**Modules** (`app/inbox/`, ~600 LOC):
+
+* `classifier.py` — extension + magic-bytes classifier. PNG / JPG /
+  HEIC / WEBP / PDF / MP3 / M4A / WAV / OGG / FLAC all checked
+  against per-format magic bytes (per-format byte offsets handled —
+  HEIC and M4A signatures sit at byte 4). Apple Health zip detection
+  peeks the zip index for `apple_health_export/export.xml` (with
+  filename heuristic as fallback). Module-load assertion enforces
+  `_EXTENSION_MAP.values() ⊆ KNOWN_KINDS`.
+* `router.py` — `scan_and_route()` walks the inbox once. SHA-256
+  hash; 5-second quiet window for partial writes; dedup against
+  `.processed/<sha>.json`; classify; dispatch to handler; archive
+  on success at `.archive/<YYYY-MM-DD>/`; failures stay in place
+  with a manifest recording the reason. Three first-class handlers:
+  `_handle_apple_health` (composes with §5.1), `_handle_text` (drops
+  to canonical `WORKSPACE_ROOT/notes/` — listed by
+  `app/api/files_api.py`'s `/cp/files` view), and `_handle_unsupported`
+  for recognised-but-not-yet-routable kinds.
+* `scheduler.py` — `inbox-tick` LIGHT idle job + `_maybe_notify`
+  surfacing. Apple-Health imports + any failures + unrecognised
+  files trigger a single `notify(title, body, url="/cp/files")`
+  push; routine text drops stay silent (push spam is worse than no
+  push).
+
+**Master switch**: `INBOX_INGESTION_ENABLED` (default OFF).
+**Composability**: drop `apple_health_export.zip` → §5.4 routes to
+§5.1 importer → daily briefing picks up next morning. End-to-end
+without CLI invocation.
+
+Documented at `docs/INBOX_INGESTION.md`.
+
+### 34.3 Post-ship audit (4595cfab + 6c57640c review)
+
+Same-day audit produced 13 findings — mix of correctness gaps,
+inelegances, and open loops the user would actually feel. All
+addressed in the same 48-hour window (commit `22138b21`):
+
+**Open loops (highest impact):**
+
+1. `summarise_window()` wired into `daily_briefing.py` morning /
+   evening / weekly composers via new `_gather_health_summary()`.
+   The "❤️ Health (7d)" section appears once data exists; soft-fails
+   to no-section before opt-in so the pre-§5.1 briefing reads
+   unchanged.
+2. `_handle_text` writes to canonical `WORKSPACE_ROOT/notes/` (the
+   path `files_api.py` already lists), not the orphaned
+   `notes/inbox/<YYYY-MM-DD>/` no module read.
+3. `_maybe_notify` in `scheduler.py` fires `notify()` on
+   Apple-Health-import-success, failures, or unrecognised files;
+   silent on routine text drops.
+
+**Correctness:**
+
+4. `_DEFAULT_LAST_RUN` now derives from `store.resolve_base()` —
+   honors `HEALTH_BASE_DIR`.
+5. `tempfile.TemporaryDirectory()` + `_resolve_xml` context manager
+   replaces 8-line manual rmtree.
+6. `iterparse` captures the root and `root.remove`s processed
+   children — true bounded memory.
+7. `source_uuid` → `source_version` (Apple's field is the OS / firmware
+   version string, not a UUID). Renamed across types/store/import/tests.
+
+**Defense-in-depth + polish:**
+
+8. `_MAGIC_SIGNATURES` table covers all 10 binary formats with per-
+   format byte offsets.
+9. Apple Health zip detection by zip-peek (filename heuristic only as
+   fallback for unreadable zips — the importer's own `failed_zip`
+   branch then surfaces the reason).
+10. Module-load `assert set(_EXTENSION_MAP.values()) <= KNOWN_KINDS`
+    blocks typos.
+11. Sleep start-date attribution documented in summary.py +
+    anomaly.py (session-merge layer is a future improvement).
+12. `cur_date - timedelta(days=i)` instead of fromordinal/toordinal.
+13. `_BUILDERS` dispatch table replaces 5-arm if-else;
+    `_check`/`_flag_if_anomalous` closures replace three near-
+    identical metric blocks in `detect_anomalies` (~50% LOC).
+
+**Verification post-fix:** 264 tests pass (health 37 + inbox 32 +
+identity 49 + algorithm_pinning 19 + creativity 31 + governance_*
+56 + change_requests 40). SubIA `n_files=164` and butlin
+`{STRONG=7, ABSENT={AE-2, HOT-1, HOT-4, RPT-1}, PARTIAL=3}`
+unchanged. AE-1 anchor untouched.
+
+### 34.4 Files touched
+
+```
+app/health/{__init__,types,store,import_apple,summary,anomaly,idle_job}.py
+app/inbox/{__init__,classifier,router,scheduler}.py
+app/life_companion/daily_briefing.py     # _gather_health_summary + 3 composer hooks
+app/companion/loop.py                    # health + inbox idle-job registration
+docs/HEALTH_INGESTION.md                  # operator guide (§5.1 access path)
+docs/INBOX_INGESTION.md                   # operator guide (§5.4 watcher)
+
+tests/health/{test_anomaly,test_briefing_integration,test_import_apple,
+              test_store,test_summary}.py
+tests/inbox/{test_classifier,test_router,test_scheduler}.py
+```
+
+### 34.5 What §34 deliberately does NOT do
+
+* **No continuous sync.** No iOS Shortcut hook, no HealthKit-bridge
+  helper. The user runs the manual export; the inbox watcher takes
+  it from there. Out of scope for this initiative — would need a
+  separate iOS-side artefact.
+* **No dashboard for health data.** The data is viewable in Apple's
+  own Health app on the phone; the briefing is the system's
+  consumer. A React panel for raw records would invite tempting
+  privacy violations (filtering, sharing, exporting elsewhere).
+* **No cross-source health (Garmin, Oura, ...).** Only Apple Health
+  today. Adding a new source means one new parser + one new entry
+  in `_EXTENSION_MAP` + one new handler in `HANDLER_REGISTRY` — the
+  primitive supports it; nobody asked for it yet.
+* **No automatic intervention on anomalies.** The anomaly detector
+  flags; the operator decides. This is consistent with the rest of
+  the consciousness-layer discipline — observational, never load-
+  bearing for any decision.

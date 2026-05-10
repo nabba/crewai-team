@@ -484,10 +484,144 @@ include them, `-m "not e2e"` to skip.
 
 ---
 
+## Decade-class primitives (`app/creativity/`, May 2026)
+
+The creative-crew pipeline above is the *active* ideation machine —
+it runs when the user asks for ideas. The `app/creativity/`
+primitives are *passive* infrastructure: small, observational, always-
+on data structures the active pipeline (and any other subsystem) can
+consult. Three pieces.
+
+### Cross-domain analogy index (`analogy_index.py`, §7.1)
+
+Hofstadter-style structural retrieval. The intuition: many genuinely
+new ideas come from noticing that two apparently unrelated systems
+share the same underlying *structure* — feedback loop with delay,
+producer-consumer with bounded buffer, gradient-descent with momentum
+— and porting an insight from one domain to the other.
+
+Data model:
+
+```python
+@dataclass(frozen=True)
+class AnalogyEntry:
+    id: str
+    structure_signature: str       # short label
+    structure_description: str     # 2-3 sentences
+    examples: list[DomainExample]  # ≥1 witness per domain
+    created_iso: str
+
+@dataclass(frozen=True)
+class DomainExample:
+    domain: str          # "biology", "control_theory", ...
+    instance: str        # 1-line specific example
+    why_it_fits: str     # 1-line structural-match note
+```
+
+Storage: append-only JSONL at
+`workspace/creativity/analogy_index.jsonl`. Last-write-wins on
+duplicate `id`.
+
+Retrieval is hash-trick cosine similarity over the concatenated
+signature + description + examples. `query_analogies(text, top_k=5,
+min_similarity=0.05, exclude_domains=…)` returns ranked matches.
+
+Use cases:
+* Brainstorm pipeline: query before committing — "is the framing I'm
+  settling on actually a re-instance of one we've already seen?"
+* Concept-blend operator (below): seed input spaces from analogous
+  domains.
+
+Master switch: `ANALOGY_INDEX_ENABLED` (default ON; pure read/write,
+no LLM, no external call).
+
+### Concept-blend operator (`concept_blend.py`, §7.2)
+
+Fauconnier-Turner four-space conceptual blend. Given two input
+concepts, the operator produces a typed `BlendResult` with input
+spaces, generic structure (what the inputs share), blend label, blend
+description, selected projections from each input, emergent structure
+(what's new in the blend, not in inputs), and follow-on questions.
+
+The operator takes a `llm_call(system, user) → str` injectable so
+it's testable without an LLM. Output prompt forces strict JSON; the
+parser tolerates code-fence wrappers and sets `parse_failed=True`
+with a `parse_error` field rather than raising when the LLM emits
+malformed JSON.
+
+```python
+result = blend_concepts(
+    "wikipedia",   # input_a
+    "wetland",     # input_b — Hofstadter's classic
+    llm_call=my_llm_call,
+)
+# result.blend_label = "Wikiland"
+# result.emergent_structure = ["self-purifying via edit war ecology", ...]
+```
+
+Master switch: `CONCEPT_BLEND_ENABLED` (default ON).
+
+### Brainstorm-idea novelty wrapper (`novelty_wrap.py`, §7.4)
+
+Wraps every brainstorm idea with a structural-novelty assessment.
+Distinguishes "really new" (high structure-distance from prior ideas)
+from "lexically rephrased" (low structure-distance, high lexical
+distance — the failure mode the active pipeline's M3 mechanism is
+designed to prevent).
+
+Returns a `NoveltyVerdict` with a numeric score + reasoning the
+brainstorm session can show alongside the idea. Composes with the
+analogy index — a "novel" idea that turns out to match a known
+structure-signature gets flagged.
+
+### How the three compose
+
+```
+brainstorm idea
+  │
+  ↓
+novelty_wrap.assess_brainstorm_idea(idea)
+  │
+  ├─→ analogy_index.query_analogies(idea.statement)
+  │     ↓
+  │   "actually we've seen this structure 3× before in {biology,
+  │    economics, fluid dynamics}; you might be re-discovering
+  │    Liebig's law"
+  │
+  └─→ concept_blend.blend_concepts(idea.input_a, idea.input_b)
+        ↓
+      "the blend that produced this idea has 4 emergent properties
+       neither input has alone — that's what makes it novel"
+
+→ NoveltyVerdict(score=0.7, reasoning="...")
+```
+
+All three primitives are observational. They surface signals; they
+never overrule the active pipeline or the operator.
+
+### Files
+
+```
+app/creativity/__init__.py        public API
+app/creativity/analogy_index.py    §7.1 Hofstadter-style retrieval
+app/creativity/concept_blend.py    §7.2 Fauconnier-Turner blend
+app/creativity/novelty_wrap.py     §7.4 brainstorm novelty assessment
+
+tests/creativity/test_analogy_index.py    11 tests
+tests/creativity/test_concept_blend.py     9 tests
+tests/creativity/test_novelty_wrap.py     12 tests
+```
+
+PROGRAM.md §32.3 covers the ship.
+
+---
+
 ## See also
 
 - `docs/ARCHITECTURE.md` — overall system architecture
-- `app/crews/creative_crew.py` — the orchestrator (start here for code reading)
+- `app/crews/creative_crew.py` — the active-pipeline orchestrator
+- `app/creativity/` — passive primitives (analogy / blend / novelty)
 - `app/llm_sampling.py` — sampling parameter details
 - `app/personality/creativity_scoring.py` — Torrance scoring details
-- `tests/test_creativity.py` — examples of how every component is exercised
+- `tests/test_creativity.py` — active-pipeline tests
+- `tests/creativity/` — passive primitives tests
