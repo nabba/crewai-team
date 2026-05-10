@@ -67,6 +67,7 @@ from app.life_companion._common import (
     audit_event,
     background_enabled,
     feature_enabled,
+    get_tunable,
     read_state_json,
     send_signal_alert,
     user_email_address,
@@ -103,14 +104,14 @@ _BULK_LABELS_DROP = frozenset((
 
 def _top_k() -> int:
     try:
-        return int(os.getenv("LIFE_COMPANION_ACT_NOW_TOP_K", str(_DEFAULT_TOP_K)))
+        return int(get_tunable("LIFE_COMPANION_ACT_NOW_TOP_K", str(_DEFAULT_TOP_K)))
     except ValueError:
         return _DEFAULT_TOP_K
 
 
 def _lookback_hours() -> int:
     try:
-        return int(os.getenv(
+        return int(get_tunable(
             "LIFE_COMPANION_ACT_NOW_LOOKBACK_HOURS",
             str(_DEFAULT_LOOKBACK_HOURS),
         ))
@@ -120,7 +121,7 @@ def _lookback_hours() -> int:
 
 def _max_candidates() -> int:
     try:
-        return int(os.getenv(
+        return int(get_tunable(
             "LIFE_COMPANION_ACT_NOW_MAX_CANDIDATES",
             str(_DEFAULT_MAX_CANDIDATES),
         ))
@@ -130,7 +131,7 @@ def _max_candidates() -> int:
 
 def _body_chars() -> int:
     try:
-        return int(os.getenv(
+        return int(get_tunable(
             "LIFE_COMPANION_ACT_NOW_BODY_CHARS",
             str(_DEFAULT_BODY_CHARS),
         ))

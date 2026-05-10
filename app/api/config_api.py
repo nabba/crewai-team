@@ -534,3 +534,258 @@ async def creative_run_endpoint(request: Request):
     except Exception as exc:
         logger.exception("creative_run failed")
         raise HTTPException(status_code=500, detail=f"Creative run failed: {exc}")
+
+
+# ── Life-companion control panel (2026-05-10) ────────────────────────
+# GET returns the registry merged with current overrides — one
+# call gives the React page everything it needs to render.  POST
+# accepts {"feature_key", "enabled"?, "tunables"?}.  All bearer-
+# auth gated and rate-limited like the other config endpoints.
+
+
+@router.get("/life_companion")
+async def get_life_companion_state_endpoint():
+    """Return registry + current per-feature override state.
+
+    Shape::
+
+        {
+          "master_enabled": bool,
+          "features": [
+            {
+              "key": "act_now_digest",
+              "name": "Act-now digest (LLM-graded)",
+              "description": "...",
+              "feature_env_key": "LIFE_COMPANION_ACT_NOW_DIGEST_ENABLED",
+              "job_name": "life-companion-act-now-digest",
+              "enabled": true,           # effective (override OR env)
+              "enabled_source": "override"|"env"|"default",
+              "tunables": [
+                {
+                  "env_key": "LIFE_COMPANION_ACT_NOW_TOP_K",
+                  "label": "Top K", "description": "...",
+                  "type": "int", "default": 7,
+                  "min": 1, "max": 20, "options": [],
+                  "current_value": "7",       # effective value
+                  "value_source": "default"|"env"|"override"
+                }
+              ]
+            }
+          ]
+        }
+
+    No auth required — read-only.  Mutations go through POST below.
+    """
+    import os
+    from app.life_companion import _common as lc_common
+    from app.life_companion.feature_registry import list_features
+    from app.runtime_settings import life_companion_get_overrides
+
+    overrides = life_companion_get_overrides()
+    features_out: list[dict] = []
+
+    for feat in list_features():
+        # Resolve effective enabled state + which layer wins.
+        feat_override = overrides.get(feat.key) or {}
+        override_enabled = feat_override.get("enabled")
+        env_value = os.getenv(feat.feature_env_key)
+
+        if override_enabled is not None:
+            enabled = bool(override_enabled)
+            enabled_source = "override"
+        elif env_value is not None:
+            enabled = env_value.lower() in ("true", "1", "yes")
+            enabled_source = "env"
+        else:
+            enabled = feat.default_enabled
+            enabled_source = "default"
+
+        # Resolve each tunable's effective value + source.
+        override_tuns = feat_override.get("tunables") or {}
+        tuns_out: list[dict] = []
+        for tun in feat.tunables:
+            ovr_val = override_tuns.get(tun.env_key)
+            env_val = os.getenv(tun.env_key)
+            if ovr_val is not None and ovr_val != "":
+                current = str(ovr_val)
+                source = "override"
+            elif env_val is not None and env_val != "":
+                current = str(env_val)
+                source = "env"
+            else:
+                current = str(tun.default)
+                source = "default"
+            tuns_out.append({
+                "env_key": tun.env_key,
+                "label": tun.label,
+                "description": tun.description,
+                "type": tun.type,
+                "default": tun.default,
+                "min": tun.min,
+                "max": tun.max,
+                "options": list(tun.options),
+                "current_value": current,
+                "value_source": source,
+            })
+
+        features_out.append({
+            "key": feat.key,
+            "name": feat.name,
+            "description": feat.description,
+            "feature_env_key": feat.feature_env_key,
+            "job_name": feat.job_name,
+            "enabled": enabled,
+            "enabled_source": enabled_source,
+            "tunables": tuns_out,
+        })
+
+    return {
+        "master_enabled": lc_common._master_enabled(),
+        "features": features_out,
+    }
+
+
+@router.post("/life_companion")
+async def set_life_companion_feature_endpoint(request: Request):
+    """Update one life-companion feature's enabled state and/or
+    tunables.
+
+    Body::
+
+        {
+          "feature_key": "act_now_digest",
+          "enabled": true,                  # optional
+          "tunables": {                     # optional
+            "LIFE_COMPANION_ACT_NOW_TOP_K": "5"
+          }
+        }
+
+    Pass ``"enabled": null`` to clear the toggle override (revert
+    to env default).  Pass ``"tunables": {"<KEY>": ""}`` to clear
+    a single tunable override.
+
+    Bearer-auth gated; rate-limited; audited.
+    """
+    if not verify_gateway_secret(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _config_rate_check():
+        raise HTTPException(
+            status_code=429,
+            detail="Too many config changes. Try again later.",
+        )
+    payload = await request.json()
+    feature_key = (payload.get("feature_key") or "").strip()
+    if not feature_key:
+        raise HTTPException(status_code=400, detail="Missing 'feature_key'")
+
+    from app.life_companion.feature_registry import find_tunable, get_feature
+    feat = get_feature(feature_key)
+    if feat is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown feature_key: {feature_key!r}",
+        )
+
+    # Validate tunable keys belong to THIS feature (don't let one
+    # feature's overrides leak into another's).
+    raw_tunables = payload.get("tunables")
+    validated_tunables: dict | None = None
+    if raw_tunables is not None:
+        if not isinstance(raw_tunables, dict):
+            raise HTTPException(
+                status_code=400, detail="'tunables' must be an object",
+            )
+        validated_tunables = {}
+        valid_keys = {t.env_key for t in feat.tunables}
+        for k, v in raw_tunables.items():
+            if k not in valid_keys:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tunable {k!r} not declared for feature {feature_key!r}",
+                )
+            # Range-validate numeric tunables (UI should already do
+            # this; backend is the authoritative gate).
+            tun_def = next(t for t in feat.tunables if t.env_key == k)
+            if v not in (None, "") and tun_def.type in ("int", "minutes", "hours", "secs"):
+                try:
+                    iv = int(v)
+                except (ValueError, TypeError):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{k} must be an integer",
+                    )
+                if tun_def.min is not None and iv < tun_def.min:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{k} below min ({tun_def.min})",
+                    )
+                if tun_def.max is not None and iv > tun_def.max:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{k} above max ({tun_def.max})",
+                    )
+            elif v not in (None, "") and tun_def.type == "float":
+                try:
+                    fv = float(v)
+                except (ValueError, TypeError):
+                    raise HTTPException(
+                        status_code=400, detail=f"{k} must be a number",
+                    )
+                if tun_def.min is not None and fv < tun_def.min:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{k} below min ({tun_def.min})",
+                    )
+                if tun_def.max is not None and fv > tun_def.max:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{k} above max ({tun_def.max})",
+                    )
+            validated_tunables[k] = v
+
+    # Three "enabled" paths the API supports:
+    #   * key absent     — leave toggle untouched
+    #   * "enabled": null — clear the override (revert to env)
+    #   * "enabled": bool — set the override
+    # Map to the runtime-settings function's kwargs explicitly.
+    from app.runtime_settings import life_companion_set_feature_override
+
+    if "enabled" not in payload:
+        overrides = life_companion_set_feature_override(
+            feature_key, tunables=validated_tunables,
+        )
+        enabled_for_audit = "leave"
+    else:
+        enabled_raw = payload["enabled"]
+        # ``None`` is a valid signal: clear the override.
+        if enabled_raw is None:
+            overrides = life_companion_set_feature_override(
+                feature_key, enabled=None, tunables=validated_tunables,
+            )
+        else:
+            overrides = life_companion_set_feature_override(
+                feature_key,
+                enabled=bool(enabled_raw),
+                tunables=validated_tunables,
+            )
+        enabled_for_audit = enabled_raw
+
+    # Audit so the operator can see who flipped what.
+    try:
+        import json as _json
+        from app.audit import log_security_event
+        log_security_event(
+            "life_companion_settings_change",
+            _json.dumps({
+                "feature_key": feature_key,
+                "enabled": enabled_for_audit,
+                "tunable_keys_changed": (
+                    list(validated_tunables.keys())
+                    if validated_tunables else []
+                ),
+            }),
+        )
+    except Exception:
+        logger.debug("life_companion audit log failed", exc_info=True)
+
+    return {"status": "ok", "overrides": overrides}

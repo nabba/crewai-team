@@ -74,6 +74,7 @@ export const keys = {
   notesTags: (root: string) => ['notes', 'tags', root] as const,
   runtimeSettings: ['runtime-settings'] as const,
   backgroundTasks: ['background-tasks'] as const,
+  lifeCompanion: ['life-companion'] as const,
   chatMessages: (sender: string, limit: number) =>
     ['chat', 'messages', sender, limit] as const,
   signalCommands: ['signal-commands'] as const,
@@ -516,6 +517,69 @@ export function useUpdateRuntimeSettings() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.runtimeSettings }),
+  });
+}
+
+// ── Life-companion control panel ──────────────────────────────────────────
+//
+// One feature card per life-companion job. Each has a master on/off
+// toggle plus a list of env-var-shaped tunables (int / float / str /
+// minutes / hours).  Mutations are bearer-auth gated server-side.
+
+export type LifeCompanionTunableType =
+  | 'int' | 'float' | 'str' | 'bool' | 'secs' | 'minutes' | 'hours';
+
+export interface LifeCompanionTunable {
+  env_key: string;
+  label: string;
+  description: string;
+  type: LifeCompanionTunableType;
+  default: number | string | boolean;
+  min: number | null;
+  max: number | null;
+  options: string[];
+  current_value: string;
+  value_source: 'override' | 'env' | 'default';
+}
+
+export interface LifeCompanionFeature {
+  key: string;
+  name: string;
+  description: string;
+  feature_env_key: string;
+  job_name: string;
+  enabled: boolean;
+  enabled_source: 'override' | 'env' | 'default';
+  tunables: LifeCompanionTunable[];
+}
+
+export interface LifeCompanionState {
+  master_enabled: boolean;
+  features: LifeCompanionFeature[];
+}
+
+export interface LifeCompanionUpdate {
+  feature_key: string;
+  enabled?: boolean | null;
+  tunables?: Record<string, string>;
+}
+
+export function useLifeCompanionQuery() {
+  return useQuery({
+    queryKey: keys.lifeCompanion,
+    queryFn: () => api<LifeCompanionState>(endpoints.lifeCompanion()),
+  });
+}
+
+export function useUpdateLifeCompanionFeature() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LifeCompanionUpdate) =>
+      api<{ status: string; overrides: Record<string, unknown> }>(
+        endpoints.lifeCompanion(),
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.lifeCompanion }),
   });
 }
 
