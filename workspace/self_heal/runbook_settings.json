@@ -2,8 +2,8 @@
   "runbooks": {
     "db_pool_reset": {
       "enabled": true,
-      "min_recurrence": 5,
-      "_comment": "Auto-resets the control_plane connection pool on exhaustion. Rate-limited 1/30min internally. Dominant production error (~51% of volume); enabling this is the biggest single win."
+      "min_recurrence": 1,
+      "_comment": "Auto-resets the control_plane connection pool on exhaustion. Rate-limited 1/30min internally + recent-success-rate gate + concurrency cap. Pool exhaustion at instance #1 is already actionable; previous threshold of 5 meant the runbook never triggered in normal operation. Dominant production error (~51% of volume) — Q1 2026 unblocked it."
     },
     "apscheduler_overrun_alert": {
       "enabled": true,

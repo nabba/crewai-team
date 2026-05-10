@@ -4454,3 +4454,244 @@ No changes to TIER_IMMUTABLE files. No agent-modifiable code paths
 touched. All changes additive/correctional — no behaviour change for
 running gateways (the explicit-import is a no-op for the loaded
 process).
+
+
+## 38. 2026-05-10 — Closing the observational-proposal loop + Q1/Q2 self-heal
+
+Body of work spanning a single multi-session ultrathink push: closing
+the gap from "system noticed something" to "system did something
+about it." Five threads, each shipped end-to-end with tests + boot
+anchor + production verification.
+
+### 38.1 Proposal bridge — unify three observational paths under one CR-emitting helper
+
+`capability_gap_analyzer`, `library_radar/proposer`, and
+`paper_pipeline` each generated markdown drafts that dead-ended at
+`docs/proposed_*/<sig>.md` waiting for an operator to file CRs by
+hand. The closure was unreliable: drafts piled up, the operator
+never saw them, the loop never closed. New
+[`app/proposal_bridge/`](app/proposal_bridge/) package — `store.py`
+(idempotent staging with body-hash dedup) + `promoter.py` (24h
+daemon that promotes stable proposals to CRs after a 7d cooldown,
+rate-limited to 3/pass) — provides the single staging surface all
+three sources now feed.
+
+Lifecycle: `STAGED → CR_FILED → APPLIED|REJECTED|EXPIRED`. CR
+validation rejection terminates as `REJECTED` (mirrors operator
+rejection so the producer's signature dedup honours it) — earlier
+draft used `EXPIRED` which created a producer/promoter loop on
+permanent failures. Terminal proposals self-clean after a 14-day
+audit retention window. Per-pass promotion publishes weighted
+outcomes to the SubIA Global Workspace
+(`app.workspace_publish.publish_to_workspace`) — operator decisions
+at salience 0.30–0.35 (above the 0.3 ignition threshold), promotions
+0.25, housekeeping 0.02–0.05.
+
+19 tests in [`tests/proposal_bridge/`](tests/proposal_bridge/),
+all passing. Producers' existing tests updated to verify the bridge
+path instead of direct disk writes.
+
+### 38.2 Wiki-index reconciler — three-layer root-cause fix
+
+The reconciler had filed 335 CRs in a month, ALL bouncing with the
+same `validation_failed` reason: `wiki/` not in the validator's
+`_ALLOWED_ROOT_PREFIXES`. Deeper analysis revealed a SECOND
+underlying bug: `_compute_master_index_content` writes today's date
+into the body line `Total pages: N | Last updated: YYYY-MM-DD`, but
+`_normalize_for_hashing` only stripped the frontmatter `updated_at:`
+field — so canonical (computed with pin date 2000-01-01) hashed
+differently from live (today's date) on every single run, producing
+false-positive drift detections.
+
+Fixed in three independent layers:
+
+  1. [`app/change_requests/validator.py`](app/change_requests/validator.py) — added `wiki/` to
+     `_ALLOWED_ROOT_PREFIXES` (TIER_IMMUTABLE check still applies).
+  2. [`app/memory/wiki_index_reconciler.py`](app/memory/wiki_index_reconciler.py) — `_normalize_for_hashing`
+     now strips both frontmatter AND body date lines.
+  3. [`app/memory/wiki_index_reconciler.py`](app/memory/wiki_index_reconciler.py) — defensive
+     `_existing_cr_blocks_filing` skips new filings when a
+     non-terminal CR already exists for `wiki/index.md`, OR when a
+     recent (≤7d) rejected CR has identical content.
+
+355 stuck CRs archived to
+`workspace/change_requests/archive/2026-05-10_wiki_validation_failed/`
+with `MANIFEST.md`. Active queue post-archive: 2 CRs (1 legitimate
+auditor_bridge applied + 1 legitimate wiki drift awaiting operator).
+
+### 38.3 Auto-apply CR infrastructure (future-facing capability)
+
+Shipped the `auto_apply_risk_class` validator + lifecycle as
+infrastructure with empty allowlists — the capability is dormant
+until an operator deliberately opts in. New `RiskClass` enum,
+`DecisionSource.SELF_HEAL_AUTO_APPLY`, two new ChangeRequest fields
+(`risk_class`, `origin_pattern_signature`). `validate_auto_apply()`
+enforces standard validation + forbidden prefixes (memory / souls /
+governance / migrations / deploy / host_bridge) + requestor
+allowlist + path allowlist + 20-line cap + additive-only.
+`auto_approve()` skips operator gate after enforcing rate limits
+(3/pattern/day, 10 global/day), publishes loud Signal alert,
+applies via existing `apply_change`, registers with the auto-revert
+watcher.
+
+[`app/change_requests/auto_revert.py`](app/change_requests/auto_revert.py) — 60s-poll daemon with
+30-min watch window. Any recurrence (≥1 increase from the apply-time
+baseline) of `origin_pattern_signature` within the window triggers
+`rollback_change`. Outside the window, the watch entry unregisters
+(success).
+
+After deep analysis, the allowlists ship EMPTY in production. None
+of the candidate patterns considered (cost_mode_inject,
+embed_misroute_block, numeric_overflow_widen,
+regression_test_generator, etc.) cleanly satisfy the five design
+principles required for safe auto-apply (pattern-signature
+isomorphism, single-site fix, sub-30-min recurrence cadence, no
+downstream import dependencies, inverse-diff sufficient). Most
+"system fixes itself" cases fit better as runbook auto-actions
+(§38.5) than as auto-apply CRs.
+
+[`docs/AUTO_APPLY.md`](docs/AUTO_APPLY.md) is the operator handover —
+4-step activation procedure, P1–P5 design principles, future-shape
+templates. 30 tests in [`tests/test_change_requests_auto_apply.py`](tests/test_change_requests_auto_apply.py).
+
+### 38.4 Q1 — Unclog the CR pipeline (5 items)
+
+| # | Item | Result |
+|---|---|---|
+| 1 | `db_pool_reset.min_recurrence` 5 → 1 | one-line config flip in [`workspace/self_heal/runbook_settings.json`](workspace/self_heal/runbook_settings.json). Pool exhaustion at instance #1 is already actionable; threshold of 5 meant runbook never triggered. RateLimiter (1800s) + success-rate gate (≥50%) + concurrency cap remain as safety nets. |
+| 2 | Auto-apply infrastructure | §38.3 above. |
+| 3 | Triage 336 stuck CRs | §38.2 archived 355. |
+| 4 | `TIER3_AMENDMENT_ENABLED=true` + producer wiring | Two-part fix: flag flip in [`workspace/runtime_settings.json`](workspace/runtime_settings.json) + new agent tool [`app/tools/request_tier3_amendment.py`](app/tools/request_tier3_amendment.py) (CrewAI BaseTool wrapping `propose_amendment` with operator-friendly error messages and Signal alert) + new daemon [`app/governance_notifier.py`](app/governance_notifier.py) (sits OUTSIDE TIER_IMMUTABLE `governance_amendment/`, polls every 6h, detects state transitions, sends per-state Signal alerts + GW publish, opportunistically calls `advance_cooldown`/`advance_monitoring` on time-based gates). |
+| 5 | Goodhart Advisory→Enforcing prep | New observability tool [`app/observability/goodhart_advisory_report.py`](app/observability/goodhart_advisory_report.py) — CLI + library that aggregates `goodhart_guard`'s signal log into "would have blocked" projections, severity counts, sample descriptions, three-mode-aware operator recommendation. Plus ledger emission: `runtime_settings.set_goodhart_hard_gate_*` now emits `governance_ratchet` continuity-ledger events on actual flips with `effective_mode` label, so the annual reflection drift summary picks up Goodhart-gate changes. |
+
+13 tests in [`tests/test_q1_unclog.py`](tests/test_q1_unclog.py).
+Pre-existing latent bug discovered + fixed during verification:
+`capability_gap_analyzer` and `library_radar` had eager-start
+patterns at module import but nothing in the boot chain ever
+imported them — their daemons never ran in production. Anchored all
+three (proposal_bridge, capability_gap_analyzer, library_radar) via
+[`app/healing/__init__.py`](app/healing/__init__.py) (the established
+mutable eager-wiring hub, already triggered by `main.py:96`).
+
+### 38.5 Q2 — Three runbook auto-actions
+
+After verifying the originally-proposed three didn't fit (cost_mode
+is already in `app.config.Settings`; codebase has no alembic;
+embed-misroute needed selector patch the original proposal didn't
+account for), shipped a corrected trio that genuinely fits:
+
+  1. **`disk_quota_immediate_retention`** —
+     [`app/healing/monitors/disk_quota.py`](app/healing/monitors/disk_quota.py) patched to invoke
+     `retention.run_chromadb()` + `run_worktrees()` +
+     `run_attachments()` immediately when free space drops below
+     WARN, instead of waiting days for those runners' own cadence.
+     Per-target failure isolation, audit-event with outcomes,
+     master switch `HEALING_DISK_AUTO_RETENTION_ENABLED` (default
+     true).
+
+  2. **`model_capability_runtime_block`** — extends the existing
+     [`model_capability.py`](app/healing/handlers/model_capability.py) handlers (B + H) to write
+     blocked models to two new runtime_settings lists
+     (`chat_blocked_models`, `no_function_calling_models`) via new
+     idempotent setters. New Step 5.5 in
+     [`llm_selector.py:select_model`](app/llm_selector.py) consults
+     `chat_blocked_models` AT DEFAULT-TIER (the existing breaker
+     check was only in the pareto fallback path; embed-misroute
+     hits the primary path). Fail-open on read failure. Addresses
+     ~6,758/mo errors (6,606 embed-misroute + 152 no-function-calling).
+
+  3. **`stuck_idle_diagnostic_dump`** —
+     [`app/healing/monitors/idle_cooldown.py`](app/healing/monitors/idle_cooldown.py) patched to write
+     `workspace/self_heal/stuck_idle_jobs.json` whenever any job is
+     in deep cooldown. Snapshot includes name, remaining cooldown,
+     failure count, diagnosis hint (`chronic` for >15 failures vs
+     `long_cooldown`), operator-action recommendation. Forensics-
+     only — never clears cooldowns (pinned by test
+     `test_does_not_clear_any_cooldown`). Auto-clearing would
+     defeat the cooldown's purpose (avoid storming a known-bad
+     upstream).
+
+18 tests in [`tests/test_q2_auto_actions.py`](tests/test_q2_auto_actions.py).
+
+### 38.6 SubIA / continuity-ledger / KB integration map
+
+| Subsystem | Wiring added |
+|---|---|
+| SubIA Global Workspace (`workspace_publish`) | proposal_bridge per-pass outcome (weighted by transition severity); auto_apply CR transitions; auto-revert events; Tier-3 amendment state changes; Goodhart mode flips |
+| Identity continuity ledger | Tier-3 amendments already emitted on `mark_applied` (existing). Goodhart-gate mode flips now emit `governance_ratchet` events with `effective_mode` label (NEW). Auto-applied CRs touching `app/souls/*` would emit `soul_edit` (existing path; never fires today because forbidden-prefixes block souls under auto_apply) |
+| Phase-5 consciousness gate | No new wiring — governance changes are downstream of the gate (audit-only) |
+| Knowledge bases (4) | NONE touched — all three Q2 auto-actions are runtime config / filesystem only. Auto_apply forbidden-prefixes also categorically refuse `app/memory/` |
+
+### 38.7 Test results
+
+- **112 tests pass** (proposal_bridge 19 + capability_gap 15 +
+  library_radar 14 + change_requests structural 24 + auto_apply 30 +
+  Q1+Q2 33 + wiki validator 1)
+- **24 skipped with reason** (gateway-only deps; runs in CI/docker)
+- **0 regressions** introduced across all touched modules
+- **Production verified**: 9 daemons run at boot
+  (inquiry-scheduler, healing-monitors, healing-auditor-bridge,
+  healing-watchdog, capability-gap-analyzer, library-radar,
+  proposal-bridge.promoter, change-requests-auto-revert,
+  governance-notifier — three of which were latent-dead before
+  this work)
+
+### 38.8 Files touched
+
+```
+NEW code:
+crewai-team/app/proposal_bridge/__init__.py
+crewai-team/app/proposal_bridge/store.py
+crewai-team/app/proposal_bridge/promoter.py
+crewai-team/app/change_requests/auto_revert.py
+crewai-team/app/governance_notifier.py
+crewai-team/app/observability/goodhart_advisory_report.py
+crewai-team/app/tools/request_tier3_amendment.py
+
+MODIFIED code:
+crewai-team/app/change_requests/__init__.py     # exports + RiskClass
+crewai-team/app/change_requests/lifecycle.py    # auto_approve + risk_class param
+crewai-team/app/change_requests/models.py       # RiskClass enum + new fields
+crewai-team/app/change_requests/validator.py    # wiki/ allowed + validate_auto_apply
+crewai-team/app/episteme/paper_pipeline.py      # bridge stage()
+crewai-team/app/healing/__init__.py             # eager-wire 4 daemons
+crewai-team/app/healing/handlers/model_capability.py  # write to runtime blocklists
+crewai-team/app/healing/monitors/disk_quota.py  # auto-retention on WARN/CRIT
+crewai-team/app/healing/monitors/idle_cooldown.py     # forensic snapshot
+crewai-team/app/library_radar/proposer.py       # bridge stage()
+crewai-team/app/llm_selector.py                 # Step 5.5 chat_blocked_models
+crewai-team/app/memory/wiki_index_reconciler.py # body-date norm + dedup
+crewai-team/app/runtime_settings.py             # blocklists + Goodhart ledger
+crewai-team/app/self_improvement/capability_gap_analyzer.py  # bridge stage()
+
+NEW tests:
+crewai-team/tests/proposal_bridge/__init__.py
+crewai-team/tests/proposal_bridge/test_proposal_bridge.py
+crewai-team/tests/test_change_requests_auto_apply.py
+crewai-team/tests/test_q1_unclog.py
+crewai-team/tests/test_q2_auto_actions.py
+
+UPDATED tests:
+crewai-team/tests/healing/test_paper_pipeline.py
+crewai-team/tests/library_radar/test_proposer.py
+crewai-team/tests/self_improvement/test_capability_gap_analyzer.py
+crewai-team/tests/test_wiki_index_reconciler.py
+
+Operational state:
+crewai-team/workspace/runtime_settings.json     # tier3_amendment_enabled=true
+crewai-team/workspace/self_heal/runbook_settings.json   # db_pool min_recur=1
+crewai-team/workspace/change_requests/archive/2026-05-10_wiki_validation_failed/
+                                                # 355 archived CRs + MANIFEST.md
+
+Docs:
+crewai-team/docs/AUTO_APPLY.md                  # NEW operator handover
+crewai-team/docs/SELF_HEAL_V3.md                # this entry
+CLAUDE.md                                       # new subsystem references
+crewai-team/PROGRAM.md                          # this section
+```
+
+No TIER_IMMUTABLE files modified. The auto_apply infrastructure
+ships dormant by deliberate design — the empty allowlists are the
+correct safety state until a clean candidate consumer matures
+(see [`docs/AUTO_APPLY.md`](docs/AUTO_APPLY.md) for the activation
+procedure).

@@ -36,6 +36,13 @@ _MAX_CONTENT_BYTES = 1_000_000  # 1 MB
 # Roots inside the repo where change requests are allowed. Anything
 # outside this set is rejected as "outside repo." Add new roots
 # here when needed (e.g. a future top-level dir).
+#
+# ``wiki/`` is included because the wiki-index reconciler files CRs
+# against ``wiki/index.md`` to land canonical-rebuild artefacts as
+# permanent paper trails (it does NOT modify wiki content directly —
+# the WikiWriteTool path remains the only writer for wiki pages).
+# The TIER_IMMUTABLE check below still applies, so any wiki path
+# placed in TIER_IMMUTABLE is still refused.
 _ALLOWED_ROOT_PREFIXES: tuple[str, ...] = (
     "app/",
     "tests/",
@@ -44,6 +51,7 @@ _ALLOWED_ROOT_PREFIXES: tuple[str, ...] = (
     "deploy/",
     "scripts/",
     "host_bridge/",
+    "wiki/",
 )
 
 
@@ -169,3 +177,165 @@ def is_protected(path: str) -> bool:
     """Quick yes/no for "is this path TIER_IMMUTABLE?". Used by the
     React UI to disable approve/override buttons for protected paths."""
     return path in _load_tier_immutable()
+
+
+# ── Auto-apply validation ────────────────────────────────────────────
+#
+# AUTO_APPLY-class change requests bypass the operator gate. The
+# safety profile is intentionally narrow:
+#
+#   * Caller must be in the allowlist below — empty by default so
+#     the capability is dormant until the operator explicitly opts a
+#     specific runbook handler in.
+#   * Patch is additive-only (no deleted lines from old_content).
+#   * Net line delta ≤ ``_AUTO_APPLY_LINE_CAP``.
+#   * Path is in the auto-apply path allowlist (also empty by
+#     default — same dormant-by-default discipline).
+#   * Path is NOT under any forbidden prefix (memory, KB, migrations,
+#     souls, governance) — these are categorically refused even for
+#     allowlisted callers because the consequences exceed the
+#     auto-revert watcher's blast-radius guarantee.
+#
+# Bypassing the auto-apply criteria does NOT reject the CR — the
+# ``create_request`` lifecycle gracefully downgrades the risk_class
+# to STANDARD, sending the CR through the normal operator gate.
+
+# Allowed callers (requestor agent_id). Empty by default.
+_AUTO_APPLY_ALLOWED_REQUESTORS: frozenset[str] = frozenset()
+
+# Allowed target paths. Exact match OR prefix match (with trailing
+# slash). Empty by default.
+_AUTO_APPLY_ALLOWED_PATHS: tuple[str, ...] = ()
+
+# Categorically forbidden prefixes — not even allowlisted callers
+# can auto-apply changes here.
+_AUTO_APPLY_FORBIDDEN_PREFIXES: tuple[str, ...] = (
+    "app/memory/",      # embedding-dim invariants
+    "app/souls/",       # identity-shaping artefacts
+    "wiki/governance/", # constitution / governance docs
+    "migrations/",      # schema migrations need eyeballs
+    "deploy/",          # cluster topology
+    "host_bridge/",     # the bridge that lets us write at all
+)
+
+# Net additional lines beyond the original. Net delta means:
+#   added_lines - removed_lines
+# We cap at 20 — anything larger needs operator review.
+_AUTO_APPLY_LINE_CAP = 20
+
+
+def _net_line_delta(old_content: str, new_content: str) -> tuple[int, int]:
+    """Return (added_count, removed_count) line counts.
+
+    Uses a minimal diff: lines present in new but not old count as
+    added; lines present in old but not new count as removed. This is
+    not a perfect diff (block moves register as both add and remove)
+    — that's acceptable because moves indicate structural change that
+    the operator gate should review.
+    """
+    old_lines = old_content.splitlines() if old_content else []
+    new_lines = new_content.splitlines() if new_content else []
+    if old_lines == new_lines:
+        return 0, 0
+    # Use difflib for accurate line accounting that handles reorderings.
+    import difflib
+    diff = list(difflib.unified_diff(old_lines, new_lines, lineterm=""))
+    added = sum(
+        1 for line in diff
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    removed = sum(
+        1 for line in diff
+        if line.startswith("-") and not line.startswith("---")
+    )
+    return added, removed
+
+
+def _matches_auto_apply_path(path: str) -> bool:
+    """Whitelist check — caller path must match an allowed entry exactly
+    OR be under an allowed prefix. Empty allowlist ⇒ no match."""
+    if not _AUTO_APPLY_ALLOWED_PATHS:
+        return False
+    for allowed in _AUTO_APPLY_ALLOWED_PATHS:
+        if path == allowed:
+            return True
+        if allowed.endswith("/") and path.startswith(allowed):
+            return True
+    return False
+
+
+def validate_auto_apply(
+    *,
+    path: str,
+    new_content: str,
+    old_content: str,
+    requestor: str,
+) -> ValidationResult:
+    """Strict validator for AUTO_APPLY-class change requests.
+
+    Runs the standard ``validate(...)`` first — auto-apply NEVER
+    relaxes any standard check. Then layers on the auto-apply
+    constraints. Returns the first failure or success.
+    """
+    # 1. Standard validation must pass.
+    standard = validate(path=path, new_content=new_content)
+    if not standard.ok:
+        return standard
+
+    # 2. Forbidden-prefix check (categorical refusal).
+    for forbidden in _AUTO_APPLY_FORBIDDEN_PREFIXES:
+        if path.startswith(forbidden):
+            return ValidationResult(
+                ok=False,
+                reason=(
+                    f"path {path!r} is under {forbidden!r} — auto-apply "
+                    f"is categorically forbidden for this prefix; route "
+                    f"through the operator gate instead"
+                ),
+            )
+
+    # 3. Requestor allowlist.
+    if requestor not in _AUTO_APPLY_ALLOWED_REQUESTORS:
+        return ValidationResult(
+            ok=False,
+            reason=(
+                f"requestor {requestor!r} is not in the auto-apply "
+                f"allowlist; capability is dormant until an operator "
+                f"explicitly opts in (see crewai-team/docs/AUTO_APPLY.md)"
+            ),
+        )
+
+    # 4. Path allowlist.
+    if not _matches_auto_apply_path(path):
+        return ValidationResult(
+            ok=False,
+            reason=(
+                f"path {path!r} is not in the auto-apply path "
+                f"allowlist; capability is dormant until an operator "
+                f"explicitly opts the path in"
+            ),
+        )
+
+    # 5. Line cap.
+    added, removed = _net_line_delta(old_content, new_content)
+    net = added - removed
+    if net > _AUTO_APPLY_LINE_CAP:
+        return ValidationResult(
+            ok=False,
+            reason=(
+                f"net line delta {net} exceeds auto-apply cap "
+                f"{_AUTO_APPLY_LINE_CAP} (added {added}, removed {removed})"
+            ),
+        )
+
+    # 6. Additive-only.
+    if removed > 0:
+        return ValidationResult(
+            ok=False,
+            reason=(
+                f"auto-apply requires additive-only patches; got "
+                f"{removed} deleted line(s)"
+            ),
+        )
+
+    return ValidationResult(ok=True)

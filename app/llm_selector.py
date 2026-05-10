@@ -699,6 +699,30 @@ def select_model(
             logger.info(f"llm_selector: {default_model} doesn't support tools, skipping for role={role}")
             default_model = _find_fallback(role, task_type, settings, max_ram_gb)
 
+    # Step 5.5: Runtime chat-capability blocklist (Q2 self-heal auto-action)
+    # ``app.healing.handlers.model_capability`` writes a model name here
+    # when an embed-only model is observed being routed to chat. Every
+    # select_model call serves a chat-style LLM use (CrewAI agents are
+    # all chat-based), so a single global gate suffices. The check is
+    # fail-open — any failure in the runtime_settings read is benign.
+    try:
+        from app.runtime_settings import get_chat_blocked_models
+        blocked = get_chat_blocked_models()
+        if default_model in blocked:
+            logger.info(
+                "llm_selector: %s is in chat_blocked_models — finding fallback "
+                "(role=%s task=%s)",
+                default_model, role, task_type,
+            )
+            default_model = _find_fallback(role, task_type, settings, max_ram_gb)
+    except Exception:
+        # Fail-open: a bug in the blocklist read must NEVER prevent
+        # routing. Worst case the original error pattern fires again
+        # and the operator sees the alert.
+        logger.debug(
+            "llm_selector: chat_blocked_models check failed", exc_info=True,
+        )
+
     # Step 6: Availability check
     if _model_available(default_model, settings, max_ram_gb):
         logger.info(f"llm_selector: role={role} task={task_type} mode={mode} → {default_model}")

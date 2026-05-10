@@ -1,4 +1,4 @@
-"""Runbooks B + H — model-capability mismatch alerts.
+"""Runbooks B + H — model-capability mismatch handlers (auto-action).
 
 Two recurring families:
 
@@ -10,11 +10,18 @@ Two recurring families:
     Signal: ``logger="mem0.memory.main"``, sample contains
     ``does not support function calling``.
 
-We can't auto-rewrite the runtime catalog from a non-immutable module,
-so the handlers track the offending models in
-``workspace/self_heal/model_capabilities.json`` and emit a single
-Signal alert per model + day. The operator (or a scheduled config
-sync) reads the file and adjusts router config.
+The handlers do TWO things on each anomaly:
+
+  1. **Track + alert** (existing behaviour): record the offending
+     model in ``workspace/self_heal/model_capabilities.json`` and
+     emit a Signal alert per (model, capability) per 24 h.
+  2. **Auto-action** (Q2 2026): write the model name to the matching
+     runtime blocklist via ``app.runtime_settings`` so subsystems
+     stop routing the failing capability to the model. The LLM
+     selector consults ``chat_blocked_models`` at default-tier
+     selection (``app.llm_selector.select_model`` Step 5.5);
+     consumer code consults ``no_function_calling_models`` to fall
+     back to unstructured extraction.
 
 Catch-all pattern (``.*``) is used here because the SHA-1 signature
 varies with the model name, which is part of the normalized message.
@@ -79,11 +86,50 @@ def _record_capability_mismatch(model: str, capability: str) -> dict[str, Any]:
     return entry
 
 
+def _apply_runtime_block(model: str, capability: str) -> bool:
+    """Write the offending model to the matching runtime blocklist.
+    Returns ``True`` when the model is newly added, ``False`` when
+    already in the list (or on any failure — fail-safe).
+
+    Capability → setting:
+      * ``"chat"``             → ``chat_blocked_models``
+      * ``"function_calling"`` → ``no_function_calling_models``
+
+    Other capabilities are no-op; only these two have a consumer
+    (the LLM selector / Mem0 extractor) that consults the list.
+    """
+    if model in (None, "", "<unknown>"):
+        return False
+    try:
+        from app.runtime_settings import (
+            add_chat_blocked_model,
+            add_no_function_calling_model,
+        )
+    except Exception:
+        logger.debug(
+            "model_capability: runtime_settings setters unavailable",
+            exc_info=True,
+        )
+        return False
+    try:
+        if capability == "chat":
+            return bool(add_chat_blocked_model(model))
+        if capability == "function_calling":
+            return bool(add_no_function_calling_model(model))
+    except Exception:
+        logger.debug(
+            "model_capability: runtime block write failed for %s/%s",
+            model, capability, exc_info=True,
+        )
+    return False
+
+
 def _route(anomaly: dict, capability: str, runbook_name: str) -> RunbookResult:
     sample = anomaly.get("pattern_sample") or anomaly.get("sample") or ""
     model = _extract_model_name(sample) or "<unknown>"
 
     entry = _record_capability_mismatch(model, capability)
+    blocked_now = _apply_runtime_block(model, capability)
 
     audit_event(
         f"model_capability_mismatch_{capability}",
@@ -92,23 +138,51 @@ def _route(anomaly: dict, capability: str, runbook_name: str) -> RunbookResult:
         count=entry.get("count"),
         pattern_signature=anomaly.get("pattern_signature"),
         runbook=runbook_name,
+        runtime_block_added=blocked_now,
     )
 
-    # Alert at most once per (model, capability) per 24h.
+    # Alert at most once per (model, capability) per 24h. The first
+    # alert per model now confirms the runtime block is in effect —
+    # operator gets a single actionable summary instead of a stream
+    # of "consider removing it" reminders.
     if entry.get("newly_added") or _LIMITER.allow():
+        if blocked_now:
+            tail = (
+                f"Auto-block applied to runtime_settings."
+                f"{'chat_blocked_models' if capability == 'chat' else 'no_function_calling_models'} "
+                f"— router will stop sending this capability to the model."
+            )
+        elif capability in ("chat", "function_calling"):
+            # Already in the list — nothing to do.
+            tail = (
+                f"Already in runtime_settings."
+                f"{'chat_blocked_models' if capability == 'chat' else 'no_function_calling_models'}; "
+                f"investigate why the route is still picking it."
+            )
+        else:
+            tail = (
+                f"Tracked in `workspace/self_heal/model_capabilities.json`. "
+                f"No runtime auto-block for capability `{capability}` — "
+                f"operator action required."
+            )
         send_signal_alert(
             f"⚠️  Self-heal: model `{model}` does not support **{capability}** "
-            f"(seen {entry.get('count')} times). Tracked in "
-            f"`workspace/self_heal/model_capabilities.json` — consider "
-            f"removing it from the {capability}-route tier.",
+            f"(seen {entry.get('count')} times). {tail}",
             tag=runbook_name,
         )
 
     return RunbookResult(
         name=runbook_name,
         success=True,
-        detail=f"recorded {model} as unsupported({capability})",
-        extra={"model": model, "capability": capability},
+        detail=(
+            f"recorded {model} as unsupported({capability})"
+            + ("; runtime_block_added" if blocked_now else "")
+        ),
+        extra={
+            "model": model,
+            "capability": capability,
+            "runtime_block_added": blocked_now,
+        },
     )
 
 

@@ -65,6 +65,41 @@ try:
 except Exception:
     _log.warning("app.healing: watchdog wiring failed", exc_info=True)
 
+# ── Eager-start anchor for non-healing observational subsystems ──────────
+# Each of these packages eager-starts a daemon thread at module-import
+# time, but nothing in the boot chain (main.py:96 → app.healing) was
+# previously importing them — so their daemons never ran in production.
+# Anchoring here is the lightest-weight fix: ``app.healing`` is already
+# the canonical eager-wiring hub, already imported at boot, already has
+# the defensive try/except shell. Naming the section explicitly so
+# future contributors see this is the launch point for *any*
+# eager-start subsystem, not just healing-themed ones.
+
+try:
+    from app.self_improvement import capability_gap_analyzer as _capability_gap_analyzer  # noqa: F401
+except Exception:
+    _log.warning("app.healing: capability_gap_analyzer wiring failed", exc_info=True)
+
+try:
+    from app import library_radar as _library_radar  # noqa: F401
+except Exception:
+    _log.warning("app.healing: library_radar wiring failed", exc_info=True)
+
+try:
+    from app import proposal_bridge as _proposal_bridge  # noqa: F401
+except Exception:
+    _log.warning("app.healing: proposal_bridge wiring failed", exc_info=True)
+
+try:
+    from app.change_requests import auto_revert as _auto_revert  # noqa: F401
+except Exception:
+    _log.warning("app.healing: auto_revert wiring failed", exc_info=True)
+
+try:
+    from app import governance_notifier as _governance_notifier  # noqa: F401
+except Exception:
+    _log.warning("app.healing: governance_notifier wiring failed", exc_info=True)
+
 # Boot-time stale-cooldown reset (Wave 0/1 #A7, 2026-05-09). Sweeps
 # already-expired ``skip:<jobname>`` keys from
 # workspace/memory/idle_job_state so a fresh boot doesn't carry

@@ -17,6 +17,9 @@ def isolated(tmp_path, monkeypatch):
                         tmp_path / "proposed_experiments.jsonl")
     monkeypatch.setattr(paper_pipeline, "_SEEN_PATH",
                         tmp_path / "papers_seen.json")
+    # Route bridge writes into tmp so the test doesn't touch the real
+    # workspace.
+    monkeypatch.setenv("PROPOSAL_BRIDGE_DIR", str(tmp_path / "proposal_bridge"))
 
     sent: list[str] = []
     monkeypatch.setattr(
@@ -141,3 +144,57 @@ def test_disabled_returns_early(monkeypatch, isolated):
     from app.episteme import paper_pipeline
     summary = paper_pipeline.run()
     assert summary["ran"] is False
+
+
+def test_arxiv_signature_strips_url_prefix(isolated):
+    from app.episteme import paper_pipeline
+    sig = paper_pipeline._arxiv_signature("http://arxiv.org/abs/2611.12345v1")
+    assert sig == "2611.12345v1"
+
+
+def test_arxiv_signature_handles_unsafe_chars(isolated):
+    from app.episteme import paper_pipeline
+    sig = paper_pipeline._arxiv_signature("http://arxiv.org/abs/2611 12345")
+    # Unsafe chars get replaced with `_`; never raises.
+    assert sig and all(c.isalnum() or c in "._-" for c in sig)
+
+
+def test_run_stages_proposal_via_bridge(isolated, monkeypatch):
+    """End-to-end: a fresh paper triggers proposal_bridge.stage() so
+    the operator can promote it through the change-request gate."""
+    tmp_path, _sent = isolated
+    from app.episteme import paper_pipeline
+    from app.proposal_bridge import list_proposals, read_body
+
+    now = datetime.now(timezone.utc)
+    fake_papers = [{
+        "id": "http://arxiv.org/abs/2605.99999",
+        "title": "Bridge-staged paper",
+        "abstract": "Demonstrates the proposal-bridge integration end-to-end.",
+        "published": (now - timedelta(days=1)).isoformat(),
+        "categories": ["cs.LG"],
+    }]
+    monkeypatch.setattr(paper_pipeline, "_fetch_arxiv_atom",
+                        lambda q, max_results: "<feed/>")
+    monkeypatch.setattr(paper_pipeline, "_parse_atom",
+                        lambda xml, lookback_days: fake_papers)
+    monkeypatch.setattr(paper_pipeline, "_summarize",
+                        lambda title, abs_: {
+                            "summary": "It demonstrates the bridge.",
+                            "implications": ["adopt the bridge across producers"],
+                            "experiment": "Stage and observe.",
+                            "relevance": 0.85,
+                        })
+    monkeypatch.setattr(paper_pipeline, "_build_terms",
+                        lambda: ["self-improvement"])
+
+    paper_pipeline.run()
+
+    proposals = list_proposals(source="paper_pipeline")
+    assert len(proposals) == 1
+    assert proposals[0].signature == "2605.99999"
+    assert proposals[0].target_path == "docs/proposed_experiments/2605.99999.md"
+    body = read_body(proposals[0])
+    assert "Bridge-staged paper" in body
+    assert "It demonstrates the bridge." in body
+    assert "adopt the bridge across producers" in body

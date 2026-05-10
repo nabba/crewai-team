@@ -4,8 +4,8 @@ Where :mod:`app.self_improvement.gap_detector` *emits* per-event
 ``LearningGap`` records (retrieval miss, reflexion failure, low
 confidence, user correction, tension, mapelites void, usage decay,
 trajectory attribution, observer mis-prediction), this module is the
-*consumer* that turns recurring clusters into proposals the operator
-can promote into the architecture-request gate.
+*consumer* that turns recurring clusters into proposals routed
+through the proposal-bridge (``app.proposal_bridge``).
 
 Pipeline (one daily pass):
 
@@ -14,19 +14,20 @@ Pipeline (one daily pass):
      Same shape as :mod:`app.companion.lessons_learned`.
   3. Filter clusters to size ≥ ``MIN_CLUSTER_SIZE``.
   4. Compute a stable signature per cluster (sha256 of representative
-     evidence) so dedup is filesystem-driven: a draft already on disk
-     under ``docs/proposed_capabilities/<sig>.md`` is NOT re-emitted.
-  5. For each surviving cluster, write a markdown draft. The draft
-     is structured as a near-ready :class:`ArchitectureRequest` so
-     promoting it via ``POST /api/cp/architecture-requests`` is one
-     edit-and-paste step.
+     evidence). The proposal-bridge dedups by (source, signature) so
+     re-running the same cluster is idempotent.
+  5. For each surviving cluster, ``proposal_bridge.stage(...)`` the
+     architecture-request markdown. After a 7-day cooldown of stable
+     content, the bridge files a CR landing the markdown at
+     ``docs/proposed_capabilities/<sig>.md`` for permanent record.
 
 This closes the producer side of Piece 2 (architecture-requests):
-recurring capability gaps surface as concrete architectural proposals,
-not just buried log lines. Operator review is preserved at every step
-— the draft is *advisory*, not auto-promoted. The
-``architecture_requests.validator`` re-runs at promotion time, so
-TIER_IMMUTABLE / consciousness-layer refusals still hold.
+recurring capability gaps surface as concrete proposals routed
+through the human-gated change-request flow, not just buried log
+lines. Operator review is preserved at every step — the draft is
+*advisory*, not auto-promoted. The ``change_requests.validator``
+re-runs at the bridge promotion time, so TIER_IMMUTABLE refusals
+still hold.
 
 Daemon-thread pattern mirrors :mod:`app.healing.monitors`: eager
 start at import time, env-gated, idempotent restart, watchdog-friendly
@@ -44,7 +45,6 @@ import re
 import threading
 from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path
 
 from app.self_improvement.store import list_open_gaps
 from app.self_improvement.types import LearningGap
@@ -56,8 +56,6 @@ logger = logging.getLogger(__name__)
 _DAEMON_THREAD_NAME = "capability-gap-analyzer"
 _WARMUP_S = 60
 _POLL_INTERVAL_S = 24 * 3600  # daily
-
-_DEFAULT_PROPOSED_DIR = Path("/app/docs/proposed_capabilities")
 
 _MIN_CLUSTER_SIZE = 3
 # Hash-trick embeddings are token-overlap heavy. Empirically:
@@ -222,21 +220,20 @@ def _render_draft(cluster: CapabilityCluster) -> str:
 
 
 def run_one_pass(
-    proposed_dir: Path | str | None = None,
     *,
     gaps: list[LearningGap] | None = None,
 ) -> dict:
     """Single analyzer pass. Returns a structured result dict.
 
-    Test/operator hooks:
-      ``proposed_dir`` overrides the staging directory.
-      ``gaps`` overrides the LearningGap source (skips
-      :func:`list_open_gaps` for unit tests).
+    Test hook: ``gaps`` overrides the LearningGap source so unit tests
+    don't need a populated store. Proposals are routed through
+    ``app.proposal_bridge`` to the canonical
+    ``docs/proposed_capabilities/<sig>.md`` target; tests should
+    monkeypatch ``PROPOSAL_BRIDGE_DIR`` and inspect via
+    ``proposal_bridge.list_proposals(source='capability_gap')``.
     """
     if not _enabled():
         return {"status": "disabled", "drafts_written": 0}
-
-    target_dir = Path(proposed_dir) if proposed_dir else _DEFAULT_PROPOSED_DIR
 
     if gaps is None:
         try:
@@ -260,20 +257,47 @@ def run_one_pass(
             "n_evidence": len(gaps),
         }
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from app.proposal_bridge import stage
+    except Exception:
+        logger.warning("capability_gap_analyzer: proposal_bridge unavailable",
+                       exc_info=True)
+        return {
+            "status": "bridge_unavailable",
+            "drafts_written": 0,
+            "n_evidence": len(gaps),
+            "n_clusters": len(clusters),
+        }
+
     written = 0
     skipped = 0
     for cluster in clusters:
-        target = target_dir / f"{cluster.signature}.md"
-        if target.exists():
-            skipped += 1
+        target_path = f"docs/proposed_capabilities/{cluster.signature}.md"
+        try:
+            state, was_new = stage(
+                source="capability_gap",
+                signature=cluster.signature,
+                title=cluster.label[:80] or "capability gap",
+                body_markdown=_render_draft(cluster),
+                target_path=target_path,
+            )
+        except Exception:
+            logger.warning(
+                "capability_gap_analyzer: stage failed for %s",
+                cluster.signature, exc_info=True,
+            )
             continue
-        target.write_text(_render_draft(cluster), encoding="utf-8")
-        written += 1
-        logger.info(
-            "capability_gap_analyzer: wrote %s (size=%d)",
-            target.name, cluster.size,
-        )
+        # ``was_new`` from the bridge tells us whether this call
+        # created or replaced the proposal (counts as written) versus
+        # a no-op idempotent re-stage (counts as skipped/dedup).
+        if was_new:
+            written += 1
+            logger.info(
+                "capability_gap_analyzer: staged %s (size=%d, status=%s)",
+                cluster.signature, cluster.size, state.status.value,
+            )
+        else:
+            skipped += 1
 
     return {
         "status": "ok",

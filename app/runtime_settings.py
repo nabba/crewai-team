@@ -97,6 +97,15 @@ def _defaults() -> dict[str, Any]:
         # ``enabled = None`` means "fall back to env / default";
         # missing tunable keys also fall back.
         "life_companion_overrides": {},
+        # Model capability blocklists — populated by the
+        # ``model_capability`` self-heal handlers when a model is
+        # observed failing a structural capability check (chat
+        # completion, function calling). Subsystems consult these
+        # at routing time; an entry here means "do not route this
+        # capability to this model." See
+        # ``docs/SELF_HEAL_V3.md`` for the auto-action contract.
+        "chat_blocked_models": [],
+        "no_function_calling_models": [],
     }
 
 
@@ -243,10 +252,16 @@ def get_goodhart_hard_gate_disabled() -> bool:
 
 
 def set_goodhart_hard_gate_disabled(value: bool) -> None:
+    prior = get_goodhart_hard_gate_disabled()
     _update({"goodhart_hard_gate_disabled": bool(value)})
     logger.info(
         "runtime_settings: goodhart_hard_gate_disabled set to %s", bool(value),
     )
+    if bool(prior) != bool(value):
+        _emit_goodhart_governance_event(
+            setting="goodhart_hard_gate_disabled",
+            prior=bool(prior), new=bool(value),
+        )
 
 
 def get_goodhart_hard_gate_enforcing() -> bool:
@@ -257,10 +272,79 @@ def get_goodhart_hard_gate_enforcing() -> bool:
 
 
 def set_goodhart_hard_gate_enforcing(value: bool) -> None:
+    prior = get_goodhart_hard_gate_enforcing()
     _update({"goodhart_hard_gate_enforcing": bool(value)})
     logger.info(
         "runtime_settings: goodhart_hard_gate_enforcing set to %s", bool(value),
     )
+    if bool(prior) != bool(value):
+        _emit_goodhart_governance_event(
+            setting="goodhart_hard_gate_enforcing",
+            prior=bool(prior), new=bool(value),
+        )
+
+
+def _emit_goodhart_governance_event(
+    *, setting: str, prior: bool, new: bool,
+) -> None:
+    """Record a Goodhart-gate mode flip as an identity-shaping
+    governance event. Mirrors the existing ``governance_ratchet``
+    emission pattern in ``app/governance_ratchet/protocol.py``;
+    Goodhart enforcement changes are the same caliber of event.
+
+    Best-effort: ledger / GW failures degrade silently — the setting
+    is already persisted by ``_update``.
+    """
+    summary = (
+        f"Goodhart hard gate {setting.replace('goodhart_hard_gate_', '')} "
+        f"flipped {prior} → {new}"
+    )
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="governance_ratchet",
+            actor="operator",
+            summary=summary,
+            detail={
+                "setting": setting,
+                "prior": prior,
+                "new": new,
+                # Effective mode after the flip — useful for the
+                # annual reflection drift summary.
+                "effective_mode": _goodhart_effective_mode_label(),
+            },
+        )
+    except Exception:
+        logger.debug(
+            "runtime_settings: continuity_ledger emission failed for %s",
+            setting, exc_info=True,
+        )
+    try:
+        from app.workspace_publish import publish_to_workspace
+        publish_to_workspace(
+            source="runtime-settings",
+            content=summary,
+            salience=0.6,  # governance changes are operator-relevant
+            signal_type="disposition",
+        )
+    except Exception:
+        logger.debug(
+            "runtime_settings: GW publish failed for %s", setting,
+            exc_info=True,
+        )
+
+
+def _goodhart_effective_mode_label() -> str:
+    """Resolve the three-mode label from current state. Mirrors the
+    ``app.governance._evaluate_goodhart_gate`` discrimination."""
+    try:
+        if get_goodhart_hard_gate_disabled():
+            return "disabled"
+        if get_goodhart_hard_gate_enforcing():
+            return "enforcing"
+        return "advisory"
+    except Exception:
+        return "unknown"
 
 
 def _update(patch: dict[str, Any]) -> None:
@@ -396,3 +480,105 @@ def life_companion_set_feature_override(
         list(tunables.keys()) if tunables else [],
     )
     return all_overrides
+
+
+# ── Model capability blocklists (Q2 self-heal auto-action) ──────────────
+
+
+def get_chat_blocked_models() -> list[str]:
+    """Models the LLM router should NOT consider for chat tasks.
+
+    Populated by ``app.healing.handlers.model_capability`` when an
+    embed-only model is observed being routed to chat. The selector
+    consults this list at default-tier selection (see
+    ``app.llm_selector.select_model``).
+    """
+    raw = _ensure_initialized().get("chat_blocked_models") or []
+    return list(raw) if isinstance(raw, list) else []
+
+
+def add_chat_blocked_model(model_name: str) -> bool:
+    """Append ``model_name`` to the chat blocklist. Idempotent —
+    returns ``True`` on first add, ``False`` if already present.
+    Empty / non-string input is a no-op.
+    """
+    name = (model_name or "").strip()
+    if not name:
+        return False
+    state = _ensure_initialized()
+    current = list(state.get("chat_blocked_models") or [])
+    if name in current:
+        return False
+    current.append(name)
+    _update({"chat_blocked_models": current})
+    logger.info(
+        "runtime_settings: chat_blocked_models +%r (size=%d)",
+        name, len(current),
+    )
+    return True
+
+
+def remove_chat_blocked_model(model_name: str) -> bool:
+    """Remove ``model_name`` from the blocklist. Returns True if the
+    entry existed and was removed."""
+    name = (model_name or "").strip()
+    if not name:
+        return False
+    state = _ensure_initialized()
+    current = list(state.get("chat_blocked_models") or [])
+    if name not in current:
+        return False
+    current.remove(name)
+    _update({"chat_blocked_models": current})
+    logger.info(
+        "runtime_settings: chat_blocked_models -%r (size=%d)",
+        name, len(current),
+    )
+    return True
+
+
+def get_no_function_calling_models() -> list[str]:
+    """Models known to NOT support OpenAI-style function calling.
+
+    Populated by ``app.healing.handlers.model_capability`` when Mem0
+    LLM extraction (or any tool-using path) hits a model that doesn't
+    accept ``tool_choice``. Consumer subsystems consult this to fall
+    back to unstructured extraction.
+    """
+    raw = _ensure_initialized().get("no_function_calling_models") or []
+    return list(raw) if isinstance(raw, list) else []
+
+
+def add_no_function_calling_model(model_name: str) -> bool:
+    """Idempotent append. Same shape as ``add_chat_blocked_model``."""
+    name = (model_name or "").strip()
+    if not name:
+        return False
+    state = _ensure_initialized()
+    current = list(state.get("no_function_calling_models") or [])
+    if name in current:
+        return False
+    current.append(name)
+    _update({"no_function_calling_models": current})
+    logger.info(
+        "runtime_settings: no_function_calling_models +%r (size=%d)",
+        name, len(current),
+    )
+    return True
+
+
+def remove_no_function_calling_model(model_name: str) -> bool:
+    name = (model_name or "").strip()
+    if not name:
+        return False
+    state = _ensure_initialized()
+    current = list(state.get("no_function_calling_models") or [])
+    if name not in current:
+        return False
+    current.remove(name)
+    _update({"no_function_calling_models": current})
+    logger.info(
+        "runtime_settings: no_function_calling_models -%r (size=%d)",
+        name, len(current),
+    )
+    return True

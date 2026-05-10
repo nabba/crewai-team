@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
 from app.self_improvement import capability_gap_analyzer as analyzer
 from app.self_improvement.types import GapSource, GapStatus, LearningGap
 
@@ -22,6 +24,20 @@ def _gap(
         detected_at=detected_at,
         status=GapStatus.OPEN,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Route all proposal_bridge writes into a tmp directory so tests
+    don't touch the real workspace."""
+    monkeypatch.setenv("PROPOSAL_BRIDGE_DIR", str(tmp_path / "proposal_bridge"))
+    yield
+
+
+def _bridge_proposals(source: str = "capability_gap"):
+    """Convenience: read what the bridge has staged for ``source``."""
+    from app.proposal_bridge import list_proposals
+    return list_proposals(source=source)
 
 
 # ── pure logic ───────────────────────────────────────────────────────────
@@ -103,14 +119,14 @@ def test_run_one_pass_writes_draft_for_clusters(tmp_path: Path) -> None:
         _gap("forest cover Estonia time series"),
         _gap("Estonia forest area trend"),
     ]
-    out = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=gaps)
+    out = analyzer.run_one_pass(gaps=gaps)
     assert out["status"] == "ok"
     assert out["drafts_written"] == 1
     assert out["drafts_skipped_dedup"] == 0
-    drafts = list(tmp_path.glob("*.md"))
-    assert len(drafts) == 1
-    text = drafts[0].read_text()
-    assert "Capability gap draft" in text
+    proposals = _bridge_proposals()
+    assert len(proposals) == 1
+    assert proposals[0].source == "capability_gap"
+    assert proposals[0].target_path.startswith("docs/proposed_capabilities/")
 
 
 def test_run_one_pass_dedups_by_signature(tmp_path: Path) -> None:
@@ -119,16 +135,18 @@ def test_run_one_pass_dedups_by_signature(tmp_path: Path) -> None:
         _gap("forest cover Estonia time series"),
         _gap("Estonia forest area trend"),
     ]
-    first = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=gaps)
+    first = analyzer.run_one_pass(gaps=gaps)
     assert first["drafts_written"] == 1
-    second = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=gaps)
-    # Same cluster signature → re-emit suppressed.
+    second = analyzer.run_one_pass(gaps=gaps)
+    # Same cluster signature + same body → bridge no-op (was_new=False).
     assert second["drafts_written"] == 0
     assert second["drafts_skipped_dedup"] == 1
+    # Still only one staged proposal on disk.
+    assert len(_bridge_proposals()) == 1
 
 
 def test_run_one_pass_no_evidence(tmp_path: Path) -> None:
-    out = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=[])
+    out = analyzer.run_one_pass(gaps=[])
     assert out["status"] == "no_evidence"
     assert out["drafts_written"] == 0
 
@@ -141,14 +159,14 @@ def test_run_one_pass_no_clusters_below_min(tmp_path: Path) -> None:
         _gap("compound interest derivation formula Python"),
         _gap("kanban board column synchronization webhook"),
     ]
-    out = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=gaps)
+    out = analyzer.run_one_pass(gaps=gaps)
     assert out["status"] == "no_clusters"
     assert out["drafts_written"] == 0
 
 
 def test_run_one_pass_disabled_short_circuits(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CAPABILITY_GAP_ANALYZER_ENABLED", "false")
-    out = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=[_gap("x")])
+    out = analyzer.run_one_pass(gaps=[_gap("x")])
     assert out["status"] == "disabled"
     assert out["drafts_written"] == 0
 
@@ -158,7 +176,7 @@ def test_run_one_pass_load_failed_when_store_raises(monkeypatch, tmp_path: Path)
         raise RuntimeError("ChromaDB unavailable")
 
     monkeypatch.setattr(analyzer, "list_open_gaps", boom)
-    out = analyzer.run_one_pass(proposed_dir=tmp_path)
+    out = analyzer.run_one_pass()
     assert out["status"] == "load_failed"
     assert "ChromaDB" in out["error"]
     assert out["drafts_written"] == 0
@@ -168,6 +186,8 @@ def test_run_one_pass_load_failed_when_store_raises(monkeypatch, tmp_path: Path)
 
 
 def test_clusters_collapse_across_source_kinds(tmp_path: Path) -> None:
+    from app.proposal_bridge import read_body
+
     gaps = [
         _gap("query about Tallinn ferry schedule",
              source=GapSource.RETRIEVAL_MISS),
@@ -176,11 +196,11 @@ def test_clusters_collapse_across_source_kinds(tmp_path: Path) -> None:
         _gap("ferry Tallinn-Helsinki timetable",
              source=GapSource.USER_CORRECTION),
     ]
-    out = analyzer.run_one_pass(proposed_dir=tmp_path, gaps=gaps)
+    out = analyzer.run_one_pass(gaps=gaps)
     assert out["drafts_written"] == 1
-    drafts = list(tmp_path.glob("*.md"))
-    assert len(drafts) == 1
-    text = drafts[0].read_text()
+    proposals = _bridge_proposals()
+    assert len(proposals) == 1
+    text = read_body(proposals[0])
     # All three source kinds should be visible in the draft.
     assert "retrieval_miss" in text
     assert "reflexion_failure" in text

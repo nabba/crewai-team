@@ -1,4 +1,4 @@
-"""Idle-cooldown monitor — detect idle-scheduler jobs stuck in cooldown.
+"""Idle-cooldown monitor — detect stuck jobs + dump forensics.
 
 After 3 consecutive failures, ``app/idle_scheduler.py`` puts a job into
 a 1-hour cooldown via ``_persist_job_skip()``. The cooldown is
@@ -7,14 +7,18 @@ so it survives gateway restarts. A *transient* outage that took longer
 than 1 h leaves the job stuck for the full hour even after the upstream
 recovers; a *persistent* failure leaves it stuck repeatedly.
 
-This monitor reads the persisted state and alerts the operator when:
+This monitor:
 
-  * A job has been in cooldown for > 24 h, OR
-  * A job has accumulated > 5 cooldown cycles in 7 days (chronic).
-
-It does NOT auto-clear the cooldown — that's an operator choice via
-the dashboard or by deleting the dbm key. The whole point of the
-cooldown is to avoid storming a known-bad upstream.
+  1. **Alerts** the operator (Signal) when a job has been in cooldown
+     for > 24 h OR accumulated > 15 failures.
+  2. **Auto-action** (Q2 2026): writes a forensic snapshot to
+     ``workspace/self_heal/stuck_idle_jobs.json`` covering every
+     long-stuck job — name, remaining cooldown, failure count, last
+     observed-at timestamp. The dashboard / operator triage uses this
+     to decide between (a) clearing the cooldown manually and (b)
+     fixing the upstream first. The auto-action is forensics-only —
+     **it does NOT clear cooldowns**. Auto-clearing would defeat
+     their purpose (avoid storming a known-bad upstream).
 """
 from __future__ import annotations
 
@@ -33,6 +37,7 @@ from app.healing.handlers._common import (
 logger = logging.getLogger(__name__)
 
 _STATE_FILE = "idle_cooldown_alerts.json"
+_FORENSICS_FILE = "stuck_idle_jobs.json"
 _ALERT_WINDOW_S = 24 * 3600
 
 
@@ -118,6 +123,13 @@ def run() -> None:
         n_long_stuck=len(long_stuck),
     )
 
+    # Auto-action: write a forensic snapshot of all long-stuck jobs
+    # so the operator dashboard / triage tools can render an
+    # actionable view. Replaces the previous "operator must grep dbm"
+    # workflow. The file is overwritten on each pass — its contents
+    # always reflect the current set of stuck jobs.
+    _write_forensics_snapshot(long_stuck=long_stuck, now=now)
+
     if not long_stuck:
         return
 
@@ -142,8 +154,51 @@ def run() -> None:
     send_signal_alert(
         "🧊 Self-heal: idle-scheduler job(s) deep in cooldown:\n\n"
         + "\n".join(lines)
-        + "\n\nIf the upstream cause is fixed, clear the cooldown by "
+        + "\n\nForensics dumped to `workspace/self_heal/stuck_idle_jobs.json`. "
+          "If the upstream cause is fixed, clear the cooldown by "
           "deleting `skip:<job>` from `workspace/memory/idle_job_state`. "
           "Otherwise expect this background work to stay paused.",
         tag="idle_cooldown",
     )
+
+
+# ── Forensic snapshot ─────────────────────────────────────────────────
+
+
+def _write_forensics_snapshot(*, long_stuck: list[dict], now: float) -> None:
+    """Write a structured snapshot of long-stuck jobs.
+
+    Always overwrites — the file represents *current* stuck state, not
+    historical. Empty list ⇒ empty snapshot (file says "all clear").
+    Failures degrade silently — the alert above already informed the
+    operator; the snapshot is operator-tooling fuel, not load-bearing.
+    """
+    from datetime import datetime, timezone
+    payload = {
+        "captured_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
+        "n_long_stuck": len(long_stuck),
+        "jobs": [
+            {
+                "name": j["name"],
+                "remaining_s": int(j.get("remaining_s", 0)),
+                "remaining_h": round(j.get("remaining_s", 0) / 3600, 1),
+                "failures": int(j.get("failures", 0)),
+                # If a job has accumulated many failures AND is in
+                # long cooldown, it's chronically broken vs simply
+                # parked behind a transient outage. Surface this as
+                # a hint without claiming certainty.
+                "diagnosis_hint": (
+                    "chronic"
+                    if j.get("failures", 0) > 15
+                    else "long_cooldown"
+                ),
+                "operator_action": (
+                    f"workspace/memory/idle_job_state — delete key "
+                    f"`skip:{j['name']}` to retry, OR investigate "
+                    f"upstream first."
+                ),
+            }
+            for j in long_stuck
+        ],
+    }
+    write_state_json(_FORENSICS_FILE, payload)

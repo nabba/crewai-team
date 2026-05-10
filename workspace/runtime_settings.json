@@ -1,5 +1,12 @@
 {
-  "concierge_persona_enabled": false,
+  "concierge_persona_enabled": true,
+  "error_runbooks_enabled": true,
+  "goodhart_hard_gate_disabled": false,
+  "goodhart_hard_gate_enforcing": false,
+  "life_companion_overrides": {},
+  "recovery_loop_enabled": true,
+  "tier3_amendment_enabled": true,
+  "tool_supervisor_enabled": true,
   "vision_cu_enabled": false,
   "vision_cu_monthly_cap_usd": 10.0,
   "voice_mode": "off"

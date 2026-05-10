@@ -16,7 +16,6 @@ _DAEMON_THREAD_NAME = "library-radar-proposer"
 _WARMUP_S = 60
 _POLL_INTERVAL_S = 24 * 3600  # daily
 
-_DEFAULT_PROPOSED_DIR = Path("/app/docs/proposed_libraries")
 _DEFAULT_REQUIREMENTS_PATH = Path("/app/requirements.txt")
 _INTERESTING_CATEGORIES = frozenset({"frameworks", "tools"})
 
@@ -184,22 +183,23 @@ def _render_proposal(d: Discovery, *, signature: str) -> str:
 
 def run_one_pass(
     *,
-    proposed_dir: Path | str | None = None,
     discoveries: list[str] | None = None,
     requirements_path: Path | str | None = None,
 ) -> dict:
     """Single proposer pass. Returns a structured result dict.
 
     Test/operator hooks:
-      ``proposed_dir``       overrides the staging directory.
       ``discoveries``        overrides the radar source (raw text lines)
                              so tests don't need ChromaDB.
       ``requirements_path``  overrides the dependency manifest path.
+    Proposals are staged via ``app.proposal_bridge`` for promotion
+    to the change-request gate; tests should monkeypatch
+    ``PROPOSAL_BRIDGE_DIR`` and inspect via
+    ``proposal_bridge.list_proposals(source='library_radar')``.
     """
     if not _enabled():
         return {"status": "disabled", "drafts_written": 0}
 
-    target_dir = Path(proposed_dir) if proposed_dir else _DEFAULT_PROPOSED_DIR
     req_path = Path(requirements_path) if requirements_path else _DEFAULT_REQUIREMENTS_PATH
 
     if discoveries is None:
@@ -230,23 +230,45 @@ def run_one_pass(
             "n_evidence": len(discoveries),
         }
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from app.proposal_bridge import stage
+    except Exception:
+        logger.warning("library_radar: proposal_bridge unavailable", exc_info=True)
+        return {
+            "status": "bridge_unavailable",
+            "drafts_written": 0,
+            "n_evidence": len(discoveries),
+            "n_relevant": len(parsed),
+        }
+
     written = 0
     skipped = 0
     for discovery in parsed:
         sig = _signature_for(discovery)
-        target = target_dir / f"{sig}-{_slug(discovery.title)}.md"
-        if target.exists():
-            skipped += 1
+        slug = _slug(discovery.title)
+        target_path = f"docs/proposed_libraries/{sig}-{slug}.md"
+        try:
+            state, was_new = stage(
+                source="library_radar",
+                signature=sig,
+                title=discovery.title[:80] or "library proposal",
+                body_markdown=_render_proposal(discovery, signature=sig),
+                target_path=target_path,
+            )
+        except Exception:
+            logger.warning(
+                "library_radar: stage failed for %s",
+                sig, exc_info=True,
+            )
             continue
-        target.write_text(
-            _render_proposal(discovery, signature=sig), encoding="utf-8",
-        )
-        written += 1
-        logger.info(
-            "library_radar: wrote %s (category=%s)",
-            target.name, discovery.category,
-        )
+        if was_new:
+            written += 1
+            logger.info(
+                "library_radar: staged %s (category=%s, status=%s)",
+                sig, discovery.category, state.status.value,
+            )
+        else:
+            skipped += 1
 
     return {
         "status": "ok",

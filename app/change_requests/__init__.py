@@ -36,6 +36,7 @@ See docs/CHANGE_REQUESTS.md for full reference.
 from app.change_requests.lifecycle import (
     approve,
     attach_signal_ts,
+    auto_approve,
     create_request,
     mark_applied,
     mark_apply_failed,
@@ -51,6 +52,7 @@ from app.change_requests.apply import (
 from app.change_requests.models import (
     ChangeRequest,
     DecisionSource,
+    RiskClass,
     Status,
 )
 from app.change_requests.signal import (
@@ -66,13 +68,14 @@ from app.change_requests.store import (
 from app.change_requests.validator import (
     is_protected,
     validate,
+    validate_auto_apply,
 )
 
 __all__ = [
     # models
-    "ChangeRequest", "Status", "DecisionSource",
+    "ChangeRequest", "Status", "DecisionSource", "RiskClass",
     # lifecycle
-    "create_request", "approve", "reject", "mark_timeout",
+    "create_request", "approve", "auto_approve", "reject", "mark_timeout",
     "mark_applied", "mark_apply_failed", "mark_rolled_back",
     "attach_signal_ts",
     # apply / rollback
@@ -82,5 +85,5 @@ __all__ = [
     # store
     "get", "list_all", "find_by_signal_ts",
     # validator
-    "validate", "is_protected",
+    "validate", "validate_auto_apply", "is_protected",
 ]

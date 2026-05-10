@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -175,6 +176,46 @@ def test_no_drift_ignores_updated_at_timestamp(isolated_dirs):
     )
 
 
+def test_no_drift_ignores_body_last_updated_date(isolated_dirs):
+    """Regression: ``_compute_master_index_content`` writes today's date
+    into the BODY at line ``Total pages: N | Last updated: YYYY-MM-DD``.
+    Without normalising that line, the canonical compute (which uses
+    the pin date 2000-01-01) hashed differently from the live file
+    (which uses today's date), creating false-positive drift on every
+    run. This test pins the bug shut.
+    """
+    from app.memory.wiki_index_reconciler import (
+        compute_canonical_master_content,
+        run_reconciler,
+    )
+
+    _make_page(isolated_dirs["wiki"] / "meta", "p1", title="P1")
+
+    # Compute canonical (pin-dated body), then synthesise a live file
+    # with today's date in the body — the production scenario.
+    canonical = compute_canonical_master_content()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    live = re.sub(
+        r"Last updated: \S+",
+        f"Last updated: {today}",
+        canonical,
+    )
+    # Also bump the frontmatter timestamp like a real recently-rebuilt file.
+    live = live.replace(
+        "updated_at: '2000-01-01T00:00:00Z'",
+        f"updated_at: '{today}T12:00:00Z'",
+    )
+    _write_live_index(isolated_dirs["wiki"], live)
+
+    result = run_reconciler()
+
+    assert not result.drift_detected, (
+        "body 'Last updated: YYYY-MM-DD' difference alone must not "
+        "trigger drift — this is the bug pattern that produced 335 "
+        "stuck CRs in May 2026"
+    )
+
+
 # ── Drift path ───────────────────────────────────────────────────────────
 
 
@@ -310,3 +351,133 @@ def test_drift_result_to_dict_is_json_safe(isolated_dirs):
 
     payload = json.dumps(result.to_dict())
     assert "drift_detected" in payload
+
+
+# ── CR dedup (defensive layer) ──────────────────────────────────────────
+
+
+class _FakeCR:
+    """Minimal stand-in for ``ChangeRequest`` honoring the duck-typed
+    fields the dedup helper reads."""
+    def __init__(self, *, id, status, new_content, decided_at=None,
+                 path="wiki/index.md"):
+        self.id = id
+        self.status = status
+        self.new_content = new_content
+        self.decided_at = decided_at
+        self.path = path
+
+
+def test_dedup_blocks_when_pending_cr_exists(monkeypatch):
+    """A non-terminal CR for wiki/index.md suppresses new filings —
+    duplicate CRs would spam the operator without adding signal.
+
+    Uses ``monkeypatch`` directly (no ``isolated_dirs``) because this
+    helper doesn't touch the filesystem; mocking ``list_all`` is the
+    only setup needed.
+    """
+    from app.change_requests import Status
+    from app.memory.wiki_index_reconciler import _existing_cr_blocks_filing
+
+    pending = _FakeCR(
+        id="cr_pend", status=Status.PENDING, new_content="any content",
+    )
+    monkeypatch.setattr(
+        "app.change_requests.list_all", lambda **kw: [pending],
+    )
+
+    blocked = _existing_cr_blocks_filing(candidate_content="<new>")
+    assert blocked is not None
+    assert "non-terminal" in blocked
+
+
+def test_dedup_blocks_when_recent_rejection_with_same_content(monkeypatch):
+    """If the operator already rejected this exact content within the
+    recent window, don't refile — honour the decision."""
+    from datetime import datetime, timedelta, timezone
+    from app.change_requests import Status
+    from app.memory.wiki_index_reconciler import _existing_cr_blocks_filing
+
+    rejected_recent = _FakeCR(
+        id="cr_no",
+        status=Status.REJECTED,
+        new_content="<exact body>",
+        decided_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
+    )
+    monkeypatch.setattr(
+        "app.change_requests.list_all", lambda **kw: [rejected_recent],
+    )
+
+    blocked = _existing_cr_blocks_filing(candidate_content="<exact body>")
+    assert blocked is not None
+    assert "rejected" in blocked.lower()
+
+
+def test_dedup_allows_filing_after_rejection_window(monkeypatch):
+    """Old rejection (>7 days ago) does NOT block new filings — the
+    operator might have changed their mind."""
+    from datetime import datetime, timedelta, timezone
+    from app.change_requests import Status
+    from app.memory.wiki_index_reconciler import _existing_cr_blocks_filing
+
+    old_rejection = _FakeCR(
+        id="cr_old",
+        status=Status.REJECTED,
+        new_content="<exact body>",
+        decided_at=(datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+    )
+    monkeypatch.setattr(
+        "app.change_requests.list_all", lambda **kw: [old_rejection],
+    )
+
+    assert _existing_cr_blocks_filing(candidate_content="<exact body>") is None
+
+
+def test_dedup_allows_filing_after_rejection_with_different_content(monkeypatch):
+    """A recent rejection of DIFFERENT content does not block — the
+    proposal evolved, give it a fresh review."""
+    from datetime import datetime, timedelta, timezone
+    from app.change_requests import Status
+    from app.memory.wiki_index_reconciler import _existing_cr_blocks_filing
+
+    rejected_recent = _FakeCR(
+        id="cr_old_body",
+        status=Status.REJECTED,
+        new_content="<old body>",
+        decided_at=(datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
+    )
+    monkeypatch.setattr(
+        "app.change_requests.list_all", lambda **kw: [rejected_recent],
+    )
+
+    assert _existing_cr_blocks_filing(candidate_content="<new body>") is None
+
+
+def test_dedup_handles_cr_system_unavailable(monkeypatch):
+    """If list_all raises, fail open — the reconciler retries next pass."""
+    from app.memory.wiki_index_reconciler import _existing_cr_blocks_filing
+
+    def boom(**_):
+        raise RuntimeError("CR store unavailable")
+
+    monkeypatch.setattr("app.change_requests.list_all", boom)
+
+    assert _existing_cr_blocks_filing(candidate_content="<x>") is None
+
+
+# ── Validator regression: wiki/index.md now passes ──────────────────────
+
+
+def test_validator_now_accepts_wiki_index_path():
+    """Pinpoint regression: 335 stuck CRs were filed by the reconciler
+    against ``wiki/index.md`` and ALL bounced because ``wiki/`` was not
+    in ``_ALLOWED_ROOT_PREFIXES``. The validator now permits it.
+    """
+    from app.change_requests.validator import validate
+
+    result = validate(
+        path="wiki/index.md",
+        new_content="---\ntitle: Wiki\n---\n# Wiki\n",
+    )
+    assert result.ok is True
+    assert result.reason is None

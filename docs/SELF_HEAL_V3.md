@@ -537,3 +537,106 @@ Or, surgically:
 
 - `workspace/self_heal/runbook_settings.json` → set `"enabled": false`
   on individual runbooks. Effect is immediate (re-read every dispatch).
+
+
+## Q2 2026 amendments — three runbook auto-actions + runtime threshold flip
+
+Background work in PROGRAM.md §38 elevated three monitors from
+alert-only to auto-action, plus lowered one runbook threshold that
+was effectively never firing. None of these go through the
+auto-apply CR system (which ships dormant per `docs/AUTO_APPLY.md`)
+— they are runbook-tier auto-actions in the existing self-heal
+infrastructure.
+
+### Q2-A — `db_pool_reset.min_recurrence` 5 → 1
+
+`workspace/self_heal/runbook_settings.json` change. Pool exhaustion
+at instance #1 is already actionable; the previous threshold of 5
+meant the runbook never triggered in normal operation. Three
+independent gates remain as safety nets:
+
+  * RateLimiter (1800s) — at most 2 resets/hour
+  * Recent-success-rate gate (≥50%) — auto-disables on persistent
+    failure
+  * Concurrency cap (max 1) — no overlapping dispatches
+
+### Q2-B — `disk_quota_immediate_retention` (auto-action)
+
+`app/healing/monitors/disk_quota.py` patched to invoke
+`retention.run_chromadb()` + `run_worktrees()` + `run_attachments()`
+immediately when free space drops below `HEALING_DISK_FREE_WARN_GB`,
+instead of waiting days for those runners' own cadence. Per-target
+failure isolation, audit-event with outcomes. The Signal alert
+appended outcome line (`Auto-retention ran: chromadb=ok,
+worktrees=ok, attachments=ok`) so the operator sees the result
+inline. Master switch `HEALING_DISK_AUTO_RETENTION_ENABLED` (default
+`true`).
+
+### Q2-C — `model_capability_runtime_block` (auto-action)
+
+`app/healing/handlers/model_capability.py` (B + H handlers) now
+write blocked models to two new runtime_settings lists:
+
+  * `chat_blocked_models` — populated when an embed-only model is
+    routed to chat (e.g. `nomic-embed-text`). The LLM selector's
+    new Step 5.5 in `app/llm_selector.py:select_model` consults
+    this list at default-tier selection (the existing breaker
+    check was only in the pareto fallback path).
+  * `no_function_calling_models` — populated when Mem0 LLM
+    extraction hits a model that doesn't accept `tool_choice`.
+    Consumer subsystems consult to fall back to unstructured
+    extraction.
+
+New idempotent setters:
+`add_chat_blocked_model` / `remove_chat_blocked_model` /
+`add_no_function_calling_model` / `remove_no_function_calling_model`
+in `app/runtime_settings.py`.
+
+Addresses ~6,758 errors/month observed in production.
+
+### Q2-D — `stuck_idle_diagnostic_dump` (auto-action)
+
+`app/healing/monitors/idle_cooldown.py` patched to write
+`workspace/self_heal/stuck_idle_jobs.json` whenever any job is in
+deep cooldown. Snapshot includes name, remaining cooldown (seconds
++ hours), failure count, diagnosis hint (`chronic` for >15 failures
+vs `long_cooldown`), operator-action recommendation.
+
+**Forensics-only.** This auto-action does NOT clear any cooldown —
+the whole point of the cooldown is to avoid storming a known-bad
+upstream. Pinned by test `test_does_not_clear_any_cooldown`.
+
+### Q2-E — Eager-wire fix (boot anchor)
+
+Verification revealed a pre-existing latent bug:
+`app.self_improvement.capability_gap_analyzer` and
+`app.library_radar` had eager-start patterns at module import time
+but nothing in the boot chain ever imported them — their daemons
+never ran in production. `app/healing/__init__.py` now anchors all
+eager-start subsystems including the new ones:
+
+  * `app.proposal_bridge` (PROGRAM §38.1)
+  * `app.change_requests.auto_revert` (PROGRAM §38.3)
+  * `app.governance_notifier` (PROGRAM §38.4)
+  * `app.self_improvement.capability_gap_analyzer` (latent fix)
+  * `app.library_radar` (latent fix)
+
+All anchor through the existing `from app.healing.error_diagnosis
+import diagnose_and_fix` line in `app/main.py:96` (TIER_IMMUTABLE)
+which already triggers the `app.healing` package init.
+
+### Q2 master switches
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HEALING_DISK_AUTO_RETENTION_ENABLED` | `true` | Q2-B: disable to revert disk_quota to alert-only behaviour |
+| `CHANGE_REQUESTS_AUTO_REVERT_ENABLED` | `true` | Q2/§38.3: disable the auto-revert watcher (auto_apply CRs become unsupervised) |
+| `TIER3_GOVERNANCE_NOTIFIER_ENABLED` | `true` | §38.4: disable governance_notifier daemon (Tier-3 amendments fall back to audit-only) |
+| `PROPOSAL_BRIDGE_ENABLED` | `true` | §38.1: disable proposal_bridge promoter (proposals stage but never promote to CR) |
+
+### Cross-references
+
+  * Full change log + test results + files touched: PROGRAM.md §38
+  * Auto-apply CR infrastructure (separate, dormant): `docs/AUTO_APPLY.md`
+  * Q1 + Q2 narrative: `tests/test_q1_unclog.py` and
+    `tests/test_q2_auto_actions.py`

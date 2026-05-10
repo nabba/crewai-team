@@ -70,7 +70,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -92,6 +92,16 @@ _LOCK_STALENESS_SECONDS = 600  # 10 min — well over a normal run
 # operators see when the candidate was produced.
 _HASH_PIN_TIME = datetime(2000, 1, 1, tzinfo=timezone.utc)
 _UPDATED_AT_RE = re.compile(r"^updated_at:\s*'?[^'\n]*'?\s*$", re.MULTILINE)
+# `_compute_master_index_content` ALSO embeds the date into the body line
+# `Total pages: N | Last updated: YYYY-MM-DD` (see wiki_tools.py:304).
+# Without stripping that line, every reconciler run treats today's body
+# date as drift against the canonical's pin-date body — that's the
+# actual root cause of the historical CR spam (335 CRs in a month, all
+# with timestamp-only diffs). Strip BOTH frontmatter and body date.
+_BODY_LAST_UPDATED_RE = re.compile(
+    r"^(Total pages:\s*\d+\s*\|\s*Last updated:)\s*\S+\s*$",
+    re.MULTILINE,
+)
 
 
 # ── Result types ─────────────────────────────────────────────────────────
@@ -132,13 +142,17 @@ class DriftResult:
 
 
 def _normalize_for_hashing(content: str) -> str:
-    """Strip the frontmatter `updated_at` line so timestamp drift alone
-    doesn't trigger a false-positive drift signal.
+    """Strip both the frontmatter ``updated_at`` line AND the body's
+    ``Last updated: YYYY-MM-DD`` line so date drift alone doesn't
+    trigger a false-positive drift signal.
 
     Everything else in the frontmatter (title, total_pages, sections)
-    counts toward the hash — those changes ARE meaningful drift.
+    AND the body (page list, section headers) counts toward the hash —
+    those changes ARE meaningful drift.
     """
-    return _UPDATED_AT_RE.sub("updated_at: '<pinned>'", content)
+    out = _UPDATED_AT_RE.sub("updated_at: '<pinned>'", content)
+    out = _BODY_LAST_UPDATED_RE.sub(r"\1 <pinned>", out)
+    return out
 
 
 def _content_hash(content: str) -> str:
@@ -267,17 +281,89 @@ def _write_candidate(content: str) -> None:
     WIKI_INDEX_CANDIDATE.write_text(content, encoding="utf-8")
 
 
+_RECENT_REJECTION_WINDOW_DAYS = 7
+
+
+def _existing_cr_blocks_filing(*, candidate_content: str) -> Optional[str]:
+    """Return a reason string when an existing CR for ``wiki/index.md``
+    should suppress a new filing; ``None`` when filing is fine.
+
+    Suppression cases:
+      * Any non-terminal CR (PENDING, APPROVED, APPLY_FAILED) — the
+        operator hasn't yet decided; piling on duplicates would spam.
+      * Any REJECTED CR within ``_RECENT_REJECTION_WINDOW_DAYS`` whose
+        ``new_content`` matches the candidate verbatim — operator
+        already said no to this exact content; honour the decision.
+
+    This is the third defensive layer behind the validator-allow-list
+    fix and the body-date normalization fix.
+    """
+    try:
+        from app.change_requests import Status, list_all
+    except Exception:
+        return None  # CR system unavailable — let the create attempt proceed
+
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        days=_RECENT_REJECTION_WINDOW_DAYS,
+    )
+    candidate_hash = hashlib.sha256(
+        candidate_content.encode("utf-8"),
+    ).hexdigest()
+
+    try:
+        recent = list_all(limit=200)
+    except Exception:
+        return None
+
+    for cr in recent:
+        if cr.path != "wiki/index.md":
+            continue
+        # Non-terminal: block on path alone (don't pile on duplicates).
+        if cr.status in (
+            Status.PENDING,
+            Status.APPROVED,
+            Status.APPLY_FAILED,
+        ):
+            return f"non-terminal CR {cr.id} already open for wiki/index.md"
+        # Recently rejected with same content: honour operator decision.
+        if cr.status == Status.REJECTED:
+            try:
+                rejected_at = datetime.fromisoformat(cr.decided_at) if cr.decided_at else None
+            except ValueError:
+                rejected_at = None
+            if rejected_at is None or rejected_at < cutoff:
+                continue
+            cr_hash = hashlib.sha256(
+                (cr.new_content or "").encode("utf-8"),
+            ).hexdigest()
+            if cr_hash == candidate_hash:
+                return (
+                    f"identical content was rejected as CR {cr.id} on "
+                    f"{cr.decided_at}; honouring operator decision"
+                )
+    return None
+
+
 def _open_change_request(*, candidate_content: str, live_content: str, audit_id: str) -> Optional[str]:
     """Open a change-request to update `wiki/index.md`. Returns the
     request id on success, None on failure (lack of imports, validator
-    rejection, etc.). Failure is non-fatal — the candidate file + audit
-    entry are still written so the operator can act manually.
+    rejection, dedup suppression, etc.). Failure is non-fatal — the
+    candidate file + audit entry are still written so the operator
+    can act manually.
     """
     try:
         from app.change_requests import create_request
     except Exception as exc:
         logger.debug("wiki_index_reconciler: change_requests import failed: %s", exc)
         return None
+
+    suppression = _existing_cr_blocks_filing(candidate_content=candidate_content)
+    if suppression is not None:
+        logger.info(
+            "wiki_index_reconciler: skipping CR filing — %s", suppression,
+        )
+        return None
+
     try:
         cr = create_request(
             requestor="wiki_index_reconciler",
