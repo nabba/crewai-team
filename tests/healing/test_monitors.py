@@ -163,7 +163,7 @@ def test_auditor_bridge_dedups_same_proposal(isolated_state, monkeypatch):
             "files_changed": [],
         },
     ]
-    monkeypatch.setattr(auditor_bridge, "_load_journal", lambda: journal)
+    monkeypatch.setattr(auditor_bridge, "_load_recent_proposals", lambda: journal)
 
     n1 = auditor_bridge.run_one_pass()
     n2 = auditor_bridge.run_one_pass()
@@ -204,7 +204,7 @@ def test_auditor_bridge_files_cr_mirror(isolated_state, monkeypatch):
             "files_changed": ["app/llm_factory.py"],
         },
     ]
-    monkeypatch.setattr(auditor_bridge, "_load_journal", lambda: journal)
+    monkeypatch.setattr(auditor_bridge, "_load_recent_proposals", lambda: journal)
 
     n = auditor_bridge.run_one_pass()
     assert n == 1
@@ -248,7 +248,7 @@ def test_auditor_bridge_cr_failure_still_sends_signal(isolated_state, monkeypatc
             "files_changed": [],
         },
     ]
-    monkeypatch.setattr(auditor_bridge, "_load_journal", lambda: journal)
+    monkeypatch.setattr(auditor_bridge, "_load_recent_proposals", lambda: journal)
 
     n = auditor_bridge.run_one_pass()
     assert n == 1
