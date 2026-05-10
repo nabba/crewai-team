@@ -48,6 +48,23 @@ logger = logging.getLogger(__name__)
 # ── State ────────────────────────────────────────────────────────────
 _last_progress: dict[str, float] = {}   # task_id → monotonic ts
 _progress_count: dict[str, int] = {}    # task_id → count
+
+# Cure C (2026-05-10) — failure context tracker.  Distinct from the
+# heartbeat / count tracker above: this records the *most recent
+# failure signal* a task has hit (vetting rejection, artifact-not-
+# produced, completion truncation, …), so when the watchdog fires
+# its apology can include the actual reason instead of generic
+# "narrow your question" advice.  Pre-fix the watchdog had no way
+# to read the failure context — the apology message at
+# app/main.py:1894-1900 conflated "agent stuck without progress"
+# with "agent hit explicit vetting failures and exhausted retries"
+# and gave the same misleading message in both cases.
+#
+# Schema: {task_id: {"kind": str, "detail": str, "ts": monotonic_float}}.
+# kind is a short stable enum-ish string ("vetting_fail",
+# "artifact_missing", "completion_truncated", "exception", …)
+# that the apology formatter can switch on.
+_failure_context: dict[str, dict] = {}
 _lock = threading.Lock()
 
 # The task id of the request currently being processed in this context.
@@ -120,6 +137,72 @@ def reset_task(task_id: str) -> None:
     with _lock:
         _last_progress.pop(task_id, None)
         _progress_count.pop(task_id, None)
+        _failure_context.pop(task_id, None)
+
+
+# ── Failure-context API (Cure C, 2026-05-10) ─────────────────────────
+
+
+def record_failure_context(
+    kind: str,
+    detail: str = "",
+    *,
+    task_id: str | None = None,
+) -> None:
+    """Stash the most recent failure signal for a task.
+
+    Called from the points where failures are first detected
+    (vetting rejection, artifact verification, completion truncation,
+    typed exception in dispatch).  The watchdog's user-facing
+    apology reads this so the message can name the actual cause
+    instead of falling back to "please re-send a narrower question".
+
+    Parameters
+    ----------
+    kind   : short stable identifier (``vetting_fail`` /
+             ``artifact_missing`` / ``completion_truncated`` /
+             ``exception`` / …).  The apology formatter switches
+             on this; new values are accepted but render as
+             generic.
+    detail : human-readable specifics (vetting issues list,
+             missing artifact path, truncated model id, …).
+             Truncated to 500 chars to keep the apology bounded.
+    task_id: explicit task id; defaults to the ContextVar.
+
+    Multiple calls overwrite — the LATEST failure wins.  Cleared
+    by ``reset_task`` at request end.
+    """
+    tid = task_id or current_task_id.get()
+    if not tid:
+        return
+    with _lock:
+        _failure_context[tid] = {
+            "kind": kind[:64],
+            "detail": (detail or "")[:500],
+            "ts": time.monotonic(),
+        }
+
+
+def get_failure_context(task_id: str) -> dict | None:
+    """Return the latest failure context for a task, or None.
+
+    Returns a dict with ``kind`` / ``detail`` / ``age_s`` (seconds
+    since the failure was recorded).  ``None`` means "no failure
+    has been explicitly recorded for this task" — callers should
+    distinguish that from "the task is fine" (it might still be
+    stuck for a different reason; failure-context is best-effort).
+    """
+    if not task_id:
+        return None
+    with _lock:
+        entry = _failure_context.get(task_id)
+        if entry is None:
+            return None
+        return {
+            "kind": entry["kind"],
+            "detail": entry["detail"],
+            "age_s": time.monotonic() - entry["ts"],
+        }
 
 
 def snapshot_all() -> dict[str, dict[str, float | int]]:
