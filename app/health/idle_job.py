@@ -16,7 +16,12 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_LAST_RUN = Path("/app/workspace/health/.last_summary_at")
+def _last_run_path() -> Path:
+    """Marker file path. Derived from the same base directory as the
+    JSONL store, so :func:`app.health.store._reset_for_tests` and the
+    ``HEALTH_BASE_DIR`` env override apply uniformly."""
+    from app.health.store import resolve_base
+    return resolve_base() / ".last_summary_at"
 
 
 def _enabled() -> bool:
@@ -27,19 +32,21 @@ def _enabled() -> bool:
 
 def _due(min_interval_h: float = 23.5) -> bool:
     """True if it's been long enough since the last summary."""
-    if not _DEFAULT_LAST_RUN.exists():
+    p = _last_run_path()
+    if not p.exists():
         return True
     try:
-        age = time.time() - _DEFAULT_LAST_RUN.stat().st_mtime
+        age = time.time() - p.stat().st_mtime
     except OSError:
         return True
     return age >= min_interval_h * 3600.0
 
 
 def _touch_last_run() -> None:
+    p = _last_run_path()
     try:
-        _DEFAULT_LAST_RUN.parent.mkdir(parents=True, exist_ok=True)
-        _DEFAULT_LAST_RUN.write_text(
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
             datetime.now(timezone.utc).isoformat(), encoding="utf-8",
         )
     except OSError:

@@ -31,14 +31,14 @@ def test_steps_drop_is_flagged(base_dir: Path) -> None:
         baseline.append(StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            count=8000 + wobble, source_uuid=f"b{i}",
+            count=8000 + wobble, source_version=f"b{i}",
         ))
     recent = []
     for i in range(3):  # last 3 days
         recent.append(StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            count=1000, source_uuid=f"r{i}",
+            count=1000, source_version=f"r{i}",
         ))
     store.append_records("steps", baseline + recent, base=base_dir)
     out = anomaly.detect_anomalies(now=now, base=base_dir)
@@ -53,7 +53,7 @@ def test_steady_state_no_anomaly(base_dir: Path) -> None:
         records.append(StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            count=8000, source_uuid=f"u{i}",
+            count=8000, source_version=f"u{i}",
         ))
     store.append_records("steps", records, base=base_dir)
     out = anomaly.detect_anomalies(now=now, base=base_dir)
@@ -72,7 +72,7 @@ def test_resting_hr_spike_flagged(base_dir: Path) -> None:
                 start_iso=(now - timedelta(days=i, hours=h)).isoformat(),
                 end_iso=(now - timedelta(days=i, hours=h)).isoformat(),
                 bpm=55.0 + (h * 0.5),  # variability
-                source_uuid=f"b{i}-{h}",
+                source_version=f"b{i}-{h}",
             ))
     # Recent: 3 days of resting around 75 bpm.
     for i in range(3):
@@ -81,7 +81,7 @@ def test_resting_hr_spike_flagged(base_dir: Path) -> None:
                 start_iso=(now - timedelta(days=i, hours=h)).isoformat(),
                 end_iso=(now - timedelta(days=i, hours=h)).isoformat(),
                 bpm=75.0 + (h * 0.5),
-                source_uuid=f"r{i}-{h}",
+                source_version=f"r{i}-{h}",
             ))
     store.append_records("heart_rate", records, base=base_dir)
     out = anomaly.detect_anomalies(now=now, base=base_dir)
@@ -98,7 +98,7 @@ def test_sleep_drop_flagged(base_dir: Path) -> None:
         end = start + timedelta(hours=7, minutes=30)
         records.append(SleepRecord(
             start_iso=start.isoformat(), end_iso=end.isoformat(),
-            stage="asleep_core", source_uuid=f"b{i}",
+            stage="asleep_core", source_version=f"b{i}",
         ))
     # 3 recent nights, 4h each.
     for i in range(3):
@@ -106,7 +106,7 @@ def test_sleep_drop_flagged(base_dir: Path) -> None:
         end = start + timedelta(hours=4)
         records.append(SleepRecord(
             start_iso=start.isoformat(), end_iso=end.isoformat(),
-            stage="asleep_core", source_uuid=f"r{i}",
+            stage="asleep_core", source_version=f"r{i}",
         ))
     store.append_records("sleep", records, base=base_dir)
     out = anomaly.detect_anomalies(now=now, base=base_dir)
@@ -125,14 +125,14 @@ def test_z_threshold_filters(base_dir: Path) -> None:
         records.append(StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            count=2000 + (i * 400) % 12000, source_uuid=f"b{i}",
+            count=2000 + (i * 400) % 12000, source_version=f"b{i}",
         ))
     # Recent: 3 days at 7k (within baseline range).
     for i in range(3):
         records.append(StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            count=7000, source_uuid=f"r{i}",
+            count=7000, source_version=f"r{i}",
         ))
     store.append_records("steps", records, base=base_dir)
     out = anomaly.detect_anomalies(now=now, base=base_dir, z_threshold=2.0)

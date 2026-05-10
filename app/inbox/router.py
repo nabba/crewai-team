@@ -94,13 +94,28 @@ def _handle_apple_health(
 def _handle_text(
     path: Path, classification: FileClassification, base: Path,
 ) -> str:
-    """Drop text/markdown into ``workspace/notes/inbox/<YYYY-MM-DD>/``.
-    The companion's ingest pipeline picks it up from there."""
-    notes_root = Path(os.getenv("INBOX_NOTES_DIR", "/app/workspace/notes/inbox"))
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    dest_dir = notes_root / today
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / path.name
+    """Drop text/markdown into the canonical notes root the React
+    ``/cp/files`` view lists from (``workspace/notes/``).
+
+    The destination is the same root surfaced by ``app/api/files_api.py``,
+    so anything copied here shows up in the dashboard's Files tab and
+    can be sent via Signal/Email/Discord through the existing
+    ``send_via_*`` plumbing. On filename collision we add a numeric
+    suffix instead of overwriting (the inbox is meant to be additive).
+    """
+    from app.paths import WORKSPACE_ROOT
+    notes_root = Path(os.getenv("INBOX_NOTES_DIR", str(WORKSPACE_ROOT / "notes")))
+    notes_root.mkdir(parents=True, exist_ok=True)
+    dest = notes_root / path.name
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        i = 1
+        while True:
+            cand = notes_root / f"{stem}.{i}{suffix}"
+            if not cand.exists():
+                dest = cand
+                break
+            i += 1
     shutil.copy2(path, dest)
     return f"copied to {dest}"
 

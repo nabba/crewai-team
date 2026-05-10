@@ -42,7 +42,7 @@ def test_heart_rate_mean(base_dir: Path) -> None:
         HeartRateRecord(
             start_iso=(now - timedelta(hours=i)).isoformat(),
             end_iso=(now - timedelta(hours=i)).isoformat(),
-            bpm=70.0 + i, source_uuid=f"u{i}",
+            bpm=70.0 + i, source_version=f"u{i}",
         )
         for i in range(5)
     ]
@@ -58,7 +58,7 @@ def test_steps_total(base_dir: Path) -> None:
         StepsRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=1)).isoformat(),
-            count=1000 * (i + 1), source_uuid=f"u{i}",
+            count=1000 * (i + 1), source_version=f"u{i}",
         )
         for i in range(3)
     ]
@@ -73,11 +73,11 @@ def test_body_mass_change(base_dir: Path) -> None:
     records = [
         BodyMassRecord(
             start_iso=(now - timedelta(days=6)).isoformat(),
-            kg=75.0, source_uuid="bm1",
+            kg=75.0, source_version="bm1",
         ),
         BodyMassRecord(
             start_iso=(now - timedelta(days=2)).isoformat(),
-            kg=74.5, source_uuid="bm2",
+            kg=74.5, source_version="bm2",
         ),
     ]
     store.append_records("body_mass", records, base=base_dir)
@@ -93,18 +93,18 @@ def test_sleep_hours_per_night(base_dir: Path) -> None:
         SleepRecord(
             start_iso=(now - timedelta(days=1, hours=8)).isoformat(),
             end_iso=(now - timedelta(days=1, hours=4)).isoformat(),
-            stage="asleep_core", source_uuid="s1",
+            stage="asleep_core", source_version="s1",
         ),
         SleepRecord(
             start_iso=(now - timedelta(days=1, hours=4)).isoformat(),
             end_iso=(now - timedelta(days=1, hours=0)).isoformat(),
-            stage="asleep_core", source_uuid="s2",
+            stage="asleep_core", source_version="s2",
         ),
         # An "awake" stage shouldn't count.
         SleepRecord(
             start_iso=(now - timedelta(days=1, hours=2)).isoformat(),
             end_iso=(now - timedelta(days=1, hours=1)).isoformat(),
-            stage="awake", source_uuid="s3",
+            stage="awake", source_version="s3",
         ),
     ]
     store.append_records("sleep", records, base=base_dir)
@@ -121,13 +121,13 @@ def test_workouts_count_and_distance(base_dir: Path) -> None:
             start_iso=(now - timedelta(days=2)).isoformat(),
             end_iso=(now - timedelta(days=2, hours=-1)).isoformat(),
             activity="running", duration_s=1800, distance_km=6.1,
-            kcal=320.0, source_uuid="w1",
+            kcal=320.0, source_version="w1",
         ),
         WorkoutRecord(
             start_iso=(now - timedelta(days=4)).isoformat(),
             end_iso=(now - timedelta(days=4, hours=-1)).isoformat(),
             activity="cycling", duration_s=3600, distance_km=20.0,
-            kcal=600.0, source_uuid="w2",
+            kcal=600.0, source_version="w2",
         ),
     ]
     store.append_records("workouts", records, base=base_dir)
@@ -142,7 +142,7 @@ def test_active_energy_per_day(base_dir: Path) -> None:
         ActiveEnergyRecord(
             start_iso=(now - timedelta(days=i)).isoformat(),
             end_iso=(now - timedelta(days=i, hours=-1)).isoformat(),
-            kcal=400.0, source_uuid=f"e{i}",
+            kcal=400.0, source_version=f"e{i}",
         )
         for i in range(7)
     ]

@@ -1,7 +1,7 @@
 """JSONL store for typed health records.
 
 One file per record kind at ``workspace/health/<kind>.jsonl``. Append-
-only; dedupe on ``(start_iso, source_uuid)`` so re-importing the same
+only; dedupe on ``(start_iso, source_version)`` so re-importing the same
 Apple Health export is idempotent.
 
 All file I/O is failure-isolated — a write that fails is logged and
@@ -19,8 +19,21 @@ from typing import Any, Iterable
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_BASE = Path("/app/workspace/health")
+from app.paths import WORKSPACE_ROOT
+
+_DEFAULT_BASE = WORKSPACE_ROOT / "health"
 _path_override: Path | None = None
+
+
+def resolve_base() -> Path:
+    """Public accessor for the resolved health-data base directory.
+
+    Honors :func:`_reset_for_tests` first, then ``HEALTH_BASE_DIR`` env
+    var, then the canonical default ``WORKSPACE_ROOT/health``. Other
+    health modules (``idle_job``) call this to keep their derived
+    paths in sync.
+    """
+    return _resolve_base()
 
 
 def _enabled() -> bool:
@@ -44,7 +57,7 @@ def _path_for(kind: str, base: Path | str | None = None) -> Path:
 
 
 def _existing_keys(kind: str, base: Path | str | None = None) -> set[tuple[str, str]]:
-    """Return the (start_iso, source_uuid) tuples already present for
+    """Return the (start_iso, source_version) tuples already present for
     this kind. Used by the importer to dedupe additive runs."""
     p = _path_for(kind, base=base)
     if not p.exists():
@@ -62,7 +75,7 @@ def _existing_keys(kind: str, base: Path | str | None = None) -> set[tuple[str, 
                     continue
                 key = (
                     str(raw.get("start_iso", "")),
-                    str(raw.get("source_uuid", "")),
+                    str(raw.get("source_version", "")),
                 )
                 out.add(key)
     except OSError:
@@ -77,7 +90,7 @@ def append_records(
     base: Path | str | None = None,
 ) -> int:
     """Append records (each ``.to_dict()``-able) for ``kind``. Dedupes
-    against existing entries by ``(start_iso, source_uuid)``. Returns
+    against existing entries by ``(start_iso, source_version)``. Returns
     the number of records actually written.
 
     Disabled short-circuit: if ``HEALTH_INGESTION_ENABLED`` is false,
@@ -93,7 +106,7 @@ def append_records(
         with open(p, "a", encoding="utf-8") as f:
             for r in records:
                 d = r.to_dict() if hasattr(r, "to_dict") else dict(r)
-                key = (str(d.get("start_iso", "")), str(d.get("source_uuid", "")))
+                key = (str(d.get("start_iso", "")), str(d.get("source_version", "")))
                 if key in existing:
                     continue
                 f.write(json.dumps(d, sort_keys=True) + "\n")

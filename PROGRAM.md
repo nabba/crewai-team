@@ -3469,3 +3469,319 @@ These are intentional: the discipline of the initiative is
 "observational, additive, revertible." A subsystem that fires
 proposals into the operator's gate is in scope; a subsystem
 that auto-mutates identity-shaping state is not.
+
+
+## 33. 2026-05-10 — Life-companion subsystem (PRs #103/#104) — bulk filter + act-now digest + control panel
+
+Three contiguous PRs landed the life-companion email surface in
+its current shape: a bulk-mail blindness fix that surfaced
+marketing as urgent, a thrice-daily LLM-graded digest sibling
+of the real-time monitor, and a React control panel that
+exposes every life-companion job's on/off + tunables for
+runtime override without a gateway restart.
+
+### 33.1 PR #103 — email-triage bulk-blindness cure
+
+Operator-reported on Signal:
+
+```
+📬 Email triage — 3 urgent unread:
+  • DailyOM <today@dailyom.com> · score=2.5
+  • Wild Gym <info@wildgym.com> · score=2.5
+  • Swimmer.com.au <news@swimmer.com.au> · score=2.5
+```
+
+Three obvious marketing emails surfaced as "urgent". The
+scorer's bulk-marker weights were correct (`-3` for
+List-Unsubscribe, `-2` for List-ID, etc.) — but **two
+architectural gaps in the input pipeline made them blind**:
+
+1. `app/tools/gmail_tools.py:_list_recent` only requested
+   `metadataHeaders=["From", "Subject", "Date"]` from the
+   Gmail API.  List-Unsubscribe / List-Id / Auto-Submitted /
+   Precedence / In-Reply-To / References were never fetched.
+
+2. `app/life_companion/email_monitor.py:_build_headers`
+   hardcoded every bulk marker to `None` even if the API had
+   returned them, AND the scorer didn't recognize Gmail's
+   tab-category labels (`CATEGORY_PROMOTIONS` / `SOCIAL` /
+   `UPDATES` / `FORUMS`) — those were already in the stub
+   but unread.
+
+Each marketing email scored
+`+1 (human From) + 1 (unread) + 0.5 (recent) ≈ +2.5` →
+above the 1.0 threshold.
+
+**Two-layer cure:**
+
+* **Layer A** — `gmail_tools._list_recent` widens
+  `_GMAIL_METADATA_HEADERS` to include the bulk + threading
+  headers.  Free — same API call, more fields.  Stub now
+  exposes them.
+
+* **Layer B** — `EmailHeaders.gmail_labels: tuple[str, ...]`
+  field + `_GMAIL_BULK_LABEL_PENALTIES` table:
+
+  ```
+  CATEGORY_PROMOTIONS = -4   (overrides +2.5 noise)
+  CATEGORY_SOCIAL     = -3
+  CATEGORY_UPDATES    = -2
+  CATEGORY_FORUMS     = -2
+  ```
+
+  `score_email` picks the **strongest** matching label,
+  doesn't compound (categories overlap; doubling would
+  over-penalize legitimate Updates like flight changes /
+  banking).
+
+For non-Gmail providers (IMAP / Outlook), `gmail_labels` is
+empty — bulk-marker headers carry the signal instead.
+List-Unsubscribe alone is sufficient to drop a marketing
+email below threshold.
+
+Test coverage: 16 new tests; combined with 28 existing email
+tests = **44/44 pass**, no regressions.  The 3 specific
+operator-reported emails are tested by name in
+`TestActualOperatorReportedEmails`.
+
+### 33.2 act-now email digest — sibling of email_monitor
+
+Operator request (Signal):
+
+> "I want additionally following e-mail format running every
+> three hours from 7am to 22pm: bring me top 7 e-mails I need
+> to act on now! Have system to analyse last 48 hours unread
+> emails and decide based on content whether those are
+> important or not. Provide links to email."
+
+Implemented as `app/life_companion/act_now_digest.py` —
+deliberately NOT a modification of `email_monitor`; the two
+co-exist and serve different purposes:
+
+| | `email_monitor` | `act_now_digest` |
+|---|---|---|
+| Cadence | Every ~10 min | Every 3 h, 07–22 local |
+| Lookback | All unread | Last 48 h unread |
+| Ranking | Heuristic (no LLM) | **LLM content analysis** |
+| Output | Top 3 above 1.0 | **Top 7 act-now items** |
+| Per-item | sender / subject / score | + **why** / **action** / deadline / **Gmail link** |
+| Job | Real-time noise filter | Thoughtful synthesis |
+
+**Cadence implementation:** fires at six fixed slots
+(07/10/13/16/19/22 local) with ±15 min tolerance.  Slot key
+`YYYY-MM-DD-HH` prevents re-firing within the same window.
+
+**Pipeline:**
+
+1. `_fetch_unread_with_bodies(48h, max_n=30)` — Gmail
+   full-read for body content
+2. `_pre_filter` drops `CATEGORY_PROMOTIONS / SOCIAL /
+   FORUMS`.  Keeps `CATEGORY_UPDATES` (flight changes /
+   banking / package tracking can be act-now)
+3. `_rank_with_llm` — single Sonnet call, structured JSON
+   output, validates each `email_id` against candidates
+   (drops hallucinated ids silently)
+4. `_heuristic_fallback` when LLM unavailable — ranks by
+   `email_importance.score_email`; digest still ships
+5. `_format_digest` — Signal message with rank / sender /
+   subject / why / action / deadline / Gmail link
+
+**Sample output:**
+
+```
+✉️ Top 7 act-now emails — last 48h (14 unread → 9 after bulk-filter):
+
+1. CFO Sarah Chen <sarah@acme.com>
+   Q3 board deck — sign-off needed by EOD
+   why: explicit deadline today
+   action: review draft + reply with sign-off
+   deadline: EOD today
+   📨 https://mail.google.com/mail/u/0/#inbox/abc123
+```
+
+Cost: ~$0.40/day on Sonnet (6 runs × 30 emails × 500-token
+excerpts).  Tunable via env-style knobs.
+
+Test coverage: 28 tests — cadence/slot, pre-filter,
+Gmail-link, digest format, LLM-call (well-formed /
+hallucinated id / malformed / empty), prompt-block, idle-
+scheduler wiring contract.
+
+### 33.3 PR #104 — React control panel for jobs on/off + tunables
+
+Operator request: a `/cp/` surface to manage life-companion
+parameters — turn each job on/off and edit its env-var-
+shaped tunables — **without a gateway restart**.
+
+#### Architecture (single source of truth)
+
+```
+   ┌──────────────────────────────────────────┐
+   │ app/life_companion/feature_registry.py   │  declare features +
+   │ (immutable schema-as-data, no logic)     │  tunables in ONE place
+   └──────────────────────────────────────────┘
+                    │ used by ↓
+   ┌──────────────────────────────────────────┐
+   │ app/runtime_settings.py                  │  store overrides at
+   │ life_companion_overrides schema          │  workspace/runtime_settings.json
+   └──────────────────────────────────────────┘
+                    │ consulted by ↓
+   ┌──────────────────────────────────────────┐
+   │ app/life_companion/_common.py            │  feature_enabled() +
+   │   feature_enabled / get_tunable          │  get_tunable() — no module
+   │ (override > env > default)               │  imports os.getenv directly
+   └──────────────────────────────────────────┘
+                    │ exposed by ↓
+   ┌──────────────────────────────────────────┐
+   │ GET/POST /config/life_companion          │  registry + overrides as
+   │ (config_api.py — bearer-auth on POST)    │  one payload; validates
+   │                                          │  feature_key + tunables
+   └──────────────────────────────────────────┘
+                    │ rendered by ↓
+   ┌──────────────────────────────────────────┐
+   │ dashboard-react/src/components/          │  card per feature:
+   │   LifeCompanionPage.tsx                  │  toggle + tunables +
+   │                                          │  source pills
+   └──────────────────────────────────────────┘
+```
+
+**Resolution order** (lowest priority last):
+
+1. Master switch `LIFE_COMPANION_ENABLED` — kills everything
+   when false (env-only, requires restart)
+2. **Per-feature override** (this control panel) — persisted;
+   survives restart
+3. Per-feature env var (boot default)
+4. Registry default
+
+#### Why a registry, not module-level constants?
+
+* **Cross-cutting use** — React + override-setter both need
+  the same shape; one declaration removes "where does the UI
+  know about `LIFE_COMPANION_ACT_NOW_TOP_K`?" from the answer.
+* **Schema-as-data** — tunable types + bounds + defaults
+  travel with the metadata; UI renders typed inputs with
+  min/max validation.
+* **Discoverable** — adding a new feature is one entry here.
+  UI picks it up automatically on next page load.
+
+#### Sentinel pattern in `life_companion_set_feature_override`
+
+Three distinct semantic paths for `enabled`:
+
+* **Omitted** (default `_LEAVE_UNTOUCHED` sentinel) — leave
+  toggle override untouched; useful when only tunables changed.
+* **`None`** — clear the toggle override; revert to env.
+* **`bool`** — set the override explicitly.
+
+The HTTP API maps these onto `"enabled" not in body` /
+`"enabled": null` / `"enabled": <bool>` respectively.  Pre-
+sentinel-fix: both omitted and `null` collapsed to
+`enabled_arg=None` → couldn't clear an override.
+
+#### React UX
+
+Each feature card shows:
+
+* Header — name + description + **source pill** (override / env
+  / default) + on/off toggle + reset button
+* Tunables — typed inputs (number / select / text) with
+  min/max/default hints; per-tunable source pill
+* Dirty-tracking — "Save tunables" only enabled when unsaved
+  edits exist
+* Inline error from last mutation
+* Master-switch warning banner when `LIFE_COMPANION_ENABLED=
+  false` is detected
+
+10 features registered out of the box: email monitor,
+act-now digest, daily briefing, routines, long-arc, calendar
+prep, personalized digest, calendar horizon, topic dormancy,
+seasonal nudges.
+
+#### Wiring discipline
+
+`act_now_digest` and `email_monitor` switched from
+`os.getenv` → `get_tunable` for their tunable accessors.
+Verified live:
+
+```
+POST {TOP_K: "5"}  →  _top_k() in running gateway returns 5
+POST {TOP_K: ""}   →  _top_k() returns 7 (registry default)
+```
+
+No restart between the POST and the next read.  That's the
+whole point of the override mechanism.
+
+### 33.4 Files touched (this section's PRs)
+
+```
+# PR #103
+app/tools/gmail_tools.py                                 # widened metadataHeaders
+app/tools/email_importance.py                            # gmail_labels field + penalties
+app/life_companion/email_monitor.py                      # _build_headers populates fields
+tests/test_email_triage_bulk_blindness.py                # 16 new tests
+
+# act_now_digest (commit 04b57e1b — fast-forwarded by parallel agent)
+app/life_companion/act_now_digest.py                     # NEW
+app/life_companion/__init__.py                           # idle-scheduler registration
+tests/life_companion/test_act_now_digest.py              # 28 new tests
+
+# PR #104
+app/life_companion/feature_registry.py                   # NEW (single source of truth)
+app/runtime_settings.py                                  # +life_companion_overrides
+app/life_companion/_common.py                            # +get_tunable, override-aware feature_enabled
+app/life_companion/act_now_digest.py                     # tunables via get_tunable
+app/life_companion/email_monitor.py                      # tunables via get_tunable
+app/api/config_api.py                                    # GET/POST /config/life_companion
+dashboard-react/src/api/endpoints.ts                     # lifeCompanion endpoint
+dashboard-react/src/api/queries.ts                       # useLifeCompanionQuery + mutation
+dashboard-react/src/components/LifeCompanionPage.tsx     # NEW
+dashboard-react/src/App.tsx                              # /life-companion route
+dashboard-react/src/components/Layout.tsx                # 🌿 nav-item
+tests/test_life_companion_control_panel.py               # 18 new tests
+```
+
+Total: **62 new tests** across 3 new test files for this
+section's three PRs.
+
+### 33.5 Verification (post-redeploy)
+
+```
+$ docker exec gateway python3 -m pytest \
+    tests/test_email_triage_bulk_blindness.py \
+    tests/life_companion/test_act_now_digest.py \
+    tests/test_life_companion_control_panel.py
+62 passed in 0.31s
+
+$ curl -s http://localhost:8765/config/life_companion | jq .master_enabled
+true
+$ curl -s http://localhost:8765/config/life_companion | jq '.features | length'
+10
+
+$ curl -s -X POST -H "Authorization: Bearer …" -H "Content-Type: application/json" \
+    --data '{"feature_key":"act_now_digest","tunables":{"LIFE_COMPANION_ACT_NOW_TOP_K":"5"}}' \
+    http://localhost:8765/config/life_companion
+{"status":"ok","overrides":{"act_now_digest":{"tunables":{"LIFE_COMPANION_ACT_NOW_TOP_K":"5"}}}}
+
+$ docker exec gateway python3 -c \
+    "from app.life_companion.act_now_digest import _top_k; print(_top_k())"
+5     ← override picked up immediately, no restart
+```
+
+System Monitor: all-green.  Bridge available, Neo4j connected,
+all 9 firebase listeners heartbeating, no errors in last 24 h.
+
+### 33.6 Operator-action items
+
+* **Adding a new life-companion feature later** — one entry
+  in `app/life_companion/feature_registry.py`.  Three things
+  travel with the entry: feature key + env-var pair + tunable
+  schema.  UI auto-renders.  No React changes required.
+* **No-restart pickup verified** — overrides flow through
+  `get_tunable` to the per-job accessors.  Each `run()` reads
+  the latest value on the next tick.  Test:
+  `tests/test_life_companion_control_panel.py::TestActNowDigestUsesTunableHelper`
+  enforces this contract via source-grep so a future refactor
+  can't silently regress to `os.getenv`.
+* **Dashboard route**: `/cp/life-companion` (sidebar entry
+  🌿 Life Companion, between Files and Settings).

@@ -21,7 +21,7 @@ def test_append_round_trip(base_dir: Path) -> None:
         HeartRateRecord(
             start_iso="2026-05-10T08:30:00+00:00",
             end_iso="2026-05-10T08:31:00+00:00",
-            bpm=72.0, source="Watch", source_uuid="u1",
+            bpm=72.0, source="Watch", source_version="u1",
         ),
     ]
     n = store.append_records("heart_rate", records, base=base_dir)
@@ -49,7 +49,7 @@ def test_append_dedupe_on_start_and_uuid(base_dir: Path) -> None:
     rec = HeartRateRecord(
         start_iso="2026-05-10T08:30:00+00:00",
         end_iso="2026-05-10T08:31:00+00:00",
-        bpm=72.0, source_uuid="u1",
+        bpm=72.0, source_version="u1",
     )
     n1 = store.append_records("heart_rate", [rec], base=base_dir)
     n2 = store.append_records("heart_rate", [rec], base=base_dir)
@@ -63,12 +63,12 @@ def test_list_window_filters_by_age(base_dir: Path) -> None:
     old = HeartRateRecord(
         start_iso="2026-01-01T00:00:00+00:00",
         end_iso="2026-01-01T00:01:00+00:00",
-        bpm=70.0, source_uuid="old",
+        bpm=70.0, source_version="old",
     )
     fresh = HeartRateRecord(
         start_iso="2026-05-08T00:00:00+00:00",
         end_iso="2026-05-08T00:01:00+00:00",
-        bpm=75.0, source_uuid="fresh",
+        bpm=75.0, source_version="fresh",
     )
     store.append_records("heart_rate", [old, fresh], base=base_dir)
     out = store.list_window(
@@ -77,7 +77,7 @@ def test_list_window_filters_by_age(base_dir: Path) -> None:
         base=base_dir,
     )
     assert len(out) == 1
-    assert out[0]["source_uuid"] == "fresh"
+    assert out[0]["source_version"] == "fresh"
 
 
 def test_list_records_missing_file(tmp_path: Path) -> None:
@@ -102,12 +102,12 @@ def test_append_multiple_kinds(base_dir: Path) -> None:
     hr = HeartRateRecord(
         start_iso="2026-05-10T08:30:00+00:00",
         end_iso="2026-05-10T08:31:00+00:00",
-        bpm=72.0, source_uuid="hr1",
+        bpm=72.0, source_version="hr1",
     )
     steps = StepsRecord(
         start_iso="2026-05-10T08:00:00+00:00",
         end_iso="2026-05-10T08:15:00+00:00",
-        count=512, source_uuid="s1",
+        count=512, source_version="s1",
     )
     store.append_records("heart_rate", [hr], base=base_dir)
     store.append_records("steps", [steps], base=base_dir)

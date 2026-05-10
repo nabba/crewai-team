@@ -25,7 +25,7 @@ class HeartRateRecord:
     end_iso: str
     bpm: float
     source: str = ""     # "Apple Watch", "iPhone", etc.
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "heart_rate"
 
@@ -35,7 +35,7 @@ class HeartRateRecord:
             "end_iso": self.end_iso,
             "bpm": self.bpm,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 
@@ -48,7 +48,7 @@ class StepsRecord:
     end_iso: str
     count: int
     source: str = ""
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "steps"
 
@@ -58,7 +58,7 @@ class StepsRecord:
             "end_iso": self.end_iso,
             "count": self.count,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 
@@ -71,7 +71,7 @@ class ActiveEnergyRecord:
     end_iso: str
     kcal: float
     source: str = ""
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "active_energy"
 
@@ -81,7 +81,7 @@ class ActiveEnergyRecord:
             "end_iso": self.end_iso,
             "kcal": self.kcal,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 
@@ -93,7 +93,7 @@ class BodyMassRecord:
     start_iso: str
     kg: float
     source: str = ""
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "body_mass"
 
@@ -102,7 +102,7 @@ class BodyMassRecord:
             "start_iso": self.start_iso,
             "kg": self.kg,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 
@@ -116,7 +116,7 @@ class SleepRecord:
     end_iso: str
     stage: str           # "asleep" | "asleep_core" | "asleep_deep" | "asleep_rem" | "awake" | "in_bed"
     source: str = ""
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "sleep"
 
@@ -126,7 +126,7 @@ class SleepRecord:
             "end_iso": self.end_iso,
             "stage": self.stage,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 
@@ -142,7 +142,7 @@ class WorkoutRecord:
     distance_km: float = 0.0
     kcal: float = 0.0
     source: str = ""
-    source_uuid: str = ""
+    source_version: str = ""
 
     record_kind: str = "workouts"
 
@@ -155,7 +155,7 @@ class WorkoutRecord:
             "distance_km": self.distance_km,
             "kcal": self.kcal,
             "source": self.source,
-            "source_uuid": self.source_uuid,
+            "source_version": self.source_version,
             "record_kind": self.record_kind,
         }
 

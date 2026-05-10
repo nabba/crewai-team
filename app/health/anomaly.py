@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 from app.health import store
 
@@ -104,16 +105,80 @@ def _split_recent_vs_baseline(
     the recent window."""
     cur_date = now.date()
     recent_dates = {
-        (cur_date.fromordinal(cur_date.toordinal() - i)).isoformat()
+        (cur_date - timedelta(days=i)).isoformat()
         for i in range(recent_days)
     }
     baseline_dates = {
-        (cur_date.fromordinal(cur_date.toordinal() - i)).isoformat()
+        (cur_date - timedelta(days=i)).isoformat()
         for i in range(recent_days, recent_days + baseline_days)
     }
     recent_vals = [v for d, v in daily.items() if d in recent_dates]
     baseline_vals = [v for d, v in daily.items() if d in baseline_dates]
     return recent_vals, baseline_vals
+
+
+def _flag_if_anomalous(
+    metric: str,
+    daily: dict[str, float],
+    *,
+    recent_days: int,
+    baseline_days: int,
+    z_threshold: float,
+    now: datetime,
+    describe_up: Callable[[float, float, float], str],
+    describe_down: Callable[[float, float, float], str],
+) -> HealthAnomaly | None:
+    """Compute z-score on daily series; return an anomaly when |z| ≥ threshold."""
+    recent, baseline = _split_recent_vs_baseline(
+        daily, recent_days=recent_days, baseline_days=baseline_days, now=now,
+    )
+    if not (recent and baseline):
+        return None
+    recent_mean = sum(recent) / len(recent)
+    z, base_mean, _ = _z_score(recent_mean, baseline)
+    if abs(z) < z_threshold:
+        return None
+    direction = "up" if z > 0 else "down"
+    describe = describe_up if z > 0 else describe_down
+    return HealthAnomaly(
+        metric=metric,
+        direction=direction,
+        baseline_mean=base_mean,
+        recent_mean=recent_mean,
+        z_score=z,
+        description=describe(recent_mean, base_mean, z),
+    )
+
+
+def _sleep_hours_per_night(records: list[dict]) -> dict[str, float]:
+    """Group asleep* stage durations by start-date.
+
+    The sleep is attributed to its **start** date (so a session that
+    begins 23:30 May 9 and ends 06:30 May 10 is recorded as May 9). This
+    is a deliberate simplification — Apple Health emits multiple stage
+    fragments per session, and a session-merge layer would be the right
+    long-term fix. For descriptive trend detection (the only consumer
+    today) the start-date attribution is consistent enough.
+    """
+    per_night: dict[str, float] = {}
+    for r in records:
+        stage = str(r.get("stage", ""))
+        if not stage.startswith("asleep"):
+            continue
+        start = str(r.get("start_iso", ""))
+        end = str(r.get("end_iso", ""))
+        if not start or not end:
+            continue
+        try:
+            t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            t1 = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        day = t0.date().isoformat()
+        per_night[day] = per_night.get(day, 0.0) + max(
+            0.0, (t1 - t0).total_seconds() / 3600.0,
+        )
+    return per_night
 
 
 def detect_anomalies(
@@ -131,97 +196,46 @@ def detect_anomalies(
     out: list[HealthAnomaly] = []
     window = recent_days + baseline_days
 
-    # Resting HR (10th percentile per day) — a low resting HR drop or
-    # spike is physiologically meaningful.
-    hr_records = store.list_window("heart_rate", days=window, now=cur, base=base)
-    if hr_records:
-        daily = _aggregate_per_day(hr_records, value_key="bpm", aggregator="p10")
-        recent, baseline = _split_recent_vs_baseline(
-            daily, recent_days=recent_days, baseline_days=baseline_days, now=cur,
+    def _check(
+        metric: str,
+        kind: str,
+        build_daily: Callable[[list[dict]], dict[str, float]],
+        describe_up: Callable[[float, float, float], str],
+        describe_down: Callable[[float, float, float], str],
+    ) -> None:
+        records = store.list_window(kind, days=window, now=cur, base=base)
+        if not records:
+            return
+        daily = build_daily(records)
+        anomaly = _flag_if_anomalous(
+            metric, daily,
+            recent_days=recent_days, baseline_days=baseline_days,
+            z_threshold=z_threshold, now=cur,
+            describe_up=describe_up, describe_down=describe_down,
         )
-        if recent and baseline:
-            recent_mean = sum(recent) / len(recent)
-            z, base_mean, _ = _z_score(recent_mean, baseline)
-            if abs(z) >= z_threshold:
-                direction = "up" if z > 0 else "down"
-                out.append(HealthAnomaly(
-                    metric="resting_hr",
-                    direction=direction,
-                    baseline_mean=base_mean,
-                    recent_mean=recent_mean,
-                    z_score=z,
-                    description=(
-                        f"resting heart rate {direction} "
-                        f"({recent_mean:.0f} vs {base_mean:.0f} bpm baseline; "
-                        f"z={z:+.1f})"
-                    ),
-                ))
+        if anomaly:
+            out.append(anomaly)
 
-    # Steps per day
-    steps_records = store.list_window("steps", days=window, now=cur, base=base)
-    if steps_records:
-        daily = _aggregate_per_day(steps_records, value_key="count", aggregator="sum")
-        recent, baseline = _split_recent_vs_baseline(
-            daily, recent_days=recent_days, baseline_days=baseline_days, now=cur,
-        )
-        if recent and baseline:
-            recent_mean = sum(recent) / len(recent)
-            z, base_mean, _ = _z_score(recent_mean, baseline)
-            if abs(z) >= z_threshold:
-                direction = "up" if z > 0 else "down"
-                out.append(HealthAnomaly(
-                    metric="steps_per_day",
-                    direction=direction,
-                    baseline_mean=base_mean,
-                    recent_mean=recent_mean,
-                    z_score=z,
-                    description=(
-                        f"daily steps {direction} "
-                        f"({recent_mean:,.0f} vs {base_mean:,.0f} baseline; "
-                        f"z={z:+.1f})"
-                    ),
-                ))
-
-    # Sleep hours per night (aggregate of asleep* stages).
-    sleep_records = store.list_window("sleep", days=window, now=cur, base=base)
-    if sleep_records:
-        per_night: dict[str, float] = {}
-        for r in sleep_records:
-            stage = str(r.get("stage", ""))
-            if not stage.startswith("asleep"):
-                continue
-            start = str(r.get("start_iso", ""))
-            end = str(r.get("end_iso", ""))
-            if not start or not end:
-                continue
-            try:
-                t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                t1 = datetime.fromisoformat(end.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            day = t0.date().isoformat()
-            per_night[day] = per_night.get(day, 0.0) + max(
-                0.0, (t1 - t0).total_seconds() / 3600.0,
-            )
-        recent, baseline = _split_recent_vs_baseline(
-            per_night, recent_days=recent_days, baseline_days=baseline_days, now=cur,
-        )
-        if recent and baseline:
-            recent_mean = sum(recent) / len(recent)
-            z, base_mean, _ = _z_score(recent_mean, baseline)
-            if abs(z) >= z_threshold:
-                direction = "up" if z > 0 else "down"
-                out.append(HealthAnomaly(
-                    metric="sleep_hours_per_night",
-                    direction=direction,
-                    baseline_mean=base_mean,
-                    recent_mean=recent_mean,
-                    z_score=z,
-                    description=(
-                        f"sleep duration {direction} "
-                        f"({recent_mean:.1f}h vs {base_mean:.1f}h baseline; "
-                        f"z={z:+.1f})"
-                    ),
-                ))
+    _check(
+        metric="resting_hr",
+        kind="heart_rate",
+        build_daily=lambda rs: _aggregate_per_day(rs, value_key="bpm", aggregator="p10"),
+        describe_up=lambda r, b, z: f"resting heart rate up ({r:.0f} vs {b:.0f} bpm baseline; z={z:+.1f})",
+        describe_down=lambda r, b, z: f"resting heart rate down ({r:.0f} vs {b:.0f} bpm baseline; z={z:+.1f})",
+    )
+    _check(
+        metric="steps_per_day",
+        kind="steps",
+        build_daily=lambda rs: _aggregate_per_day(rs, value_key="count", aggregator="sum"),
+        describe_up=lambda r, b, z: f"daily steps up ({r:,.0f} vs {b:,.0f} baseline; z={z:+.1f})",
+        describe_down=lambda r, b, z: f"daily steps down ({r:,.0f} vs {b:,.0f} baseline; z={z:+.1f})",
+    )
+    _check(
+        metric="sleep_hours_per_night",
+        kind="sleep",
+        build_daily=_sleep_hours_per_night,
+        describe_up=lambda r, b, z: f"sleep duration up ({r:.1f}h vs {b:.1f}h baseline; z={z:+.1f})",
+        describe_down=lambda r, b, z: f"sleep duration down ({r:.1f}h vs {b:.1f}h baseline; z={z:+.1f})",
+    )
 
     return out

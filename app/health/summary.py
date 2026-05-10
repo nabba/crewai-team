@@ -68,8 +68,17 @@ def _percentile(values: list[float], p: float) -> float | None:
 
 
 def _sleep_seconds_per_night(records: list[dict[str, Any]]) -> dict[str, float]:
-    """Group sleep records by ISO date of start; sum any 'asleep*' stage
-    durations. Returns date-string → seconds."""
+    """Group sleep records by ISO date of **start**; sum any ``asleep*``
+    stage durations. Returns date-string → seconds.
+
+    Convention: sleep is attributed to its start date — a session that
+    begins 23:30 May 9 and ends 06:30 May 10 counts toward May 9, not
+    May 10. This is a deliberate simplification that's consistent with
+    :mod:`app.health.anomaly._sleep_hours_per_night`. A session-merge
+    layer would be the right long-term improvement; for the descriptive
+    7-day rollup the briefing reads, the choice doesn't change trend
+    direction.
+    """
     by_date: dict[str, float] = {}
     for r in records:
         stage = str(r.get("stage", ""))
