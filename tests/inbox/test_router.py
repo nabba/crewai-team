@@ -59,8 +59,9 @@ def test_processes_text_file(inbox: Path, tmp_path: Path,
     assert not f.exists()  # archived
     archived = list((inbox / ".archive").rglob("note.md"))
     assert len(archived) == 1
-    note_copy = list(notes_dir.rglob("note.md"))
-    assert len(note_copy) == 1
+    # Text handler now writes directly into the canonical notes root,
+    # not a per-day subdir, so the React /cp/files view picks it up.
+    assert (notes_dir / "note.md").exists()
 
 
 def test_unknown_file_skipped(inbox: Path) -> None:
@@ -151,9 +152,10 @@ def test_dotfiles_skipped(inbox: Path) -> None:
 
 def test_handlers_for_image_audio_pdf_currently_unsupported(inbox: Path) -> None:
     """Until real handlers are wired, recognised-but-unhandled kinds
-    fail with a clear reason."""
+    fail with a clear reason. Uses valid JPG magic bytes so the file
+    gets to the handler dispatch (not rejected by the classifier)."""
     f = inbox / "photo.jpg"
-    f.write_bytes(b"\xff\xd8" + b"\x00" * 32)
+    f.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 32)
     past = time.time() - 60
     import os
     os.utime(f, (past, past))

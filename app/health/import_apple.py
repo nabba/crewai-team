@@ -22,8 +22,10 @@ The function never raises — every error path returns a typed result.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -96,14 +98,66 @@ def _normalize_apple_dt(value: str) -> str:
 # ── XML iteration ─────────────────────────────────────────────────────
 
 
+class _BadZip(Exception):
+    """Raised inside ``_resolve_xml`` when the input zip is malformed."""
+
+
+class _MissingXml(Exception):
+    """Raised inside ``_resolve_xml`` when no export.xml is reachable."""
+
+
+@contextlib.contextmanager
+def _resolve_xml(src: Path) -> Iterator[Path]:
+    """Yield the path to ``export.xml``. For a ``.zip`` source the file
+    is extracted to a system temp dir cleaned up on context exit; for a
+    bare ``.xml`` source the path is yielded directly.
+    """
+    if src.suffix == ".zip":
+        try:
+            with zipfile.ZipFile(src) as zf, tempfile.TemporaryDirectory() as tmp:
+                candidates = [
+                    n for n in zf.namelist() if n.endswith("export.xml")
+                ]
+                if not candidates:
+                    raise _MissingXml("no export.xml in zip")
+                tmp_root = Path(tmp)
+                zf.extract(candidates[0], path=tmp_root)
+                yield tmp_root / candidates[0]
+        except zipfile.BadZipFile as exc:
+            raise _BadZip(f"BadZipFile: {exc}") from exc
+    else:
+        if not src.exists():
+            raise _MissingXml(f"file not found: {src}")
+        yield src
+
+
 def _iter_records(xml_path: Path) -> Iterator[ET.Element]:
     """Yield each ``<Record>`` and ``<Workout>`` element while clearing
-    parsed siblings to keep memory bounded."""
-    context = ET.iterparse(str(xml_path), events=("end",))
-    for event, elem in context:
+    parsed siblings AND removing them from the root so memory stays
+    bounded across multi-million-record exports.
+
+    Plain ``elem.clear()`` empties the element but leaves a (now empty)
+    reference attached to the root — fine for short files, but for a
+    decade-scale export the root's children list grows unbounded. We
+    capture the root from the first ``start`` event and ``root.remove``
+    each processed child after yielding.
+    """
+    context = ET.iterparse(str(xml_path), events=("start", "end"))
+    iterator = iter(context)
+    try:
+        _, root = next(iterator)
+    except StopIteration:
+        return
+    for event, elem in iterator:
+        if event != "end":
+            continue
         if elem.tag in ("Record", "Workout"):
             yield elem
             elem.clear()
+            try:
+                root.remove(elem)
+            except ValueError:
+                pass
 
 
 # ── Per-kind parsers ──────────────────────────────────────────────────
@@ -126,56 +180,49 @@ def _parse_quantity_record(elem: ET.Element) -> dict[str, Any] | None:
         "value": elem.attrib.get("value", ""),
         "unit": elem.attrib.get("unit", ""),
         "source": elem.attrib.get("sourceName", ""),
-        "source_uuid": elem.attrib.get("sourceVersion", "") or elem.attrib.get("device", "") or "",
+        "source_version": elem.attrib.get("sourceVersion", "") or elem.attrib.get("device", "") or "",
     }
+
+
+# Per-kind builders. Each takes the parsed dict + returns the typed
+# record, or raises (ValueError|KeyError) — the caller catches.
+_BUILDERS: dict[str, Any] = {
+    "heart_rate": lambda p: HeartRateRecord(
+        start_iso=p["start_iso"], end_iso=p["end_iso"],
+        bpm=float(p["value"]),
+        source=p["source"], source_version=p["source_version"],
+    ),
+    "steps": lambda p: StepsRecord(
+        start_iso=p["start_iso"], end_iso=p["end_iso"],
+        count=int(float(p["value"])),
+        source=p["source"], source_version=p["source_version"],
+    ),
+    "active_energy": lambda p: ActiveEnergyRecord(
+        start_iso=p["start_iso"], end_iso=p["end_iso"],
+        kcal=float(p["value"]),
+        source=p["source"], source_version=p["source_version"],
+    ),
+    "body_mass": lambda p: BodyMassRecord(
+        start_iso=p["start_iso"], kg=float(p["value"]),
+        source=p["source"], source_version=p["source_version"],
+    ),
+    "sleep": lambda p: SleepRecord(
+        start_iso=p["start_iso"], end_iso=p["end_iso"],
+        stage=_sleep_stage(p.get("value", "")),
+        source=p["source"], source_version=p["source_version"],
+    ),
+}
 
 
 def _build_typed_record(parsed: dict[str, Any]) -> Any | None:
     """Promote a parsed dict to the right typed dataclass."""
-    kind = parsed["record_kind"]
+    builder = _BUILDERS.get(parsed["record_kind"])
+    if builder is None:
+        return None
     try:
-        if kind == "heart_rate":
-            return HeartRateRecord(
-                start_iso=parsed["start_iso"],
-                end_iso=parsed["end_iso"],
-                bpm=float(parsed["value"]),
-                source=parsed["source"],
-                source_uuid=parsed["source_uuid"],
-            )
-        if kind == "steps":
-            return StepsRecord(
-                start_iso=parsed["start_iso"],
-                end_iso=parsed["end_iso"],
-                count=int(float(parsed["value"])),
-                source=parsed["source"],
-                source_uuid=parsed["source_uuid"],
-            )
-        if kind == "active_energy":
-            return ActiveEnergyRecord(
-                start_iso=parsed["start_iso"],
-                end_iso=parsed["end_iso"],
-                kcal=float(parsed["value"]),
-                source=parsed["source"],
-                source_uuid=parsed["source_uuid"],
-            )
-        if kind == "body_mass":
-            return BodyMassRecord(
-                start_iso=parsed["start_iso"],
-                kg=float(parsed["value"]),
-                source=parsed["source"],
-                source_uuid=parsed["source_uuid"],
-            )
-        if kind == "sleep":
-            return SleepRecord(
-                start_iso=parsed["start_iso"],
-                end_iso=parsed["end_iso"],
-                stage=_sleep_stage(parsed.get("value", "")),
-                source=parsed["source"],
-                source_uuid=parsed["source_uuid"],
-            )
+        return builder(parsed)
     except (ValueError, KeyError):
         return None
-    return None
 
 
 def _sleep_stage(value: str) -> str:
@@ -227,7 +274,7 @@ def _parse_workout(elem: ET.Element) -> WorkoutRecord | None:
         distance_km=distance_km,
         kcal=kcal,
         source=elem.attrib.get("sourceName", ""),
-        source_uuid=elem.attrib.get("sourceVersion", "")
+        source_version=elem.attrib.get("sourceVersion", "")
             or elem.attrib.get("device", "") or "",
     )
 
@@ -243,87 +290,52 @@ def import_apple_export(
     """Parse one ``apple_health_export.zip`` (or extracted ``export.xml``)
     and append typed records to the per-kind JSONL store.
 
-    Idempotent on dedup-key ``(start_iso, source_uuid)`` — re-importing
+    Idempotent on dedup-key ``(start_iso, source_version)`` — re-importing
     the same export adds no duplicates. Never raises.
     """
     if not _enabled():
         return ImportResult(status="skipped_disabled")
 
     src = Path(path)
-    xml_path: Path
-    extracted_dir: Path | None = None
-
-    try:
-        if src.suffix == ".zip":
-            try:
-                with zipfile.ZipFile(src) as zf:
-                    candidates = [
-                        n for n in zf.namelist()
-                        if n.endswith("export.xml")
-                    ]
-                    if not candidates:
-                        return ImportResult(
-                            status="failed_missing_xml",
-                            failure_reason="no export.xml in zip",
-                        )
-                    extracted_dir = src.parent / f".health_extract_{src.stem}"
-                    extracted_dir.mkdir(parents=True, exist_ok=True)
-                    member = candidates[0]
-                    zf.extract(member, path=extracted_dir)
-                    xml_path = extracted_dir / member
-            except zipfile.BadZipFile as exc:
-                return ImportResult(
-                    status="failed_zip",
-                    failure_reason=f"BadZipFile: {exc}",
-                )
-        else:
-            xml_path = src
-            if not xml_path.exists():
-                return ImportResult(
-                    status="failed_missing_xml",
-                    failure_reason=f"file not found: {src}",
-                )
-    except OSError as exc:
-        return ImportResult(
-            status="failed_unexpected_error",
-            failure_reason=f"OSError: {exc}",
-        )
-
     seen: dict[str, int] = {}
     by_kind: dict[str, list[Any]] = {}
     skipped = 0
 
     try:
-        for elem in _iter_records(xml_path):
-            if elem.tag == "Workout":
-                rec = _parse_workout(elem)
-                if rec is None:
-                    skipped += 1
-                    continue
-                seen["workouts"] = seen.get("workouts", 0) + 1
-                by_kind.setdefault("workouts", []).append(rec)
-            elif elem.tag == "Record":
-                parsed = _parse_quantity_record(elem)
-                if parsed is None:
-                    continue  # not a record-kind we ingest; not "malformed"
-                rec = _build_typed_record(parsed)
-                if rec is None:
-                    skipped += 1
-                    continue
-                kind = parsed["record_kind"]
-                seen[kind] = seen.get(kind, 0) + 1
-                by_kind.setdefault(kind, []).append(rec)
-    except ET.ParseError as exc:
+        with _resolve_xml(src) as xml_path:
+            for elem in _iter_records(xml_path):
+                if elem.tag == "Workout":
+                    rec = _parse_workout(elem)
+                    if rec is None:
+                        skipped += 1
+                        continue
+                    seen["workouts"] = seen.get("workouts", 0) + 1
+                    by_kind.setdefault("workouts", []).append(rec)
+                elif elem.tag == "Record":
+                    parsed = _parse_quantity_record(elem)
+                    if parsed is None:
+                        continue  # kind we don't ingest; not "malformed"
+                    rec = _build_typed_record(parsed)
+                    if rec is None:
+                        skipped += 1
+                        continue
+                    kind = parsed["record_kind"]
+                    seen[kind] = seen.get(kind, 0) + 1
+                    by_kind.setdefault(kind, []).append(rec)
+    except _BadZip as exc:
         return ImportResult(
-            status="failed_unexpected_error",
-            failure_reason=f"XML parse error: {exc}",
-            records_seen=seen,
-            skipped_malformed=skipped,
+            status="failed_zip",
+            failure_reason=str(exc),
         )
-    except OSError as exc:
+    except _MissingXml as exc:
+        return ImportResult(
+            status="failed_missing_xml",
+            failure_reason=str(exc),
+        )
+    except (ET.ParseError, OSError) as exc:
         return ImportResult(
             status="failed_unexpected_error",
-            failure_reason=f"OSError reading XML: {exc}",
+            failure_reason=f"{type(exc).__name__}: {exc}",
             records_seen=seen,
             skipped_malformed=skipped,
         )
@@ -332,19 +344,6 @@ def import_apple_export(
     for kind, records in by_kind.items():
         n = store.append_records(kind, records, base=base)
         written[kind] = n
-
-    # Best-effort cleanup of the temp extraction dir.
-    if extracted_dir is not None:
-        try:
-            for child in extracted_dir.rglob("*"):
-                if child.is_file():
-                    child.unlink()
-            for child in sorted(extracted_dir.rglob("*"), reverse=True):
-                if child.is_dir():
-                    child.rmdir()
-            extracted_dir.rmdir()
-        except OSError:
-            pass
 
     return ImportResult(
         status="ok",

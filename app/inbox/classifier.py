@@ -1,14 +1,18 @@
 """File-type classifier.
 
 Two-pass: extension first (fast + good 95% of the time), then a small
-magic-bytes peek for the cases that matter (Apple Health zip vs ordinary
-zip; PDF magic bytes; PNG/JPEG signatures). Conservative — when in
-doubt, classify as ``unknown`` so the router asks the operator rather
-than running the wrong handler.
+magic-bytes peek for every binary format we recognise. Conservative —
+when in doubt, classify as ``unknown`` so the router asks the operator
+rather than running the wrong handler.
+
+Apple Health zip detection uses a zip-index peek (looks for the
+``apple_health_export/export.xml`` member) before falling back to the
+filename heuristic — robust against renames.
 """
 from __future__ import annotations
 
 import logging
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,21 +73,64 @@ def _peek_magic(path: Path, n: int = 16) -> bytes:
 
 
 def _is_apple_health_zip(path: Path) -> bool:
-    """Best-effort check that a .zip is the Apple Health export.
+    """Robust check: peek the zip's index for an
+    ``apple_health_export/export.xml`` member. Falls back to the
+    filename heuristic if the zip is unreadable (the importer's own
+    ``failed_zip`` branch catches that anyway)."""
+    try:
+        with zipfile.ZipFile(path) as zf:
+            names = zf.namelist()
+            for n in names:
+                if n.endswith("apple_health_export/export.xml") or n.endswith(
+                    "/export.xml"
+                ):
+                    return True
+            return False
+    except (zipfile.BadZipFile, OSError):
+        # Fall back to the filename heuristic so a partially-downloaded
+        # zip still matches the user's intent.
+        name = path.name.lower()
+        return (
+            name == "apple_health_export.zip"
+            or (name.startswith("apple_health_export") and name.endswith(".zip"))
+        )
 
-    The zip's first directory entry typically names ``apple_health_export/``.
-    We avoid actually opening the zip in the classifier (the importer
-    will do that) — instead, we accept any ``.zip`` whose filename matches
-    the canonical export name. This is conservative: a .zip that isn't
-    actually an Apple Health export will be caught by the importer's
-    own ``failed_missing_xml`` branch.
-    """
-    name = path.name.lower()
-    if name == "apple_health_export.zip":
+
+# Per-extension magic-byte signatures. ``None`` means we don't probe
+# (the extension is taken at face value — used for plain text). For
+# kinds where the extension overlaps non-trivial binary formats
+# (audio, image, pdf), we probe to reject obvious mismatches.
+_MAGIC_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    "png":  (b"\x89PNG\r\n\x1a\n",),
+    "jpg":  (b"\xff\xd8\xff",),
+    "jpeg": (b"\xff\xd8\xff",),
+    "heic": (b"ftypheic", b"ftypheix", b"ftyphevc", b"ftypmif1"),  # checked at offset 4
+    "webp": (b"RIFF",),  # plus "WEBP" at offset 8 — best-effort
+    "pdf":  (b"%PDF",),
+    "mp3":  (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"),
+    "m4a":  (b"ftypM4A", b"ftypisom", b"ftypmp42"),  # at offset 4
+    "wav":  (b"RIFF",),
+    "ogg":  (b"OggS",),
+    "flac": (b"fLaC",),
+}
+
+# Extensions where the magic check happens at a non-zero offset.
+_MAGIC_OFFSETS: dict[str, int] = {
+    "heic": 4,
+    "m4a":  4,
+}
+
+
+def _magic_matches(path: Path, ext: str) -> bool:
+    sigs = _MAGIC_SIGNATURES.get(ext)
+    if sigs is None:
         return True
-    if name.startswith("apple_health_export") and name.endswith(".zip"):
-        return True
-    return False
+    offset = _MAGIC_OFFSETS.get(ext, 0)
+    head = _peek_magic(path, n=max(16, offset + 16))
+    if not head:
+        return False
+    target = head[offset:]
+    return any(target.startswith(sig) for sig in sigs)
 
 
 def classify_file(path: Path) -> FileClassification:
@@ -102,7 +149,7 @@ def classify_file(path: Path) -> FileClassification:
             return FileClassification(
                 kind="apple_health_export",
                 confidence="high",
-                reason="filename matches apple_health_export*.zip",
+                reason="zip contains apple_health_export/export.xml",
             )
         return FileClassification(
             kind="unknown",
@@ -112,24 +159,12 @@ def classify_file(path: Path) -> FileClassification:
 
     if ext in _EXTENSION_MAP:
         kind = _EXTENSION_MAP[ext]
-
-        # Magic-byte sanity for the high-leverage kinds.
-        if kind == "pdf":
-            magic = _peek_magic(path)
-            if not magic.startswith(b"%PDF"):
-                return FileClassification(
-                    kind="unknown",
-                    confidence="medium",
-                    reason=".pdf extension but no %PDF magic bytes",
-                )
-        if kind == "image" and ext == "png":
-            magic = _peek_magic(path, n=8)
-            if magic and magic[:8] != b"\x89PNG\r\n\x1a\n":
-                return FileClassification(
-                    kind="unknown",
-                    confidence="medium",
-                    reason=".png extension but no PNG magic bytes",
-                )
+        if not _magic_matches(path, ext):
+            return FileClassification(
+                kind="unknown",
+                confidence="medium",
+                reason=f".{ext} extension but magic bytes don't match",
+            )
         return FileClassification(
             kind=kind,
             confidence="high",
@@ -141,3 +176,10 @@ def classify_file(path: Path) -> FileClassification:
         confidence="high",
         reason=f"unrecognised extension .{ext}",
     )
+
+
+# Module-load assertion: every kind in _EXTENSION_MAP must be in
+# KNOWN_KINDS. A typo would otherwise produce a kind no handler knows.
+assert set(_EXTENSION_MAP.values()) <= KNOWN_KINDS, (
+    f"unknown kinds in _EXTENSION_MAP: {set(_EXTENSION_MAP.values()) - KNOWN_KINDS}"
+)

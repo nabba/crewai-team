@@ -234,6 +234,51 @@ def _gather_top_interests(n: int = 5) -> list[str]:
     return out
 
 
+def _gather_health_summary() -> list[str]:
+    """One-line health bullets for the daily briefing. Soft-fail.
+
+    Returns ``[]`` when health ingestion is disabled or no records exist
+    yet, so the briefing reads identical to the pre-§5.1 version. Only
+    *summary statistics* reach this layer — never raw records — keeping
+    the privacy invariant of the health subsystem intact.
+    """
+    try:
+        from app.health.anomaly import detect_anomalies
+        from app.health.summary import summarise_window
+    except Exception:
+        return []
+    try:
+        s = summarise_window(days=7)
+    except Exception:
+        return []
+    if not s.record_counts or all(v == 0 for v in s.record_counts.values()):
+        return []
+    lines: list[str] = []
+    if s.steps_per_day_mean > 0:
+        lines.append(f"  • {s.steps_per_day_mean:,.0f} steps/day (7d avg)")
+    if s.sleep_hours_per_night_mean is not None:
+        lines.append(
+            f"  • {s.sleep_hours_per_night_mean:.1f}h sleep/night "
+            f"({s.sleep_nights_observed} nights observed)"
+        )
+    if s.hr_resting_p10_bpm is not None:
+        lines.append(
+            f"  • resting HR ~{s.hr_resting_p10_bpm:.0f} bpm (p10 proxy)"
+        )
+    if s.workouts_count > 0:
+        lines.append(
+            f"  • {s.workouts_count} workouts, "
+            f"{s.workouts_distance_km_total:.1f} km total"
+        )
+    try:
+        anomalies = detect_anomalies()
+    except Exception:
+        anomalies = []
+    for a in anomalies:
+        lines.append(f"  ⚠️ {a.description}")
+    return lines
+
+
 def _gather_companion_surfaced() -> list[str]:
     """Recent companion ideas surfaced to the user (last 24 h). Soft fail."""
     try:
@@ -268,6 +313,7 @@ def _compose_morning() -> str:
     cal = _gather_calendar_24h()
     mail = _gather_top_emails(n=3)
     tickets = _gather_open_tickets(n=5)
+    health = _gather_health_summary()
 
     parts = ["☀️  Morning briefing\n"]
     parts.append("📅 Today's events:")
@@ -276,6 +322,9 @@ def _compose_morning() -> str:
     parts.extend(mail or ["  • (inbox clean)"])
     parts.append("\n🎯 Open tickets:")
     parts.extend(tickets or ["  • (no open tickets)"])
+    if health:
+        parts.append("\n❤️  Health (7d):")
+        parts.extend(health)
     return "\n".join(parts)
 
 
@@ -283,6 +332,7 @@ def _compose_evening() -> str:
     cal = _gather_calendar_24h()  # also covers tonight + tomorrow morning
     mail = _gather_top_emails(n=3)
     surfaced = _gather_companion_surfaced()
+    health = _gather_health_summary()
 
     parts = ["🌙 Evening wrap\n"]
     parts.append("📅 Tomorrow:")
@@ -291,6 +341,9 @@ def _compose_evening() -> str:
     parts.extend(mail or ["  • (inbox clean)"])
     parts.append("\n💡 Companion surfaced today:")
     parts.extend(surfaced or ["  • (no surfaced ideas)"])
+    if health:
+        parts.append("\n❤️  Health (7d):")
+        parts.extend(health)
     return "\n".join(parts)
 
 
@@ -299,6 +352,7 @@ def _compose_weekly() -> str:
     tickets = _gather_open_tickets(n=8)
     surfaced = _gather_companion_surfaced()
     interests = _gather_top_interests(n=5)
+    health = _gather_health_summary()
 
     parts = ["🗓 Weekly review\n"]
     parts.append("📅 Next 24h:")
@@ -307,6 +361,9 @@ def _compose_weekly() -> str:
     parts.extend(tickets or ["  • (no open tickets)"])
     parts.append("\n💡 Companion surfaced last week:")
     parts.extend(surfaced or ["  • (none)"])
+    if health:
+        parts.append("\n❤️  Health (7d):")
+        parts.extend(health)
     if interests:
         # Phase F #6: only surface interests in the weekly digest —
         # daily morning/evening cadences don't need this noise.
