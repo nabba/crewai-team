@@ -46,7 +46,7 @@
         "setup_workspace_repo",
         "sync_workspace"
       ],
-      "line_count": 154,
+      "line_count": 187,
       "is_hot_path": true,
       "capability_tags": [
         "memory",
@@ -125,7 +125,7 @@
         "is_using_local",
         "model_max_output_tokens"
       ],
-      "line_count": 1239,
+      "line_count": 1278,
       "is_hot_path": true,
       "capability_tags": [
         "safety",
@@ -274,7 +274,7 @@
         "handle_alerts",
         "record_sample"
       ],
-      "line_count": 254,
+      "line_count": 266,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -339,13 +339,55 @@
         "self_improvement_describe",
         "self_improvement_health"
       ],
-      "line_count": 2263,
+      "line_count": 2626,
       "is_hot_path": true,
       "capability_tags": [
         "memory",
         "tool",
         "error_handling",
         "llm",
+        "monitoring"
+      ]
+    },
+    "app/runtime_settings.py": {
+      "path": "app/runtime_settings.py",
+      "imports": [
+        "app.config",
+        "app.paths"
+      ],
+      "exports": [
+        "get_concierge_persona_enabled",
+        "get_error_runbooks_enabled",
+        "get_goodhart_hard_gate_disabled",
+        "get_goodhart_hard_gate_enforcing",
+        "get_recovery_loop_enabled",
+        "get_tier3_amendment_enabled",
+        "get_tool_supervisor_enabled",
+        "get_vision_cu_enabled",
+        "get_vision_cu_monthly_cap_usd",
+        "get_voice_mode",
+        "life_companion_get_feature_enabled",
+        "life_companion_get_overrides",
+        "life_companion_get_tunable",
+        "life_companion_set_feature_override",
+        "set_concierge_persona_enabled",
+        "set_error_runbooks_enabled",
+        "set_goodhart_hard_gate_disabled",
+        "set_goodhart_hard_gate_enforcing",
+        "set_recovery_loop_enabled",
+        "set_tier3_amendment_enabled",
+        "set_tool_supervisor_enabled",
+        "set_vision_cu_enabled",
+        "set_vision_cu_monthly_cap_usd",
+        "set_voice_mode",
+        "snapshot"
+      ],
+      "line_count": 399,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "safety",
+        "error_handling",
         "monitoring"
       ]
     },
@@ -378,7 +420,7 @@
         "safe_execute",
         "setup_structured_logging"
       ],
-      "line_count": 208,
+      "line_count": 222,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
@@ -397,7 +439,7 @@
         "send_message",
         "send_message_blocking"
       ],
-      "line_count": 463,
+      "line_count": 483,
       "is_hot_path": true,
       "capability_tags": []
     },
@@ -427,7 +469,7 @@
         "ensure_dirs",
         "under_workspace"
       ],
-      "line_count": 157,
+      "line_count": 167,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -586,6 +628,22 @@
         "monitoring"
       ]
     },
+    "app/llm_completion_guard.py": {
+      "path": "app/llm_completion_guard.py",
+      "imports": [],
+      "exports": [
+        "CompletionTruncated",
+        "check_completion_truncation",
+        "was_last_completion_truncated"
+      ],
+      "line_count": 269,
+      "is_hot_path": false,
+      "capability_tags": [
+        "tool",
+        "error_handling",
+        "llm"
+      ]
+    },
     "app/workspace_versioning.py": {
       "path": "app/workspace_versioning.py",
       "imports": [],
@@ -721,6 +779,7 @@
     "app/auditor.py": {
       "path": "app/auditor.py",
       "imports": [
+        "app.audit",
         "app.config",
         "app.firebase_reporter",
         "app.healing.error_diagnosis",
@@ -734,7 +793,7 @@
         "run_code_audit",
         "run_error_resolution"
       ],
-      "line_count": 469,
+      "line_count": 471,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -781,6 +840,22 @@
       "is_hot_path": false,
       "capability_tags": [
         "evolution"
+      ]
+    },
+    "app/workspace_publish.py": {
+      "path": "app/workspace_publish.py",
+      "imports": [],
+      "exports": [
+        "publish_idle_outcome",
+        "publish_to_workspace"
+      ],
+      "line_count": 181,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "error_handling",
+        "llm",
+        "subia"
       ]
     },
     "app/evolution_roi.py": {
@@ -1058,11 +1133,15 @@
         "Settings",
         "get_anthropic_api_key",
         "get_brave_api_key",
+        "get_discord_bot_token",
         "get_gateway_secret",
+        "get_google_cloud_tts_key",
+        "get_google_oauth_client",
+        "get_groq_api_key",
         "get_openrouter_api_key",
         "get_settings"
       ],
-      "line_count": 478,
+      "line_count": 561,
       "is_hot_path": true,
       "capability_tags": [
         "llm"
@@ -1084,25 +1163,6 @@
       "capability_tags": [
         "evolution",
         "llm"
-      ]
-    },
-    "app/audit.py": {
-      "path": "app/audit.py",
-      "imports": [],
-      "exports": [
-        "log_crew_dispatch",
-        "log_request_received",
-        "log_response_sent",
-        "log_security_event",
-        "log_tool_blocked",
-        "log_tool_call"
-      ],
-      "line_count": 88,
-      "is_hot_path": true,
-      "capability_tags": [
-        "agent",
-        "tool",
-        "error_handling"
       ]
     },
     "app/tier_graduation.py": {
@@ -1142,6 +1202,7 @@
         "get_last_assistant_message",
         "get_pending_inbound",
         "get_pending_outbound",
+        "get_recent_messages",
         "mark_inbound_done",
         "mark_inbound_failed",
         "mark_inbound_processing",
@@ -1153,9 +1214,10 @@
         "rebuild_fts_index",
         "search_messages",
         "start_task",
-        "update_task_crew"
+        "update_task_crew",
+        "vacuum"
       ],
-      "line_count": 819,
+      "line_count": 911,
       "is_hot_path": true,
       "capability_tags": [
         "agent",
@@ -1222,7 +1284,7 @@
         "throttle",
         "throttle_for_provider"
       ],
-      "line_count": 1157,
+      "line_count": 1171,
       "is_hot_path": true,
       "capability_tags": [
         "llm"
@@ -1253,11 +1315,14 @@
       "exports": [
         "PromotionRequest",
         "PromotionResult",
+        "effective_quality_minimum",
+        "effective_safety_minimum",
         "evaluate_promotion",
         "format_governance_report",
-        "get_recent_promotions"
+        "get_recent_promotions",
+        "threshold_floor"
       ],
-      "line_count": 365,
+      "line_count": 548,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -1402,7 +1467,7 @@
         "validate_mutation_for_tier",
         "validate_proposal_paths"
       ],
-      "line_count": 860,
+      "line_count": 885,
       "is_hot_path": false,
       "capability_tags": [
         "safety",
@@ -1436,7 +1501,7 @@
         "vet_response",
         "vet_response_detailed"
       ],
-      "line_count": 686,
+      "line_count": 698,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -1460,26 +1525,11 @@
         "error_handling"
       ]
     },
-    "app/utils.py": {
-      "path": "app/utils.py",
-      "imports": [],
-      "exports": [
-        "load_json_file",
-        "now_iso",
-        "safe_json_parse",
-        "save_json_file",
-        "truncate"
-      ],
-      "line_count": 141,
-      "is_hot_path": false,
-      "capability_tags": [
-        "error_handling",
-        "llm"
-      ]
-    },
     "app/idle_scheduler.py": {
       "path": "app/idle_scheduler.py",
-      "imports": [],
+      "imports": [
+        "app.workspace_publish"
+      ],
       "exports": [
         "JobWeight",
         "get_job_snapshot",
@@ -1495,7 +1545,7 @@
         "stop",
         "stop_listener"
       ],
-      "line_count": 2431,
+      "line_count": 2685,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -1509,6 +1559,7 @@
       "imports": [],
       "exports": [
         "CircuitBreaker",
+        "ensure_breaker",
         "force_all_half_open",
         "get_all_states",
         "get_breaker",
@@ -1516,7 +1567,7 @@
         "record_failure",
         "record_success"
       ],
-      "line_count": 186,
+      "line_count": 231,
       "is_hot_path": false,
       "capability_tags": [
         "safety",
@@ -1638,15 +1689,16 @@
       "path": "app/safe_io.py",
       "imports": [],
       "exports": [
+        "DiskQuotaError",
         "safe_append",
         "safe_write",
         "safe_write_json"
       ],
-      "line_count": 67,
+      "line_count": 158,
       "is_hot_path": false,
       "capability_tags": [
-        "safety",
-        "error_handling"
+        "error_handling",
+        "monitoring"
       ]
     },
     "app/llm_sampling.py": {
@@ -1758,7 +1810,7 @@
         "seconds_since_last_tool_activity",
         "seconds_since_last_tool_timeout"
       ],
-      "line_count": 229,
+      "line_count": 238,
       "is_hot_path": true,
       "capability_tags": [
         "memory",
@@ -1816,12 +1868,16 @@
         "project_scope",
         "reset_current_agent_role",
         "reset_current_project_id",
+        "reset_current_sender_id",
         "resolve_current_agent_role",
         "resolve_current_project_id",
+        "resolve_current_sender_id",
+        "sender_scope",
         "set_current_agent_role",
-        "set_current_project_id"
+        "set_current_project_id",
+        "set_current_sender_id"
       ],
-      "line_count": 108,
+      "line_count": 142,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -1888,10 +1944,12 @@
         "GamingSignal",
         "detect_gaming_signals",
         "get_held_out_score",
+        "recent_severity",
+        "recent_signal_summary",
         "run_adversarial_suite",
         "run_goodhart_check"
       ],
-      "line_count": 345,
+      "line_count": 435,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -1909,7 +1967,7 @@
         "ProjectManager",
         "get_manager"
       ],
-      "line_count": 440,
+      "line_count": 521,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -1941,7 +1999,7 @@
         "reject_proposal",
         "set_proposal_signal_timestamp"
       ],
-      "line_count": 802,
+      "line_count": 808,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
@@ -2017,7 +2075,7 @@
         "persist_model_retired",
         "resolve_role_default"
       ],
-      "line_count": 882,
+      "line_count": 887,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -2074,7 +2132,7 @@
         "SafetyGuardian",
         "tier3_status"
       ],
-      "line_count": 627,
+      "line_count": 628,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -2082,6 +2140,19 @@
         "deploy",
         "llm",
         "subia"
+      ]
+    },
+    "app/logging_filters.py": {
+      "path": "app/logging_filters.py",
+      "imports": [],
+      "exports": [
+        "JsonlNoiseFilter",
+        "get_noise_substrings"
+      ],
+      "line_count": 95,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
       ]
     },
     "app/llm_catalog_builder.py": {
@@ -2095,7 +2166,7 @@
         "merge_into_catalog",
         "refresh"
       ],
-      "line_count": 599,
+      "line_count": 611,
       "is_hot_path": false,
       "capability_tags": [
         "llm"
@@ -2195,12 +2266,10 @@
         "select_model",
         "set_active_difficulty"
       ],
-      "line_count": 654,
+      "line_count": 749,
       "is_hot_path": false,
       "capability_tags": [
-        "evaluation",
-        "agent",
-        "tool"
+        "evaluation"
       ]
     },
     "app/evolution.py": {
@@ -2287,7 +2356,7 @@
         "start_phil_queue_poller",
         "start_tensions_queue_poller"
       ],
-      "line_count": 826,
+      "line_count": 886,
       "is_hot_path": true,
       "capability_tags": [
         "error_handling",
@@ -2361,13 +2430,74 @@
         "monitoring"
       ]
     },
+    "app/google_workspace/bootstrap.py": {
+      "path": "app/google_workspace/bootstrap.py",
+      "imports": [
+        "app.google_workspace.auth"
+      ],
+      "exports": [
+        "main"
+      ],
+      "line_count": 78,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/google_workspace/__init__.py": {
+      "path": "app/google_workspace/__init__.py",
+      "imports": [
+        "app.google_workspace.auth",
+        "app.google_workspace.service"
+      ],
+      "exports": [],
+      "line_count": 35,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
+    "app/google_workspace/service.py": {
+      "path": "app/google_workspace/service.py",
+      "imports": [
+        "app.google_workspace.auth"
+      ],
+      "exports": [
+        "clear_service_cache",
+        "get_service"
+      ],
+      "line_count": 78,
+      "is_hot_path": false,
+      "capability_tags": [
+        "tool",
+        "error_handling"
+      ]
+    },
+    "app/google_workspace/auth.py": {
+      "path": "app/google_workspace/auth.py",
+      "imports": [
+        "app.config",
+        "app.paths"
+      ],
+      "exports": [
+        "get_credentials",
+        "is_configured",
+        "run_bootstrap_flow",
+        "save_credentials"
+      ],
+      "line_count": 178,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
     "app/affect/hooks.py": {
       "path": "app/affect/hooks.py",
       "imports": [],
       "exports": [
         "install"
       ],
-      "line_count": 342,
+      "line_count": 396,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -2391,6 +2521,25 @@
       "line_count": 449,
       "is_hot_path": false,
       "capability_tags": []
+    },
+    "app/affect/goal_emitter.py": {
+      "path": "app/affect/goal_emitter.py",
+      "imports": [
+        "app.affect.schemas"
+      ],
+      "exports": [
+        "EmitterResult",
+        "GoalProposal",
+        "dedup_against_existing",
+        "derive_proposals",
+        "fifo_evict_to_cap",
+        "run_pass"
+      ],
+      "line_count": 465,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia"
+      ]
     },
     "app/affect/phase5_gate.py": {
       "path": "app/affect/phase5_gate.py",
@@ -2996,6 +3145,22 @@
         "memory"
       ]
     },
+    "app/training/adapter_performance.py": {
+      "path": "app/training/adapter_performance.py",
+      "imports": [],
+      "exports": [
+        "run"
+      ],
+      "line_count": 384,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "memory",
+        "agent",
+        "deploy",
+        "monitoring"
+      ]
+    },
     "app/training/rlif_certainty.py": {
       "path": "app/training/rlif_certainty.py",
       "imports": [],
@@ -3008,6 +3173,20 @@
       "is_hot_path": false,
       "capability_tags": [
         "error_handling"
+      ]
+    },
+    "app/training/adapter_lifecycle.py": {
+      "path": "app/training/adapter_lifecycle.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 341,
+      "is_hot_path": false,
+      "capability_tags": [
+        "deploy"
       ]
     },
     "app/training/__init__.py": {
@@ -3123,7 +3302,7 @@
         "scan",
         "snapshot"
       ],
-      "line_count": 552,
+      "line_count": 568,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -3165,13 +3344,15 @@
       "path": "app/observability/task_progress.py",
       "imports": [],
       "exports": [
+        "get_failure_context",
         "output_progress_count",
+        "record_failure_context",
         "record_output_progress",
         "reset_task",
         "seconds_since_last_output_progress",
         "snapshot_all"
       ],
-      "line_count": 149,
+      "line_count": 232,
       "is_hot_path": false,
       "capability_tags": [
         "safety",
@@ -3718,12 +3899,11 @@
       "exports": [
         "PIMCrew"
       ],
-      "line_count": 57,
+      "line_count": 70,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
-        "tool",
-        "error_handling"
+        "monitoring"
       ]
     },
     "app/crews/__init__.py": {
@@ -3960,7 +4140,7 @@
         "register_tool_plugin",
         "run_single_agent_crew"
       ],
-      "line_count": 1478,
+      "line_count": 1492,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -4093,7 +4273,7 @@
         "companion_tick",
         "get_idle_jobs"
       ],
-      "line_count": 85,
+      "line_count": 177,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling"
@@ -4112,6 +4292,19 @@
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
+        "llm"
+      ]
+    },
+    "app/companion/seed_bootstrap.py": {
+      "path": "app/companion/seed_bootstrap.py",
+      "imports": [],
+      "exports": [
+        "SeedDerivation",
+        "derive_seed"
+      ],
+      "line_count": 200,
+      "is_hot_path": false,
+      "capability_tags": [
         "llm"
       ]
     },
@@ -4136,12 +4329,61 @@
         "Event",
         "EventType",
         "append",
+        "iter_all_workspaces",
         "read_all",
         "read_for_idea"
       ],
-      "line_count": 106,
+      "line_count": 154,
       "is_hot_path": false,
       "capability_tags": [
+        "knowledge"
+      ]
+    },
+    "app/companion/topic_weights.py": {
+      "path": "app/companion/topic_weights.py",
+      "imports": [],
+      "exports": [
+        "current_multiplier",
+        "record_negative",
+        "record_negative_from_comment",
+        "record_positive",
+        "reset"
+      ],
+      "line_count": 225,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation"
+      ]
+    },
+    "app/companion/lessons_learned.py": {
+      "path": "app/companion/lessons_learned.py",
+      "imports": [
+        "app.utils.hash_embedding"
+      ],
+      "exports": [
+        "check_against",
+        "run"
+      ],
+      "line_count": 405,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "agent"
+      ]
+    },
+    "app/companion/notify_meta.py": {
+      "path": "app/companion/notify_meta.py",
+      "imports": [],
+      "exports": [
+        "lookup",
+        "prune",
+        "record"
+      ],
+      "line_count": 131,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "llm",
         "knowledge"
       ]
     },
@@ -4206,6 +4448,19 @@
       "is_hot_path": false,
       "capability_tags": []
     },
+    "app/companion/feedback_weights.py": {
+      "path": "app/companion/feedback_weights.py",
+      "imports": [],
+      "exports": [
+        "current_multiplier",
+        "record_negative",
+        "record_positive",
+        "reset"
+      ],
+      "line_count": 194,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
     "app/companion/feedback.py": {
       "path": "app/companion/feedback.py",
       "imports": [
@@ -4262,6 +4517,18 @@
       "is_hot_path": false,
       "capability_tags": [
         "subia"
+      ]
+    },
+    "app/companion/feedback_router.py": {
+      "path": "app/companion/feedback_router.py",
+      "imports": [],
+      "exports": [
+        "run"
+      ],
+      "line_count": 368,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
       ]
     },
     "app/companion/config.py": {
@@ -4356,7 +4623,7 @@
         "CycleResult",
         "run_cycle"
       ],
-      "line_count": 342,
+      "line_count": 411,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -4396,6 +4663,23 @@
       "line_count": 46,
       "is_hot_path": false,
       "capability_tags": []
+    },
+    "app/companion/interest_model.py": {
+      "path": "app/companion/interest_model.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "compile_interest_profile",
+        "current_profile",
+        "run"
+      ],
+      "line_count": 400,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "subia"
+      ]
     },
     "app/companion/surfacing.py": {
       "path": "app/companion/surfacing.py",
@@ -4465,11 +4749,468 @@
         "record_tick",
         "select_next"
       ],
-      "line_count": 179,
+      "line_count": 192,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
         "error_handling"
+      ]
+    },
+    "app/voice/stt.py": {
+      "path": "app/voice/stt.py",
+      "imports": [
+        "app.runtime_settings"
+      ],
+      "exports": [
+        "transcribe"
+      ],
+      "line_count": 80,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/voice/local.py": {
+      "path": "app/voice/local.py",
+      "imports": [
+        "app.config",
+        "app.paths"
+      ],
+      "exports": [
+        "synthesize",
+        "transcribe"
+      ],
+      "line_count": 236,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/voice/cloud.py": {
+      "path": "app/voice/cloud.py",
+      "imports": [
+        "app.config"
+      ],
+      "exports": [
+        "synthesize",
+        "transcribe"
+      ],
+      "line_count": 181,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/voice/__init__.py": {
+      "path": "app/voice/__init__.py",
+      "imports": [
+        "app.voice.inbound_state",
+        "app.voice.stt",
+        "app.voice.tts"
+      ],
+      "exports": [],
+      "line_count": 33,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/voice/tts.py": {
+      "path": "app/voice/tts.py",
+      "imports": [
+        "app.runtime_settings"
+      ],
+      "exports": [
+        "synthesize"
+      ],
+      "line_count": 75,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/voice/inbound_state.py": {
+      "path": "app/voice/inbound_state.py",
+      "imports": [],
+      "exports": [
+        "clear",
+        "is_voice_active",
+        "mark_voice_inbound"
+      ],
+      "line_count": 66,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory"
+      ]
+    },
+    "app/audit/rolled_log.py": {
+      "path": "app/audit/rolled_log.py",
+      "imports": [
+        "app.safe_io"
+      ],
+      "exports": [
+        "RolledLogReader",
+        "RolledLogStore",
+        "RolledLogVerifier",
+        "SegmentInfo",
+        "VerificationResult"
+      ],
+      "line_count": 518,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety"
+      ]
+    },
+    "app/audit/journal.py": {
+      "path": "app/audit/journal.py",
+      "imports": [
+        "app.audit.migration",
+        "app.audit.rolled_log"
+      ],
+      "exports": [
+        "active_segment_path",
+        "append",
+        "ensure_migrated",
+        "legacy_path",
+        "read_recent",
+        "read_since",
+        "stats"
+      ],
+      "line_count": 154,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/audit/__init__.py": {
+      "path": "app/audit/__init__.py",
+      "imports": [
+        "app.audit.rolled_log"
+      ],
+      "exports": [
+        "log_crew_dispatch",
+        "log_request_received",
+        "log_response_sent",
+        "log_security_event",
+        "log_tool_blocked",
+        "log_tool_call"
+      ],
+      "line_count": 152,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/audit/migration.py": {
+      "path": "app/audit/migration.py",
+      "imports": [
+        "app.audit.rolled_log",
+        "app.safe_io"
+      ],
+      "exports": [
+        "migrate_json_list",
+        "migrate_jsonl"
+      ],
+      "line_count": 257,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/audit/algorithm_pinning.py": {
+      "path": "app/audit/algorithm_pinning.py",
+      "imports": [],
+      "exports": [
+        "AlgorithmPin",
+        "RotationDrillResult",
+        "list_pins",
+        "missing_artifact_classes",
+        "pin_algorithm",
+        "run_rotation_drill",
+        "stale_pins"
+      ],
+      "line_count": 371,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "monitoring"
+      ]
+    },
+    "app/computer_use/__init__.py": {
+      "path": "app/computer_use/__init__.py",
+      "imports": [
+        "app.computer_use.budget",
+        "app.computer_use.runner"
+      ],
+      "exports": [],
+      "line_count": 44,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "llm"
+      ]
+    },
+    "app/computer_use/audit.py": {
+      "path": "app/computer_use/audit.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "log_lifecycle",
+        "log_step",
+        "recent_steps"
+      ],
+      "line_count": 91,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
+    "app/computer_use/runner.py": {
+      "path": "app/computer_use/runner.py",
+      "imports": [
+        "app.computer_use.audit",
+        "app.computer_use.budget",
+        "app.config"
+      ],
+      "exports": [
+        "run_task"
+      ],
+      "line_count": 315,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "llm"
+      ]
+    },
+    "app/computer_use/budget.py": {
+      "path": "app/computer_use/budget.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "BudgetExceeded",
+        "check_can_start",
+        "check_step_within_budget",
+        "estimate_cost_usd",
+        "get_monthly_cap_usd",
+        "record_task_cost",
+        "snapshot"
+      ],
+      "line_count": 215,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/computer_use/browser_backend.py": {
+      "path": "app/computer_use/browser_backend.py",
+      "imports": [],
+      "exports": [
+        "BrowserNotAvailable",
+        "PlaywrightBrowserBackend"
+      ],
+      "line_count": 186,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "llm"
+      ]
+    },
+    "app/life_companion/topic_dormancy.py": {
+      "path": "app/life_companion/topic_dormancy.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "mute",
+        "run",
+        "unmute"
+      ],
+      "line_count": 283,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation"
+      ]
+    },
+    "app/life_companion/calendar_horizon.py": {
+      "path": "app/life_companion/calendar_horizon.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 259,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/life_companion/__init__.py": {
+      "path": "app/life_companion/__init__.py",
+      "imports": [],
+      "exports": [
+        "get_idle_jobs"
+      ],
+      "line_count": 114,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "subia",
+        "monitoring"
+      ]
+    },
+    "app/life_companion/seasonal_nudges.py": {
+      "path": "app/life_companion/seasonal_nudges.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 222,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/life_companion/feature_registry.py": {
+      "path": "app/life_companion/feature_registry.py",
+      "imports": [],
+      "exports": [
+        "Feature",
+        "Tunable",
+        "find_tunable",
+        "get_feature",
+        "list_features"
+      ],
+      "line_count": 247,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/life_companion/calendar_prep.py": {
+      "path": "app/life_companion/calendar_prep.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 278,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory"
+      ]
+    },
+    "app/life_companion/act_now_digest.py": {
+      "path": "app/life_companion/act_now_digest.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 587,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm"
+      ]
+    },
+    "app/life_companion/routine_detector.py": {
+      "path": "app/life_companion/routine_detector.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 321,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent"
+      ]
+    },
+    "app/life_companion/daily_briefing.py": {
+      "path": "app/life_companion/daily_briefing.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 439,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/life_companion/email_monitor.py": {
+      "path": "app/life_companion/email_monitor.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 249,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "tool",
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/life_companion/long_arc_follow_up.py": {
+      "path": "app/life_companion/long_arc_follow_up.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 276,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/life_companion/_common.py": {
+      "path": "app/life_companion/_common.py",
+      "imports": [],
+      "exports": [
+        "RateLimiter",
+        "audit_event",
+        "background_enabled",
+        "feature_enabled",
+        "get_tunable",
+        "read_state_json",
+        "send_signal_alert",
+        "state_path",
+        "user_email_address",
+        "write_state_json"
+      ],
+      "line_count": 227,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent"
+      ]
+    },
+    "app/life_companion/personalized_digest.py": {
+      "path": "app/life_companion/personalized_digest.py",
+      "imports": [
+        "app.life_companion._common",
+        "app.utils"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 381,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm"
       ]
     },
     "app/tensions/detector.py": {
@@ -5009,6 +5750,65 @@
         "subia"
       ]
     },
+    "app/notify/__init__.py": {
+      "path": "app/notify/__init__.py",
+      "imports": [
+        "app.notify.api"
+      ],
+      "exports": [],
+      "line_count": 28,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/notify/api.py": {
+      "path": "app/notify/api.py",
+      "imports": [],
+      "exports": [
+        "notify",
+        "notify_on_complete"
+      ],
+      "line_count": 242,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm",
+        "knowledge"
+      ]
+    },
+    "app/library_radar/__init__.py": {
+      "path": "app/library_radar/__init__.py",
+      "imports": [
+        "app.library_radar.proposer"
+      ],
+      "exports": [],
+      "line_count": 43,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "memory",
+        "tool",
+        "deploy",
+        "monitoring"
+      ]
+    },
+    "app/library_radar/proposer.py": {
+      "path": "app/library_radar/proposer.py",
+      "imports": [],
+      "exports": [
+        "Discovery",
+        "run_one_pass",
+        "start",
+        "stop"
+      ],
+      "line_count": 336,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
     "app/healing/health_remediator.py": {
       "path": "app/healing/health_remediator.py",
       "imports": [],
@@ -5027,17 +5827,142 @@
         "knowledge"
       ]
     },
+    "app/healing/listener_heartbeats.py": {
+      "path": "app/healing/listener_heartbeats.py",
+      "imports": [],
+      "exports": [
+        "list_heartbeats",
+        "touch"
+      ],
+      "line_count": 97,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/healing/watchdog.py": {
+      "path": "app/healing/watchdog.py",
+      "imports": [],
+      "exports": [
+        "register_daemon",
+        "start",
+        "stop"
+      ],
+      "line_count": 299,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
     "app/healing/__init__.py": {
       "path": "app/healing/__init__.py",
       "imports": [
         "app.healing.error_diagnosis",
-        "app.healing.health_remediator"
+        "app.healing.health_remediator",
+        "app.healing.runbooks"
       ],
       "exports": [],
-      "line_count": 28,
+      "line_count": 90,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/pattern_learner.py": {
+      "path": "app/healing/pattern_learner.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 378,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/auditor_bridge.py": {
+      "path": "app/healing/auditor_bridge.py",
+      "imports": [
+        "app.audit",
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run_one_pass",
+        "start",
+        "stop"
+      ],
+      "line_count": 321,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/db_backup.py": {
+      "path": "app/healing/db_backup.py",
+      "imports": [],
+      "exports": [
+        "run_backup"
+      ],
+      "line_count": 349,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/runbooks.py": {
+      "path": "app/healing/runbooks.py",
+      "imports": [],
+      "exports": [
+        "RunbookResult",
+        "maybe_run_runbook",
+        "register_runbook",
+        "runbooks_enabled",
+        "unregister_runbook"
+      ],
+      "line_count": 440,
+      "is_hot_path": false,
+      "capability_tags": [
+        "tool",
+        "safety",
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/healing/llm_output_drift.py": {
+      "path": "app/healing/llm_output_drift.py",
+      "imports": [
+        "app.utils.hash_embedding"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 402,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm"
+      ]
+    },
+    "app/healing/silent_regression_detector.py": {
+      "path": "app/healing/silent_regression_detector.py",
+      "imports": [
+        "app.audit",
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 286,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm",
         "monitoring"
       ]
     },
@@ -5062,6 +5987,18 @@
         "safety",
         "error_handling",
         "knowledge"
+      ]
+    },
+    "app/healing/boot_reset.py": {
+      "path": "app/healing/boot_reset.py",
+      "imports": [],
+      "exports": [
+        "reset_stale_cooldowns"
+      ],
+      "line_count": 164,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory"
       ]
     },
     "app/consciousness/meta_workspace.py": {
@@ -5224,6 +6161,59 @@
       "is_hot_path": false,
       "capability_tags": []
     },
+    "app/web_push/bootstrap.py": {
+      "path": "app/web_push/bootstrap.py",
+      "imports": [],
+      "exports": [
+        "main"
+      ],
+      "line_count": 63,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/web_push/subscriptions.py": {
+      "path": "app/web_push/subscriptions.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "add_subscription",
+        "list_subscriptions",
+        "prune_subscription",
+        "remove_subscription"
+      ],
+      "line_count": 105,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/web_push/__init__.py": {
+      "path": "app/web_push/__init__.py",
+      "imports": [
+        "app.web_push.sender",
+        "app.web_push.subscriptions"
+      ],
+      "exports": [],
+      "line_count": 34,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/web_push/sender.py": {
+      "path": "app/web_push/sender.py",
+      "imports": [
+        "app.config",
+        "app.web_push.subscriptions"
+      ],
+      "exports": [
+        "is_configured",
+        "send_to_all",
+        "send_to_one"
+      ],
+      "line_count": 102,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
     "app/subia/loop.py": {
       "path": "app/subia/loop.py",
       "imports": [
@@ -5236,7 +6226,7 @@
         "SubIALoop",
         "classify_operation"
       ],
-      "line_count": 1153,
+      "line_count": 1187,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -5338,10 +6328,11 @@
     "app/subia/__init__.py": {
       "path": "app/subia/__init__.py",
       "imports": [
+        "app.subia.inquiry",
         "app.subia.kernel"
       ],
       "exports": [],
-      "line_count": 34,
+      "line_count": 40,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -5372,9 +6363,10 @@
       ],
       "exports": [
         "bind_just_computed_signals",
+        "quick_bind_compressed_signals",
         "refresh_temporal_state"
       ],
-      "line_count": 121,
+      "line_count": 147,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
@@ -5394,7 +6386,7 @@
         "verify_integrity",
         "write_manifest"
       ],
-      "line_count": 282,
+      "line_count": 297,
       "is_hot_path": false,
       "capability_tags": [
         "deploy",
@@ -5460,7 +6452,7 @@
         "is_anthropic_timeout",
         "is_credit_exhausted_error"
       ],
-      "line_count": 325,
+      "line_count": 332,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -5650,6 +6642,134 @@
         "tool",
         "error_handling",
         "knowledge"
+      ]
+    },
+    "app/architecture_requests/__init__.py": {
+      "path": "app/architecture_requests/__init__.py",
+      "imports": [
+        "app.architecture_requests.lifecycle",
+        "app.architecture_requests.models",
+        "app.architecture_requests.signal",
+        "app.architecture_requests.store",
+        "app.architecture_requests.validator"
+      ],
+      "exports": [],
+      "line_count": 86,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "deploy",
+        "monitoring"
+      ]
+    },
+    "app/architecture_requests/scaffolder.py": {
+      "path": "app/architecture_requests/scaffolder.py",
+      "imports": [
+        "app.architecture_requests.models"
+      ],
+      "exports": [
+        "scaffold",
+        "staging_dir_for"
+      ],
+      "line_count": 184,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "subia"
+      ]
+    },
+    "app/architecture_requests/models.py": {
+      "path": "app/architecture_requests/models.py",
+      "imports": [],
+      "exports": [
+        "ArchStatus",
+        "ArchitectureRequest",
+        "DecisionSource",
+        "FileSpec",
+        "IntegrationPoint"
+      ],
+      "line_count": 221,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
+    "app/architecture_requests/signal.py": {
+      "path": "app/architecture_requests/signal.py",
+      "imports": [
+        "app.architecture_requests.models"
+      ],
+      "exports": [
+        "build_ask_body",
+        "find_request_by_signal_ts",
+        "send_ask"
+      ],
+      "line_count": 172,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/architecture_requests/validator.py": {
+      "path": "app/architecture_requests/validator.py",
+      "imports": [
+        "app.architecture_requests.models"
+      ],
+      "exports": [
+        "ValidationResult",
+        "is_protected_path",
+        "validate"
+      ],
+      "line_count": 251,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia"
+      ]
+    },
+    "app/architecture_requests/lifecycle.py": {
+      "path": "app/architecture_requests/lifecycle.py",
+      "imports": [
+        "app.architecture_requests",
+        "app.architecture_requests.models",
+        "app.architecture_requests.validator"
+      ],
+      "exports": [
+        "InvalidTransition",
+        "abandon",
+        "approve",
+        "attach_signal_ts",
+        "create_request",
+        "expire",
+        "mark_complete",
+        "record_child_change_request",
+        "reject",
+        "scaffold"
+      ],
+      "line_count": 228,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
+    "app/architecture_requests/store.py": {
+      "path": "app/architecture_requests/store.py",
+      "imports": [
+        "app.architecture_requests.models",
+        "app.audit.rolled_log"
+      ],
+      "exports": [
+        "find_by_signal_ts",
+        "get",
+        "get_base_dir",
+        "iter_audit_entries",
+        "list_all",
+        "reset_for_tests",
+        "save"
+      ],
+      "line_count": 175,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory"
       ]
     },
     "app/souls/__init__.py": {
@@ -5953,12 +7073,11 @@
       "exports": [
         "create_pim_agent"
       ],
-      "line_count": 65,
+      "line_count": 79,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
-        "llm",
-        "knowledge"
+        "llm"
       ]
     },
     "app/agents/researcher.py": {
@@ -6054,6 +7173,17 @@
       "capability_tags": [
         "agent"
       ]
+    },
+    "app/coding_session/audit_verify.py": {
+      "path": "app/coding_session/audit_verify.py",
+      "imports": [],
+      "exports": [
+        "chain_summary",
+        "verify_chain"
+      ],
+      "line_count": 169,
+      "is_hot_path": false,
+      "capability_tags": []
     },
     "app/coding_session/manager.py": {
       "path": "app/coding_session/manager.py",
@@ -6155,6 +7285,26 @@
         "agent"
       ]
     },
+    "app/coding_session/evolution_bridge.py": {
+      "path": "app/coding_session/evolution_bridge.py",
+      "imports": [
+        "app.architecture_requests.validator",
+        "app.coding_session.models"
+      ],
+      "exports": [
+        "EvolutionResult",
+        "RunnerOutput",
+        "evolve_in_session"
+      ],
+      "line_count": 371,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "llm",
+        "subia"
+      ]
+    },
     "app/coding_session/store.py": {
       "path": "app/coding_session/store.py",
       "imports": [
@@ -6200,7 +7350,7 @@
         "gather_seed",
         "resolve_roster"
       ],
-      "line_count": 392,
+      "line_count": 518,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -6263,7 +7413,7 @@
         "skip_step",
         "start_session"
       ],
-      "line_count": 358,
+      "line_count": 366,
       "is_hot_path": false,
       "capability_tags": [
         "agent"
@@ -6290,7 +7440,7 @@
       "exports": [
         "try_handle"
       ],
-      "line_count": 353,
+      "line_count": 448,
       "is_hot_path": false,
       "capability_tags": []
     },
@@ -6399,7 +7549,7 @@
         "store_memory",
         "store_memory_async"
       ],
-      "line_count": 371,
+      "line_count": 426,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -6410,13 +7560,15 @@
     },
     "app/memory/system_chronicle.py": {
       "path": "app/memory/system_chronicle.py",
-      "imports": [],
+      "imports": [
+        "app.audit"
+      ],
       "exports": [
         "generate_and_save",
         "get_live_stats",
         "load_chronicle"
       ],
-      "line_count": 418,
+      "line_count": 423,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -6447,6 +7599,27 @@
       "capability_tags": [
         "memory",
         "agent"
+      ]
+    },
+    "app/memory/wiki_index_reconciler.py": {
+      "path": "app/memory/wiki_index_reconciler.py",
+      "imports": [
+        "app.paths",
+        "app.tools.wiki_tools"
+      ],
+      "exports": [
+        "DriftResult",
+        "compute_canonical_master_content",
+        "read_live_master_index",
+        "run_reconciler"
+      ],
+      "line_count": 397,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "llm",
+        "subia",
+        "knowledge"
       ]
     },
     "app/memory/__init__.py": {
@@ -6523,7 +7696,7 @@
         "reconcile_belief_outbox",
         "sync_new_beliefs_to_chromadb"
       ],
-      "line_count": 338,
+      "line_count": 397,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -6629,10 +7802,189 @@
         "MCPServerConfig",
         "MCPToolSchema"
       ],
-      "line_count": 150,
+      "line_count": 230,
       "is_hot_path": false,
       "capability_tags": [
-        "agent"
+        "agent",
+        "safety",
+        "error_handling"
+      ]
+    },
+    "app/inbox/classifier.py": {
+      "path": "app/inbox/classifier.py",
+      "imports": [],
+      "exports": [
+        "FileClassification",
+        "classify_file"
+      ],
+      "line_count": 186,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring",
+        "knowledge"
+      ]
+    },
+    "app/inbox/router.py": {
+      "path": "app/inbox/router.py",
+      "imports": [
+        "app.inbox.classifier"
+      ],
+      "exports": [
+        "ScanResult",
+        "scan_and_route"
+      ],
+      "line_count": 345,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/inbox/__init__.py": {
+      "path": "app/inbox/__init__.py",
+      "imports": [
+        "app.inbox.classifier",
+        "app.inbox.router",
+        "app.inbox.scheduler"
+      ],
+      "exports": [],
+      "line_count": 53,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/inbox/scheduler.py": {
+      "path": "app/inbox/scheduler.py",
+      "imports": [],
+      "exports": [
+        "get_idle_jobs",
+        "run_inbox_tick"
+      ],
+      "line_count": 95,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/threads/__init__.py": {
+      "path": "app/threads/__init__.py",
+      "imports": [
+        "app.threads.lifecycle",
+        "app.threads.models",
+        "app.threads.store"
+      ],
+      "exports": [],
+      "line_count": 78,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "agent",
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/threads/models.py": {
+      "path": "app/threads/models.py",
+      "imports": [],
+      "exports": [
+        "InvalidThreadTransition",
+        "SubQuestion",
+        "Thread",
+        "ThreadStatus"
+      ],
+      "line_count": 130,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
+    "app/threads/lifecycle.py": {
+      "path": "app/threads/lifecycle.py",
+      "imports": [
+        "app.threads",
+        "app.threads.models"
+      ],
+      "exports": [
+        "abandon_thread",
+        "add_blocker",
+        "add_subquestion",
+        "clear_blockers",
+        "create_thread",
+        "link_crew_task",
+        "link_inquiry",
+        "mark_blocked",
+        "mark_in_progress",
+        "record_note",
+        "resolve_subquestion",
+        "resolve_thread"
+      ],
+      "line_count": 242,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/threads/store.py": {
+      "path": "app/threads/store.py",
+      "imports": [
+        "app.threads.models"
+      ],
+      "exports": [
+        "get",
+        "get_base_dir",
+        "list_all",
+        "list_open",
+        "reset_for_tests",
+        "save"
+      ],
+      "line_count": 100,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling"
+      ]
+    },
+    "app/discord_client/bot.py": {
+      "path": "app/discord_client/bot.py",
+      "imports": [
+        "app.config"
+      ],
+      "exports": [
+        "get_client",
+        "is_running",
+        "start_bot",
+        "stop_bot"
+      ],
+      "line_count": 179,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/discord_client/__init__.py": {
+      "path": "app/discord_client/__init__.py",
+      "imports": [
+        "app.discord_client.bot",
+        "app.discord_client.sender"
+      ],
+      "exports": [],
+      "line_count": 26,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/discord_client/sender.py": {
+      "path": "app/discord_client/sender.py",
+      "imports": [],
+      "exports": [
+        "send_via_discord"
+      ],
+      "line_count": 140,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
       ]
     },
     "app/tool_runtime/factory.py": {
@@ -6788,16 +8140,98 @@
         "monitoring"
       ]
     },
+    "app/tool_runtime/supervisor.py": {
+      "path": "app/tool_runtime/supervisor.py",
+      "imports": [],
+      "exports": [
+        "classify_exception",
+        "is_enabled",
+        "supervise_available_functions",
+        "wrap_tool_function"
+      ],
+      "line_count": 310,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "safety",
+        "error_handling",
+        "knowledge"
+      ]
+    },
     "app/tool_runtime/loadable_executor.py": {
       "path": "app/tool_runtime/loadable_executor.py",
-      "imports": [],
+      "imports": [
+        "app.tool_runtime.supervisor"
+      ],
       "exports": [
         "LoadableAgentExecutor"
       ],
-      "line_count": 348,
+      "line_count": 358,
       "is_hot_path": false,
       "capability_tags": [
         "tool"
+      ]
+    },
+    "app/utils/hash_embedding.py": {
+      "path": "app/utils/hash_embedding.py",
+      "imports": [],
+      "exports": [
+        "cosine",
+        "embed"
+      ],
+      "line_count": 80,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "llm"
+      ]
+    },
+    "app/utils/__init__.py": {
+      "path": "app/utils/__init__.py",
+      "imports": [
+        "app.utils"
+      ],
+      "exports": [
+        "load_json_file",
+        "now_iso",
+        "safe_json_parse",
+        "save_json_file",
+        "truncate"
+      ],
+      "line_count": 174,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/utils/feed_parser.py": {
+      "path": "app/utils/feed_parser.py",
+      "imports": [],
+      "exports": [
+        "parse"
+      ],
+      "line_count": 131,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/utils/jsonl_retention.py": {
+      "path": "app/utils/jsonl_retention.py",
+      "imports": [],
+      "exports": [
+        "append_with_cap",
+        "cap_jsonl"
+      ],
+      "line_count": 77,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
       ]
     },
     "app/epistemic/autotune.py": {
@@ -7297,6 +8731,23 @@
         "error_handling"
       ]
     },
+    "app/episteme/paper_pipeline.py": {
+      "path": "app/episteme/paper_pipeline.py",
+      "imports": [
+        "app.utils"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 466,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "memory",
+        "llm",
+        "knowledge"
+      ]
+    },
     "app/episteme/vectorstore.py": {
       "path": "app/episteme/vectorstore.py",
       "imports": [
@@ -7456,12 +8907,13 @@
       "exports": [
         "emit_mapelites_voids",
         "emit_observer_mis_prediction",
+        "emit_recovery_refusal",
         "emit_reflexion_failure",
         "emit_retrieval_miss",
         "emit_trajectory_attribution",
         "get_recent_evidence_block"
       ],
-      "line_count": 362,
+      "line_count": 417,
       "is_hot_path": false,
       "capability_tags": [
         "evolution",
@@ -7551,6 +9003,27 @@
         "knowledge"
       ]
     },
+    "app/self_improvement/capability_gap_analyzer.py": {
+      "path": "app/self_improvement/capability_gap_analyzer.py",
+      "imports": [
+        "app.self_improvement.store",
+        "app.self_improvement.types",
+        "app.utils.hash_embedding"
+      ],
+      "exports": [
+        "CapabilityCluster",
+        "run_one_pass",
+        "start",
+        "stop"
+      ],
+      "line_count": 339,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "error_handling",
+        "subia"
+      ]
+    },
     "app/self_improvement/types.py": {
       "path": "app/self_improvement/types.py",
       "imports": [],
@@ -7564,13 +9037,66 @@
         "SkillRecord",
         "construct_skill_draft"
       ],
-      "line_count": 304,
+      "line_count": 305,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
         "memory",
         "agent",
         "safety",
+        "error_handling",
+        "knowledge"
+      ]
+    },
+    "app/skills/registry.py": {
+      "path": "app/skills/registry.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "Skill",
+        "delete_skill",
+        "extract_placeholders",
+        "get_skill",
+        "list_skills",
+        "normalise",
+        "record_run_result",
+        "save_skill"
+      ],
+      "line_count": 207,
+      "is_hot_path": false,
+      "capability_tags": [
+        "knowledge"
+      ]
+    },
+    "app/skills/__init__.py": {
+      "path": "app/skills/__init__.py",
+      "imports": [
+        "app.skills.registry",
+        "app.skills.runner"
+      ],
+      "exports": [],
+      "line_count": 36,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "knowledge"
+      ]
+    },
+    "app/skills/runner.py": {
+      "path": "app/skills/runner.py",
+      "imports": [
+        "app.skills.registry"
+      ],
+      "exports": [
+        "expand",
+        "run_skill"
+      ],
+      "line_count": 125,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling",
         "knowledge"
       ]
     },
@@ -7585,7 +9111,7 @@
         "is_enabled",
         "maybe_recover"
       ],
-      "line_count": 267,
+      "line_count": 278,
       "is_hot_path": false,
       "capability_tags": [
         "safety",
@@ -7750,20 +9276,31 @@
     "app/control_plane/projects.py": {
       "path": "app/control_plane/projects.py",
       "imports": [
-        "app.control_plane.db"
+        "app.control_plane.db",
+        "app.json_store"
       ],
       "exports": [
         "ProjectManager",
         "get_projects"
       ],
-      "line_count": 183,
+      "line_count": 300,
       "is_hot_path": false,
       "capability_tags": [
-        "memory",
-        "error_handling",
-        "monitoring",
-        "knowledge"
+        "memory"
       ]
+    },
+    "app/control_plane/proposals_api.py": {
+      "path": "app/control_plane/proposals_api.py",
+      "imports": [
+        "app.control_plane.auth_dep"
+      ],
+      "exports": [
+        "get_proposal",
+        "list_proposals"
+      ],
+      "line_count": 188,
+      "is_hot_path": false,
+      "capability_tags": []
     },
     "app/control_plane/org_chart.py": {
       "path": "app/control_plane/org_chart.py",
@@ -7802,6 +9339,29 @@
         "memory"
       ]
     },
+    "app/control_plane/threads_api.py": {
+      "path": "app/control_plane/threads_api.py",
+      "imports": [
+        "app.control_plane.auth_dep",
+        "app.threads"
+      ],
+      "exports": [
+        "add_blocker_route",
+        "add_note",
+        "add_sq",
+        "clear_route",
+        "create",
+        "get_thread",
+        "link_cr",
+        "link_inq",
+        "list_threads",
+        "resolve_sq",
+        "transition"
+      ],
+      "line_count": 224,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
     "app/control_plane/audit.py": {
       "path": "app/control_plane/audit.py",
       "imports": [
@@ -7820,6 +9380,29 @@
         "monitoring"
       ]
     },
+    "app/control_plane/architecture_requests_api.py": {
+      "path": "app/control_plane/architecture_requests_api.py",
+      "imports": [
+        "app.architecture_requests",
+        "app.architecture_requests.scaffolder",
+        "app.control_plane.auth_dep"
+      ],
+      "exports": [
+        "abandon_architecture_request",
+        "approve_architecture_request",
+        "get_architecture_request",
+        "get_audit_entries",
+        "get_scaffold_manifest",
+        "list_architecture_requests",
+        "mark_arch_complete",
+        "record_child",
+        "reject_architecture_request",
+        "scaffold_architecture_request"
+      ],
+      "line_count": 269,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
     "app/control_plane/dashboard_api.py": {
       "path": "app/control_plane/dashboard_api.py",
       "imports": [
@@ -7829,6 +9412,7 @@
         "BudgetOverride",
         "BudgetPauseToggle",
         "BudgetSet",
+        "ChatSendBody",
         "CommentCreate",
         "CreditAlertDismiss",
         "DelegationUpdate",
@@ -7849,6 +9433,8 @@
         "apply_proposal_action",
         "approve_governance",
         "audit_costs",
+        "chat_messages",
+        "chat_send",
         "consciousness_indicators",
         "control_plane_health",
         "costs_by_agent",
@@ -7900,6 +9486,8 @@
         "set_budget",
         "set_delegation_setting",
         "set_meta_agent_setting",
+        "signal_commands",
+        "system_status",
         "tech_radar",
         "ticket_board",
         "toggle_budget_pause",
@@ -7916,7 +9504,7 @@
         "transfer_memory_worst",
         "update_ticket"
       ],
-      "line_count": 1819,
+      "line_count": 2276,
       "is_hot_path": false,
       "capability_tags": [
         "monitoring"
@@ -7931,7 +9519,7 @@
         "TicketManager",
         "get_tickets"
       ],
-      "line_count": 333,
+      "line_count": 387,
       "is_hot_path": false,
       "capability_tags": [
         "agent"
@@ -7950,6 +9538,24 @@
       "is_hot_path": false,
       "capability_tags": [
         "monitoring"
+      ]
+    },
+    "app/control_plane/inquiries_api.py": {
+      "path": "app/control_plane/inquiries_api.py",
+      "imports": [
+        "app.control_plane.auth_dep",
+        "app.subia.inquiry.questions"
+      ],
+      "exports": [
+        "get_inquiry",
+        "list_inquiries",
+        "list_questions"
+      ],
+      "line_count": 176,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
       ]
     },
     "app/control_plane/heartbeats.py": {
@@ -8022,12 +9628,12 @@
         "execute_scalar",
         "get_pool"
       ],
-      "line_count": 151,
+      "line_count": 249,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
-        "agent",
-        "tool"
+        "safety",
+        "error_handling"
       ]
     },
     "app/control_plane/changes_api.py": {
@@ -8048,6 +9654,86 @@
       "is_hot_path": false,
       "capability_tags": [
         "deploy"
+      ]
+    },
+    "app/control_plane/action_requests_api.py": {
+      "path": "app/control_plane/action_requests_api.py",
+      "imports": [
+        "app.action_requests",
+        "app.control_plane.auth_dep"
+      ],
+      "exports": [
+        "approve_action_request",
+        "get_action_request",
+        "get_supported_types",
+        "list_action_requests",
+        "reject_action_request",
+        "retry_apply"
+      ],
+      "line_count": 205,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/creativity/concept_blend.py": {
+      "path": "app/creativity/concept_blend.py",
+      "imports": [],
+      "exports": [
+        "BlendResult",
+        "InputSpace",
+        "blend_concepts"
+      ],
+      "line_count": 264,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "llm"
+      ]
+    },
+    "app/creativity/novelty_wrap.py": {
+      "path": "app/creativity/novelty_wrap.py",
+      "imports": [],
+      "exports": [
+        "NoveltyVerdict",
+        "NoveltyWrap",
+        "assess_brainstorm_idea"
+      ],
+      "line_count": 180,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "knowledge"
+      ]
+    },
+    "app/creativity/__init__.py": {
+      "path": "app/creativity/__init__.py",
+      "imports": [
+        "app.creativity.analogy_index",
+        "app.creativity.concept_blend",
+        "app.creativity.novelty_wrap"
+      ],
+      "exports": [],
+      "line_count": 42,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/creativity/analogy_index.py": {
+      "path": "app/creativity/analogy_index.py",
+      "imports": [
+        "app.utils.hash_embedding"
+      ],
+      "exports": [
+        "AnalogyEntry",
+        "AnalogyMatch",
+        "DomainExample",
+        "add_entry",
+        "list_all",
+        "query_analogies"
+      ],
+      "line_count": 224,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling"
       ]
     },
     "app/control/__init__.py": {
@@ -8392,6 +10078,128 @@
         "agent"
       ]
     },
+    "app/governance_amendment/eligibility.py": {
+      "path": "app/governance_amendment/eligibility.py",
+      "imports": [],
+      "exports": [
+        "EligibilityResult",
+        "check_eligibility",
+        "lookback_days",
+        "max_rollback_rate",
+        "min_promotions"
+      ],
+      "line_count": 268,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "deploy",
+        "error_handling"
+      ]
+    },
+    "app/governance_amendment/__init__.py": {
+      "path": "app/governance_amendment/__init__.py",
+      "imports": [
+        "app.governance_amendment._state",
+        "app.governance_amendment.audit",
+        "app.governance_amendment.eligibility",
+        "app.governance_amendment.protocol",
+        "app.governance_amendment.self_quarantine"
+      ],
+      "exports": [],
+      "line_count": 71,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/governance_amendment/audit.py": {
+      "path": "app/governance_amendment/audit.py",
+      "imports": [],
+      "exports": [
+        "append",
+        "verify_chain"
+      ],
+      "line_count": 175,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/governance_amendment/protocol.py": {
+      "path": "app/governance_amendment/protocol.py",
+      "imports": [
+        "app.governance_amendment",
+        "app.governance_amendment._state"
+      ],
+      "exports": [
+        "ProtocolDisabled",
+        "advance_cooldown",
+        "advance_monitoring",
+        "amendment_protocol_enabled",
+        "get_proposal",
+        "list_proposals",
+        "mark_applied",
+        "operator_approve",
+        "operator_reject",
+        "propose_amendment"
+      ],
+      "line_count": 471,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "deploy",
+        "error_handling"
+      ]
+    },
+    "app/governance_amendment/_state.py": {
+      "path": "app/governance_amendment/_state.py",
+      "imports": [],
+      "exports": [
+        "AmendmentProposal",
+        "InvalidStateTransition",
+        "State",
+        "is_legal_transition"
+      ],
+      "line_count": 139,
+      "is_hot_path": false,
+      "capability_tags": [
+        "deploy",
+        "error_handling"
+      ]
+    },
+    "app/governance_amendment/store.py": {
+      "path": "app/governance_amendment/store.py",
+      "imports": [
+        "app.governance_amendment._state"
+      ],
+      "exports": [
+        "iter_all",
+        "list_by_state",
+        "load",
+        "proposal_path",
+        "save"
+      ],
+      "line_count": 108,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/governance_amendment/self_quarantine.py": {
+      "path": "app/governance_amendment/self_quarantine.py",
+      "imports": [],
+      "exports": [
+        "is_quarantined",
+        "quarantine_reason"
+      ],
+      "line_count": 115,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "safety",
+        "deploy",
+        "subia"
+      ]
+    },
     "app/change_requests/__init__.py": {
       "path": "app/change_requests/__init__.py",
       "imports": [
@@ -8490,7 +10298,7 @@
         "mark_timeout",
         "reject"
       ],
-      "line_count": 299,
+      "line_count": 367,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -8514,6 +10322,137 @@
       "is_hot_path": false,
       "capability_tags": [
         "memory"
+      ]
+    },
+    "app/health/idle_job.py": {
+      "path": "app/health/idle_job.py",
+      "imports": [],
+      "exports": [
+        "get_idle_jobs",
+        "run_health_summary_tick"
+      ],
+      "line_count": 106,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/health/anomaly.py": {
+      "path": "app/health/anomaly.py",
+      "imports": [
+        "app.health"
+      ],
+      "exports": [
+        "HealthAnomaly",
+        "detect_anomalies"
+      ],
+      "line_count": 242,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/health/summary.py": {
+      "path": "app/health/summary.py",
+      "imports": [
+        "app.health"
+      ],
+      "exports": [
+        "HealthSummary",
+        "summarise_window"
+      ],
+      "line_count": 208,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/health/__init__.py": {
+      "path": "app/health/__init__.py",
+      "imports": [
+        "app.health.anomaly",
+        "app.health.import_apple",
+        "app.health.summary",
+        "app.health.types"
+      ],
+      "exports": [],
+      "line_count": 69,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/health/store.py": {
+      "path": "app/health/store.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "append_records",
+        "list_records",
+        "list_window",
+        "resolve_base"
+      ],
+      "line_count": 177,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/health/types.py": {
+      "path": "app/health/types.py",
+      "imports": [],
+      "exports": [
+        "ActiveEnergyRecord",
+        "BodyMassRecord",
+        "HeartRateRecord",
+        "SleepRecord",
+        "StepsRecord",
+        "WorkoutRecord",
+        "record_type_for_apple_kind"
+      ],
+      "line_count": 192,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/health/import_apple.py": {
+      "path": "app/health/import_apple.py",
+      "imports": [
+        "app.health",
+        "app.health.types"
+      ],
+      "exports": [
+        "ImportResult",
+        "import_apple_export"
+      ],
+      "line_count": 354,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/tools/gmail_tools.py": {
+      "path": "app/tools/gmail_tools.py",
+      "imports": [],
+      "exports": [
+        "create_gmail_tools"
+      ],
+      "line_count": 257,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
       ]
     },
     "app/tools/gee_tool.py": {
@@ -8572,6 +10511,19 @@
         "tool"
       ]
     },
+    "app/tools/gdocs_tools.py": {
+      "path": "app/tools/gdocs_tools.py",
+      "imports": [],
+      "exports": [
+        "create_gdocs_tools"
+      ],
+      "line_count": 150,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
     "app/tools/ci_cd_tools.py": {
       "path": "app/tools/ci_cd_tools.py",
       "imports": [],
@@ -8592,7 +10544,7 @@
       "exports": [
         "create_coding_session_tools"
       ],
-      "line_count": 682,
+      "line_count": 797,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -8643,6 +10595,18 @@
       "capability_tags": [
         "tool",
         "error_handling"
+      ]
+    },
+    "app/tools/gcal_tools.py": {
+      "path": "app/tools/gcal_tools.py",
+      "imports": [],
+      "exports": [
+        "create_gcal_tools"
+      ],
+      "line_count": 206,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent"
       ]
     },
     "app/tools/attachment_reader.py": {
@@ -8698,7 +10662,7 @@
         "EmailScore",
         "score_email"
       ],
-      "line_count": 303,
+      "line_count": 349,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -8808,6 +10772,21 @@
         "error_handling"
       ]
     },
+    "app/tools/computer_use_tool.py": {
+      "path": "app/tools/computer_use_tool.py",
+      "imports": [],
+      "exports": [
+        "create_computer_use_tools"
+      ],
+      "line_count": 78,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "error_handling",
+        "llm"
+      ]
+    },
     "app/tools/project_builder_tools.py": {
       "path": "app/tools/project_builder_tools.py",
       "imports": [],
@@ -8826,7 +10805,7 @@
         "handle_webhook_event",
         "register_user_schedules"
       ],
-      "line_count": 286,
+      "line_count": 303,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling"
@@ -9013,6 +10992,20 @@
         "error_handling"
       ]
     },
+    "app/tools/control_plane_tickets_tool.py": {
+      "path": "app/tools/control_plane_tickets_tool.py",
+      "imports": [],
+      "exports": [
+        "create_cp_tickets_tools"
+      ],
+      "line_count": 332,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "monitoring"
+      ]
+    },
     "app/tools/wiki_tool_registry.py": {
       "path": "app/tools/wiki_tool_registry.py",
       "imports": [
@@ -9079,7 +11072,7 @@
         "WikiSlidesTool",
         "WikiWriteTool"
       ],
-      "line_count": 1020,
+      "line_count": 1040,
       "is_hot_path": false,
       "capability_tags": [
         "memory",
@@ -9163,6 +11156,19 @@
         "knowledge"
       ]
     },
+    "app/tools/gsheets_tools.py": {
+      "path": "app/tools/gsheets_tools.py",
+      "imports": [],
+      "exports": [
+        "create_gsheets_tools"
+      ],
+      "line_count": 192,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
     "app/tools/ocr_tool.py": {
       "path": "app/tools/ocr_tool.py",
       "imports": [],
@@ -9180,22 +11186,36 @@
         "error_handling"
       ]
     },
+    "app/tools/gslides_tools.py": {
+      "path": "app/tools/gslides_tools.py",
+      "imports": [],
+      "exports": [
+        "create_gslides_tools"
+      ],
+      "line_count": 206,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
     "app/tools/document_generator.py": {
       "path": "app/tools/document_generator.py",
-      "imports": [],
+      "imports": [
+        "app.paths"
+      ],
       "exports": [
         "create_document_tools",
         "create_docx",
         "create_html_page",
         "create_pdf",
+        "create_pptx",
         "create_xlsx",
         "list_documents"
       ],
-      "line_count": 506,
+      "line_count": 794,
       "is_hot_path": false,
-      "capability_tags": [
-        "agent"
-      ]
+      "capability_tags": []
     },
     "app/tools/mem0_tools.py": {
       "path": "app/tools/mem0_tools.py",
@@ -9646,7 +11666,7 @@
         "description_for",
         "is_known"
       ],
-      "line_count": 194,
+      "line_count": 210,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -9690,6 +11710,110 @@
         "tool",
         "deploy"
       ]
+    },
+    "app/governance_ratchet/auto_propose.py": {
+      "path": "app/governance_ratchet/auto_propose.py",
+      "imports": [],
+      "exports": [
+        "run"
+      ],
+      "line_count": 314,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "deploy"
+      ]
+    },
+    "app/governance_ratchet/__init__.py": {
+      "path": "app/governance_ratchet/__init__.py",
+      "imports": [
+        "app.governance_ratchet._state",
+        "app.governance_ratchet.audit",
+        "app.governance_ratchet.protocol"
+      ],
+      "exports": [],
+      "line_count": 61,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/governance_ratchet/audit.py": {
+      "path": "app/governance_ratchet/audit.py",
+      "imports": [],
+      "exports": [
+        "append",
+        "verify_chain"
+      ],
+      "line_count": 150,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/governance_ratchet/protocol.py": {
+      "path": "app/governance_ratchet/protocol.py",
+      "imports": [
+        "app.governance_ratchet",
+        "app.governance_ratchet._state"
+      ],
+      "exports": [
+        "effective_value",
+        "get_state",
+        "list_thresholds",
+        "relax_ratchet",
+        "set_ratchet"
+      ],
+      "line_count": 287,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety"
+      ]
+    },
+    "app/governance_ratchet/_state.py": {
+      "path": "app/governance_ratchet/_state.py",
+      "imports": [],
+      "exports": [
+        "CeilingViolation",
+        "Direction",
+        "FloorViolation",
+        "MonotonicViolation",
+        "RatchetEntry",
+        "RatchetViolation",
+        "ThresholdName",
+        "ThresholdState",
+        "UnknownThresholdViolation"
+      ],
+      "line_count": 121,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/governance_ratchet/store.py": {
+      "path": "app/governance_ratchet/store.py",
+      "imports": [
+        "app.governance_ratchet._state"
+      ],
+      "exports": [
+        "get",
+        "known_thresholds",
+        "load_all",
+        "save_all",
+        "set_one"
+      ],
+      "line_count": 90,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "error_handling"
+      ]
+    },
+    "app/governance_ratchet/goodhart_enforcing_proposer.py": {
+      "path": "app/governance_ratchet/goodhart_enforcing_proposer.py",
+      "imports": [],
+      "exports": [
+        "run"
+      ],
+      "line_count": 317,
+      "is_hot_path": false,
+      "capability_tags": []
     },
     "app/contracts/events.py": {
       "path": "app/contracts/events.py",
@@ -9751,6 +11875,139 @@
         "monitoring"
       ]
     },
+    "app/action_requests/__init__.py": {
+      "path": "app/action_requests/__init__.py",
+      "imports": [
+        "app.action_requests.handlers",
+        "app.action_requests.lifecycle",
+        "app.action_requests.models",
+        "app.action_requests.store",
+        "app.action_requests.validator"
+      ],
+      "exports": [],
+      "line_count": 102,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent"
+      ]
+    },
+    "app/action_requests/models.py": {
+      "path": "app/action_requests/models.py",
+      "imports": [],
+      "exports": [
+        "ActionRequest",
+        "ActionStatus",
+        "ActionType",
+        "DecisionSource"
+      ],
+      "line_count": 131,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling"
+      ]
+    },
+    "app/action_requests/validator.py": {
+      "path": "app/action_requests/validator.py",
+      "imports": [
+        "app.action_requests.handlers",
+        "app.action_requests.models"
+      ],
+      "exports": [
+        "ValidationResult",
+        "is_action_type_supported",
+        "validate"
+      ],
+      "line_count": 72,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/action_requests/lifecycle.py": {
+      "path": "app/action_requests/lifecycle.py",
+      "imports": [
+        "app.action_requests",
+        "app.action_requests.handlers",
+        "app.action_requests.models",
+        "app.action_requests.validator"
+      ],
+      "exports": [
+        "InvalidActionTransition",
+        "apply",
+        "approve",
+        "attach_signal_ts",
+        "create_request",
+        "expire",
+        "reject"
+      ],
+      "line_count": 202,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/action_requests/store.py": {
+      "path": "app/action_requests/store.py",
+      "imports": [
+        "app.action_requests.models"
+      ],
+      "exports": [
+        "find_by_signal_ts",
+        "get",
+        "get_base_dir",
+        "list_all",
+        "reset_for_tests",
+        "save"
+      ],
+      "line_count": 108,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling"
+      ]
+    },
+    "app/delivery/email_send.py": {
+      "path": "app/delivery/email_send.py",
+      "imports": [],
+      "exports": [
+        "send_via_email"
+      ],
+      "line_count": 119,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "error_handling"
+      ]
+    },
+    "app/delivery/__init__.py": {
+      "path": "app/delivery/__init__.py",
+      "imports": [
+        "app.delivery.email_send",
+        "app.delivery.signal_send",
+        "app.discord_client.sender"
+      ],
+      "exports": [],
+      "line_count": 33,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool"
+      ]
+    },
+    "app/delivery/signal_send.py": {
+      "path": "app/delivery/signal_send.py",
+      "imports": [],
+      "exports": [
+        "send_via_signal"
+      ],
+      "line_count": 71,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "tool",
+        "error_handling"
+      ]
+    },
     "app/adaptation/__init__.py": {
       "path": "app/adaptation/__init__.py",
       "imports": [
@@ -9807,9 +12064,12 @@
       "exports": [
         "RetrievalConfig"
       ],
-      "line_count": 73,
+      "line_count": 88,
       "is_hot_path": false,
-      "capability_tags": []
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
     },
     "app/retrieval/reranker.py": {
       "path": "app/retrieval/reranker.py",
@@ -9819,7 +12079,7 @@
       "exports": [
         "rerank"
       ],
-      "line_count": 135,
+      "line_count": 244,
       "is_hot_path": false,
       "capability_tags": [
         "evaluation",
@@ -9855,6 +12115,88 @@
       "is_hot_path": false,
       "capability_tags": [
         "evaluation"
+      ]
+    },
+    "app/identity/legacy_essay.py": {
+      "path": "app/identity/legacy_essay.py",
+      "imports": [
+        "app.subia.inquiry.linter"
+      ],
+      "exports": [
+        "LegacyResult",
+        "run_one_pass"
+      ],
+      "line_count": 222,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/identity/continuity_ledger.py": {
+      "path": "app/identity/continuity_ledger.py",
+      "imports": [],
+      "exports": [
+        "DriftSummary",
+        "IdentityEvent",
+        "list_events",
+        "record_event",
+        "summarise_drift"
+      ],
+      "line_count": 219,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "subia"
+      ]
+    },
+    "app/identity/__init__.py": {
+      "path": "app/identity/__init__.py",
+      "imports": [
+        "app.identity.continuity_ledger",
+        "app.identity.scheduler"
+      ],
+      "exports": [],
+      "line_count": 48,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/identity/annual_reflection.py": {
+      "path": "app/identity/annual_reflection.py",
+      "imports": [
+        "app.identity.continuity_ledger",
+        "app.subia.inquiry.linter"
+      ],
+      "exports": [
+        "ReflectionContext",
+        "ReflectionResult",
+        "run_one_pass"
+      ],
+      "line_count": 291,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm",
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/identity/scheduler.py": {
+      "path": "app/identity/scheduler.py",
+      "imports": [],
+      "exports": [
+        "get_idle_jobs",
+        "run_annual_reflection",
+        "run_legacy_essay"
+      ],
+      "line_count": 121,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
       ]
     },
     "app/personality/assessment.py": {
@@ -9951,6 +12293,23 @@
         "monitoring"
       ]
     },
+    "app/personality/concierge_wrapper.py": {
+      "path": "app/personality/concierge_wrapper.py",
+      "imports": [
+        "app.config"
+      ],
+      "exports": [
+        "apply_concierge"
+      ],
+      "line_count": 217,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling",
+        "llm",
+        "knowledge"
+      ]
+    },
     "app/personality/creativity_scoring.py": {
       "path": "app/personality/creativity_scoring.py",
       "imports": [],
@@ -9968,6 +12327,21 @@
         "llm",
         "monitoring",
         "knowledge"
+      ]
+    },
+    "app/personality/signal_context.py": {
+      "path": "app/personality/signal_context.py",
+      "imports": [],
+      "exports": [
+        "ToneContext",
+        "build_context",
+        "context_dict"
+      ],
+      "line_count": 158,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm"
       ]
     },
     "app/personality/evaluation.py": {
@@ -10332,13 +12706,29 @@
       "imports": [],
       "exports": [
         "creative_run_endpoint",
+        "get_background_tasks_endpoint",
         "get_creative_mode_endpoint",
+        "get_governance_ratchet_state",
+        "get_life_companion_state_endpoint",
         "get_llm_mode_endpoint",
+        "get_runbook_settings_endpoint",
+        "get_runtime_settings_endpoint",
+        "get_vapid_public_key",
+        "relax_governance_ratchet_endpoint",
+        "set_background_tasks_endpoint",
         "set_creative_mode_endpoint",
+        "set_governance_ratchet_endpoint",
+        "set_life_companion_feature_endpoint",
         "set_llm_mode_endpoint",
-        "verify_gateway_secret"
+        "set_runbook_settings_endpoint",
+        "set_runtime_settings_endpoint",
+        "verify_gateway_secret",
+        "web_push_list",
+        "web_push_subscribe",
+        "web_push_test",
+        "web_push_unsubscribe"
       ],
-      "line_count": 155,
+      "line_count": 792,
       "is_hot_path": true,
       "capability_tags": [
         "llm"
@@ -10360,6 +12750,40 @@
         "error_handling"
       ]
     },
+    "app/api/skills_api.py": {
+      "path": "app/api/skills_api.py",
+      "imports": [],
+      "exports": [
+        "delete_skill_endpoint",
+        "get_skill_endpoint",
+        "list_skills_endpoint",
+        "run_skill_endpoint",
+        "save_skill_endpoint"
+      ],
+      "line_count": 122,
+      "is_hot_path": false,
+      "capability_tags": [
+        "knowledge"
+      ]
+    },
+    "app/api/files_api.py": {
+      "path": "app/api/files_api.py",
+      "imports": [
+        "app.paths"
+      ],
+      "exports": [
+        "download_endpoint",
+        "list_files_endpoint",
+        "send_endpoint"
+      ],
+      "line_count": 191,
+      "is_hot_path": false,
+      "capability_tags": [
+        "tool",
+        "monitoring",
+        "knowledge"
+      ]
+    },
     "app/api/health.py": {
       "path": "app/api/health.py",
       "imports": [],
@@ -10377,6 +12801,50 @@
         "error_handling",
         "llm",
         "monitoring"
+      ]
+    },
+    "app/action_requests/handlers/__init__.py": {
+      "path": "app/action_requests/handlers/__init__.py",
+      "imports": [
+        "app.action_requests.handlers",
+        "app.action_requests.handlers.base"
+      ],
+      "exports": [
+        "get_handler",
+        "list_action_types",
+        "register_handler"
+      ],
+      "line_count": 49,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/action_requests/handlers/base.py": {
+      "path": "app/action_requests/handlers/base.py",
+      "imports": [],
+      "exports": [
+        "ActionHandler",
+        "ApplyResult",
+        "HandlerRegistry"
+      ],
+      "line_count": 61,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/action_requests/handlers/email_draft.py": {
+      "path": "app/action_requests/handlers/email_draft.py",
+      "imports": [
+        "app.action_requests.handlers.base",
+        "app.action_requests.models"
+      ],
+      "exports": [
+        "EmailDraftHandler"
+      ],
+      "line_count": 112,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent"
       ]
     },
     "app/dossier/adapters/companies_house.py": {
@@ -10630,7 +13098,7 @@
       "exports": [
         "execute"
       ],
-      "line_count": 218,
+      "line_count": 233,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling",
@@ -10831,6 +13299,24 @@
       "capability_tags": [
         "memory",
         "agent"
+      ]
+    },
+    "app/self_improvement/meta_agent/consolidation.py": {
+      "path": "app/self_improvement/meta_agent/consolidation.py",
+      "imports": [],
+      "exports": [
+        "RecipeHealth",
+        "RetirementProposal",
+        "compute_health",
+        "run_one_pass",
+        "start",
+        "stop"
+      ],
+      "line_count": 353,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evaluation",
+        "monitoring"
       ]
     },
     "app/self_improvement/meta_agent/types.py": {
@@ -11070,7 +13556,7 @@
         "restore_nl_jobs",
         "try_command"
       ],
-      "line_count": 1427,
+      "line_count": 1976,
       "is_hot_path": false,
       "capability_tags": [
         "error_handling"
@@ -11085,7 +13571,7 @@
         "build_routing_prompt",
         "maybe_promote_to_creative"
       ],
-      "line_count": 734,
+      "line_count": 755,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -11103,6 +13589,22 @@
         "evaluation",
         "llm",
         "monitoring"
+      ]
+    },
+    "app/agents/commander/command_registry.py": {
+      "path": "app/agents/commander/command_registry.py",
+      "imports": [],
+      "exports": [
+        "SignalCommand",
+        "categories",
+        "to_payload"
+      ],
+      "line_count": 346,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "error_handling",
+        "llm"
       ]
     },
     "app/agents/commander/orchestrator.py": {
@@ -11125,7 +13627,7 @@
       "exports": [
         "Commander"
       ],
-      "line_count": 3700,
+      "line_count": 3835,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -11157,6 +13659,28 @@
       "is_hot_path": false,
       "capability_tags": [
         "agent",
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/agents/commander/artifact_intent.py": {
+      "path": "app/agents/commander/artifact_intent.py",
+      "imports": [],
+      "exports": [
+        "ArtifactNotProduced",
+        "TaskShape",
+        "build_artifact_directive",
+        "classify_task",
+        "extract_artifact_paths",
+        "get_active_task_shape",
+        "set_active_task_shape",
+        "verify_artifacts"
+      ],
+      "line_count": 528,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "safety",
         "error_handling",
         "llm"
       ]
@@ -11479,6 +14003,42 @@
       "capability_tags": [
         "tool",
         "error_handling",
+        "knowledge"
+      ]
+    },
+    "app/subia/dreams/__init__.py": {
+      "path": "app/subia/dreams/__init__.py",
+      "imports": [],
+      "exports": [],
+      "line_count": 47,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling",
+        "llm",
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/dreams/engine.py": {
+      "path": "app/subia/dreams/engine.py",
+      "imports": [],
+      "exports": [
+        "FragmentSource",
+        "PassResult",
+        "PerturbationKind",
+        "ReplayOutcome",
+        "ReplayScenario",
+        "construct_scenarios",
+        "production_predict_fn",
+        "run_pass",
+        "sample_fragments"
+      ],
+      "line_count": 610,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm",
+        "subia",
         "knowledge"
       ]
     },
@@ -12055,6 +14615,143 @@
         "subia"
       ]
     },
+    "app/subia/inquiry/idle_registration.py": {
+      "path": "app/subia/inquiry/idle_registration.py",
+      "imports": [
+        "app.subia.inquiry.composer",
+        "app.subia.inquiry.questions",
+        "app.subia.inquiry.selector",
+        "app.subia.inquiry.writer"
+      ],
+      "exports": [
+        "PassResult",
+        "is_enabled",
+        "run_once"
+      ],
+      "line_count": 140,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "subia"
+      ]
+    },
+    "app/subia/inquiry/questions.py": {
+      "path": "app/subia/inquiry/questions.py",
+      "imports": [],
+      "exports": [
+        "Question",
+        "load_questions",
+        "parse_questions",
+        "slugify"
+      ],
+      "line_count": 116,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/inquiry/__init__.py": {
+      "path": "app/subia/inquiry/__init__.py",
+      "imports": [
+        "app.subia.inquiry.composer",
+        "app.subia.inquiry.linter",
+        "app.subia.inquiry.questions",
+        "app.subia.inquiry.selector",
+        "app.subia.inquiry.writer"
+      ],
+      "exports": [],
+      "line_count": 66,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "error_handling",
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/inquiry/selector.py": {
+      "path": "app/subia/inquiry/selector.py",
+      "imports": [
+        "app.subia.inquiry.questions"
+      ],
+      "exports": [
+        "select_next_question"
+      ],
+      "line_count": 85,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/inquiry/linter.py": {
+      "path": "app/subia/inquiry/linter.py",
+      "imports": [],
+      "exports": [
+        "LinterResult",
+        "PhenomenalLanguageLinter",
+        "PhenomenalViolation",
+        "Severity"
+      ],
+      "line_count": 165,
+      "is_hot_path": false,
+      "capability_tags": [
+        "safety",
+        "llm",
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/inquiry/writer.py": {
+      "path": "app/subia/inquiry/writer.py",
+      "imports": [
+        "app.subia.inquiry.composer"
+      ],
+      "exports": [
+        "InquiryWriter",
+        "WriteRefused"
+      ],
+      "line_count": 82,
+      "is_hot_path": false,
+      "capability_tags": [
+        "subia",
+        "knowledge"
+      ]
+    },
+    "app/subia/inquiry/composer.py": {
+      "path": "app/subia/inquiry/composer.py",
+      "imports": [
+        "app.subia.inquiry.linter",
+        "app.subia.inquiry.questions"
+      ],
+      "exports": [
+        "ComposerContext",
+        "InquiryEssay",
+        "compose_inquiry"
+      ],
+      "line_count": 222,
+      "is_hot_path": false,
+      "capability_tags": [
+        "llm",
+        "subia"
+      ]
+    },
+    "app/subia/inquiry/scheduler.py": {
+      "path": "app/subia/inquiry/scheduler.py",
+      "imports": [],
+      "exports": [
+        "start",
+        "stop"
+      ],
+      "line_count": 192,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "subia",
+        "knowledge"
+      ]
+    },
     "app/subia/probes/__init__.py": {
       "path": "app/subia/probes/__init__.py",
       "imports": [],
@@ -12220,7 +14917,7 @@
         "run_all",
         "summary"
       ],
-      "line_count": 336,
+      "line_count": 355,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -13085,9 +15782,10 @@
       "imports": [],
       "exports": [
         "BoundMoment",
-        "temporal_bind"
+        "temporal_bind",
+        "temporal_quick_bind"
       ],
-      "line_count": 126,
+      "line_count": 176,
       "is_hot_path": false,
       "capability_tags": [
         "agent",
@@ -13489,6 +16187,418 @@
         "subia"
       ]
     },
+    "app/healing/monitors/db_vacuum.py": {
+      "path": "app/healing/monitors/db_vacuum.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 77,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/monitors/lock_housekeeper.py": {
+      "path": "app/healing/monitors/lock_housekeeper.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 202,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "subia",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/listener_heartbeat.py": {
+      "path": "app/healing/monitors/listener_heartbeat.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.listener_heartbeats"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 205,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/retention.py": {
+      "path": "app/healing/monitors/retention.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run_attachments",
+        "run_chromadb",
+        "run_worktrees"
+      ],
+      "line_count": 362,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/signal_keepalive.py": {
+      "path": "app/healing/monitors/signal_keepalive.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 142,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/__init__.py": {
+      "path": "app/healing/monitors/__init__.py",
+      "imports": [],
+      "exports": [
+        "start",
+        "stop"
+      ],
+      "line_count": 322,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "memory",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/restore_drill.py": {
+      "path": "app/healing/monitors/restore_drill.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 182,
+      "is_hot_path": false,
+      "capability_tags": [
+        "deploy",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/provider_contract_drift.py": {
+      "path": "app/healing/monitors/provider_contract_drift.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "diff_signatures",
+        "extract_signature",
+        "is_breaking_drift",
+        "run",
+        "run_one_pass"
+      ],
+      "line_count": 352,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/log_archival.py": {
+      "path": "app/healing/monitors/log_archival.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 224,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/version_upgrade_drill.py": {
+      "path": "app/healing/monitors/version_upgrade_drill.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 229,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "deploy",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/audit_chain_check.py": {
+      "path": "app/healing/monitors/audit_chain_check.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 101,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/crypto_rotation_drill.py": {
+      "path": "app/healing/monitors/crypto_rotation_drill.py",
+      "imports": [
+        "app.audit.algorithm_pinning",
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 193,
+      "is_hot_path": false,
+      "capability_tags": [
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/db_backup.py": {
+      "path": "app/healing/monitors/db_backup.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 194,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "deploy",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/cron_liveness.py": {
+      "path": "app/healing/monitors/cron_liveness.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 107,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/signal_heartbeat.py": {
+      "path": "app/healing/monitors/signal_heartbeat.py",
+      "imports": [
+        "app.life_companion._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 221,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/vendor_sunset.py": {
+      "path": "app/healing/monitors/vendor_sunset.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 282,
+      "is_hot_path": false,
+      "capability_tags": [
+        "agent",
+        "error_handling",
+        "llm",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/disk_quota.py": {
+      "path": "app/healing/monitors/disk_quota.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 99,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/monitors/idle_cooldown.py": {
+      "path": "app/healing/monitors/idle_cooldown.py",
+      "imports": [
+        "app.healing.handlers._common"
+      ],
+      "exports": [
+        "run"
+      ],
+      "line_count": 150,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "error_handling",
+        "monitoring"
+      ]
+    },
+    "app/healing/handlers/multi_router.py": {
+      "path": "app/healing/handlers/multi_router.py",
+      "imports": [
+        "app.healing.handlers.model_capability",
+        "app.healing.handlers.schema_drift",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 92,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution"
+      ]
+    },
+    "app/healing/handlers/code_drift.py": {
+      "path": "app/healing/handlers/code_drift.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 279,
+      "is_hot_path": false,
+      "capability_tags": [
+        "evolution",
+        "tool",
+        "llm"
+      ]
+    },
+    "app/healing/handlers/schema_drift.py": {
+      "path": "app/healing/handlers/schema_drift.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 298,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/handlers/__init__.py": {
+      "path": "app/healing/handlers/__init__.py",
+      "imports": [
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "install"
+      ],
+      "line_count": 124,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/handlers/model_capability.py": {
+      "path": "app/healing/handlers/model_capability.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 149,
+      "is_hot_path": false,
+      "capability_tags": [
+        "memory",
+        "tool",
+        "error_handling",
+        "llm"
+      ]
+    },
+    "app/healing/handlers/scheduler_overrun.py": {
+      "path": "app/healing/handlers/scheduler_overrun.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 120,
+      "is_hot_path": false,
+      "capability_tags": []
+    },
+    "app/healing/handlers/db_pool.py": {
+      "path": "app/healing/handlers/db_pool.py",
+      "imports": [
+        "app.healing.handlers._common",
+        "app.healing.runbooks"
+      ],
+      "exports": [
+        "register"
+      ],
+      "line_count": 127,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling"
+      ]
+    },
+    "app/healing/handlers/_common.py": {
+      "path": "app/healing/handlers/_common.py",
+      "imports": [],
+      "exports": [
+        "RateLimiter",
+        "audit_event",
+        "compute_signature",
+        "file_change_request",
+        "read_state_json",
+        "sample_contains",
+        "send_signal_alert",
+        "state_path",
+        "write_state_json"
+      ],
+      "line_count": 233,
+      "is_hot_path": false,
+      "capability_tags": [
+        "error_handling",
+        "monitoring"
+      ]
+    },
     "app/forge/audit/periodic.py": {
       "path": "app/forge/audit/periodic.py",
       "imports": [
@@ -13704,6 +16814,7 @@
       "app/affect/calibration_proposals.py",
       "app/atlas/video_learner.py",
       "app/evolution_db/archive_db.py",
+      "app/training/adapter_performance.py",
       "app/aesthetics/vectorstore.py",
       "app/observability/error_monitor.py",
       "app/observability/snapshots.py",
@@ -13726,12 +16837,17 @@
       "app/companion/wiki.py",
       "app/companion/cycle.py",
       "app/companion/scoring.py",
+      "app/voice/inbound_state.py",
+      "app/life_companion/calendar_prep.py",
       "app/tensions/vectorstore.py",
       "app/system_state/crew_runs.py",
       "app/system_state/state.py",
       "app/policies/policy_loader.py",
       "app/self_awareness/knowledge_ingestion.py",
+      "app/library_radar/__init__.py",
       "app/healing/health_remediator.py",
+      "app/healing/db_backup.py",
+      "app/healing/boot_reset.py",
       "app/subia/loop.py",
       "app/subia/kernel.py",
       "app/subia/__init__.py",
@@ -13739,21 +16855,27 @@
       "app/trajectory/__init__.py",
       "app/trajectory/store.py",
       "app/trajectory/types.py",
+      "app/architecture_requests/store.py",
       "app/agents/introspector.py",
       "app/agents/researcher.py",
       "app/coding_session/store.py",
       "app/memory/startup_migrations.py",
       "app/memory/mem0_manager.py",
       "app/memory/scoped_memory.py",
+      "app/memory/wiki_index_reconciler.py",
       "app/memory/disk_cache.py",
       "app/memory/belief_state.py",
       "app/memory/chromadb_manager.py",
       "app/memory/belief_outbox.py",
       "app/mcp/server.py",
+      "app/threads/__init__.py",
+      "app/threads/store.py",
       "app/tool_runtime/factory.py",
+      "app/utils/hash_embedding.py",
       "app/episteme/tools.py",
       "app/episteme/__init__.py",
       "app/episteme/ingestion.py",
+      "app/episteme/paper_pipeline.py",
       "app/episteme/vectorstore.py",
       "app/proactive/trigger_scanner.py",
       "app/proactive/proactive_behaviors.py",
@@ -13765,6 +16887,8 @@
       "app/control_plane/projects.py",
       "app/control_plane/__init__.py",
       "app/control_plane/db.py",
+      "app/creativity/novelty_wrap.py",
+      "app/creativity/analogy_index.py",
       "app/knowledge_base/__init__.py",
       "app/knowledge_base/config.py",
       "app/knowledge_base/vectorstore.py",
@@ -13780,6 +16904,8 @@
       "app/experiential/__init__.py",
       "app/experiential/vectorstore.py",
       "app/change_requests/store.py",
+      "app/health/__init__.py",
+      "app/health/import_apple.py",
       "app/tools/youtube_transcript.py",
       "app/tools/file_manager.py",
       "app/tools/web_fetch.py",
@@ -13798,6 +16924,7 @@
       "app/tool_registry/drift.py",
       "app/tool_registry/forge_bridge.py",
       "app/tool_registry/types.py",
+      "app/action_requests/store.py",
       "app/retrieval/decomposer.py",
       "app/personality/state.py",
       "app/personality/creativity_scoring.py",
@@ -13819,6 +16946,7 @@
       "app/agents/commander/context.py",
       "app/subia/tsal/operating_principles.py",
       "app/subia/tsal/inspect_tools.py",
+      "app/subia/dreams/__init__.py",
       "app/subia/belief/neo4j_mirror.py",
       "app/subia/belief/store.py",
       "app/subia/belief/world_model.py",
@@ -13850,7 +16978,14 @@
       "app/subia/temporal/circadian.py",
       "app/subia/scene/global_workspace.py",
       "app/subia/homeostasis/somatic_marker.py",
-      "app/subia/introspection/topics/technical.py"
+      "app/subia/introspection/topics/technical.py",
+      "app/healing/monitors/lock_housekeeper.py",
+      "app/healing/monitors/retention.py",
+      "app/healing/monitors/__init__.py",
+      "app/healing/monitors/version_upgrade_drill.py",
+      "app/healing/monitors/db_backup.py",
+      "app/healing/monitors/idle_cooldown.py",
+      "app/healing/handlers/model_capability.py"
     ],
     "safety": [
       "app/creative_mode.py",
@@ -13859,6 +16994,7 @@
       "app/llm_factory.py",
       "app/sanitize.py",
       "app/crew_checkpointer.py",
+      "app/runtime_settings.py",
       "app/cascade_evaluator.py",
       "app/reference_tasks.py",
       "app/failure_taxonomy.py",
@@ -13878,7 +17014,6 @@
       "app/training_pipeline.py",
       "app/map_elites_wiring.py",
       "app/human_gate.py",
-      "app/safe_io.py",
       "app/chaos_tester.py",
       "app/sandbox_runner.py",
       "app/code_quality.py",
@@ -13902,9 +17037,11 @@
       "app/crews/creative_crew.py",
       "app/crews/research_crew.py",
       "app/companion/config.py",
+      "app/audit/rolled_log.py",
       "app/tensions/detector.py",
       "app/tensions/tools.py",
       "app/self_awareness/emergent_infrastructure.py",
+      "app/healing/runbooks.py",
       "app/healing/error_diagnosis.py",
       "app/consciousness/config.py",
       "app/subia/hooks.py",
@@ -13917,6 +17054,8 @@
       "app/souls/loader.py",
       "app/agents/observer.py",
       "app/brainstorm/store.py",
+      "app/mcp/client.py",
+      "app/tool_runtime/supervisor.py",
       "app/epistemic/verification.py",
       "app/epistemic/biases.py",
       "app/epistemic/__main__.py",
@@ -13930,6 +17069,7 @@
       "app/recovery/__init__.py",
       "app/control_plane/audit.py",
       "app/control_plane/budgets.py",
+      "app/control_plane/db.py",
       "app/knowledge_base/ingestion.py",
       "app/knowledge_base/business_store.py",
       "app/philosophy/rag_tool.py",
@@ -13937,14 +17077,20 @@
       "app/philosophy/api.py",
       "app/philosophy/dialectics_tool.py",
       "app/experiential/journal_writer.py",
+      "app/governance_amendment/eligibility.py",
+      "app/governance_amendment/self_quarantine.py",
       "app/tools/gee_tool.py",
       "app/tools/signal_attachment.py",
       "app/tools/pdf_compose.py",
       "app/tools/firecrawl_tools.py",
       "app/dossier/collector.py",
       "app/dossier/__init__.py",
+      "app/governance_ratchet/auto_propose.py",
+      "app/governance_ratchet/protocol.py",
+      "app/governance_ratchet/store.py",
       "app/adaptation/__init__.py",
       "app/retrieval/decomposer.py",
+      "app/identity/continuity_ledger.py",
       "app/personality/creativity_scoring.py",
       "app/api/notes_api.py",
       "app/recovery/strategies/sandbox_execute.py",
@@ -13952,6 +17098,7 @@
       "app/self_improvement/meta_agent/policy_gap.py",
       "app/agents/commander/postprocess.py",
       "app/agents/commander/orchestrator.py",
+      "app/agents/commander/artifact_intent.py",
       "app/agents/commander/retry_decision.py",
       "app/subia/wiki_surface/consciousness_state.py",
       "app/subia/safety/__init__.py",
@@ -13965,6 +17112,8 @@
       "app/subia/prediction/cascade.py",
       "app/subia/prediction/hierarchy.py",
       "app/subia/prediction/layer.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/linter.py",
       "app/subia/probes/adversarial.py",
       "app/subia/self/loop_closure.py",
       "app/subia/self/temporal_identity.py",
@@ -13991,6 +17140,7 @@
       "app/anomaly_detector.py",
       "app/benchmarks.py",
       "app/main.py",
+      "app/runtime_settings.py",
       "app/llm_context.py",
       "app/error_handler.py",
       "app/paths.py",
@@ -14004,6 +17154,7 @@
       "app/idle_scheduler.py",
       "app/map_elites_wiring.py",
       "app/human_gate.py",
+      "app/safe_io.py",
       "app/tools_timeout.py",
       "app/project_context.py",
       "app/lifecycle_hooks.py",
@@ -14021,6 +17172,7 @@
       "app/affect/api.py",
       "app/affect/health_check.py",
       "app/affect/viability.py",
+      "app/training/adapter_performance.py",
       "app/observability/llm_events.py",
       "app/observability/error_monitor.py",
       "app/observability/schema_transforms.py",
@@ -14031,6 +17183,7 @@
       "app/forge/anomaly.py",
       "app/crews/dossier_crew.py",
       "app/crews/events.py",
+      "app/crews/pim_crew.py",
       "app/crews/self_improvement_crew.py",
       "app/crews/span_events.py",
       "app/crews/lifecycle.py",
@@ -14040,18 +17193,34 @@
       "app/crews/creative_crew.py",
       "app/crews/delegation_settings.py",
       "app/companion/surfacing.py",
+      "app/audit/algorithm_pinning.py",
+      "app/life_companion/__init__.py",
+      "app/life_companion/email_monitor.py",
+      "app/library_radar/__init__.py",
       "app/healing/health_remediator.py",
+      "app/healing/listener_heartbeats.py",
+      "app/healing/watchdog.py",
       "app/healing/__init__.py",
+      "app/healing/db_backup.py",
+      "app/healing/runbooks.py",
+      "app/healing/silent_regression_detector.py",
       "app/subia/loop.py",
       "app/subia/hooks.py",
       "app/subia/temporal_hooks.py",
       "app/subia/live_integration.py",
       "app/trajectory/effectiveness.py",
+      "app/architecture_requests/__init__.py",
       "app/agents/introspector.py",
       "app/agents/_common.py",
       "app/memory/mem0_manager.py",
+      "app/inbox/classifier.py",
+      "app/inbox/__init__.py",
+      "app/inbox/scheduler.py",
+      "app/discord_client/__init__.py",
       "app/tool_runtime/parity.py",
       "app/tool_runtime/telemetry.py",
+      "app/utils/__init__.py",
+      "app/utils/jsonl_retention.py",
       "app/epistemic/autotune.py",
       "app/epistemic/calibration.py",
       "app/epistemic/peer_review.py",
@@ -14068,7 +17237,6 @@
       "app/control_plane/crew_task_spans.py",
       "app/control_plane/auth_dep.py",
       "app/control_plane/tools_api.py",
-      "app/control_plane/projects.py",
       "app/control_plane/audit.py",
       "app/control_plane/dashboard_api.py",
       "app/control_plane/governance.py",
@@ -14077,8 +17245,17 @@
       "app/philosophy/api.py",
       "app/philosophy/vectorstore.py",
       "app/experiential/api.py",
+      "app/governance_amendment/audit.py",
       "app/change_requests/validator.py",
+      "app/health/idle_job.py",
+      "app/health/anomaly.py",
+      "app/health/summary.py",
+      "app/health/__init__.py",
+      "app/health/store.py",
+      "app/health/types.py",
+      "app/health/import_apple.py",
       "app/tools/web_search.py",
+      "app/tools/control_plane_tickets_tool.py",
       "app/tools/wiki_tools.py",
       "app/tools/measurement_tools.py",
       "app/dossier/sections.py",
@@ -14086,6 +17263,7 @@
       "app/contracts/events.py",
       "app/contracts/state.py",
       "app/contracts/firestore_schema.py",
+      "app/retrieval/config.py",
       "app/personality/validation.py",
       "app/personality/creativity_scoring.py",
       "app/transfer_memory/promotion.py",
@@ -14093,11 +17271,13 @@
       "app/api/fiction.py",
       "app/api/workspace_api.py",
       "app/api/evolution_api.py",
+      "app/api/files_api.py",
       "app/api/health.py",
       "app/recovery/strategies/forge_queue.py",
       "app/self_improvement/meta_agent/amendment.py",
       "app/self_improvement/meta_agent/feature_flag.py",
       "app/self_improvement/meta_agent/meta_agent_settings.py",
+      "app/self_improvement/meta_agent/consolidation.py",
       "app/self_improvement/meta_agent/types.py",
       "app/agents/commander/execution.py",
       "app/agents/commander/retry_decision.py",
@@ -14106,6 +17286,24 @@
       "app/subia/probes/consciousness_probe.py",
       "app/subia/connections/service_health.py",
       "app/subia/temporal/binding.py",
+      "app/healing/monitors/lock_housekeeper.py",
+      "app/healing/monitors/listener_heartbeat.py",
+      "app/healing/monitors/retention.py",
+      "app/healing/monitors/signal_keepalive.py",
+      "app/healing/monitors/__init__.py",
+      "app/healing/monitors/restore_drill.py",
+      "app/healing/monitors/provider_contract_drift.py",
+      "app/healing/monitors/log_archival.py",
+      "app/healing/monitors/version_upgrade_drill.py",
+      "app/healing/monitors/audit_chain_check.py",
+      "app/healing/monitors/crypto_rotation_drill.py",
+      "app/healing/monitors/db_backup.py",
+      "app/healing/monitors/cron_liveness.py",
+      "app/healing/monitors/signal_heartbeat.py",
+      "app/healing/monitors/vendor_sunset.py",
+      "app/healing/monitors/disk_quota.py",
+      "app/healing/monitors/idle_cooldown.py",
+      "app/healing/handlers/_common.py",
       "app/forge/runtime/dispatcher.py",
       "app/forge/runtime/guards.py"
     ],
@@ -14135,14 +17333,17 @@
       "app/crews/delegated_writing.py",
       "app/crews/event_handlers.py",
       "app/companion/events.py",
+      "app/companion/notify_meta.py",
       "app/companion/document_pipeline.py",
       "app/companion/workspace_kb.py",
       "app/companion/wiki.py",
+      "app/life_companion/long_arc_follow_up.py",
       "app/tensions/detector.py",
       "app/tensions/tools.py",
       "app/tensions/__init__.py",
       "app/tensions/api.py",
       "app/self_awareness/prosocial_learning.py",
+      "app/notify/api.py",
       "app/healing/health_remediator.py",
       "app/healing/error_diagnosis.py",
       "app/subia/persistence.py",
@@ -14153,19 +17354,26 @@
       "app/agents/financial_analyst.py",
       "app/agents/critic.py",
       "app/agents/writer.py",
-      "app/agents/pim_agent.py",
       "app/memory/system_chronicle.py",
+      "app/memory/wiki_index_reconciler.py",
       "app/mcp/server.py",
+      "app/inbox/classifier.py",
+      "app/tool_runtime/supervisor.py",
       "app/epistemic/__init__.py",
       "app/episteme/tools.py",
       "app/episteme/__init__.py",
+      "app/episteme/paper_pipeline.py",
       "app/self_improvement/integrator.py",
       "app/self_improvement/__init__.py",
       "app/self_improvement/consolidator.py",
       "app/self_improvement/evaluator.py",
       "app/self_improvement/metrics.py",
       "app/self_improvement/types.py",
-      "app/control_plane/projects.py",
+      "app/skills/registry.py",
+      "app/skills/__init__.py",
+      "app/skills/runner.py",
+      "app/control_plane/inquiries_api.py",
+      "app/creativity/novelty_wrap.py",
       "app/knowledge_base/tools.py",
       "app/knowledge_base/__init__.py",
       "app/knowledge_base/config.py",
@@ -14188,10 +17396,16 @@
       "app/tool_registry/discovery.py",
       "app/tool_registry/capabilities.py",
       "app/adaptation/__init__.py",
+      "app/identity/legacy_essay.py",
+      "app/identity/__init__.py",
+      "app/identity/annual_reflection.py",
+      "app/personality/concierge_wrapper.py",
       "app/personality/creativity_scoring.py",
       "app/transfer_memory/__init__.py",
       "app/api/notes_api.py",
       "app/api/kb.py",
+      "app/api/skills_api.py",
+      "app/api/files_api.py",
       "app/dossier/adapters/wikipedia.py",
       "app/recovery/strategies/skill_chain.py",
       "app/recovery/strategies/forge_queue.py",
@@ -14205,6 +17419,8 @@
       "app/subia/tsal/operating_principles.py",
       "app/subia/tsal/inspect_tools.py",
       "app/subia/tsal/generators.py",
+      "app/subia/dreams/__init__.py",
+      "app/subia/dreams/engine.py",
       "app/subia/belief/internal_state.py",
       "app/subia/belief/neo4j_mirror.py",
       "app/subia/prediction/accuracy_tracker.py",
@@ -14212,6 +17428,12 @@
       "app/subia/boundary/differential.py",
       "app/subia/boundary/classifier.py",
       "app/subia/values/resonance.py",
+      "app/subia/inquiry/questions.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/selector.py",
+      "app/subia/inquiry/linter.py",
+      "app/subia/inquiry/writer.py",
+      "app/subia/inquiry/scheduler.py",
       "app/subia/shadow/__init__.py",
       "app/subia/self/grounding.py",
       "app/subia/self/competence_map.py",
@@ -14274,17 +17496,20 @@
       "app/crews/delegation.py",
       "app/companion/sources.py",
       "app/companion/diversity.py",
+      "app/voice/cloud.py",
       "app/self_awareness/journal.py",
       "app/healing/health_remediator.py",
       "app/subia/loop.py",
       "app/subia/live_integration.py",
       "app/memory/system_chronicle.py",
+      "app/utils/__init__.py",
       "app/epistemic/verification.py",
       "app/epistemic/postmortem.py",
       "app/episteme/tools.py",
       "app/self_improvement/__init__.py",
       "app/self_improvement/gap_detector.py",
       "app/self_improvement/evaluator.py",
+      "app/self_improvement/capability_gap_analyzer.py",
       "app/control/__init__.py",
       "app/contracts/state.py",
       "app/adaptation/__init__.py",
@@ -14292,13 +17517,18 @@
       "app/transfer_memory/types.py",
       "app/api/evolution_api.py",
       "app/recovery/strategies/sandbox_execute.py",
+      "app/agents/commander/command_registry.py",
       "app/subia/tsal/evolution_feasibility.py",
       "app/subia/tsal/__init__.py",
       "app/subia/tsal/self_model.py",
       "app/subia/belief/meta_cognitive_layer.py",
       "app/subia/idle/__init__.py",
       "app/subia/social/salience_boost.py",
-      "app/subia/scene/strategic_scan.py"
+      "app/subia/scene/strategic_scan.py",
+      "app/healing/monitors/__init__.py",
+      "app/healing/monitors/cron_liveness.py",
+      "app/healing/handlers/multi_router.py",
+      "app/healing/handlers/code_drift.py"
     ],
     "agent": [
       "app/results_ledger.py",
@@ -14310,6 +17540,7 @@
       "app/crew_checkpointer.py",
       "app/anomaly_detector.py",
       "app/benchmarks.py",
+      "app/runtime_settings.py",
       "app/llm_context.py",
       "app/reference_tasks.py",
       "app/map_elites.py",
@@ -14323,7 +17554,6 @@
       "app/parallel_evolution.py",
       "app/fiction_inspiration.py",
       "app/history_compression.py",
-      "app/audit.py",
       "app/conversation_store.py",
       "app/external_benchmarks.py",
       "app/fault_isolator.py",
@@ -14343,10 +17573,11 @@
       "app/training_collector.py",
       "app/safety_guardian.py",
       "app/result_cache.py",
-      "app/llm_selector.py",
       "app/evolution.py",
       "app/firebase/crew_tracking.py",
       "app/firebase/__init__.py",
+      "app/google_workspace/__init__.py",
+      "app/google_workspace/auth.py",
       "app/affect/kb_metadata.py",
       "app/affect/welfare.py",
       "app/affect/ecological.py",
@@ -14359,6 +17590,7 @@
       "app/evolution_db/eval_sets.py",
       "app/evolution_db/__init__.py",
       "app/evolution_db/judge.py",
+      "app/training/adapter_performance.py",
       "app/aesthetics/tools.py",
       "app/forge/__init__.py",
       "app/forge/generator_tool.py",
@@ -14390,13 +17622,22 @@
       "app/crews/research_crew.py",
       "app/crews/event_handlers.py",
       "app/crews/delegation_settings.py",
+      "app/companion/lessons_learned.py",
+      "app/companion/notify_meta.py",
       "app/companion/config.py",
+      "app/computer_use/__init__.py",
+      "app/computer_use/audit.py",
+      "app/computer_use/runner.py",
+      "app/computer_use/browser_backend.py",
+      "app/life_companion/routine_detector.py",
+      "app/life_companion/_common.py",
       "app/tensions/tools.py",
       "app/system_state/crew_runs.py",
       "app/system_state/__init__.py",
       "app/policies/policy_loader.py",
       "app/self_awareness/emergent_infrastructure.py",
       "app/self_awareness/prosocial_learning.py",
+      "app/library_radar/proposer.py",
       "app/healing/error_diagnosis.py",
       "app/consciousness/__init__.py",
       "app/consciousness/config.py",
@@ -14415,6 +17656,9 @@
       "app/trajectory/__init__.py",
       "app/trajectory/tip_builder.py",
       "app/trajectory/types.py",
+      "app/architecture_requests/__init__.py",
+      "app/architecture_requests/models.py",
+      "app/architecture_requests/lifecycle.py",
       "app/souls/loader.py",
       "app/agents/introspector.py",
       "app/agents/devops_agent.py",
@@ -14434,6 +17678,7 @@
       "app/coding_session/runtime.py",
       "app/coding_session/models.py",
       "app/coding_session/runner.py",
+      "app/coding_session/evolution_bridge.py",
       "app/coding_session/submit.py",
       "app/brainstorm/multi_agent.py",
       "app/brainstorm/__init__.py",
@@ -14446,6 +17691,9 @@
       "app/mcp/server.py",
       "app/mcp/tool_adapter.py",
       "app/mcp/client.py",
+      "app/inbox/__init__.py",
+      "app/threads/__init__.py",
+      "app/threads/models.py",
       "app/tool_runtime/factory.py",
       "app/tool_runtime/measure.py",
       "app/tool_runtime/__init__.py",
@@ -14455,6 +17703,7 @@
       "app/tool_runtime/parity.py",
       "app/tool_runtime/feature_flags.py",
       "app/tool_runtime/telemetry.py",
+      "app/tool_runtime/supervisor.py",
       "app/epistemic/autotune.py",
       "app/epistemic/verification.py",
       "app/epistemic/extraction.py",
@@ -14474,6 +17723,8 @@
       "app/self_improvement/consolidator.py",
       "app/self_improvement/evaluator.py",
       "app/self_improvement/types.py",
+      "app/skills/__init__.py",
+      "app/skills/runner.py",
       "app/recovery/refusal_detector.py",
       "app/recovery/__init__.py",
       "app/recovery/librarian.py",
@@ -14486,37 +17737,45 @@
       "app/control_plane/heartbeats.py",
       "app/control_plane/crew_tasks.py",
       "app/control_plane/budgets.py",
-      "app/control_plane/db.py",
+      "app/creativity/concept_blend.py",
       "app/philosophy/rag_tool.py",
       "app/philosophy/dialectics_tool.py",
       "app/experiential/tools.py",
       "app/experiential/journal_writer.py",
       "app/experiential/api.py",
       "app/experiential/vectorstore.py",
+      "app/governance_amendment/protocol.py",
+      "app/governance_amendment/self_quarantine.py",
       "app/change_requests/__init__.py",
       "app/change_requests/models.py",
       "app/change_requests/validator.py",
       "app/change_requests/lifecycle.py",
+      "app/tools/gmail_tools.py",
       "app/tools/gee_tool.py",
       "app/tools/tool_search.py",
+      "app/tools/gdocs_tools.py",
       "app/tools/coding_session_tools.py",
       "app/tools/web_fetch.py",
+      "app/tools/gcal_tools.py",
       "app/tools/mcp_manager_tool.py",
       "app/tools/email_importance.py",
       "app/tools/research_orchestrator.py",
       "app/tools/financial_tools.py",
       "app/tools/bridge_tools.py",
+      "app/tools/computer_use_tool.py",
       "app/tools/geodata_tool.py",
       "app/tools/system_state_tool.py",
       "app/tools/signal_attachment.py",
       "app/tools/reflection_tool.py",
+      "app/tools/control_plane_tickets_tool.py",
       "app/tools/wiki_tool_registry.py",
       "app/tools/restricted_write_tool.py",
       "app/tools/wiki_tools.py",
       "app/tools/measurement_tools.py",
       "app/tools/self_report_tool.py",
       "app/tools/blend_tool.py",
-      "app/tools/document_generator.py",
+      "app/tools/gsheets_tools.py",
+      "app/tools/gslides_tools.py",
       "app/tools/pdf_compose.py",
       "app/dossier/tools.py",
       "app/dossier/__init__.py",
@@ -14533,6 +17792,11 @@
       "app/contracts/events.py",
       "app/contracts/state.py",
       "app/contracts/firestore_schema.py",
+      "app/action_requests/__init__.py",
+      "app/action_requests/models.py",
+      "app/delivery/email_send.py",
+      "app/delivery/__init__.py",
+      "app/delivery/signal_send.py",
       "app/adaptation/__init__.py",
       "app/personality/assessment.py",
       "app/personality/probes.py",
@@ -14540,9 +17804,11 @@
       "app/personality/__init__.py",
       "app/personality/feedback.py",
       "app/personality/validation.py",
+      "app/personality/concierge_wrapper.py",
       "app/personality/creativity_scoring.py",
       "app/personality/evaluation.py",
       "app/transfer_memory/retriever.py",
+      "app/action_requests/handlers/email_draft.py",
       "app/dossier/adapters/sec_edgar.py",
       "app/dossier/adapters/wikipedia.py",
       "app/recovery/strategies/re_route.py",
@@ -14566,6 +17832,7 @@
       "app/agents/commander/orchestrator.py",
       "app/agents/commander/__init__.py",
       "app/agents/commander/routing_overrides.py",
+      "app/agents/commander/artifact_intent.py",
       "app/agents/commander/capability_router.py",
       "app/agents/commander/retry_decision.py",
       "app/subia/wiki_surface/drift_detection.py",
@@ -14611,6 +17878,7 @@
       "app/subia/scene/broadcast.py",
       "app/subia/homeostasis/somatic_bias.py",
       "app/subia/homeostasis/state.py",
+      "app/healing/monitors/vendor_sunset.py",
       "app/forge/audit/semantic.py",
       "app/forge/runtime/__init__.py"
     ],
@@ -14620,18 +17888,20 @@
       "app/evo_memory.py",
       "app/crew_checkpointer.py",
       "app/main.py",
+      "app/runtime_settings.py",
       "app/error_handler.py",
       "app/cascade_evaluator.py",
       "app/failure_taxonomy.py",
       "app/llm_benchmarks.py",
+      "app/llm_completion_guard.py",
       "app/workspace_versioning.py",
       "app/mutation_strategies.py",
       "app/knowledge_compactor.py",
       "app/auditor.py",
+      "app/workspace_publish.py",
       "app/dead_letter.py",
       "app/llm_promotions.py",
       "app/failure_modes.py",
-      "app/audit.py",
       "app/conversation_store.py",
       "app/fault_isolator.py",
       "app/health_monitor.py",
@@ -14642,7 +17912,6 @@
       "app/feedback_pipeline.py",
       "app/vetting.py",
       "app/bridge_client.py",
-      "app/utils.py",
       "app/idle_scheduler.py",
       "app/circuit_breaker.py",
       "app/map_elites_wiring.py",
@@ -14658,10 +17927,12 @@
       "app/canary_deploy.py",
       "app/metrics.py",
       "app/meta_learning.py",
+      "app/logging_filters.py",
       "app/backup_planner.py",
       "app/firebase/crew_tracking.py",
       "app/firebase/listeners.py",
       "app/firebase/publish.py",
+      "app/google_workspace/service.py",
       "app/affect/hooks.py",
       "app/affect/welfare.py",
       "app/affect/__init__.py",
@@ -14682,7 +17953,6 @@
       "app/crews/dossier_crew.py",
       "app/crews/delegated_coding.py",
       "app/crews/events.py",
-      "app/crews/pim_crew.py",
       "app/crews/coding_crew.py",
       "app/crews/delegation.py",
       "app/crews/writing_crew.py",
@@ -14699,20 +17969,39 @@
       "app/companion/sources.py",
       "app/companion/state.py",
       "app/companion/document_pipeline.py",
+      "app/companion/feedback_router.py",
       "app/companion/workspace_kb.py",
       "app/companion/ingest.py",
       "app/companion/scoring.py",
       "app/companion/diversity.py",
       "app/companion/scheduler.py",
+      "app/voice/stt.py",
+      "app/voice/local.py",
+      "app/voice/cloud.py",
+      "app/voice/__init__.py",
+      "app/voice/tts.py",
+      "app/computer_use/audit.py",
+      "app/computer_use/budget.py",
+      "app/life_companion/__init__.py",
+      "app/life_companion/daily_briefing.py",
+      "app/life_companion/email_monitor.py",
       "app/tensions/tools.py",
       "app/tensions/vectorstore.py",
       "app/system_state/crew_runs.py",
       "app/system_state/__init__.py",
       "app/self_awareness/knowledge_ingestion.py",
       "app/self_awareness/journal.py",
+      "app/notify/__init__.py",
       "app/healing/health_remediator.py",
+      "app/healing/watchdog.py",
       "app/healing/__init__.py",
+      "app/healing/pattern_learner.py",
+      "app/healing/auditor_bridge.py",
+      "app/healing/db_backup.py",
+      "app/healing/runbooks.py",
+      "app/healing/silent_regression_detector.py",
       "app/healing/error_diagnosis.py",
+      "app/web_push/subscriptions.py",
       "app/subia/loop.py",
       "app/subia/sentience_config.py",
       "app/subia/temporal_hooks.py",
@@ -14724,6 +18013,7 @@
       "app/trajectory/store.py",
       "app/trajectory/tip_builder.py",
       "app/trajectory/types.py",
+      "app/architecture_requests/scaffolder.py",
       "app/agents/introspector.py",
       "app/agents/coder.py",
       "app/agents/observer.py",
@@ -14742,9 +18032,22 @@
       "app/memory/belief_outbox.py",
       "app/mcp/registry.py",
       "app/mcp/tool_adapter.py",
+      "app/mcp/client.py",
+      "app/inbox/classifier.py",
+      "app/inbox/router.py",
+      "app/inbox/__init__.py",
+      "app/inbox/scheduler.py",
+      "app/threads/__init__.py",
+      "app/threads/models.py",
+      "app/threads/store.py",
+      "app/discord_client/sender.py",
       "app/tool_runtime/phase5_check.py",
       "app/tool_runtime/parity.py",
       "app/tool_runtime/telemetry.py",
+      "app/tool_runtime/supervisor.py",
+      "app/utils/__init__.py",
+      "app/utils/feed_parser.py",
+      "app/utils/jsonl_retention.py",
       "app/epistemic/grounding.py",
       "app/epistemic/ledger.py",
       "app/epistemic/biases.py",
@@ -14756,6 +18059,9 @@
       "app/self_improvement/gap_detector.py",
       "app/self_improvement/store.py",
       "app/self_improvement/metrics.py",
+      "app/self_improvement/capability_gap_analyzer.py",
+      "app/self_improvement/types.py",
+      "app/skills/runner.py",
       "app/recovery/loop.py",
       "app/recovery/refusal_detector.py",
       "app/recovery/__init__.py",
@@ -14764,14 +18070,24 @@
       "app/control_plane/auth_dep.py",
       "app/control_plane/tools_api.py",
       "app/control_plane/cost_tracker.py",
-      "app/control_plane/projects.py",
       "app/control_plane/audit.py",
       "app/control_plane/crew_tasks.py",
       "app/control_plane/budgets.py",
+      "app/control_plane/db.py",
+      "app/creativity/analogy_index.py",
       "app/knowledge_base/ingestion.py",
       "app/philosophy/dialectics.py",
       "app/experiential/tools.py",
+      "app/governance_amendment/eligibility.py",
+      "app/governance_amendment/audit.py",
+      "app/governance_amendment/protocol.py",
+      "app/governance_amendment/_state.py",
+      "app/governance_amendment/store.py",
       "app/change_requests/signal.py",
+      "app/health/__init__.py",
+      "app/health/store.py",
+      "app/health/import_apple.py",
+      "app/tools/gdocs_tools.py",
       "app/tools/ci_cd_tools.py",
       "app/tools/coding_session_tools.py",
       "app/tools/web_fetch.py",
@@ -14783,6 +18099,7 @@
       "app/tools/email_tools.py",
       "app/tools/financial_tools.py",
       "app/tools/bridge_tools.py",
+      "app/tools/computer_use_tool.py",
       "app/tools/schedule_manager_tools.py",
       "app/tools/geodata_tool.py",
       "app/tools/system_state_tool.py",
@@ -14793,7 +18110,9 @@
       "app/tools/hardware_tools.py",
       "app/tools/deployment_tools.py",
       "app/tools/session_search_tool.py",
+      "app/tools/gsheets_tools.py",
       "app/tools/ocr_tool.py",
+      "app/tools/gslides_tools.py",
       "app/tools/mem0_tools.py",
       "app/tools/firecrawl_tools.py",
       "app/tools/mobile_tools.py",
@@ -14803,13 +18122,25 @@
       "app/tool_registry/discovery.py",
       "app/tool_registry/drift.py",
       "app/tool_registry/capabilities.py",
+      "app/governance_ratchet/audit.py",
+      "app/governance_ratchet/store.py",
       "app/contracts/events.py",
       "app/contracts/state.py",
+      "app/action_requests/models.py",
+      "app/action_requests/validator.py",
+      "app/action_requests/store.py",
+      "app/delivery/email_send.py",
+      "app/delivery/signal_send.py",
+      "app/retrieval/config.py",
       "app/retrieval/reranker.py",
       "app/retrieval/decomposer.py",
+      "app/identity/annual_reflection.py",
+      "app/identity/scheduler.py",
       "app/personality/assessment.py",
       "app/personality/probes.py",
       "app/personality/state.py",
+      "app/personality/concierge_wrapper.py",
+      "app/personality/signal_context.py",
       "app/transfer_memory/llm_scope.py",
       "app/transfer_memory/attribution.py",
       "app/transfer_memory/prompts.py",
@@ -14817,6 +18148,7 @@
       "app/api/workspace_api.py",
       "app/api/kb_dedup.py",
       "app/api/health.py",
+      "app/action_requests/handlers/base.py",
       "app/dossier/adapters/web_fallback.py",
       "app/tools/research_adapters/apollo.py",
       "app/tools/research_adapters/__init__.py",
@@ -14834,12 +18166,15 @@
       "app/brainstorm/techniques/reverse.py",
       "app/brainstorm/techniques/six_hats.py",
       "app/agents/commander/commands.py",
+      "app/agents/commander/command_registry.py",
       "app/agents/commander/routing_overrides.py",
+      "app/agents/commander/artifact_intent.py",
       "app/agents/commander/retry_decision.py",
       "app/subia/wiki_surface/drift_detection.py",
       "app/subia/tsal/inspectors.py",
       "app/subia/tsal/operating_principles.py",
       "app/subia/tsal/generators.py",
+      "app/subia/dreams/__init__.py",
       "app/subia/introspection/__init__.py",
       "app/subia/belief/neo4j_mirror.py",
       "app/subia/belief/cogito.py",
@@ -14850,6 +18185,9 @@
       "app/subia/prediction/hierarchy.py",
       "app/subia/prediction/layer.py",
       "app/subia/prediction/surprise_routing.py",
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/scheduler.py",
       "app/subia/probes/indicator_result.py",
       "app/subia/probes/rsm.py",
       "app/subia/probes/adversarial.py",
@@ -14881,6 +18219,21 @@
       "app/subia/introspection/topics/social.py",
       "app/subia/introspection/topics/chronicle.py",
       "app/subia/introspection/topics/predictions.py",
+      "app/healing/monitors/db_vacuum.py",
+      "app/healing/monitors/__init__.py",
+      "app/healing/monitors/provider_contract_drift.py",
+      "app/healing/monitors/log_archival.py",
+      "app/healing/monitors/audit_chain_check.py",
+      "app/healing/monitors/db_backup.py",
+      "app/healing/monitors/signal_heartbeat.py",
+      "app/healing/monitors/vendor_sunset.py",
+      "app/healing/monitors/disk_quota.py",
+      "app/healing/monitors/idle_cooldown.py",
+      "app/healing/handlers/schema_drift.py",
+      "app/healing/handlers/__init__.py",
+      "app/healing/handlers/model_capability.py",
+      "app/healing/handlers/db_pool.py",
+      "app/healing/handlers/_common.py",
       "app/forge/audit/pipeline.py",
       "app/forge/audit/static.py",
       "app/forge/runtime/dispatcher.py",
@@ -14899,6 +18252,7 @@
       "app/version_manifest.py",
       "app/llm_judge_pins.py",
       "app/llm_judge_telemetry.py",
+      "app/workspace_publish.py",
       "app/llm_external_ranks.py",
       "app/llm_discovery.py",
       "app/external_benchmarks.py",
@@ -14923,6 +18277,7 @@
       "app/atlas/competence_tracker.py",
       "app/evolution_db/__init__.py",
       "app/evolution_db/judge.py",
+      "app/training/adapter_performance.py",
       "app/observability/valve_audit.py",
       "app/observability/valve_audit_replay.py",
       "app/observability/metrics.py",
@@ -14932,15 +18287,23 @@
       "app/crews/tech_radar_crew.py",
       "app/crews/lifecycle.py",
       "app/crews/base_crew.py",
+      "app/companion/topic_weights.py",
+      "app/companion/lessons_learned.py",
       "app/companion/workspace_kb.py",
       "app/companion/critique.py",
       "app/companion/scoring.py",
+      "app/companion/interest_model.py",
       "app/companion/scheduler.py",
+      "app/life_companion/topic_dormancy.py",
+      "app/life_companion/email_monitor.py",
+      "app/library_radar/__init__.py",
       "app/subia/kernel.py",
+      "app/episteme/paper_pipeline.py",
       "app/operations_suite/__init__.py",
       "app/self_improvement/gap_detector.py",
       "app/self_improvement/types.py",
       "app/recovery/refusal_detector.py",
+      "app/health/anomaly.py",
       "app/tools/tool_search.py",
       "app/tools/email_importance.py",
       "app/tools/reflection_tool.py",
@@ -14955,6 +18318,7 @@
       "app/recovery/strategies/skill_chain.py",
       "app/recovery/strategies/__init__.py",
       "app/self_improvement/meta_agent/selector.py",
+      "app/self_improvement/meta_agent/consolidation.py",
       "app/self_improvement/meta_agent/types.py",
       "app/agents/commander/execution.py",
       "app/subia/belief/dispatch_gate.py",
@@ -14982,9 +18346,11 @@
       "app/failure_taxonomy.py",
       "app/evolve_blocks.py",
       "app/llm_benchmarks.py",
+      "app/llm_completion_guard.py",
       "app/mutation_strategies.py",
       "app/llm_judge_pins.py",
       "app/prompt_cache_hook.py",
+      "app/workspace_publish.py",
       "app/evolution_roi.py",
       "app/llm_promotions.py",
       "app/llm_external_ranks.py",
@@ -15002,7 +18368,6 @@
       "app/pattern_library.py",
       "app/auto_deployer.py",
       "app/vetting.py",
-      "app/utils.py",
       "app/idle_scheduler.py",
       "app/circuit_breaker.py",
       "app/map_elites_wiring.py",
@@ -15046,15 +18411,32 @@
       "app/crews/base_crew.py",
       "app/crews/research_crew.py",
       "app/companion/source_suggester.py",
+      "app/companion/seed_bootstrap.py",
+      "app/companion/notify_meta.py",
       "app/companion/config.py",
       "app/companion/critique.py",
       "app/companion/cycle.py",
       "app/companion/scoring.py",
       "app/companion/grand_task.py",
+      "app/voice/stt.py",
+      "app/voice/cloud.py",
+      "app/voice/tts.py",
+      "app/computer_use/__init__.py",
+      "app/computer_use/runner.py",
+      "app/computer_use/budget.py",
+      "app/computer_use/browser_backend.py",
+      "app/life_companion/act_now_digest.py",
+      "app/life_companion/email_monitor.py",
+      "app/life_companion/personalized_digest.py",
       "app/tensions/detector.py",
       "app/system_state/crew_runs.py",
       "app/system_state/__init__.py",
+      "app/notify/__init__.py",
+      "app/notify/api.py",
       "app/healing/health_remediator.py",
+      "app/healing/runbooks.py",
+      "app/healing/llm_output_drift.py",
+      "app/healing/silent_regression_detector.py",
       "app/subia/loop.py",
       "app/subia/temporal_hooks.py",
       "app/subia/phase12_hooks.py",
@@ -15073,21 +18455,27 @@
       "app/agents/media_analyst.py",
       "app/agents/pim_agent.py",
       "app/agents/desktop_agent.py",
+      "app/coding_session/evolution_bridge.py",
       "app/brainstorm/multi_agent.py",
       "app/brainstorm/report.py",
       "app/memory/mem0_manager.py",
+      "app/memory/wiki_index_reconciler.py",
       "app/memory/disk_cache.py",
       "app/mcp/server.py",
       "app/mcp/tool_adapter.py",
+      "app/threads/__init__.py",
       "app/tool_runtime/factory.py",
       "app/tool_runtime/measure.py",
       "app/tool_runtime/phase5_check.py",
       "app/tool_runtime/binder.py",
       "app/tool_runtime/parity.py",
       "app/tool_runtime/telemetry.py",
+      "app/utils/hash_embedding.py",
+      "app/utils/__init__.py",
       "app/epistemic/extraction.py",
       "app/epistemic/peer_review.py",
       "app/epistemic/pushback.py",
+      "app/episteme/paper_pipeline.py",
       "app/self_improvement/integrator.py",
       "app/self_improvement/__init__.py",
       "app/self_improvement/consolidator.py",
@@ -15096,11 +18484,16 @@
       "app/control_plane/crew_task_spans.py",
       "app/control_plane/cost_tracker.py",
       "app/control_plane/budgets.py",
+      "app/creativity/concept_blend.py",
       "app/experiential/journal_writer.py",
+      "app/health/anomaly.py",
+      "app/health/summary.py",
+      "app/health/__init__.py",
       "app/tools/tool_search.py",
       "app/tools/email_importance.py",
       "app/tools/research_orchestrator.py",
       "app/tools/wiki_hot_cache.py",
+      "app/tools/computer_use_tool.py",
       "app/tools/geodata_tool.py",
       "app/tools/dataset_search_tool.py",
       "app/tools/restricted_write_tool.py",
@@ -15119,9 +18512,13 @@
       "app/contracts/firestore_schema.py",
       "app/retrieval/__init__.py",
       "app/retrieval/decomposer.py",
+      "app/identity/annual_reflection.py",
+      "app/identity/scheduler.py",
       "app/personality/probes.py",
       "app/personality/state.py",
+      "app/personality/concierge_wrapper.py",
       "app/personality/creativity_scoring.py",
+      "app/personality/signal_context.py",
       "app/personality/evaluation.py",
       "app/transfer_memory/scorer.py",
       "app/transfer_memory/llm_scope.py",
@@ -15145,7 +18542,9 @@
       "app/agents/commander/postprocess.py",
       "app/agents/commander/routing.py",
       "app/agents/commander/execution.py",
+      "app/agents/commander/command_registry.py",
       "app/agents/commander/routing_overrides.py",
+      "app/agents/commander/artifact_intent.py",
       "app/agents/commander/capability_router.py",
       "app/agents/commander/retry_decision.py",
       "app/subia/wiki_surface/consciousness_state.py",
@@ -15155,6 +18554,8 @@
       "app/subia/tsal/__init__.py",
       "app/subia/tsal/operating_principles.py",
       "app/subia/tsal/inspect_tools.py",
+      "app/subia/dreams/__init__.py",
+      "app/subia/dreams/engine.py",
       "app/subia/introspection/detector.py",
       "app/subia/introspection/__init__.py",
       "app/subia/introspection/formatter.py",
@@ -15170,6 +18571,8 @@
       "app/subia/prediction/surprise_routing.py",
       "app/subia/values/resonance.py",
       "app/subia/values/__init__.py",
+      "app/subia/inquiry/linter.py",
+      "app/subia/inquiry/composer.py",
       "app/subia/probes/indicator_result.py",
       "app/subia/probes/butlin.py",
       "app/subia/self/grounding.py",
@@ -15187,22 +18590,28 @@
       "app/subia/scene/personality_workspace.py",
       "app/subia/homeostasis/engine.py",
       "app/subia/introspection/topics/technical.py",
+      "app/healing/monitors/provider_contract_drift.py",
+      "app/healing/monitors/vendor_sunset.py",
+      "app/healing/handlers/code_drift.py",
+      "app/healing/handlers/model_capability.py",
       "app/forge/audit/semantic.py"
     ],
     "tool": [
       "app/tool_hook_bridge.py",
       "app/main.py",
+      "app/llm_completion_guard.py",
       "app/mutation_strategies.py",
       "app/llm_promotions.py",
       "app/fiction_inspiration.py",
       "app/history_compression.py",
-      "app/audit.py",
       "app/tools_timeout.py",
       "app/code_quality.py",
       "app/lifecycle_hooks.py",
       "app/llm_catalog.py",
       "app/backup_planner.py",
-      "app/llm_selector.py",
+      "app/google_workspace/__init__.py",
+      "app/google_workspace/service.py",
+      "app/google_workspace/auth.py",
       "app/atlas/__init__.py",
       "app/atlas/audit_log.py",
       "app/observability/schema_transforms.py",
@@ -15217,7 +18626,6 @@
       "app/forge/manifest.py",
       "app/forge/killswitch.py",
       "app/crews/tech_radar_crew.py",
-      "app/crews/pim_crew.py",
       "app/crews/coding_crew.py",
       "app/crews/writing_crew.py",
       "app/crews/span_events.py",
@@ -15225,10 +18633,19 @@
       "app/crews/parallel_runner.py",
       "app/crews/base_crew.py",
       "app/crews/research_crew.py",
+      "app/computer_use/__init__.py",
+      "app/computer_use/runner.py",
+      "app/computer_use/browser_backend.py",
+      "app/life_companion/email_monitor.py",
       "app/system_state/state.py",
       "app/self_awareness/emergent_infrastructure.py",
+      "app/library_radar/__init__.py",
+      "app/library_radar/proposer.py",
+      "app/healing/runbooks.py",
       "app/trajectory/tip_builder.py",
       "app/trajectory/types.py",
+      "app/architecture_requests/models.py",
+      "app/architecture_requests/lifecycle.py",
       "app/souls/loader.py",
       "app/agents/introspector.py",
       "app/agents/observer.py",
@@ -15238,6 +18655,7 @@
       "app/agents/_common.py",
       "app/coding_session/manager.py",
       "app/coding_session/models.py",
+      "app/coding_session/evolution_bridge.py",
       "app/memory/system_chronicle.py",
       "app/mcp/server.py",
       "app/mcp/tool_adapter.py",
@@ -15246,6 +18664,7 @@
       "app/tool_runtime/binder.py",
       "app/tool_runtime/loadable_agent.py",
       "app/tool_runtime/parity.py",
+      "app/tool_runtime/supervisor.py",
       "app/tool_runtime/loadable_executor.py",
       "app/epistemic/verification.py",
       "app/epistemic/extraction.py",
@@ -15258,12 +18677,12 @@
       "app/control_plane/crew_task_spans.py",
       "app/control_plane/tools_api.py",
       "app/control_plane/budgets.py",
-      "app/control_plane/db.py",
       "app/knowledge_base/tools.py",
       "app/philosophy/rag_tool.py",
       "app/philosophy/__init__.py",
       "app/philosophy/dialectics_tool.py",
       "app/change_requests/lifecycle.py",
+      "app/tools/gmail_tools.py",
       "app/tools/gee_tool.py",
       "app/tools/tool_search.py",
       "app/tools/currency_tools.py",
@@ -15279,6 +18698,7 @@
       "app/tools/research_orchestrator.py",
       "app/tools/financial_tools.py",
       "app/tools/bridge_tools.py",
+      "app/tools/computer_use_tool.py",
       "app/tools/geodata_tool.py",
       "app/tools/system_state_tool.py",
       "app/tools/code_executor.py",
@@ -15288,6 +18708,7 @@
       "app/tools/dataset_search_tool.py",
       "app/tools/web_search.py",
       "app/tools/hardware_tools.py",
+      "app/tools/control_plane_tickets_tool.py",
       "app/tools/wiki_tool_registry.py",
       "app/tools/blackboard_tool.py",
       "app/tools/restricted_write_tool.py",
@@ -15312,8 +18733,12 @@
       "app/tool_registry/capabilities.py",
       "app/tool_registry/forge_bridge.py",
       "app/tool_registry/types.py",
+      "app/delivery/email_send.py",
+      "app/delivery/__init__.py",
+      "app/delivery/signal_send.py",
       "app/adaptation/__init__.py",
       "app/transfer_memory/sanitizer.py",
+      "app/api/files_api.py",
       "app/dossier/adapters/sec_edgar.py",
       "app/dossier/adapters/__init__.py",
       "app/recovery/strategies/sandbox_execute.py",
@@ -15330,6 +18755,8 @@
       "app/subia/belief/certainty.py",
       "app/subia/self/model.py",
       "app/subia/scene/tiers.py",
+      "app/healing/handlers/code_drift.py",
+      "app/healing/handlers/model_capability.py",
       "app/forge/audit/periodic.py",
       "app/forge/audit/semantic.py",
       "app/forge/audit/pipeline.py",
@@ -15351,17 +18778,25 @@
       "app/canary_deploy.py",
       "app/safety_guardian.py",
       "app/affect/integrity.py",
+      "app/training/adapter_performance.py",
+      "app/training/adapter_lifecycle.py",
       "app/forge/registry.py",
       "app/forge/anomaly.py",
       "app/forge/manifest.py",
       "app/crews/devops_crew.py",
       "app/self_awareness/emergent_infrastructure.py",
+      "app/library_radar/__init__.py",
       "app/healing/health_remediator.py",
       "app/subia/integrity.py",
+      "app/architecture_requests/__init__.py",
       "app/agents/devops_agent.py",
       "app/operations_suite/__init__.py",
       "app/control_plane/system_state_api.py",
       "app/control_plane/changes_api.py",
+      "app/governance_amendment/eligibility.py",
+      "app/governance_amendment/protocol.py",
+      "app/governance_amendment/_state.py",
+      "app/governance_amendment/self_quarantine.py",
       "app/change_requests/__init__.py",
       "app/change_requests/apply.py",
       "app/change_requests/models.py",
@@ -15373,15 +18808,21 @@
       "app/tool_registry/drift.py",
       "app/tool_registry/forge_bridge.py",
       "app/tool_registry/types.py",
+      "app/governance_ratchet/auto_propose.py",
       "app/transfer_memory/scorer.py",
       "app/self_improvement/meta_agent/feature_flag.py",
+      "app/healing/monitors/restore_drill.py",
+      "app/healing/monitors/version_upgrade_drill.py",
+      "app/healing/monitors/db_backup.py",
       "app/forge/audit/periodic.py",
       "app/forge/audit/pipeline.py",
       "app/forge/runtime/dispatcher.py"
     ],
     "subia": [
+      "app/workspace_publish.py",
       "app/lazy_imports.py",
       "app/safety_guardian.py",
+      "app/affect/goal_emitter.py",
       "app/affect/phase5_gate.py",
       "app/affect/l9_snapshots.py",
       "app/affect/__init__.py",
@@ -15393,6 +18834,10 @@
       "app/crews/events.py",
       "app/crews/event_handlers.py",
       "app/companion/cross_workspace.py",
+      "app/companion/interest_model.py",
+      "app/audit/algorithm_pinning.py",
+      "app/life_companion/__init__.py",
+      "app/life_companion/long_arc_follow_up.py",
       "app/self_awareness/loop_closure.py",
       "app/self_awareness/somatic_bias.py",
       "app/self_awareness/grounding.py",
@@ -15440,11 +18885,22 @@
       "app/subia/integrity.py",
       "app/subia/phase12_hooks.py",
       "app/subia/live_integration.py",
+      "app/architecture_requests/scaffolder.py",
+      "app/architecture_requests/validator.py",
       "app/souls/loader.py",
       "app/agents/introspector.py",
       "app/agents/observer.py",
       "app/agents/critic.py",
+      "app/coding_session/evolution_bridge.py",
+      "app/memory/wiki_index_reconciler.py",
       "app/memory/belief_outbox.py",
+      "app/self_improvement/capability_gap_analyzer.py",
+      "app/control_plane/inquiries_api.py",
+      "app/governance_amendment/self_quarantine.py",
+      "app/identity/legacy_essay.py",
+      "app/identity/continuity_ledger.py",
+      "app/identity/__init__.py",
+      "app/identity/annual_reflection.py",
       "app/personality/state.py",
       "app/api/workspace_api.py",
       "app/subia/wiki_surface/drift_detection.py",
@@ -15461,6 +18917,8 @@
       "app/subia/tsal/self_model.py",
       "app/subia/tsal/operating_principles.py",
       "app/subia/tsal/inspect_tools.py",
+      "app/subia/dreams/__init__.py",
+      "app/subia/dreams/engine.py",
       "app/subia/introspection/detector.py",
       "app/subia/introspection/context.py",
       "app/subia/introspection/__init__.py",
@@ -15488,6 +18946,14 @@
       "app/subia/values/resonance.py",
       "app/subia/values/perceptual_lens.py",
       "app/subia/values/__init__.py",
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/questions.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/selector.py",
+      "app/subia/inquiry/linter.py",
+      "app/subia/inquiry/writer.py",
+      "app/subia/inquiry/composer.py",
+      "app/subia/inquiry/scheduler.py",
       "app/subia/probes/__init__.py",
       "app/subia/probes/indicator_result.py",
       "app/subia/probes/scorecard.py",
@@ -15555,7 +19021,8 @@
       "app/subia/introspection/topics/beliefs.py",
       "app/subia/introspection/topics/social.py",
       "app/subia/introspection/topics/predictions.py",
-      "app/subia/introspection/topics/scene.py"
+      "app/subia/introspection/topics/scene.py",
+      "app/healing/monitors/lock_housekeeper.py"
     ]
   },
   "dependency_graph": {
@@ -15564,6 +19031,7 @@
       "app/llm_factory.py",
       "app/security.py",
       "app/main.py",
+      "app/runtime_settings.py",
       "app/signal_client.py",
       "app/auditor.py",
       "app/conversation_store.py",
@@ -15571,18 +19039,25 @@
       "app/ollama_native.py",
       "app/llm_selector.py",
       "app/evolution.py",
+      "app/google_workspace/auth.py",
       "app/crews/media_crew.py",
       "app/crews/self_improvement_crew.py",
       "app/crews/parallel_runner.py",
       "app/crews/base_crew.py",
       "app/crews/creative_crew.py",
       "app/crews/research_crew.py",
+      "app/voice/local.py",
+      "app/voice/cloud.py",
+      "app/computer_use/runner.py",
       "app/healing/error_diagnosis.py",
+      "app/web_push/sender.py",
       "app/agents/coder.py",
       "app/agents/writer.py",
       "app/agents/researcher.py",
+      "app/discord_client/bot.py",
       "app/tools/code_executor.py",
       "app/tools/web_search.py",
+      "app/personality/concierge_wrapper.py",
       "app/agents/commander/commands.py",
       "app/agents/commander/orchestrator.py",
       "app/forge/runtime/python_sandbox.py"
@@ -15648,12 +19123,6 @@
     ],
     "app/api/kb.py": [
       "app/main.py"
-    ],
-    "app/audit.py": [
-      "app/main.py",
-      "app/tools/file_manager.py",
-      "app/tools/web_fetch.py",
-      "app/tools/attachment_reader.py"
     ],
     "app/conversation_store.py": [
       "app/main.py",
@@ -15735,8 +19204,37 @@
     "app/workspace_sync.py": [
       "app/main.py"
     ],
-    "app/utils.py": [
-      "app/variant_archive.py"
+    "app/paths.py": [
+      "app/runtime_settings.py",
+      "app/google_workspace/auth.py",
+      "app/affect/calibration.py",
+      "app/affect/phase5_gate.py",
+      "app/affect/episodes.py",
+      "app/affect/l9_snapshots.py",
+      "app/affect/kb_metadata.py",
+      "app/affect/narrative.py",
+      "app/affect/salience.py",
+      "app/affect/welfare.py",
+      "app/affect/calibration_proposals.py",
+      "app/affect/health_check.py",
+      "app/affect/viability.py",
+      "app/affect/core.py",
+      "app/affect/care_policies.py",
+      "app/affect/attachment.py",
+      "app/voice/local.py",
+      "app/computer_use/audit.py",
+      "app/computer_use/budget.py",
+      "app/web_push/subscriptions.py",
+      "app/subia/persistence.py",
+      "app/memory/wiki_index_reconciler.py",
+      "app/skills/registry.py",
+      "app/health/store.py",
+      "app/tools/document_generator.py",
+      "app/api/files_api.py",
+      "app/subia/wiki_surface/consciousness_state.py",
+      "app/subia/safety/narrative_audit.py",
+      "app/subia/prediction/accuracy_tracker.py",
+      "app/subia/connections/training_signal.py"
     ],
     "app/tools/file_manager.py": [
       "app/auditor.py",
@@ -15769,12 +19267,17 @@
     ],
     "app/safe_io.py": [
       "app/json_store.py",
+      "app/audit/rolled_log.py",
+      "app/audit/migration.py",
       "app/subia/persistence.py",
       "app/subia/wiki_surface/consciousness_state.py",
       "app/subia/safety/narrative_audit.py",
       "app/subia/prediction/accuracy_tracker.py",
       "app/subia/probes/scorecard.py",
       "app/subia/connections/training_signal.py"
+    ],
+    "app/workspace_publish.py": [
+      "app/idle_scheduler.py"
     ],
     "app/firebase/crew_tracking.py": [
       "app/firebase_reporter.py",
@@ -15818,8 +19321,17 @@
       "app/agents/writer.py",
       "app/agents/researcher.py"
     ],
+    "app/google_workspace/auth.py": [
+      "app/google_workspace/bootstrap.py",
+      "app/google_workspace/__init__.py",
+      "app/google_workspace/service.py"
+    ],
+    "app/google_workspace/service.py": [
+      "app/google_workspace/__init__.py"
+    ],
     "app/affect/schemas.py": [
       "app/affect/calibration.py",
+      "app/affect/goal_emitter.py",
       "app/affect/phase5_gate.py",
       "app/affect/kb_metadata.py",
       "app/affect/narrative.py",
@@ -15832,27 +19344,6 @@
       "app/affect/core.py",
       "app/affect/care_policies.py",
       "app/affect/attachment.py"
-    ],
-    "app/paths.py": [
-      "app/affect/calibration.py",
-      "app/affect/phase5_gate.py",
-      "app/affect/episodes.py",
-      "app/affect/l9_snapshots.py",
-      "app/affect/kb_metadata.py",
-      "app/affect/narrative.py",
-      "app/affect/salience.py",
-      "app/affect/welfare.py",
-      "app/affect/calibration_proposals.py",
-      "app/affect/health_check.py",
-      "app/affect/viability.py",
-      "app/affect/core.py",
-      "app/affect/care_policies.py",
-      "app/affect/attachment.py",
-      "app/subia/persistence.py",
-      "app/subia/wiki_surface/consciousness_state.py",
-      "app/subia/safety/narrative_audit.py",
-      "app/subia/prediction/accuracy_tracker.py",
-      "app/subia/connections/training_signal.py"
     ],
     "app/affect/salience.py": [
       "app/affect/episodes.py",
@@ -15867,6 +19358,27 @@
     ],
     "app/affect/attachment.py": [
       "app/affect/care_policies.py"
+    ],
+    "app/life_companion/_common.py": [
+      "app/training/adapter_lifecycle.py",
+      "app/companion/interest_model.py",
+      "app/life_companion/topic_dormancy.py",
+      "app/life_companion/calendar_horizon.py",
+      "app/life_companion/seasonal_nudges.py",
+      "app/life_companion/calendar_prep.py",
+      "app/life_companion/act_now_digest.py",
+      "app/life_companion/routine_detector.py",
+      "app/life_companion/daily_briefing.py",
+      "app/life_companion/email_monitor.py",
+      "app/life_companion/long_arc_follow_up.py",
+      "app/life_companion/personalized_digest.py",
+      "app/healing/monitors/db_vacuum.py",
+      "app/healing/monitors/lock_housekeeper.py",
+      "app/healing/monitors/retention.py",
+      "app/healing/monitors/provider_contract_drift.py",
+      "app/healing/monitors/log_archival.py",
+      "app/healing/monitors/audit_chain_check.py",
+      "app/healing/monitors/signal_heartbeat.py"
     ],
     "app/aesthetics/tools.py": [
       "app/aesthetics/__init__.py"
@@ -16119,6 +19631,12 @@
     "app/companion/sources.py": [
       "app/companion/source_suggester.py"
     ],
+    "app/utils/hash_embedding.py": [
+      "app/companion/lessons_learned.py",
+      "app/healing/llm_output_drift.py",
+      "app/self_improvement/capability_gap_analyzer.py",
+      "app/creativity/analogy_index.py"
+    ],
     "app/companion/loop.py": [
       "app/companion/__init__.py"
     ],
@@ -16130,6 +19648,38 @@
     ],
     "app/companion/idea_store.py": [
       "app/companion/surfacing.py"
+    ],
+    "app/runtime_settings.py": [
+      "app/voice/stt.py",
+      "app/voice/tts.py"
+    ],
+    "app/voice/inbound_state.py": [
+      "app/voice/__init__.py"
+    ],
+    "app/voice/stt.py": [
+      "app/voice/__init__.py"
+    ],
+    "app/voice/tts.py": [
+      "app/voice/__init__.py"
+    ],
+    "app/audit/migration.py": [
+      "app/audit/journal.py"
+    ],
+    "app/audit/rolled_log.py": [
+      "app/audit/journal.py",
+      "app/audit/__init__.py",
+      "app/audit/migration.py",
+      "app/architecture_requests/store.py"
+    ],
+    "app/computer_use/budget.py": [
+      "app/computer_use/__init__.py",
+      "app/computer_use/runner.py"
+    ],
+    "app/computer_use/runner.py": [
+      "app/computer_use/__init__.py"
+    ],
+    "app/computer_use/audit.py": [
+      "app/computer_use/runner.py"
     ],
     "app/tensions/tools.py": [
       "app/tensions/__init__.py"
@@ -16228,8 +19778,44 @@
     "app/subia/self/hyper_model.py": [
       "app/self_awareness/hyper_model.py"
     ],
+    "app/notify/api.py": [
+      "app/notify/__init__.py"
+    ],
+    "app/library_radar/proposer.py": [
+      "app/library_radar/__init__.py"
+    ],
     "app/healing/health_remediator.py": [
       "app/healing/__init__.py"
+    ],
+    "app/healing/runbooks.py": [
+      "app/healing/__init__.py",
+      "app/healing/handlers/multi_router.py",
+      "app/healing/handlers/code_drift.py",
+      "app/healing/handlers/schema_drift.py",
+      "app/healing/handlers/__init__.py",
+      "app/healing/handlers/model_capability.py",
+      "app/healing/handlers/scheduler_overrun.py",
+      "app/healing/handlers/db_pool.py"
+    ],
+    "app/healing/handlers/_common.py": [
+      "app/healing/pattern_learner.py",
+      "app/healing/auditor_bridge.py",
+      "app/healing/silent_regression_detector.py",
+      "app/healing/monitors/listener_heartbeat.py",
+      "app/healing/monitors/signal_keepalive.py",
+      "app/healing/monitors/restore_drill.py",
+      "app/healing/monitors/version_upgrade_drill.py",
+      "app/healing/monitors/crypto_rotation_drill.py",
+      "app/healing/monitors/db_backup.py",
+      "app/healing/monitors/cron_liveness.py",
+      "app/healing/monitors/vendor_sunset.py",
+      "app/healing/monitors/disk_quota.py",
+      "app/healing/monitors/idle_cooldown.py",
+      "app/healing/handlers/code_drift.py",
+      "app/healing/handlers/schema_drift.py",
+      "app/healing/handlers/model_capability.py",
+      "app/healing/handlers/scheduler_overrun.py",
+      "app/healing/handlers/db_pool.py"
     ],
     "app/subia/scene/meta_workspace.py": [
       "app/consciousness/meta_workspace.py"
@@ -16274,6 +19860,13 @@
     ],
     "app/modification_engine.py": [
       "app/feedback_suite/__init__.py"
+    ],
+    "app/web_push/sender.py": [
+      "app/web_push/__init__.py"
+    ],
+    "app/web_push/subscriptions.py": [
+      "app/web_push/__init__.py",
+      "app/web_push/sender.py"
     ],
     "app/subia/config.py": [
       "app/subia/loop.py",
@@ -16353,6 +19946,28 @@
     ],
     "app/trajectory/tip_builder.py": [
       "app/trajectory/__init__.py"
+    ],
+    "app/architecture_requests/lifecycle.py": [
+      "app/architecture_requests/__init__.py"
+    ],
+    "app/architecture_requests/models.py": [
+      "app/architecture_requests/__init__.py",
+      "app/architecture_requests/scaffolder.py",
+      "app/architecture_requests/signal.py",
+      "app/architecture_requests/validator.py",
+      "app/architecture_requests/lifecycle.py",
+      "app/architecture_requests/store.py"
+    ],
+    "app/architecture_requests/signal.py": [
+      "app/architecture_requests/__init__.py"
+    ],
+    "app/architecture_requests/store.py": [
+      "app/architecture_requests/__init__.py"
+    ],
+    "app/architecture_requests/validator.py": [
+      "app/architecture_requests/__init__.py",
+      "app/architecture_requests/lifecycle.py",
+      "app/coding_session/evolution_bridge.py"
     ],
     "app/tools/reflection_tool.py": [
       "app/agents/introspector.py",
@@ -16434,6 +20049,7 @@
       "app/coding_session/manager.py",
       "app/coding_session/reconciler.py",
       "app/coding_session/__init__.py",
+      "app/coding_session/evolution_bridge.py",
       "app/coding_session/store.py",
       "app/coding_session/submit.py"
     ],
@@ -16484,8 +20100,13 @@
       "app/control_plane/system_state_api.py",
       "app/control_plane/tools_api.py",
       "app/control_plane/coding_sessions_api.py",
+      "app/control_plane/proposals_api.py",
+      "app/control_plane/threads_api.py",
+      "app/control_plane/architecture_requests_api.py",
       "app/control_plane/dashboard_api.py",
-      "app/control_plane/changes_api.py"
+      "app/control_plane/inquiries_api.py",
+      "app/control_plane/changes_api.py",
+      "app/control_plane/action_requests_api.py"
     ],
     "app/brainstorm/cli.py": [
       "app/brainstorm/__main__.py"
@@ -16501,11 +20122,43 @@
       "app/brainstorm/techniques/starbursting.py",
       "app/brainstorm/techniques/crazy_8s.py"
     ],
+    "app/tools/wiki_tools.py": [
+      "app/memory/wiki_index_reconciler.py",
+      "app/tools/wiki_tool_registry.py"
+    ],
     "app/mcp/client.py": [
       "app/mcp/registry.py"
     ],
     "app/mcp/transports.py": [
       "app/mcp/client.py"
+    ],
+    "app/inbox/classifier.py": [
+      "app/inbox/router.py",
+      "app/inbox/__init__.py"
+    ],
+    "app/inbox/router.py": [
+      "app/inbox/__init__.py"
+    ],
+    "app/inbox/scheduler.py": [
+      "app/inbox/__init__.py"
+    ],
+    "app/threads/lifecycle.py": [
+      "app/threads/__init__.py"
+    ],
+    "app/threads/models.py": [
+      "app/threads/__init__.py",
+      "app/threads/lifecycle.py",
+      "app/threads/store.py"
+    ],
+    "app/threads/store.py": [
+      "app/threads/__init__.py"
+    ],
+    "app/discord_client/bot.py": [
+      "app/discord_client/__init__.py"
+    ],
+    "app/discord_client/sender.py": [
+      "app/discord_client/__init__.py",
+      "app/delivery/__init__.py"
     ],
     "app/tool_runtime/loadable_agent.py": [
       "app/tool_runtime/factory.py",
@@ -16517,6 +20170,9 @@
     ],
     "app/tool_runtime/loadable_executor.py": [
       "app/tool_runtime/loadable_agent.py"
+    ],
+    "app/tool_runtime/supervisor.py": [
+      "app/tool_runtime/loadable_executor.py"
     ],
     "app/epistemic/ledger.py": [
       "app/epistemic/verification.py",
@@ -16603,7 +20259,8 @@
     "app/self_improvement/store.py": [
       "app/self_improvement/integrator.py",
       "app/self_improvement/__init__.py",
-      "app/self_improvement/gap_detector.py"
+      "app/self_improvement/gap_detector.py",
+      "app/self_improvement/capability_gap_analyzer.py"
     ],
     "app/self_improvement/types.py": [
       "app/self_improvement/integrator.py",
@@ -16612,7 +20269,8 @@
       "app/self_improvement/gap_detector.py",
       "app/self_improvement/consolidator.py",
       "app/self_improvement/evaluator.py",
-      "app/self_improvement/store.py"
+      "app/self_improvement/store.py",
+      "app/self_improvement/capability_gap_analyzer.py"
     ],
     "app/self_improvement/consolidator.py": [
       "app/self_improvement/__init__.py"
@@ -16628,6 +20286,13 @@
     ],
     "app/self_improvement/metrics.py": [
       "app/self_improvement/__init__.py"
+    ],
+    "app/skills/registry.py": [
+      "app/skills/__init__.py",
+      "app/skills/runner.py"
+    ],
+    "app/skills/runner.py": [
+      "app/skills/__init__.py"
     ],
     "app/recovery/librarian.py": [
       "app/recovery/loop.py",
@@ -16649,6 +20314,9 @@
     "app/tool_registry/capabilities.py": [
       "app/control_plane/tools_api.py",
       "app/tool_registry/decorator.py"
+    ],
+    "app/json_store.py": [
+      "app/control_plane/projects.py"
     ],
     "app/control_plane/audit.py": [
       "app/control_plane/__init__.py"
@@ -16674,6 +20342,25 @@
     "app/control_plane/tickets.py": [
       "app/control_plane/__init__.py"
     ],
+    "app/architecture_requests/scaffolder.py": [
+      "app/control_plane/architecture_requests_api.py"
+    ],
+    "app/subia/inquiry/questions.py": [
+      "app/control_plane/inquiries_api.py",
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/selector.py",
+      "app/subia/inquiry/composer.py"
+    ],
+    "app/creativity/analogy_index.py": [
+      "app/creativity/__init__.py"
+    ],
+    "app/creativity/concept_blend.py": [
+      "app/creativity/__init__.py"
+    ],
+    "app/creativity/novelty_wrap.py": [
+      "app/creativity/__init__.py"
+    ],
     "app/idle_scheduler.py": [
       "app/control/__init__.py"
     ],
@@ -16697,6 +20384,23 @@
     "app/experiential/vectorstore.py": [
       "app/experiential/__init__.py"
     ],
+    "app/governance_amendment/_state.py": [
+      "app/governance_amendment/__init__.py",
+      "app/governance_amendment/protocol.py",
+      "app/governance_amendment/store.py"
+    ],
+    "app/governance_amendment/audit.py": [
+      "app/governance_amendment/__init__.py"
+    ],
+    "app/governance_amendment/eligibility.py": [
+      "app/governance_amendment/__init__.py"
+    ],
+    "app/governance_amendment/protocol.py": [
+      "app/governance_amendment/__init__.py"
+    ],
+    "app/governance_amendment/self_quarantine.py": [
+      "app/governance_amendment/__init__.py"
+    ],
     "app/change_requests/apply.py": [
       "app/change_requests/__init__.py"
     ],
@@ -16719,8 +20423,18 @@
       "app/change_requests/__init__.py",
       "app/change_requests/lifecycle.py"
     ],
-    "app/tools/wiki_tools.py": [
-      "app/tools/wiki_tool_registry.py"
+    "app/health/anomaly.py": [
+      "app/health/__init__.py"
+    ],
+    "app/health/import_apple.py": [
+      "app/health/__init__.py"
+    ],
+    "app/health/summary.py": [
+      "app/health/__init__.py"
+    ],
+    "app/health/types.py": [
+      "app/health/__init__.py",
+      "app/health/import_apple.py"
     ],
     "app/memory/mem0_manager.py": [
       "app/tools/mem0_tools.py"
@@ -16801,6 +20515,40 @@
     "app/tool_registry/quarantine.py": [
       "app/tool_registry/discovery.py"
     ],
+    "app/governance_ratchet/_state.py": [
+      "app/governance_ratchet/__init__.py",
+      "app/governance_ratchet/protocol.py",
+      "app/governance_ratchet/store.py"
+    ],
+    "app/governance_ratchet/audit.py": [
+      "app/governance_ratchet/__init__.py"
+    ],
+    "app/governance_ratchet/protocol.py": [
+      "app/governance_ratchet/__init__.py"
+    ],
+    "app/action_requests/lifecycle.py": [
+      "app/action_requests/__init__.py"
+    ],
+    "app/action_requests/models.py": [
+      "app/action_requests/__init__.py",
+      "app/action_requests/validator.py",
+      "app/action_requests/lifecycle.py",
+      "app/action_requests/store.py",
+      "app/action_requests/handlers/email_draft.py"
+    ],
+    "app/action_requests/store.py": [
+      "app/action_requests/__init__.py"
+    ],
+    "app/action_requests/validator.py": [
+      "app/action_requests/__init__.py",
+      "app/action_requests/lifecycle.py"
+    ],
+    "app/delivery/email_send.py": [
+      "app/delivery/__init__.py"
+    ],
+    "app/delivery/signal_send.py": [
+      "app/delivery/__init__.py"
+    ],
     "app/governance.py": [
       "app/adaptation/__init__.py"
     ],
@@ -16821,6 +20569,19 @@
     ],
     "app/retrieval/orchestrator.py": [
       "app/retrieval/__init__.py"
+    ],
+    "app/subia/inquiry/linter.py": [
+      "app/identity/legacy_essay.py",
+      "app/identity/annual_reflection.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/composer.py"
+    ],
+    "app/identity/continuity_ledger.py": [
+      "app/identity/__init__.py",
+      "app/identity/annual_reflection.py"
+    ],
+    "app/identity/scheduler.py": [
+      "app/identity/__init__.py"
     ],
     "app/transfer_memory/types.py": [
       "app/transfer_memory/attribution.py",
@@ -16844,6 +20605,10 @@
     ],
     "app/transfer_memory/scorer.py": [
       "app/transfer_memory/compiler.py"
+    ],
+    "app/action_requests/handlers/base.py": [
+      "app/action_requests/handlers/__init__.py",
+      "app/action_requests/handlers/email_draft.py"
     ],
     "app/self_improvement/meta_agent/policy_gap.py": [
       "app/self_improvement/meta_agent/amendment.py",
@@ -16922,6 +20687,19 @@
       "app/subia/understanding/pass_runner.py",
       "app/subia/connections/six_proposals_bridges.py"
     ],
+    "app/subia/inquiry/composer.py": [
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/__init__.py",
+      "app/subia/inquiry/writer.py"
+    ],
+    "app/subia/inquiry/selector.py": [
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/__init__.py"
+    ],
+    "app/subia/inquiry/writer.py": [
+      "app/subia/inquiry/idle_registration.py",
+      "app/subia/inquiry/__init__.py"
+    ],
     "app/subia/probes/indicator_result.py": [
       "app/subia/probes/scorecard.py",
       "app/subia/probes/rsm.py",
@@ -16936,6 +20714,18 @@
     ],
     "app/subia/tsal/self_model.py": [
       "app/subia/connections/tsal_subia_bridge.py"
+    ],
+    "app/healing/listener_heartbeats.py": [
+      "app/healing/monitors/listener_heartbeat.py"
+    ],
+    "app/audit/algorithm_pinning.py": [
+      "app/healing/monitors/crypto_rotation_drill.py"
+    ],
+    "app/healing/handlers/model_capability.py": [
+      "app/healing/handlers/multi_router.py"
+    ],
+    "app/healing/handlers/schema_drift.py": [
+      "app/healing/handlers/multi_router.py"
     ],
     "app/forge/audit/static.py": [
       "app/forge/audit/periodic.py",
@@ -16960,8 +20750,8 @@
       "app/forge/runtime/declarative.py"
     ]
   },
-  "built_at": 1778223334.7182963,
-  "build_duration_s": 0.9878198759999997,
-  "module_count": 793,
-  "hot_path_count": 33
+  "built_at": 1778414583.734571,
+  "build_duration_s": 3.5271563770074863,
+  "module_count": 982,
+  "hot_path_count": 32
 }

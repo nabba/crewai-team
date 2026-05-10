@@ -7,7 +7,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_ROOT = path.join(__dirname, 'serve-root');
@@ -96,15 +96,81 @@ function checkBasicAuth(req) {
   return timingSafeEqual(ub, eu) && timingSafeEqual(pb, ep);
 }
 
+// Long-lived cookie token derived from DASHBOARD_PASS. Opaque
+// (HMAC), regenerable from the same .env, no server-side state.
+// Rotating the password invalidates every existing cookie.
+const COOKIE_NAME = 'dashboard_auth';
+const COOKIE_TOKEN = AUTH_ENABLED
+  ? createHmac('sha256', DASHBOARD_PASS).update('dashboard-auth-v1').digest('hex')
+  : '';
+
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    const v = part.slice(eq + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+function checkCookieAuth(req) {
+  if (!COOKIE_TOKEN) return false;
+  const cookies = parseCookies(req.headers.cookie || '');
+  const got = cookies[COOKIE_NAME];
+  if (!got || got.length !== COOKIE_TOKEN.length) return false;
+  return timingSafeEqual(Buffer.from(got), Buffer.from(COOKIE_TOKEN));
+}
+
+// One-shot login: GET /cp/login?token=<DASHBOARD_PASS>
+//   match    → 302 /cp/ + Set-Cookie (Max-Age=1y, HttpOnly, Secure, SameSite=Lax)
+//   mismatch → 401
+// Used by iOS Safari standalone PWA where the Basic-Auth keychain
+// from the regular browser tab isn't always inherited by the
+// home-screen icon.  Visit this URL once; the cookie travels with
+// the standalone scope on every subsequent launch.
+function handleLogin(req, res) {
+  if (!AUTH_ENABLED) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  const url = new URL(req.url, 'http://x');
+  const token = url.searchParams.get('token') || '';
+  const ok =
+    token.length === DASHBOARD_PASS.length &&
+    timingSafeEqual(Buffer.from(token), Buffer.from(DASHBOARD_PASS));
+  if (!ok) {
+    res.writeHead(401, { 'Content-Type': 'text/plain' });
+    res.end('Login token mismatch.\n');
+    return;
+  }
+  const oneYear = 60 * 60 * 24 * 365;
+  res.writeHead(302, {
+    'Set-Cookie':
+      `${COOKIE_NAME}=${COOKIE_TOKEN}; Max-Age=${oneYear}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+    Location: '/cp/',
+  });
+  res.end();
+}
+
 function requireAuth(req, res) {
   if (!AUTH_ENABLED) return true;
   if (clientIsLoopback(req)) return true;
+  if (checkCookieAuth(req)) return true;
   if (checkBasicAuth(req)) return true;
   res.writeHead(401, {
     'WWW-Authenticate': 'Basic realm="AndrusAI Control Plane", charset="UTF-8"',
     'Content-Type': 'text/plain',
   });
-  res.end('Authentication required.\n');
+  res.end(
+    'Authentication required.\n\n' +
+    'iOS PWA users: visit /cp/login?token=YOUR_DASHBOARD_PASS once to set a\n' +
+    'long-lived auth cookie that survives standalone-mode launches.\n',
+  );
   return false;
 }
 
@@ -219,6 +285,13 @@ function isBackendPath(url) {
 }
 
 const server = http.createServer((req, res) => {
+  // Login route is unauthenticated by design — its only effect is
+  // setting the cookie when the right token is supplied.
+  const pathOnly = (req.url || '').split('?')[0];
+  if (pathOnly === '/cp/login') {
+    handleLogin(req, res);
+    return;
+  }
   if (!requireAuth(req, res)) return;
   if (isBackendPath(req.url)) {
     proxyToGateway(req, res);

@@ -1,3 +1,12 @@
 {
-  "runbooks": {}
+  "runbooks": {
+    "self_heal_router": {
+      "recent": [
+        {
+          "success": true,
+          "ts": 1778414460.1432233
+        }
+      ]
+    }
+  }
 }
