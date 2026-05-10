@@ -35,10 +35,12 @@ from app.identity.continuity_ledger import (
     record_event,
     summarise_drift,
 )
+from app.identity.scheduler import get_idle_jobs
 
 __all__ = [
     "IDENTITY_EVENT_KINDS",
     "IdentityEvent",
+    "get_idle_jobs",
     "list_events",
     "record_event",
     "summarise_drift",

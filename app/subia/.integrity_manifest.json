@@ -229,8 +229,8 @@
       "size": 3171
     },
     "app/subia/integrity.py": {
-      "sha256": "7c6b6d0bab73c9b684cb20df93594510d067ecd2862692e55499da73f7921e80",
-      "size": 9440
+      "sha256": "1bd3190fd085574f497c6b5348678a8dc017d2f3c6d407f4e4d5da9909c5e531",
+      "size": 10115
     },
     "app/subia/introspection/__init__.py": {
       "sha256": "6f28325c4d49650e6526b03073025a3458c76051bf97858e96c982dd72bd081a",

@@ -186,6 +186,22 @@ def set_ratchet(*, name: str, new_value: float, source: str, reason: str = "") -
         "governance_ratchet: %s ratcheted %s → %s by %s",
         name, current, new_value, source,
     )
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="governance_ratchet",
+            actor=source,
+            summary=f"ratcheted up {name} {current} → {new_value}",
+            detail={
+                "threshold": name,
+                "direction": "up",
+                "old_value": current,
+                "new_value": new_value,
+                "reason": reason,
+            },
+        )
+    except Exception:
+        logger.debug("identity ledger emission failed", exc_info=True)
     return state
 
 
@@ -250,4 +266,21 @@ def relax_ratchet(*, name: str, new_value: float, source: str, reason: str) -> T
         "governance_ratchet: %s RELAXED %s → %s by %s (reason: %s)",
         name, current, new_value, source, reason,
     )
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="governance_ratchet",
+            actor=source,
+            summary=f"relaxed {name} {current} → {new_value}",
+            detail={
+                "threshold": name,
+                "direction": "down",
+                "old_value": current,
+                "new_value": new_value,
+                "floor": floor,
+                "reason": reason,
+            },
+        )
+    except Exception:
+        logger.debug("identity ledger emission failed", exc_info=True)
     return state

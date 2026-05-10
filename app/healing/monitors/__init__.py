@@ -21,6 +21,7 @@ Currently registered monitors:
   * ``db_vacuum``                — monthly conversations.db VACUUM (Wave 0/1 #A6).
   * ``log_archival``             — daily errors.jsonl + audit_journal rotate (Wave 0/1 #A5).
   * ``db_backup``                — opt-in weekly Postgres+Neo4j+ChromaDB (Wave 0/1 #A1).
+  * ``crypto_rotation_drill``    — weekly probe; missing/stale pins + readiness drill (§2.1).
 
 The driver runs each monitor on its own cadence inside a single daemon
 thread. Failure in one monitor never breaks the others — every step is
@@ -73,6 +74,7 @@ _DEFAULT_CADENCE_S = {
     "restore_drill": 24 * 3600,              # daily probe — alerts at 100d stale; Phase H #1
     "version_upgrade_drill": 24 * 3600,      # daily probe — alerts at 100d stale; §2.5
     "provider_contract_drift": 7 * 24 * 3600,  # weekly probe; §2.7
+    "crypto_rotation_drill": 7 * 24 * 3600,    # weekly probe; §2.1
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -232,6 +234,16 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: provider_contract_drift import failed", exc_info=True,
+        )
+    try:
+        from app.healing.monitors import crypto_rotation_drill
+        monitors.append((
+            "crypto_rotation_drill", crypto_rotation_drill.run,
+            _DEFAULT_CADENCE_S["crypto_rotation_drill"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: crypto_rotation_drill import failed", exc_info=True,
         )
 
     if not monitors:

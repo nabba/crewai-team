@@ -362,6 +362,10 @@ def mark_applied(
     """Caller already wrote the file (host_bridge or operator). Records
     the transition. Future regression detection compares against
     ``applied_at``.
+
+    Emits a ``tier3_amendment`` event into the identity continuity
+    ledger so the annual reflection can surface aggregate drift across
+    many small approved amendments.
     """
     if not (applied_by or "").strip():
         raise ValueError("mark_applied requires a non-empty applied_by")
@@ -371,11 +375,25 @@ def mark_applied(
             f"mark_applied requires APPROVED, got {proposal.state.value}"
         )
     proposal.applied_at = _now()
-    return _transition(
+    result = _transition(
         proposal, State.APPLIED,
         action="applied",
         applied_by=applied_by.strip(),
     )
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="tier3_amendment",
+            actor=applied_by.strip(),
+            summary=f"applied amendment {proposal_id} to {proposal.target_path}",
+            detail={
+                "proposal_id": proposal_id,
+                "target_path": proposal.target_path,
+            },
+        )
+    except Exception:
+        logger.debug("identity ledger emission failed", exc_info=True)
+    return result
 
 
 def advance_monitoring(

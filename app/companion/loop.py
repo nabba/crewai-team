@@ -149,4 +149,13 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         logger.debug(
             "companion.loop: lessons_learned job skipped", exc_info=True,
         )
+
+    # Identity-continuity yearly passes (§8.2 annual reflection + §8.5
+    # legacy essay). Both cadence-check internally; daily fire is a no-op
+    # 364 days of the year.
+    try:
+        from app.identity import get_idle_jobs as _identity_get_idle_jobs
+        jobs.extend(_identity_get_idle_jobs())
+    except Exception:
+        logger.debug("companion.loop: identity jobs skipped", exc_info=True)
     return jobs

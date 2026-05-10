@@ -185,6 +185,11 @@ def write_manifest(
 ) -> None:
     """Write the manifest atomically. Used by regeneration tooling
     (dev or CI), never at runtime from application code.
+
+    Emits an ``integrity_regen`` event into the identity continuity
+    ledger so the annual reflection sees when the integrity boundary
+    was last refreshed. Failure-isolated: a missing identity package
+    never blocks the manifest write.
     """
     path = Path(manifest_path) if manifest_path else _MANIFEST_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +197,16 @@ def write_manifest(
     tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                    encoding="utf-8")
     tmp.replace(path)
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="integrity_regen",
+            actor="dev_or_ci",
+            summary=f"regenerated SubIA integrity manifest ({len(manifest.get('files', {}))} files)",
+            detail={"n_files": len(manifest.get("files", {}))},
+        )
+    except Exception:
+        logger.debug("identity ledger emission failed", exc_info=True)
 
 
 def verify_integrity(

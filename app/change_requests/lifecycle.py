@@ -246,7 +246,13 @@ def mark_applied(
     pr_url: str | None,
 ) -> ChangeRequest:
     """Transition APPROVED → APPLIED. Called by ``apply.apply_change``
-    after successful hot-apply + git operations."""
+    after successful hot-apply + git operations.
+
+    Emits a ``soul_edit`` event into the identity continuity ledger
+    when the applied path matches an identity-shaping artefact
+    (``app/souls/*`` or ``wiki/governance/constitution.md``), so the
+    annual reflection picks up cross-amendment soul drift.
+    """
     cr = store.get(request_id)
     if cr is None:
         raise KeyError(f"change_request {request_id!r} not found")
@@ -265,7 +271,35 @@ def mark_applied(
         request_id, git_branch, git_commit_sha[:8] if git_commit_sha else "?",
         pr_url,
     )
+    if _is_soul_path(cr.path):
+        try:
+            from app.identity.continuity_ledger import record_event
+            record_event(
+                kind="soul_edit",
+                actor=cr.requestor or "agent",
+                summary=f"edited soul artefact {cr.path}",
+                detail={
+                    "request_id": request_id,
+                    "path": cr.path,
+                    "git_commit_sha": git_commit_sha,
+                },
+            )
+        except Exception:
+            logger.debug("identity ledger emission failed", exc_info=True)
     return cr
+
+
+_SOUL_PATH_PREFIXES = ("app/souls/",)
+_SOUL_PATH_EXACT = frozenset({"wiki/governance/constitution.md"})
+
+
+def _is_soul_path(path: str) -> bool:
+    """Match a change-request path against identity-shaping artefacts."""
+    if not path:
+        return False
+    if path in _SOUL_PATH_EXACT:
+        return True
+    return any(path.startswith(p) for p in _SOUL_PATH_PREFIXES)
 
 
 def mark_apply_failed(
