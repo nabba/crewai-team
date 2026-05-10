@@ -2992,3 +2992,283 @@ Total: **49 new tests** across 5 new test files.
   "Phase H" section landed at line 2527 with the same number as
   this session's pattern_learner triage (line 2218).  Renumber
   one of them when convenient; not blocking.
+
+
+## 31. 2026-05-10 — Forest-age failure-mode triage (PRs #99–#101)
+
+Operator-reported symptom (Signal):
+
+```
+"Please make a graphic about the change of forest age distribution
+over time in Estonia. Use data that does not originate from
+Estonian authorities"
+
+[30 minutes elapsed]
+
+"Sorry — the task stopped producing partial results (no new rows /
+findings for several minutes).  I'll deliver what's been streamed
+so far; please re-send a narrower question to fill the gaps."
+```
+
+The "narrow your question" advice was wrong-shaped for what
+actually happened.  Tracing the gateway logs revealed three
+**systematic** failure points, not one isolated bug.  The
+operator's explicit guidance: "do not monkey-patch system to
+perform this specific task. I need elegant solution. No hacks
+or patchwork. need to cure the root of the issue."  This section
+documents the three Tier-A architectural cures shipped in
+contiguous PRs, each curing a class of failures (not the specific
+forest task).
+
+### 31.1 Evidence-based diagnosis
+
+Three searches that returned **zero matches** told the story:
+
+```
+$ grep -rn finish_reason app/                    → 0 matches
+$ grep -rn 'make.*graphic|deliverable.*verify|produce.*image' app/  → 0 matches
+$ grep -rn vetting_fail.*record\|record.*failure_reason app/        → 0 matches
+```
+
+Three structural gaps:
+
+  1. **LLM truncation invisible.**  The SDK's
+     ``response.choices[0].finish_reason`` was never inspected.
+     A response cut by ``max_tokens`` looked identical to a
+     complete response from the orchestrator's perspective.
+     The downstream LLM-vetter happened to catch the forest
+     task's truncation by reading the text and noticing
+     "ends at 'subtitle' with no closing" — fragile.
+  2. **Artifact-producing tasks have no contract.**  The
+     orchestrator's success contract was "the LLM returned
+     non-empty text".  When the user asked for a PNG and the
+     coder returned Python source code that *would*, if run,
+     produce one, the orchestrator marked that as
+     success-shaped.  Vetting (correctly) said "doesn't
+     deliver the requested graphic" but vetting can't *make*
+     a graphic.  Adjacent infra (``app/coding_session/``
+     Phase 5.4) had the worktree + bounded subprocess runner
+     but no router rule said "user asked for an artifact →
+     route through execute-and-verify."
+  3. **Watchdog message hides the actual failure reason.**
+     The watchdog at ``app/main.py:1894-1900`` fired on a
+     timing signal (no output-progress for 5 min) but
+     generated messages that pretended it was a scope issue
+     ("please re-send a narrower question").  The actual
+     failure — vetting rejected with three specific reasons
+     — sat in errors.jsonl with no path to the user-facing
+     apology.
+
+These compound: fixing only #3 = better error message but
+same underlying failure; fixing only #1 = truncation gone but
+agent still hallucinates dataset IDs (no execution feedback);
+fixing only #2 = agent runs scripts but can still silently
+truncate.  All three are needed for the failure class to
+disappear.
+
+### 31.2 PR #99 — Cure A: ``finish_reason`` guard at LLM-call boundary
+
+New module ``app/llm_completion_guard.py``:
+
+* ``CompletionTruncated(Exception)`` — typed; carries
+  ``partial_text``, ``model``, ``max_tokens``, ``finish_reason``.
+* ``check_completion_truncation(response, kwargs)`` — inspects
+  ``response.choices[0].finish_reason``; raises on ``length`` /
+  ``max_tokens``.  Robust against dict / object / degenerate
+  shapes — returns silently when the SDK changes shape (we
+  never convert SDK changes into outages).
+* ``was_last_completion_truncated()`` — read-only ContextVar
+  flag for observability paths.
+
+Wired into ``app/rate_throttle.py:_throttled_completion`` (sync
++ async): every LLM call in the system funnels through this
+wrapper, so a single check-call cures truncation everywhere.
+
+Deliberately does NOT auto-continue: continuation across
+token-budget boundaries is brittle for code generation; the
+right cure is "raise a typed signal, let the orchestrator's
+existing retry path bump max_tokens and re-run with clean
+state."
+
+Test coverage: 22 tests — extractor robustness, contract for
+each finish_reason value, source-grep regression guards,
+WARN-level logging.
+
+### 31.3 PR #100 — Cure B: artifact-deliverable contract
+
+New module ``app/agents/commander/artifact_intent.py`` with
+three concerns:
+
+1. **``classify_task(text) → TaskShape``** — pure heuristic
+   (no LLM call).  Detects "make / produce / generate / create
+   + graphic / chart / PDF / csv / png / ..." patterns AND
+   explicit-extension mentions ("save as .pdf").  Conservative:
+   requires both a verb AND a noun-or-extension signal, so
+   statements like "the chart is interesting" don't trip it.
+
+2. **``build_artifact_directive(shape)``** — when artifact-shape,
+   returns a prompt block that tells the agent to use the
+   existing ``coding_session_*`` tools (Phase 5.4), execute the
+   code, and emit ``ARTIFACT: <relative-path>`` as the response
+   format the verifier expects.
+
+3. **``verify_artifacts(shape, response_text)``** — extracts
+   paths from ``ARTIFACT:`` markers / backticked mentions /
+   bare references; filters by allowed extensions AND allowed
+   workspace roots (path-traversal-resistant); confirms each
+   candidate is an existing non-empty regular file.  Raises
+   typed ``ArtifactNotProduced`` with attempted-paths +
+   per-path reasons.
+
+Wiring (single-point-of-truth):
+
+  * ``_handle_locked`` (entry) — classify once, propagate via
+    ContextVar.
+  * ``_run_crew_inner`` (start) — if artifact-shape, append
+    directive to ``crew_task``.
+  * ``_run_crew_inner`` (just before return) — if
+    artifact-shape, call ``verify_artifacts``.  On failure,
+    prepend a structured failure header to the result so the
+    existing vetting layer sees a clear rejection — **no new
+    failure pipeline**, the existing ``_build_retry_task``
+    retry path picks up the precise reason.
+
+Test coverage: 30 tests — classify (10), directive (2),
+extract_artifact_paths (7), verify_artifacts (6), ContextVar
+plumbing (2), 3 source-grep regression guards.
+
+### 31.4 PR #101 — Cure C: watchdog surfaces last-known failure reason
+
+Extension of ``app/observability/task_progress.py`` with a
+per-task failure-context tracker:
+
+* ``record_failure_context(kind, detail, *, task_id=None)`` —
+  stash latest failure on the task (uses ContextVar when tid
+  omitted)
+* ``get_failure_context(task_id)`` — read latest, returns
+  ``{kind, detail, age_s}`` or None
+* Cleared by ``reset_task`` at request end
+* kind / detail caps (64 / 500 chars) keep the apology bounded
+
+Failure points wired in:
+
+  * ``vetting.py`` — when verdict == FAIL, record
+    ``kind="vetting_fail"`` with the structured issues list
+  * ``orchestrator.py`` — when ``ArtifactNotProduced`` raises,
+    record ``kind="artifact_missing"`` with shape details
+  * ``llm_completion_guard.py`` — when finish_reason="length"
+    hits, record ``kind="completion_truncated"`` with model +
+    max_tokens
+
+Watchdog reads context + weaves a per-kind explanation into
+the apology.  New helper ``_format_failure_context_suffix(ctx)``
+in ``app/main.py`` with templated suffixes for each kind plus
+a generic fallback for unknown future kinds.
+
+Apology paths updated (each in one place):
+
+  * ``crew-zero-progress`` — generic + suffix when recorded
+  * ``zero-output`` — generic + suffix when recorded
+  * ``output-stall`` — when failure context exists, **REPLACES**
+    the misleading "narrow your question" with the actual
+    reason; falls back to original generic when no failure
+    stored
+  * ``stall`` (LLM-quiet) — generic + suffix
+  * hard-cap — generic + suffix
+
+The 30-min "narrow your question" message that hid three
+vetting issues now reads:
+
+```
+Sorry — the task stopped after hitting the failure shown
+below. The retry path didn't recover before the output-stall
+threshold.
+
+Last detected issue: the response was rejected by quality
+review with the following reasons:
+  truncated mid-function; hallucinated GEE asset ID; no
+  graphic produced
+Try re-sending with the gaps explicitly addressed (e.g.
+missing data, incorrect identifiers, format mismatch).
+```
+
+Test coverage: 20 tests — tracker API (7), formatter (7),
+4 source-grep wiring contracts.
+
+### 31.5 Why the three cures compose
+
+For the original forest-age task, **all three failure modes
+were active simultaneously**.  Each cure addresses one;
+together they make the failure class structurally impossible:
+
+  1. Coder LLM generates script → **A** catches mid-function
+     truncation, raises ``CompletionTruncated``, partial fed
+     back as structured failure.
+  2. Coder returns text-only "code that would generate a
+     graphic" → **B** classifies the request as artifact-shape,
+     requires an actual ``.png`` at a verified path, rejects
+     with ``ArtifactNotProduced`` if missing.
+  3. After retries exhausted → **C** weaves the actual reason
+     into the apology — ``artifact_missing: expected .png;
+     trigger=graphic`` or ``vetting_fail: ...``.
+
+For ANY future "make X file" task:
+  * If the LLM truncates a long script → immediate retry
+    signal, not silent corruption.
+  * If the agent doesn't actually run the code → rejection
+    within seconds, not 30 minutes via vetting.
+  * If retries eventually exhaust → apology names the actual
+    cause every time.
+
+### 31.6 Files touched
+
+```
+app/llm_completion_guard.py                                # PR #99 (NEW)
+app/rate_throttle.py                                       # PR #99
+app/agents/commander/artifact_intent.py                    # PR #100 (NEW)
+app/agents/commander/orchestrator.py                       # PR #100, #101
+app/observability/task_progress.py                         # PR #101
+app/vetting.py                                             # PR #101
+app/main.py                                                # PR #101
+
+tests/test_llm_completion_guard.py                         # PR #99 (NEW) — 22 tests
+tests/test_artifact_intent.py                              # PR #100 (NEW) — 30 tests
+tests/test_watchdog_failure_context.py                     # PR #101 (NEW) — 20 tests
+```
+
+Total: **72 new tests** across 3 new test files.
+
+### 31.7 Cumulative §29 + §30 + §31 totals
+
+* 16 PRs merged contiguously (#84 → #101).
+* 5 systematic failure points cured architecturally:
+  ‑ LLM truncation invisibility (Cure A)
+  ‑ artifact-deliverable contract (Cure B)
+  ‑ watchdog message accuracy (Cure C)
+  ‑ pattern_learner silent-empty fallback (§29)
+  ‑ module/package shadow regressions (§30 utils + audit)
+* 4 false-alarm Monitor probes corrected (Signal-cli,
+  Host bridge, Self-heal journal, chat-poller heartbeat).
+* 1 operational data-volume auth recovery (Neo4j).
+* 172 new tests across 15 new test files (51 in §29 +
+  49 in §30 + 72 in §31).
+
+### 31.8 Verification (post-redeploy)
+
+```
+$ docker exec gateway python3 -m pytest \
+    tests/test_llm_completion_guard.py \
+    tests/test_artifact_intent.py \
+    tests/test_watchdog_failure_context.py
+72 passed in 20.22s
+```
+
+System Monitor: all-green.  Bridge available, Neo4j connected,
+all 9 firebase listeners heartbeating, no errors in last 24 h.
+
+### 31.9 What does NOT need operator action
+
+This section deliberately has no open items.  All three cures
+ship complete with regression-guard tests; the failure mode
+that triggered the triage is structurally impossible to recur
+without these tests failing CI first.
