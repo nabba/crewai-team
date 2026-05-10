@@ -2137,15 +2137,65 @@ def system_status():
     checks.append(_probe("Idle scheduler", "Internal", _idle))
 
     def _self_heal():
-        from app.healing.error_diagnosis import get_recent_errors, get_error_patterns
-        recent = list(get_recent_errors(50) or [])
-        patterns = dict(get_error_patterns() or {})
-        if recent:
-            top = sorted(patterns.items(), key=lambda kv: -kv[1])[:1]
-            top_str = f", top: {top[0][0]}×{top[0][1]}" if top else ""
-            sev = "warn" if recent else "ok"
-            return {"status": sev, "message": f"{len(recent)} recent errors{top_str}"}
-        return {"status": "ok", "message": "no recent errors"}
+        """Self-heal journal status — count entries within a real time
+        window, not the whole FIFO buffer.
+
+        Pre-2026-05-10 fix this called ``get_recent_errors(50)`` which
+        returns the last 50 entries regardless of timestamp.  So any
+        install with historical errors (most have weeks-old residue
+        from before fixes landed) was permanently in WARN — even when
+        zero errors had been recorded in the last 24 h.  The "50
+        recent errors, top: coding:BadRequestError×16" alert was
+        technically true but misleading: those 50 entries spanned
+        2026-04-02 → 2026-04-28 with NO entries from the past 24 h.
+
+        Now: filter by ``ts`` against a 24 h window.  Only entries
+        actually fired recently count toward the WARN status.  When
+        the journal has historical residue but no fresh entries, the
+        operator sees ``"no errors in last 24h (N historical in
+        journal)"`` instead of a phantom WARN.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from app.healing.error_diagnosis import get_recent_errors
+        # Pull a generous slice so the time-window cut isn't truncated
+        # by FIFO ordering on a busy day.
+        all_recent = list(get_recent_errors(200) or [])
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        def _ts_in_window(entry: dict) -> bool:
+            ts_str = entry.get("ts") or ""
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                return False
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts >= cutoff
+
+        recent_24h = [e for e in all_recent if _ts_in_window(e)]
+        if not recent_24h:
+            total = len(all_recent)
+            if total > 0:
+                msg = f"no errors in last 24h ({total} historical in journal)"
+            else:
+                msg = "no recent errors"
+            return {"status": "ok", "message": msg}
+
+        # Compute top pattern over the WINDOW, not all-time, so the
+        # operator sees what's actually firing now.
+        windowed_patterns: dict[str, int] = {}
+        for e in recent_24h:
+            key = f"{e.get('crew', '?')}:{e.get('error_type', '?')}"
+            windowed_patterns[key] = windowed_patterns.get(key, 0) + 1
+        top = sorted(
+            windowed_patterns.items(), key=lambda kv: -kv[1],
+        )[:1]
+        top_str = f", top: {top[0][0]}×{top[0][1]}" if top else ""
+        return {
+            "status": "warn",
+            "message": f"{len(recent_24h)} errors in last 24h{top_str}",
+        }
     checks.append(_probe("Self-heal journal", "Internal", _self_heal))
 
     def _budget_reconcile():
