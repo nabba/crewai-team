@@ -161,11 +161,26 @@ function WebPushCard() {
     (window.matchMedia?.('(display-mode: standalone)').matches ||
       // iOS Safari < 18 still uses the legacy `navigator.standalone`.
       (navigator as unknown as { standalone?: boolean }).standalone === true);
-  const supported = hasServiceWorker && hasPushManager;
+  // Secure context check — service workers + PushManager are stripped
+  // by every browser when the page is served over plain http from a
+  // non-localhost host (LAN IP, .local, Tailscale name, etc.). This is
+  // the single most common reason the previous "Install the PWA"
+  // message misled users who HAD installed the PWA.
+  const isSecure =
+    typeof window !== 'undefined' &&
+    (window.isSecureContext === true ||
+      ['localhost', '127.0.0.1', '[::1]'].includes(
+        window.location?.hostname ?? '',
+      ));
+  const supported = hasServiceWorker && hasPushManager && isSecure;
 
   // What to tell the user when supported === false.
   const unsupportedReason = (() => {
     if (supported) return '';
+    if (!isSecure) {
+      const host = (typeof window !== 'undefined' && window.location?.host) || '';
+      return `Service workers and Web Push require HTTPS (or localhost). You're on http://${host}/, which the browser treats as insecure and silently strips serviceWorker + PushManager from window. Reach the dashboard over HTTPS — Tailscale Funnel and Cloudflare Tunnel both give a free HTTPS hostname; localhost on the Mac itself also works.`;
+    }
     if (isIOS && !isStandalone) {
       return 'iOS only allows Web Push when the app is launched from the home-screen icon. Tap the AndrusAI icon on your home screen instead of opening this URL in Safari. (If the icon is missing, go through Safari → Share → Add to Home Screen first.)';
     }
@@ -245,6 +260,7 @@ function WebPushCard() {
           <div>{unsupportedReason}</div>
           <div className="text-[10px] text-[#7a8599] mt-1">
             diagnostics: {isIOS ? 'iOS' : 'non-iOS'} ·
+            {' '}secure={isSecure ? 'yes' : 'no'} ·
             {' '}standalone={isStandalone ? 'yes' : 'no'} ·
             {' '}serviceWorker={hasServiceWorker ? 'yes' : 'no'} ·
             {' '}pushManager={hasPushManager ? 'yes' : 'no'}
