@@ -7,6 +7,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATIC_ROOT = path.join(__dirname, 'serve-root');
@@ -35,6 +36,77 @@ function loadGatewaySecret() {
 }
 
 const GATEWAY_SECRET = loadGatewaySecret();
+
+// Optional HTTP Basic Auth in front of the dashboard. When DASHBOARD_USER
+// and DASHBOARD_PASS are set (env or sibling .env) every request must
+// carry a matching `Authorization: Basic ...` header. When EITHER is
+// empty, auth is disabled (preserves laptop-localhost dev ergonomics).
+//
+// Use case: restricting access to the Tailscale Funnel public HTTPS
+// route. Once the browser remembers the credentials per-origin, the
+// home-screen PWA inherits them transparently.
+function loadEnvVar(name) {
+  if (process.env[name]) return process.env[name];
+  const envPath = path.join(__dirname, '..', '.env');
+  try {
+    const text = fs.readFileSync(envPath, 'utf8');
+    const re = new RegExp(`^\\s*${name}\\s*=\\s*(.+?)\\s*$`, 'm');
+    const match = text.match(re);
+    if (match) return match[1].replace(/^(['"])(.*)\1$/, '$2');
+  } catch {/* fall through */}
+  return '';
+}
+
+const DASHBOARD_USER = loadEnvVar('DASHBOARD_USER');
+const DASHBOARD_PASS = loadEnvVar('DASHBOARD_PASS');
+const AUTH_ENABLED = Boolean(DASHBOARD_USER && DASHBOARD_PASS);
+
+// Hosts that always bypass auth — local development on the same Mac.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+function clientIsLoopback(req) {
+  const host = (req.headers.host || '').split(':')[0].replace(/^\[|\]$/g, '');
+  if (LOCAL_HOSTS.has(host)) {
+    const remote = (req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    if (LOCAL_HOSTS.has(remote)) return true;
+  }
+  return false;
+}
+
+function checkBasicAuth(req) {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Basic ')) return false;
+  let decoded;
+  try {
+    decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+  } catch {
+    return false;
+  }
+  const idx = decoded.indexOf(':');
+  if (idx < 0) return false;
+  const user = decoded.slice(0, idx);
+  const pass = decoded.slice(idx + 1);
+  // Constant-time compare to defang timing attacks. Buffers must match
+  // length, so pre-pad the supplied side to the expected length.
+  const ub = Buffer.from(user);
+  const pb = Buffer.from(pass);
+  const eu = Buffer.from(DASHBOARD_USER);
+  const ep = Buffer.from(DASHBOARD_PASS);
+  if (ub.length !== eu.length || pb.length !== ep.length) return false;
+  return timingSafeEqual(ub, eu) && timingSafeEqual(pb, ep);
+}
+
+function requireAuth(req, res) {
+  if (!AUTH_ENABLED) return true;
+  if (clientIsLoopback(req)) return true;
+  if (checkBasicAuth(req)) return true;
+  res.writeHead(401, {
+    'WWW-Authenticate': 'Basic realm="AndrusAI Control Plane", charset="UTF-8"',
+    'Content-Type': 'text/plain',
+  });
+  res.end('Authentication required.\n');
+  return false;
+}
 
 const BACKEND_PATH_PREFIXES = [
   '/api/',
@@ -147,6 +219,7 @@ function isBackendPath(url) {
 }
 
 const server = http.createServer((req, res) => {
+  if (!requireAuth(req, res)) return;
   if (isBackendPath(req.url)) {
     proxyToGateway(req, res);
     return;
@@ -158,4 +231,9 @@ server.listen(PORT, () => {
   console.log(`Dashboard server on http://localhost:${PORT}/cp/`);
   console.log(`API proxy → http://${GATEWAY_HOST}:${GATEWAY_PORT} for: ${BACKEND_PATH_PREFIXES.join(', ')}`);
   if (GATEWAY_SECRET) console.log('Gateway secret: injected on outbound proxy requests');
+  console.log(
+    AUTH_ENABLED
+      ? `Basic auth: enabled (loopback bypassed) — user=${DASHBOARD_USER}`
+      : 'Basic auth: disabled (set DASHBOARD_USER + DASHBOARD_PASS in .env to enable)',
+  );
 });
