@@ -195,7 +195,8 @@ class TestCronLivenessIntegration:
         (ws / ".git").mkdir(parents=True)
         (ws / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
         (ws / "error_tracker.json").write_text("{}")
-        (ws / "audit_journal.json").write_text("[]")
+        (ws / "audit_journal").mkdir()
+        (ws / "audit_journal" / "current.jsonl").write_text("")
         (ws / "retrospective").mkdir()
         (ws / "self_improvement").mkdir()
         (ws / "healing").mkdir()
@@ -206,7 +207,7 @@ class TestCronLivenessIntegration:
         for f in (
             "error_tracker.json",
             ".git/HEAD",
-            "audit_journal.json",
+            "audit_journal/current.jsonl",
             "retrospective",
             "self_improvement",
             "healing/watchdog_heartbeat",

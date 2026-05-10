@@ -43,41 +43,27 @@ from app.healing.error_diagnosis import get_error_patterns, get_recent_errors
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-AUDIT_JOURNAL = Path("/app/workspace/audit_journal.json")
 APP_DIR = Path("/app/app")
 MAX_FIX_ATTEMPTS = 3
 _audit_lock = threading.Lock()
 
 
 # ── Audit journal ────────────────────────────────────────────────────────────
+#
+# Storage moved from a 200-entry FIFO ring at workspace/audit_journal.json to
+# the rolled-segment hash-chained log under workspace/audit_journal/. The
+# legacy callable surface is preserved for internal callers; reads now pull
+# from the unbounded rolled log instead of the silently-truncated FIFO.
+
+from app.audit import journal as _audit_journal
+
 
 def _load_audit_journal() -> list[dict]:
-    try:
-        if AUDIT_JOURNAL.exists():
-            return json.loads(AUDIT_JOURNAL.read_text())
-    except (json.JSONDecodeError, OSError):
-        pass
-    return []
-
-
-def _save_audit_journal(entries: list[dict]) -> None:
-    try:
-        from app.safe_io import safe_write_json
-        safe_write_json(AUDIT_JOURNAL, entries[-200:])
-    except OSError:
-        logger.warning("Failed to write audit journal", exc_info=True)
+    return _audit_journal.read_recent(200)
 
 
 def _log_audit(event: str, detail: str, files_changed: list = None) -> None:
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "event": event,
-        "detail": detail[:500],
-        "files_changed": files_changed or [],
-    }
-    journal = _load_audit_journal()
-    journal.append(entry)
-    _save_audit_journal(journal)
+    _audit_journal.append(event, detail, files_changed)
 
 
 # ── Error resolution tracking ────────────────────────────────────────────────

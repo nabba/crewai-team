@@ -19,7 +19,6 @@ def isolated(tmp_path, monkeypatch):
 
     monkeypatch.setattr(log_archival, "_ERRORS_LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(log_archival, "_ERRORS_ARCHIVE_DIR", tmp_path / "logs/archive")
-    monkeypatch.setattr(log_archival, "_AUDIT_JOURNAL_PATH", tmp_path / "audit.json")
     monkeypatch.setattr(log_archival, "_AUDIT_ARCHIVE_DIR", tmp_path / "audit_archive")
 
     (tmp_path / "logs").mkdir()
@@ -52,26 +51,14 @@ def test_live_errors_log_not_archived(isolated):
     assert live.exists()
 
 
-def test_audit_journal_rotation_under_threshold(isolated):
+def test_audit_journal_archive_is_now_a_noop(isolated):
+    """The audit journal moved to rolled-segment storage in C2; the
+    archival shim returns the legacy summary shape so the telemetry
+    tuple in :func:`run` keeps its keys, but performs no work."""
     from app.healing.monitors import log_archival
 
-    (isolated / "audit.json").write_text("[]")
     summary = log_archival._archive_audit_journal()
-    assert summary["rotated"] is False
-
-
-def test_audit_journal_rotation_over_threshold(isolated, monkeypatch):
-    from app.healing.monitors import log_archival
-
-    audit = isolated / "audit.json"
-    audit.write_text("X" * 100)  # tiny but we shrink the threshold
-    monkeypatch.setattr(log_archival, "_AUDIT_ROTATE_BYTES", 50)
-
-    summary = log_archival._archive_audit_journal()
-    assert summary["rotated"] is True
-    assert audit.read_text() == "[]"  # truncated
-    archives = list((isolated / "audit_archive").glob("*.json.gz"))
-    assert len(archives) == 1
+    assert summary == {"rotated": False, "bytes_archived": 0}
 
 
 def test_purge_old_archives(isolated):
