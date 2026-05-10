@@ -5,8 +5,16 @@
 > the dispatcher, adding ten proactive monitors that observe what
 > reactive runbooks can't see, surfacing the auditor's silently
 > accumulating fix proposals to Signal, supervising every healing daemon
-> with a watchdog reaper, and exposing the master switches as
-> runtime-toggleable React controls.
+> with a watchdog reaper, and exposing the runbook-related master
+> switches (`ERROR_RUNBOOKS_ENABLED`, `TOOL_SUPERVISOR_ENABLED`,
+> `RECOVERY_LOOP_ENABLED`) as runtime-toggleable React controls. The
+> healing-daemon switches (`HEALING_MONITORS_ENABLED`,
+> `HEALING_AUDITOR_BRIDGE_ENABLED`, `HEALING_WATCHDOG_ENABLED`) are
+> env-only and require gateway restart — see Master Switches §.
+>
+> The monitor inventory has grown from 10 → 22 since the v3 ship. See
+> the Architecture diagram and `app/healing/monitors/__init__.py` for
+> the current list.
 >
 > See PROGRAM.md §23 for the chronological change-log entry.
 
@@ -30,8 +38,8 @@
                   (operator action: /cp/changes for CRs)
 
 
-                       app/healing/monitors/  ← 10 proactive monitors
-                       │
+                       app/healing/monitors/  ← 22 proactive monitors
+                       │  (v3-shipped 10)
                        ├─ disk_quota          (5 min)
                        ├─ listener_heartbeat  (10 min)
                        ├─ cron_liveness       (30 min)
@@ -41,7 +49,19 @@
                        ├─ lock_housekeeper    (6 h)
                        ├─ adapter_lifecycle   (~30 d)
                        ├─ retention.run_chromadb / _worktrees / _attachments
-                       └─ signal_heartbeat    (1 d)
+                       ├─ signal_heartbeat    (1 d)
+                       │  (added in subsequent passes)
+                       ├─ silent_regression_detector
+                       ├─ pattern_learner
+                       ├─ llm_output_drift
+                       ├─ signal_keepalive
+                       ├─ restore_drill
+                       ├─ version_upgrade_drill
+                       ├─ provider_contract_drift
+                       ├─ db_vacuum
+                       ├─ log_archival
+                       ├─ db_backup
+                       └─ crypto_rotation_drill
                                 │
                        Single daemon driver in __init__.py
                        (60 s tick + per-monitor cadence guards)
@@ -364,11 +384,32 @@ authorized as part of the React-toggle work below.
 
 ## Master switches
 
-Five env-only flags became runtime-toggleable from `/cp/settings`
-on 2026-05-09. The reader functions try `runtime_settings.get_*()`
-first and fall back to the env var if the runtime-settings module
-raises (tests / degraded boot). New keys are env-seeded on first
-read so an existing `.env` setup keeps its current behaviour.
+Three runbook-related env flags became runtime-toggleable from
+`/cp/settings` on 2026-05-09: `ERROR_RUNBOOKS_ENABLED`,
+`TOOL_SUPERVISOR_ENABLED`, `RECOVERY_LOOP_ENABLED`. Their reader
+functions try `runtime_settings.get_*()` first and fall back to the
+env var if the runtime-settings module raises (tests / degraded
+boot). New keys are env-seeded on first read so an existing `.env`
+setup keeps its current behaviour.
+
+The three healing-daemon switches (`HEALING_MONITORS_ENABLED`,
+`HEALING_AUDITOR_BRIDGE_ENABLED`, `HEALING_WATCHDOG_ENABLED`) and
+the two Goodhart switches remain **env-only and require gateway
+restart**. The daemons start at module import of `app.healing` (see
+`app/healing/__init__.py`), so flipping the env at runtime has no
+effect; redeploy with the env updated to change state. The
+`/cp/settings` Self-heal-subsystems card therefore shows three
+toggles, not five.
+
+The eager wiring of `app.healing` is anchored by an explicit
+`import app.healing` in `app/main.py` (next to the
+`from app.healing.error_diagnosis import diagnose_and_fix` line).
+This was added 2026-05-10 to remove a structural fragility — the
+22-monitor driver, the auditor bridge, and the watchdog all
+previously depended on a single transitive from-import staying
+eager; a refactor that lazy-imported `error_diagnosis` would have
+silently disabled the entire healing surface. Do NOT remove the
+explicit import without re-anchoring the eager wiring elsewhere.
 
 | Variable | Reader location | React toggle | Default |
 |---|---|---|---|

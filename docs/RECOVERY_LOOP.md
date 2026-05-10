@@ -1099,9 +1099,16 @@ For rapid navigation:
 
 ## 17. Composition with the Tool Supervisor
 
-The Tool Supervisor (`app/tool_runtime/supervisor.py`, opt-in via
-`TOOL_SUPERVISOR_ENABLED=true`) is a sibling layer that handles a
-different failure shape. The two compose without overlap:
+The Tool Supervisor (`app/tool_runtime/supervisor.py`) is a sibling
+layer that handles a different failure shape. **Activation is
+double-gated**: the supervisor wraps `available_functions` only
+inside `LoadableAgentExecutor`, so it fires only when *both*
+`TOOL_SUPERVISOR_ENABLED=true` *and* the calling agent runs on the
+LoadableAgent path (`LOADABLE_<AGENT>=1` or master
+`LOADABLE_AGENT_EXPERIMENTAL=1`). Agents on the standard CrewAI
+executor bypass the supervisor regardless of the flag.
+
+When both gates are open, the two layers compose without overlap:
 
 | Layer | When it fires | What kind of failure | Surface |
 |---|---|---|---|

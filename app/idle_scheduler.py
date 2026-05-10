@@ -63,6 +63,12 @@ _enabled = True  # kill switch — toggled from Firestore
 _enabled_lock = threading.Lock()
 _idle_thread: threading.Thread | None = None
 
+# Snapshot of the jobs passed to start(), exposed read-only via
+# list_jobs() so dashboards can publish the full registry alongside
+# APScheduler cron jobs. Stored as (name, weight) — the callable is
+# intentionally dropped (not serialisable, not interesting to readers).
+_active_jobs_snapshot: list[tuple[str, str]] = []
+
 
 def notify_task_start() -> None:
     """Called when a user task begins processing."""
@@ -557,12 +563,27 @@ def start(jobs: list[tuple[str, Callable[[], None]]] | None = None) -> None:
         logger.warning("idle_scheduler: no jobs configured, not starting")
         return
 
+    global _active_jobs_snapshot
+    _active_jobs_snapshot = [
+        (entry[0], (entry[2] if len(entry) >= 3 else JobWeight.MEDIUM))
+        for entry in jobs
+    ]
+
     _stop_event.clear()
     _idle_thread = threading.Thread(
         target=_run_idle_loop, args=(jobs,),
         daemon=True, name="idle-scheduler",
     )
     _idle_thread.start()
+
+
+def list_jobs() -> list[tuple[str, str]]:
+    """Return a (name, weight) snapshot of the currently registered idle jobs.
+
+    Empty until start() has been called. Used by app.main._publish_schedule
+    so the dashboard can show idle jobs alongside APScheduler cron jobs.
+    """
+    return list(_active_jobs_snapshot)
 
 
 def stop() -> None:

@@ -4316,3 +4316,141 @@ tests/test_cure_c_followups.py             # NEW — 6 tests
   actually running the script that produces it") would benefit
   from an "actually run before reporting" discipline at the
   coder level.  That's its own future PR.
+
+## 37. 2026-05-10 — Boot-wiring audit + structural fixes
+
+Operator-prompted "ultrathink" audit of *whether everything that
+needs to be triggered at boot is actually triggered at boot*. The
+documented inventory in CLAUDE.md is large — 3 reconcilers, 5
+observational idle jobs, 22 healing monitors, auditor bridge,
+watchdog, life-companion's 3 jobs, identity reflections, etc.
+Cross-referenced every entry against `app/main.py`'s lifespan,
+`idle_scheduler._default_jobs`, `companion.loop.get_idle_jobs`, and
+`app/healing/__init__.py`. **Headline: every documented job is
+registered.** The risk is not missing wiring — it's *how* one
+load-bearing chunk gets wired.
+
+### 37.1 The transitive-import fragility (HIGH)
+
+`app/main.py:96` did `from app.healing.error_diagnosis import
+diagnose_and_fix`. That side-effect-imports `app/healing/__init__.py`,
+which side-effect-imports `monitors`, `auditor_bridge`, and
+`watchdog` — each calling `start()` at module level. The
+`__init__.py` itself flagged the fragility ("nothing in the boot
+chain (main.py:96 → app.healing) was previously importing them — so
+their daemons never ran in production"). It then piggybacked 3
+*non-healing* subsystems on the same import
+(`capability_gap_analyzer`, `library_radar`, `proposal_bridge`).
+
+A refactor that lazy-imported `error_diagnosis` would have silently
+disabled the entire 22-monitor driver, the auditor bridge, the
+watchdog, and three observational subsystems — with no test
+catching it.
+
+**Fix**: explicit `import app.healing  # noqa: F401` at
+`app/main.py:96`, with a 12-line comment documenting the
+load-bearing side effects. The healing surface is now anchored
+explicitly; refactors of unrelated imports cannot disable it.
+
+### 37.2 Orphan top-level entry point (MEDIUM)
+
+`crewai-team/main.py` (386 lines) defined a duplicate FastAPI app
+that registered ONLY `self_improve`, `workspace_sync`, `heartbeat`,
+and a Discord start. Nothing referenced it (Dockerfile,
+entrypoint.sh, docker-compose.yml, run_host.py all use
+`app.main:app`), but the file was a footgun for any operator who
+copied a deploy script and ran `uvicorn main:app` from
+`crewai-team/`.
+
+**Fix**: replaced 386-line orphan with a 24-line stub —
+docstring + `raise RuntimeError(...)` at module top — so any
+attempt to load it fails immediately with an actionable error
+message pointing at `app.main:app`.
+
+### 37.3 `_publish_schedule()` only saw cron jobs (MEDIUM)
+
+`_publish_schedule()` in `app/main.py` read `scheduler.get_jobs()`
+(APScheduler only) and pushed the result to Firestore for the
+dashboard. The ~95 idle-scheduler jobs are a separate registry and
+were never published. Dashboard "scheduled jobs" view saw only
+~14 cron jobs.
+
+**Fix**:
+* Added `_active_jobs_snapshot` module state + `list_jobs()`
+  public accessor to `app/idle_scheduler.py`. `start()`
+  populates the snapshot as `(name, weight)` tuples (callable
+  dropped — not serialisable, not interesting to readers).
+* `_publish_schedule()` now merges idle jobs into the report
+  (`id="idle:<name>"`, `cron="idle:<weight>"`,
+  `next_run=None`).
+* Re-called `_publish_schedule()` immediately after
+  `idle_scheduler.start()` so the dashboard sees the full
+  ~95-job picture, not just the ~14 cron jobs.
+
+### 37.4 CLAUDE.md / SELF_HEAL_V3.md doc drift (MEDIUM + LOW)
+
+Three drifts corrected:
+
+1. **"Runtime-toggleable master switches via /cp/settings
+   Self-heal-subsystems card"** — overclaim. Only
+   `error_runbooks_enabled` and `tool_supervisor_enabled` are
+   runtime-toggleable (verified at `runtime_settings.py:13-14,
+   87-88`). `HEALING_MONITORS_ENABLED`,
+   `HEALING_AUDITOR_BRIDGE_ENABLED`, `HEALING_WATCHDOG_ENABLED`
+   are env-only and require gateway restart (the daemons
+   start at module import). CLAUDE.md and SELF_HEAL_V3.md both
+   updated to say so explicitly.
+2. **Monitor count 10 → 22** — the v3 ship was 10 monitors;
+   12 more were added in subsequent passes
+   (`silent_regression_detector`, `pattern_learner`,
+   `llm_output_drift`, `signal_keepalive`, `restore_drill`,
+   `version_upgrade_drill`, `provider_contract_drift`,
+   `db_vacuum`, `log_archival`, `db_backup`,
+   `crypto_rotation_drill`). Architecture diagram in
+   SELF_HEAL_V3.md updated; CLAUDE.md monitor-list updated.
+3. **Tool supervisor double-gating** — CLAUDE.md described it
+   as "wraps every CrewAI native-tool dispatch". Actual: the
+   supervisor wraps `available_functions` only inside
+   `LoadableAgentExecutor`, so it fires only when *both*
+   `TOOL_SUPERVISOR_ENABLED=true` *and* the calling agent runs
+   on the LoadableAgent path. Standard CrewAI executor
+   bypasses it regardless of the flag. CLAUDE.md and
+   RECOVERY_LOOP.md §17 updated.
+
+### 37.5 Verified clean (no fix needed)
+
+* All 3 reconcilers (belief-outbox-neo4j, belief-outbox-chroma,
+  dlq-drain) registered.
+* All 5 observational idle jobs (decentered-pass,
+  valve-audit-replay, wiki-index-reconciler,
+  viability-goal-emitter, backward-counterfactual-replay)
+  registered.
+* All 4 continuity-ledger emission sites present
+  (`governance_amendment.protocol.mark_applied`,
+  `governance_ratchet.protocol.{set,relax}_ratchet`,
+  `subia.integrity.write_manifest`,
+  `change_requests.lifecycle.mark_applied`).
+* Discord client launched as gateway background asyncio task at
+  `app/main.py:811`; clean shutdown at `app/main.py:819`.
+* Web Push subscription auto-prune is inline on send (410-Gone
+  path at `app/web_push/sender.py:74-76`) — correct design, no
+  idle job needed.
+* All env-flag defaults match CLAUDE.md (life-companion ON,
+  health/inbox OFF, error-runbooks/tool-supervisor OFF, etc.).
+
+### 37.6 Files touched
+
+```
+crewai-team/main.py                           # neutralised orphan (386 → 24 lines)
+crewai-team/app/main.py                       # explicit healing import, _publish_schedule extension, re-call
+crewai-team/app/idle_scheduler.py             # _active_jobs_snapshot + list_jobs()
+CLAUDE.md                                     # tool supervisor row, Self-Heal v3 row, healing/monitors row
+crewai-team/docs/SELF_HEAL_V3.md              # intro overclaim, monitor diagram, master-switch table, anchor note
+crewai-team/docs/RECOVERY_LOOP.md             # §17 supervisor double-gating
+crewai-team/PROGRAM.md                        # this entry
+```
+
+No changes to TIER_IMMUTABLE files. No agent-modifiable code paths
+touched. All changes additive/correctional — no behaviour change for
+running gateways (the explicit-import is a no-op for the loaded
+process).

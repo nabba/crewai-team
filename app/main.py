@@ -93,6 +93,19 @@ from app.config import get_settings, get_gateway_secret
 from app.security import is_authorized_sender, is_within_rate_limit, _redact_number
 from app.signal_client import SignalClient
 from app.agents.commander import Commander
+
+# Load-bearing side-effect import — DO NOT remove or convert to lazy.
+# Importing app.healing executes app/healing/__init__.py, which eager-
+# starts daemon threads for the 22-monitor driver, the auditor bridge,
+# the watchdog reaper, and three observational subsystems
+# (capability_gap_analyzer, library_radar, proposal_bridge). Each
+# submodule has a module-level start() at import-time. Previously this
+# wiring was reached only transitively via the diagnose_and_fix import
+# below — making the entire self-healing surface depend on a single
+# from-import staying eager. See app/healing/__init__.py for the
+# eager-wiring inventory and the noted history of subsystems whose
+# daemons "never ran in production" before being anchored here.
+import app.healing  # noqa: F401
 from app.healing.error_diagnosis import diagnose_and_fix
 from app.audit import (
     log_request_received, log_response_sent, log_security_event
@@ -541,6 +554,11 @@ async def lifespan(app: FastAPI):
     idle_scheduler.start()
     logger.info("Idle scheduler started — background work runs when no user tasks active")
 
+    # Re-publish the schedule now that idle jobs are registered. The first
+    # call at boot only saw APScheduler cron jobs (~14); this call adds the
+    # ~95 idle-scheduler jobs so the dashboard shows the full picture.
+    _publish_schedule()
+
     # Initialize versioned prompt registry — extracts souls/*.md on first boot
     try:
         from app.prompt_registry import init_registry
@@ -866,7 +884,13 @@ async def lifespan(app: FastAPI):
 
 
 def _publish_schedule() -> None:
-    """Push current scheduler job list to Firestore."""
+    """Push current scheduler job list to Firestore.
+
+    Merges APScheduler cron jobs with the idle-scheduler job registry so
+    the dashboard sees both surfaces. Idle jobs do not have a discrete
+    next_run (they fire whenever the gateway is idle), so we mark them
+    with cron="idle:<weight>" and next_run=None.
+    """
     try:
         jobs = []
         for job in scheduler.get_jobs():
@@ -877,6 +901,16 @@ def _publish_schedule() -> None:
                 "next_run": next_run.isoformat() if next_run else None,
                 "cron": str(job.trigger),
             })
+        try:
+            for name, weight in idle_scheduler.list_jobs():
+                jobs.append({
+                    "id": f"idle:{name}",
+                    "name": name,
+                    "next_run": None,
+                    "cron": f"idle:{weight}",
+                })
+        except Exception:
+            logger.debug("Failed to enumerate idle jobs", exc_info=True)
         report_schedule(jobs)
     except Exception:
         logger.debug("Failed to publish schedule", exc_info=True)
