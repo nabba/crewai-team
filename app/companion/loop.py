@@ -158,4 +158,19 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.extend(_identity_get_idle_jobs())
     except Exception:
         logger.debug("companion.loop: identity jobs skipped", exc_info=True)
+
+    # Health summary (§5.1; default-OFF behind HEALTH_INGESTION_ENABLED).
+    try:
+        from app.health.idle_job import get_idle_jobs as _health_get_idle_jobs
+        jobs.extend(_health_get_idle_jobs())
+    except Exception:
+        logger.debug("companion.loop: health jobs skipped", exc_info=True)
+
+    # Multi-modal inbox watcher (§5.4; default-OFF behind
+    # INBOX_INGESTION_ENABLED).
+    try:
+        from app.inbox import get_idle_jobs as _inbox_get_idle_jobs
+        jobs.extend(_inbox_get_idle_jobs())
+    except Exception:
+        logger.debug("companion.loop: inbox jobs skipped", exc_info=True)
     return jobs
