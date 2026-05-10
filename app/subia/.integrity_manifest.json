@@ -196,6 +196,34 @@
       "sha256": "752977bdca4e63c724daeae1a2ef421f2fda7088ed8ebdfab470b175b12aa6cf",
       "size": 2814
     },
+    "app/subia/inquiry/__init__.py": {
+      "sha256": "44a769321bf50f416c57c4aee98f85c49b8ed2020a7d281ad2c5f45f8771e79b",
+      "size": 2491
+    },
+    "app/subia/inquiry/composer.py": {
+      "sha256": "071315781d9e041041179ffb4c94b1d1b135b9b9c76fbd92960484e6beb37154",
+      "size": 8212
+    },
+    "app/subia/inquiry/idle_registration.py": {
+      "sha256": "dcd3409bdf48f8d8ec75826c649241b654bceb70e2250efff6c10f84819db167",
+      "size": 4484
+    },
+    "app/subia/inquiry/linter.py": {
+      "sha256": "48419803d1e8c1f1190e32cd6193e9bb81084812563dcba6a1c1ed2829ed1930",
+      "size": 6327
+    },
+    "app/subia/inquiry/questions.py": {
+      "sha256": "f34ec542d23b2f7843b106e301cf0b02b7104be6be5d84c23e21ca7b87717a1d",
+      "size": 3490
+    },
+    "app/subia/inquiry/selector.py": {
+      "sha256": "464cd43b78b92044fefbd96a45f995906c6e75a65352b985263cc09a1bcfa6d5",
+      "size": 2971
+    },
+    "app/subia/inquiry/writer.py": {
+      "sha256": "2c72af0e98dc9b1e79e83e943681017d73022dc765233952a31fd63316f1fede",
+      "size": 3171
+    },
     "app/subia/integrity.py": {
       "sha256": "7c6b6d0bab73c9b684cb20df93594510d067ecd2862692e55499da73f7921e80",
       "size": 9440
