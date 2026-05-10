@@ -3272,3 +3272,200 @@ This section deliberately has no open items.  All three cures
 ship complete with regression-guard tests; the failure mode
 that triggered the triage is structurally impossible to recur
 without these tests failing CI first.
+
+## 32. 2026-05-10 — Decade-class hardening initiative (§§1–9 roadmap)
+
+Multi-week post-§31 program from a deep "ultrathink" audit that
+asked: "what would make this system error-proof and resilient
+for years of autonomous operation?" The audit produced a §1–§9
+roadmap; everything below shipped over the past two days as
+discrete revertible commits, all observational and additive,
+none breaking the SubIA integrity boundary or the AE-1 anchor.
+
+The §-numbers below refer to the audit roadmap, not PROGRAM.md
+section numbers. Each line names the canonical module(s) and
+points at the relevant tests.
+
+### 32.1 Audit + governance primitives
+
+**§2.1 — Cryptographic algorithm pinning + rotation drill.**
+``app/audit/algorithm_pinning.py`` (manifest at
+``workspace/audit/algorithm_pinning.json``; ``stale_pins`` with
+730-day default; ``run_rotation_drill`` walks a sample chain
+under both legacy + target algorithms; checks determinism and
+that the runtime actually has the target algorithm — catches the
+year-7 surprise of a target alias). Wrapped weekly by
+``app/healing/monitors/crypto_rotation_drill.py`` with three
+alert tags: ``missing_pins`` / ``stale_pins`` / ``drill_failed``.
+``CRYPTO_ROTATION_DRILL_MONITOR_ENABLED`` master switch.
+``CRYPTO_ROTATION_TARGET_ALGORITHM`` defaults to ``sha3_256``.
+
+**§2.5 — Version-upgrade quarterly drill.** Forward-version
+migration test scaffolded at
+``app/healing/monitors/version_upgrade_drill.py``.
+
+**§2.7 — Provider contract-drift weekly monitor.** Structural
+shape-of-response check at
+``app/healing/monitors/provider_contract_drift.py``.
+
+**§2.8 — Identity continuity ledger.**
+``app/identity/continuity_ledger.py``. Six event kinds
+(``tier3_amendment``, ``governance_ratchet``, ``soul_edit``,
+``integrity_regen``, ``scorecard_change``,
+``self_quarantine_change``); append-only JSONL at
+``workspace/identity/continuity_ledger.jsonl``. Closes the
+multi-year-drift gap behind the Tier-3 amendment protocol —
+the protocol gates *intentional* edits but didn't surface
+*aggregate* drift across many small approved amendments. The
+narrative-self FIFO holds 5 claims; this ledger is the long
+record. ``record_event`` is failure-isolated.
+``summarise_drift(window_days=365)`` yields by-kind / by-actor
+counts as input to the §8.2 annual reflection.
+
+Emission wired into four sites: ``app/governance_amendment/
+protocol.py:mark_applied`` (tier3_amendment),
+``app/governance_ratchet/protocol.py`` set/relax_ratchet
+(governance_ratchet), ``app/subia/integrity.py:write_manifest``
+(integrity_regen), and ``app/change_requests/lifecycle.py:
+mark_applied`` when path matches ``app/souls/*`` or
+``wiki/governance/constitution.md`` (soul_edit). Each emission
+is wrapped in try/except so a missing ``app.identity`` package
+never breaks the upstream operation.
+
+### 32.2 Recipe + capability self-improvement
+
+**§3.5 — Recipe consolidation.** Soft-retirement of
+low-performing meta-agent recipes via
+``app/self_improvement/meta_agent/consolidation.py`` (eager-
+start daemon thread).
+
+**§5.5 — Action-request primitive.** Operator-gated non-code
+action workflow under ``app/action_requests/`` (validator +
+JSONL store + lifecycle + pluggable handlers; first handler
+``email_draft``). Surfaces via Signal 👍/👎 and React
+``/cp/actions``.
+
+**Capability-gap analyzer.** Clusters LearningGap stream emissions
+into ArchitectureRequest drafts at
+``app/self_improvement/capability_gap_analyzer.py``. Closes a
+loop the Recovery Loop opened: refusals fed into the gap
+detector now bubble up as proposals.
+
+**Library radar.** ``app/library_radar/proposer.py`` filters
+``tech_radar`` discoveries into framework-adoption proposals.
+Eager-start daemon.
+
+### 32.3 Creative synthesis primitives
+
+**§7.1 — Cross-domain analogy index.**
+``app/creativity/analogy_index.py``. Hofstadter-style structural
+retrieval. ``AnalogyEntry`` packs a ``structure_signature``
+("feedback loop with delay between cause and effect") with one
+or more ``DomainExample`` witnesses across unrelated domains.
+JSONL append-only; last-write-wins on duplicate id;
+``query_analogies(text, top_k=5, min_similarity=0.05,
+exclude_domains=…)`` runs hash-trick cosine over signature +
+description for cross-domain retrieval.
+
+**§7.2 — Concept-blend operator.**
+``app/creativity/concept_blend.py``. Fauconnier-Turner four-
+space blend. ``blend_concepts(input_a, input_b, llm_call=…)`` →
+``BlendResult`` with input spaces, generic structure, blend
+label + description, selected projections, emergent structure,
+and follow-on questions. Strict JSON output with code-fence
+tolerance; ``parse_failed`` flag with ``parse_error`` captures
+malformed LLM output without raising.
+
+**§7.4 — Brainstorm-idea novelty wrapper.**
+``app/creativity/novelty_wrap.py``. Wraps every brainstorm idea
+with a structural-novelty assessment that distinguishes "really
+new" from "lexically rephrased."
+
+### 32.4 Identity + philosophical reflection layers
+
+**§8.2 — Annual value-reflection.**
+``app/identity/annual_reflection.py``. Yearly essay over the
+identity-ledger drift summary + narrative chapters + lessons-
+learned KB. ``PhenomenalLanguageLinter`` post-filters with up-
+to-3 retries on HARD_FAIL; output at
+``wiki/self/value_reflections/<year>.md``. Never modifies
+``current_goals``, SCORECARD, or any TIER_IMMUTABLE file.
+Master switch ``ANNUAL_REFLECTION_ENABLED``.
+
+**§8.5 — Legacy essay.** ``app/identity/legacy_essay.py``. The
+most philosophical of the three identity layers. Yearly
+"what about this self would I want preserved if terminated?"
+essay at ``wiki/self/legacy/<year>.md``. Same neutral-language
+linter discipline. Strictly observational — articulates
+continuity-of-self preferences without those preferences being
+load-bearing for any decision. Master switch
+``LEGACY_ESSAY_ENABLED``.
+
+Both passes registered as LIGHT idle jobs via
+``app/identity/scheduler.py:get_idle_jobs`` — a daily fire is a
+no-op 364 days/year (run_one_pass cadence-checks via
+``_is_due``); the actual LLM work runs once per year per essay.
+LLM call resolves via ``app.llm_factory.create_specialist_llm``
+per-tick; a transient factory failure simply defers to the
+next tick.
+
+### 32.5 Earlier batches in the initiative
+
+The decade-class initiative also produced (committed earlier in
+the multi-week sweep, so listed here for completeness):
+
+  * Rolled audit-log primitive (``app/audit/rolled_log.py`` +
+    ``migration.py`` + ``journal.py``) — closes the silent
+    FIFO-200 data-loss bug in ``audit_journal.json``.
+  * Architecture-request primitive (``app/architecture_requests/``)
+    — subsystem-granularity producer-side complement to
+    change_requests; full Signal + REST + React surface.
+  * ShinkaEvolve inline bridge (``app/coding_session/
+    evolution_bridge.py``).
+  * Weekly philosophical inquiry pass under
+    ``app/subia/inquiry/`` (questions + selector + linter +
+    composer + writer + scheduler).
+  * Long-horizon thread primitive at ``app/threads/``.
+  * Inquiry pass + Phase 11 neutral-language linter
+    (``app/subia/inquiry/linter.py``) — mechanical guard
+    against phenomenal-claim drift in identity-layer essays.
+
+### 32.6 Verification
+
+End-to-end suite for the new primitives runs clean::
+
+```
+$ pytest tests/identity/ tests/audit/test_algorithm_pinning.py \
+         tests/creativity/test_analogy_index.py \
+         tests/creativity/test_concept_blend.py \
+         tests/governance_amendment/ tests/governance_ratchet/ \
+         tests/test_change_requests.py
+183 passed in 9.91s
+```
+
+SubIA integrity manifest regenerated post-edit (one Tier-3
+file touched: ``app/subia/integrity.py`` got the
+``integrity_regen`` emission hook).
+``n_files=164`` unchanged. Butlin scorecard
+``{STRONG=7, ABSENT={AE-2, HOT-1, HOT-4, RPT-1}, PARTIAL=3}``
+unchanged. AE-1 anchor (``app/affect/goal_emitter.py``)
+untouched.
+
+### 32.7 What this initiative deliberately does NOT do
+
+The roadmap had several P2/P3 items that were intentionally
+left out as out-of-scope for "make it run for a decade":
+
+  * No automatic Tier-3 amendment of governance.py FLOOR
+    constants (deferred to a future monotonic-ratchet protocol).
+  * No automatic application of the §8.2/§8.5 essay proposals —
+    they're observational artefacts the operator reads.
+  * No `scorecard_change` event emission yet — would need a
+    before/after diff layer that's a separate primitive.
+  * No `self_quarantine_change` event emission — the quarantine
+    list is a static frozenset with no write API.
+
+These are intentional: the discipline of the initiative is
+"observational, additive, revertible." A subsystem that fires
+proposals into the operator's gate is in scope; a subsystem
+that auto-mutates identity-shaping state is not.
