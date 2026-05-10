@@ -126,8 +126,13 @@ cookie automatically (cookie value is `HMAC(pass, "dashboard-auth-v1")`).
 `tailscale funnel --bg --https=443 http://localhost:3100` exposes
 the dashboard on `https://<machine>.<tailnet>.ts.net/cp/` with a
 real Let's-Encrypt cert. Prerequisite admin-console toggles:
-HTTPS Certificates (DNS page) + Funnel ACL grant. See
-PROGRAM.md §35.3 for the complete walkthrough.
+HTTPS Certificates (DNS page) + Funnel ACL grant.
+
+**Full step-by-step walkthrough** (Tailscale toggles → CLI →
+dashboard auth env vars → iPhone home-screen install → Web Push
+permission grant → troubleshooting): see
+[`docs/PWA_SETUP.md`](./PWA_SETUP.md). PROGRAM.md §35.3 covers
+the design rationale; PWA_SETUP.md is the operator recipe.
 
 ## Common gotchas
 
