@@ -2038,30 +2038,92 @@ def system_status():
 
     # ── Gateways / messaging ───────────────────────────────────
     def _signal():
+        """Probe vanilla signal-cli's --http JSON-RPC endpoint.
+
+        Pre-2026-05-10 fix this hit GET /v1/about, which is the path
+        used by the *separate* signal-cli-rest-api Docker wrapper —
+        not vanilla signal-cli.  Vanilla signal-cli's --http mode is
+        JSON-RPC at POST /api/v1/rpc.  The 404 from /v1/about
+        triggered a false "Endpoint not found" ERROR in the System
+        Monitor for any deployment using upstream signal-cli (the
+        host-native dev path).
+        """
+        import json as _json
         import urllib.request as _u
         from app.config import get_settings
         s = get_settings()
         url = (s.signal_http_url or "").rstrip("/")
         if not url:
             return {"status": "warn", "message": "signal_http_url not configured"}
-        with _u.urlopen(f"{url}/v1/about", timeout=2) as r:
-            ok = r.status == 200
+        body = _json.dumps({
+            "jsonrpc": "2.0", "method": "version", "id": 1,
+        }).encode("utf-8")
+        req = _u.Request(
+            f"{url}/api/v1/rpc",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _u.urlopen(req, timeout=2) as r:
+            payload = _json.loads(r.read().decode("utf-8"))
+        version = (payload.get("result") or {}).get("version") or "?"
+        if "error" in payload:
+            return {
+                "status": "error",
+                "message": f"rpc error: {payload['error']}",
+            }
         return {
-            "status": "ok" if ok else "error",
-            "message": f"daemon responding ({s.signal_owner_number})" if ok else f"http {r.status}",
+            "status": "ok",
+            "message": f"daemon responding ({s.signal_owner_number} · v{version})",
         }
     checks.append(_probe("Signal-cli daemon", "Messaging", _signal))
 
     def _bridge():
+        """Probe the host bridge by exercising the same code path the
+        rest of the system uses to decide if it's wired.
+
+        Pre-2026-05-10 fix this gated on the legacy ``bridge_enabled``
+        setting (env ``BRIDGE_ENABLED=1``).  Since §27.3 the actual
+        wiring uses per-agent ``BRIDGE_TOKEN_<AGENT>`` tokens via
+        ``app.bridge_client.get_bridge(...)`` — ``BRIDGE_ENABLED`` is
+        no longer the source of truth.  The probe was reporting
+        "host bridge disabled" while the bridge was fully functional.
+        """
+        # Try the modern per-agent path first.  ``change_requests`` is
+        # the canonical agent token used by the React /cp/changes
+        # surface; if it's wired, the bridge is operational.
+        try:
+            from app.bridge_client import get_bridge
+            client = get_bridge("change_requests")
+            if client and client.is_available():
+                return {
+                    "status": "ok",
+                    "message": "responding via per-agent token (change_requests)",
+                }
+        except Exception:
+            pass
+
+        # Fall back to the legacy enable check + raw /health probe so
+        # laptop dev setups with BRIDGE_ENABLED=1 + BRIDGE_SHARED_SECRET
+        # still surface a sensible status.
         import urllib.request as _u
         from app.config import get_settings
         s = get_settings()
         if not s.bridge_enabled:
-            return {"status": "warn", "message": "host bridge disabled (BRIDGE_ENABLED=0)"}
+            return {
+                "status": "warn",
+                "message": (
+                    "host bridge: no per-agent BRIDGE_TOKEN_* tokens "
+                    "configured AND BRIDGE_ENABLED=0"
+                ),
+            }
         url = f"http://{s.bridge_host}:{s.bridge_port}/health"
         with _u.urlopen(url, timeout=2) as r:
             ok = r.status == 200
-        return {"status": "ok" if ok else "error", "message": f"port {s.bridge_port}: http {r.status}"}
+        return {
+            "status": "ok" if ok else "error",
+            "message": f"port {s.bridge_port}: http {r.status}",
+        }
     checks.append(_probe("Host bridge", "Messaging", _bridge))
 
     # ── Internal subsystems ────────────────────────────────────
