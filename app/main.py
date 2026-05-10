@@ -1319,6 +1319,97 @@ async def receive_signal(request: Request):
                 )
                 # Fall through
 
+        # ── Action-request approval via reaction (§5.5) ───────────────
+        # 👍 on an ACTION REQUEST message approves + applies (sends the
+        # email / creates the calendar event / etc); 👎 rejects.
+        # APPLY_FAILED is recoverable: a second 👍 retries the apply.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.action_requests import (
+                    ActionStatus as _AC_Status,
+                    DecisionSource as _AC_DS,
+                    apply as _ac_apply,
+                    approve as _ac_approve,
+                    find_by_signal_ts as _ac_find,
+                    get as _ac_get,
+                    reject as _ac_reject,
+                )
+                ac_id = _ac_find(target_ts)
+                if ac_id is not None:
+                    is_approve = emoji in ("👍", "+1")
+                    ac_now = _ac_get(ac_id)
+                    if ac_now is not None and ac_now.status in (
+                        _AC_Status.PENDING, _AC_Status.APPLY_FAILED,
+                    ):
+                        loop = asyncio.get_running_loop()
+                        if is_approve:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _ac_approve(
+                                    ac_id, source=_AC_DS.SIGNAL_THUMBS_UP,
+                                ),
+                            )
+                            applied = await loop.run_in_executor(
+                                None, _ac_apply, ac_id,
+                            )
+                            if applied.status is _AC_Status.APPLIED:
+                                ack_msg = (
+                                    f"✅ Action {ac_id} applied "
+                                    f"({applied.action_type.value}).\n"
+                                    f"  artifact: {applied.apply_artifact}"
+                                )
+                            else:
+                                ack_msg = (
+                                    f"⚠️ Action {ac_id} approved, but apply "
+                                    f"FAILED.\n"
+                                    f"  ERROR: {applied.apply_error}\n"
+                                    f"  Status now APPLY_FAILED — react 👍 "
+                                    f"again to retry, or use "
+                                    f"/cp/action-requests."
+                                )
+                        elif ac_now.status is _AC_Status.PENDING:
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _ac_reject(
+                                    ac_id,
+                                    source=_AC_DS.SIGNAL_THUMBS_DOWN,
+                                    decision_reason="rejected via 👎 in Signal",
+                                ),
+                            )
+                            ack_msg = f"❌ Action {ac_id} rejected."
+                        else:
+                            # 👎 on APPLY_FAILED is a no-op (action
+                            # already didn't run); fall through.
+                            ack_msg = None
+
+                        if ack_msg is not None:
+                            logger.info(
+                                "Reaction %s on action_request %s → %s",
+                                emoji, ac_id,
+                                "applied/failed" if is_approve else "rejected",
+                            )
+                            try:
+                                client = SignalClient()
+                                await client.send(sender, ack_msg)
+                            except Exception:
+                                logger.debug(
+                                    "Failed to send action-request ack",
+                                    exc_info=True,
+                                )
+                            return {
+                                "status": "accepted",
+                                "action_request_action": (
+                                    "applied/failed" if is_approve else "rejected"
+                                ),
+                                "request_id": ac_id,
+                            }
+            except Exception:
+                logger.debug(
+                    "Reaction-based action_request handling failed",
+                    exc_info=True,
+                )
+                # Fall through
+
         try:
             from app.feedback_pipeline import FeedbackPipeline
             from app.config import get_settings
@@ -2330,6 +2421,15 @@ try:
     app.include_router(inquiries_router)
 except Exception:
     logger.debug("Inquiries router registration failed", exc_info=True)
+
+# ── Action-request control plane (§5.5 follow-up) ──────────────────────────
+try:
+    from app.control_plane.action_requests_api import (
+        router as action_requests_router,
+    )
+    app.include_router(action_requests_router)
+except Exception:
+    logger.debug("Action-requests router registration failed", exc_info=True)
 
 # ── Skill registry (Phase 5 — May 2026) ──────────────────────────────────────
 try:
