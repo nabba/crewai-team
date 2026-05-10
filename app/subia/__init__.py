@@ -25,6 +25,12 @@ No behavior is wired yet. See PROGRAM.md for the phased migration plan.
 
 from app.subia.kernel import get_active_kernel, set_active_kernel
 
+# Eager-import the inquiry scheduler so its daemon thread comes up on
+# boot wherever the kernel loads. The scheduler is env-gated
+# (INQUIRY_PASS_ENABLED, default true) and silently no-ops in test
+# environments that disable it.
+from app.subia.inquiry import scheduler as _inquiry_scheduler  # noqa: F401
+
 __all__ = [
     "config",
     "kernel",
