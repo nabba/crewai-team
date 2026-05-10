@@ -97,4 +97,17 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], Any]]:
         )
     except Exception:
         pass
+    # 2026-05-10 — act-now email digest.  LLM-graded synthesis of
+    # last 48h unread inbox; fires every 3h between 07:00–22:00
+    # local; surfaces top-7 act-now items with why / action /
+    # Gmail-link.  Sibling of email_monitor (which is heuristic +
+    # real-time); the two co-exist deliberately.
+    try:
+        from app.life_companion import act_now_digest
+        jobs.append(
+            ("life-companion-act-now-digest",
+             act_now_digest.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
     return jobs
