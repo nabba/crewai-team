@@ -74,9 +74,19 @@ const MonitorPage = lazy(() =>
 const ChangesPage = lazy(() =>
   import('./components/ChangesPage').then((m) => ({ default: m.ChangesPage })),
 );
+const ArchitectureRequestsPage = lazy(() =>
+  import('./components/ArchitectureRequestsPage').then((m) => ({
+    default: m.ArchitectureRequestsPage,
+  })),
+);
 const CodingSessionsPage = lazy(() =>
   import('./components/CodingSessionsPage').then((m) => ({
     default: m.CodingSessionsPage,
+  })),
+);
+const InquiriesPage = lazy(() =>
+  import('./components/InquiriesPage').then((m) => ({
+    default: m.InquiriesPage,
   })),
 );
 const SettingsPage = lazy(() =>
@@ -137,7 +147,9 @@ export default function App() {
             <Route path="/chat" element={<LazyRoute><ChatPage /></LazyRoute>} />
             <Route path="/monitor" element={<LazyRoute><MonitorPage /></LazyRoute>} />
             <Route path="/changes" element={<LazyRoute><ChangesPage /></LazyRoute>} />
+            <Route path="/architecture-requests" element={<LazyRoute><ArchitectureRequestsPage /></LazyRoute>} />
             <Route path="/coding-sessions" element={<LazyRoute><CodingSessionsPage /></LazyRoute>} />
+            <Route path="/inquiries" element={<LazyRoute><InquiriesPage /></LazyRoute>} />
             <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
             <Route path="/skills" element={<LazyRoute><SkillsPage /></LazyRoute>} />
             <Route path="/files" element={<LazyRoute><FilesPage /></LazyRoute>} />
