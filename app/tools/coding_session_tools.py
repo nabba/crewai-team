@@ -526,14 +526,117 @@ def _build_tool_classes() -> dict[str, type]:
                 header=f"Coding session {cs.id} discarded.",
             )
 
+    # ── 8. evolve ─────────────────────────────────────────────────
+
+    class _EvolveInput(BaseModel):
+        session_id: str = Field(
+            description="Session id from coding_session_start.",
+        )
+        initial_path: str = Field(
+            description=(
+                "Repo-relative path to the program to evolve. Must exist "
+                "in the worktree. TIER_IMMUTABLE files and anything under "
+                "app/subia/ are refused — those need Tier-3 amendment, "
+                "not coding-session evolution."
+            ),
+        )
+        evaluate_path: str = Field(
+            description=(
+                "Repo-relative path to a script that scores variants of "
+                "initial_path. Higher score = better. ShinkaEvolve runs "
+                "this against each variant to drive the search."
+            ),
+        )
+        num_generations: int = Field(
+            default=5,
+            ge=1, le=20,
+            description=(
+                "Generations to run. Capped at 20 (MAX_GENERATIONS_INLINE) "
+                "to keep this tool single-shot rather than a bulk cycle."
+            ),
+        )
+        num_islands: int = Field(
+            default=1,
+            ge=1, le=3,
+            description="Population islands. Capped at 3.",
+        )
+        max_cost_usd: float = Field(
+            default=1.5,
+            gt=0.0, le=5.0,
+            description=(
+                "Per-run dollar cap on LLM proposal cost. Capped at $5 "
+                "(MAX_COST_USD_INLINE)."
+            ),
+        )
+
+    class CodingSessionEvolveTool(BaseTool):
+        name: str = "coding_session_evolve_solution"
+        description: str = (
+            "Run ShinkaEvolve population-based search inside the "
+            "coding session — when a single-shot fix isn't working, "
+            "this evolves variants of one file against one evaluator "
+            "and returns the best diff (vs the initial program).\n\n"
+            "Hard caps: 20 generations, 3 islands, $5 per run. Refused "
+            "if the session isn't ACTIVE, if either path resolves "
+            "outside the worktree, or if initial_path is in TIER_IMMUTABLE "
+            "or under app/subia/ or is app/affect/goal_emitter.py.\n\n"
+            "Returns a JSON object with status (improved / no_improvement "
+            "/ refused / error / shinka_unavailable), baseline_score, "
+            "best_score, delta, and the unified diff when improved. The "
+            "diff is NOT applied — call coding_session_write + "
+            "coding_session_submit to land it through the standard "
+            "change-request gate."
+        )
+        args_schema: Type[BaseModel] = _EvolveInput
+
+        def _run(
+            self,
+            session_id: str,
+            initial_path: str,
+            evaluate_path: str,
+            num_generations: int = 5,
+            num_islands: int = 1,
+            max_cost_usd: float = 1.5,
+        ) -> str:
+            from app.coding_session.evolution_bridge import evolve_in_session
+
+            try:
+                result = evolve_in_session(
+                    session_id=session_id,
+                    initial_path=initial_path,
+                    evaluate_path=evaluate_path,
+                    num_generations=num_generations,
+                    num_islands=num_islands,
+                    max_cost_usd=max_cost_usd,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return f"{_ERR_PREFIX} evolve_in_session raised: {exc}"
+
+            payload = {
+                "status": result.status,
+                "baseline_score": result.baseline_score,
+                "best_score": result.best_score,
+                "delta": result.delta,
+                "generations_run": result.generations_run,
+                "variants_evaluated": result.variants_evaluated,
+                "duration_seconds": result.duration_seconds,
+                "diff": result.diff,
+                "error": result.error,
+                "refusal_reason": result.refusal_reason,
+            }
+            if result.status == "refused":
+                return f"{_REFUSED_PREFIX} {result.refusal_reason}"
+            return json.dumps(payload, indent=2)
+
     return {
-        "coding_session_start":   CodingSessionStartTool,
-        "coding_session_read":    CodingSessionReadTool,
-        "coding_session_write":   CodingSessionWriteTool,
-        "coding_session_run":     CodingSessionRunTool,
-        "coding_session_diff":    CodingSessionDiffTool,
-        "coding_session_submit":  CodingSessionSubmitTool,
-        "coding_session_discard": CodingSessionDiscardTool,
+        "coding_session_start":           CodingSessionStartTool,
+        "coding_session_read":            CodingSessionReadTool,
+        "coding_session_write":           CodingSessionWriteTool,
+        "coding_session_run":             CodingSessionRunTool,
+        "coding_session_diff":            CodingSessionDiffTool,
+        "coding_session_submit":          CodingSessionSubmitTool,
+        "coding_session_discard":         CodingSessionDiscardTool,
+        "coding_session_evolve_solution": CodingSessionEvolveTool,
     }
 
 
@@ -570,7 +673,7 @@ except Exception as exc:
 def create_coding_session_tools() -> list:
     """Factory for explicit injection (agents not using the registry).
     Returns one instance per tool, in the start/read/write/run/diff/
-    submit/discard order."""
+    submit/discard/evolve order."""
     global _TOOL_CLASSES
     if _TOOL_CLASSES is None:
         try:
@@ -588,6 +691,7 @@ def create_coding_session_tools() -> list:
         "coding_session_diff",
         "coding_session_submit",
         "coding_session_discard",
+        "coding_session_evolve_solution",
     )]
 
 
@@ -648,6 +752,17 @@ try:
             "description": (
                 "Abandon the session without submission. Worktree "
                 "destroyed; no production effect."
+            ),
+        },
+        "coding_session_evolve_solution": {
+            "capabilities": ["runs-coding-session"],
+            "description": (
+                "Run ShinkaEvolve population search on one file in the "
+                "coding-session worktree; return the best diff. Hard-"
+                "capped at 20 generations / 3 islands / $5. Refused on "
+                "TIER_IMMUTABLE / app/subia/ / goal_emitter paths. The "
+                "diff is NOT applied — submit through the standard "
+                "change-request gate."
             ),
         },
     }
