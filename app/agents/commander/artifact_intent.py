@@ -305,15 +305,33 @@ def build_artifact_directive(shape: TaskShape) -> str:
 # ── Verifier ────────────────────────────────────────────────────────
 
 
-# Path roots an artifact is allowed to live under.  We don't accept
-# absolute paths to /etc/, /tmp/foo, etc. — only paths under the
-# project's workspace tree or the coding-session worktree namespace.
-_ALLOWED_ROOTS: tuple[str, ...] = (
-    "workspace",
-    "/app/workspace",
-    "output",
-    "/app/output",
-    "/tmp/crewai-",  # coding_session worktrees mount under this prefix
+# Path-root filter — DENY-list, not allow-list.
+#
+# Pre-2026-05-10 history. The first cut of this filter was an
+# allow-list (``workspace/``, ``output/``, ``/tmp/crewai-``).  It
+# turned out to be too narrow: when the operator asked "make a
+# graphic about forest-age distribution in Estonia", the agent
+# (correctly!) emitted ``ARTIFACT: /tmp/estonia_forest_age_
+# distribution.png`` and the file actually existed there
+# (353 KB PNG).  But ``/tmp/`` wasn't on the allow-list, so the
+# verifier rejected a perfectly-good deliverable, prepended an
+# ``[ARTIFACT VERIFICATION FAILED]`` header to the response, and
+# the operator received a misleading failure message instead of
+# their graphic.
+#
+# The lesson: existence + non-empty + extension are the REAL
+# safety gates.  Path-root filtering was paranoid early gating
+# that generated false positives.  The deny-list below blocks
+# obviously-malicious roots (``/etc/``, ``/proc/``, etc.) where
+# an artifact PNG has no business living, but otherwise lets
+# the existence check be authoritative.
+_DENIED_ROOTS: tuple[str, ...] = (
+    "/etc/",
+    "/proc/",
+    "/sys/",
+    "/dev/",
+    "/boot/",
+    "/root/",
 )
 
 # Find ``ARTIFACT: <path>`` markers (the directive's preferred shape)
@@ -334,11 +352,16 @@ _BARE_PATH_RE = re.compile(
 )
 
 
-def _path_under_allowed_root(path: str) -> bool:
-    """Return True if ``path`` is under one of the allowed roots."""
-    norm = path.lstrip("./")
-    for root in _ALLOWED_ROOTS:
-        if path.startswith(root) or norm.startswith(root.lstrip("/")):
+def _path_under_denied_root(path: str) -> bool:
+    """Return True if ``path`` is under one of the obviously-malicious
+    deny-list roots (``/etc/``, ``/proc/``, etc.).  Existence + non-
+    empty + extension checks downstream are the authoritative gates;
+    this just catches the cases where the agent's response references
+    a system path it had no business producing under."""
+    if not path:
+        return False
+    for root in _DENIED_ROOTS:
+        if path.startswith(root):
             return True
     return False
 
@@ -377,8 +400,9 @@ def extract_artifact_paths(
             }
             if ext not in normalized_allowed:
                 return
-        # Allowed-root filter.
-        if not _path_under_allowed_root(path):
+        # Deny-list root filter — blocks /etc/, /proc/, etc.  The
+        # existence check downstream is the authoritative safety gate.
+        if _path_under_denied_root(path):
             return
         if path not in seen:
             seen.append(path)
@@ -430,7 +454,33 @@ def verify_artifacts(
         response_text,
         allowed_extensions=shape.expected_extensions,
     )
+    # When extract_artifact_paths returns empty, dig deeper to give
+    # an honest reason — distinguish "nothing path-shaped in text"
+    # from "paths were mentioned but all rejected by extension or
+    # deny-list filters".  Pre-2026-05-10 the verifier reported
+    # "no file path mentioned" in both cases, which was wrong: an
+    # artifact at /tmp/forest.png would say "no file path mentioned"
+    # because /tmp/ was off the allow-list, even though the path
+    # was clearly in the text.
     attempted: list[tuple[str, str]] = []
+    if not candidates:
+        # Re-scan with NO extension filter to find any path-shaped
+        # tokens that DID appear; record them with rejection reasons.
+        all_paths = extract_artifact_paths(response_text)
+        if all_paths:
+            for p in all_paths:
+                ext = p.rsplit(".", 1)[-1].lower().replace("jpeg", "jpg")
+                expected = {
+                    e.lstrip(".").lower().replace("jpeg", "jpg")
+                    for e in shape.expected_extensions
+                }
+                if expected and ext not in expected:
+                    attempted.append((
+                        p,
+                        f"wrong extension ({ext}); expected one of "
+                        f"{sorted(shape.expected_extensions)}",
+                    ))
+
     for raw_path in candidates:
         # Resolve relative paths against workspace_root.
         candidate = Path(raw_path)

@@ -144,11 +144,33 @@ class TestExtractArtifactPaths:
         paths = extract_artifact_paths(text, allowed_extensions=(".pdf",))
         assert "workspace/output/chart.pdf" in paths
 
-    def test_filters_outside_allowed_roots(self) -> None:
-        """A path under /etc/ must not slip through, even if mentioned."""
+    def test_filters_denied_system_paths(self) -> None:
+        """A path under /etc/ must not slip through (deny-list)."""
         text = "ARTIFACT: /etc/passwd"
         paths = extract_artifact_paths(text)
-        assert paths == [], f"path-traversal-style mention must be filtered; got {paths}"
+        assert paths == [], f"deny-listed system path must be filtered; got {paths}"
+
+    def test_filters_other_denied_roots(self) -> None:
+        """All deny-list roots are blocked."""
+        for denied in ("/proc/", "/sys/", "/dev/", "/boot/", "/root/"):
+            text = f"ARTIFACT: {denied}foo.png"
+            paths = extract_artifact_paths(text, allowed_extensions=(".png",))
+            assert paths == [], (
+                f"path under {denied} must be filtered; got {paths}"
+            )
+
+    def test_tmp_path_is_NOT_filtered(self) -> None:
+        """/tmp/ paths must pass the root filter — the operator-
+        reported regression was a /tmp/ artifact rejected by the
+        old allow-list, with the file actually existing.  The
+        existence check downstream is the real gate."""
+        text = "ARTIFACT: /tmp/estonia_forest_age_distribution.png"
+        paths = extract_artifact_paths(text, allowed_extensions=(".png",))
+        assert paths == ["/tmp/estonia_forest_age_distribution.png"], (
+            "the 2026-05-10 operator-reported case — agent emits "
+            "/tmp/<file>.png, file actually exists, verifier must "
+            "now accept it (was rejected by the old allow-list)"
+        )
 
     def test_filters_wrong_extension(self) -> None:
         text = "ARTIFACT: workspace/output/forest.exe"
@@ -260,6 +282,73 @@ class TestVerifyArtifacts:
         assert len(exc.attempted_paths) == 2
         # Each entry is (path, reason)
         assert all(isinstance(t, tuple) and len(t) == 2 for t in exc.attempted_paths)
+
+    # ── 2026-05-10 operator-reported regression ──
+    # Real Signal trace:
+    #   user: "make a graphic about forest age distribution in Estonia"
+    #   agent: ARTIFACT: /tmp/estonia_forest_age_distribution.png
+    #   file at /tmp/estonia_forest_age_distribution.png: 353 KB PNG (real)
+    #   pre-fix verifier: "no file path mentioned in response"  ← false-positive
+    # The verifier must now accept any /tmp/ artifact (or any path
+    # outside the deny-list) as long as the file actually exists.
+
+    def test_operator_reported_tmp_artifact_passes(self, tmp_path) -> None:
+        """The exact failure shape from the 2026-05-10 Signal trace.
+        Path is /tmp/<file> (NOT /tmp/crewai-…), file exists, content
+        non-empty, extension matches.  Verifier must accept."""
+        # Stage a real file at the kind of path the agent produced.
+        # We use tmp_path's /tmp namespace via os symlink-like; actually
+        # simpler: write a real file under a parent-of-/tmp tree that
+        # we can pass as workspace_root.  But the operator's path was
+        # absolute (/tmp/...), so we need to test absolute-path handling.
+        # Strategy: create the file at an absolute path INSIDE tmp_path
+        # and craft a fake "/tmp/foo.png"-shaped reference that the
+        # verifier resolves correctly.  The simplest: write the file
+        # at a real absolute path on the test box.
+        import os
+        absolute_target = tmp_path / "estonia_forest_age_distribution.png"
+        absolute_target.write_bytes(b"\x89PNG\r\n\x1a\nfake png data")
+
+        shape = TaskShape(
+            kind="artifact",
+            expected_extensions=(".png", ".jpg", ".jpeg", ".svg", ".pdf"),
+            trigger=r"noun match: \bgraphic\b",
+        )
+        # Response shape mirrors what the operator's agent emitted.
+        response = (
+            f"ARTIFACT: {absolute_target}\n"
+            "\n"
+            "## Data Source Used\n"
+            "Hansen Global Forest Change v1.12 (UMD)…\n"
+        )
+        # No workspace_root needed — path is absolute.
+        verified = verify_artifacts(shape, response)
+        assert verified == str(absolute_target)
+
+    def test_path_filtered_extension_in_attempted(self, tmp_path) -> None:
+        """When all candidate paths are rejected by extension, the
+        exception must surface those rejections with their reason —
+        not the misleading 'no file path mentioned'."""
+        shape = TaskShape(
+            kind="artifact", expected_extensions=(".png",),
+            trigger="graphic",
+        )
+        # Agent emitted a path but with wrong extension.
+        with pytest.raises(ArtifactNotProduced) as excinfo:
+            verify_artifacts(
+                shape,
+                "ARTIFACT: /tmp/forest.svg\nThe analysis ran successfully.",
+                workspace_root=tmp_path,
+            )
+        exc = excinfo.value
+        # Detail must mention the actual rejection, not "no path".
+        assert any(
+            "wrong extension" in reason
+            for _path, reason in exc.attempted_paths
+        ), (
+            f"exception must surface 'wrong extension' reason; "
+            f"got attempted_paths={exc.attempted_paths}"
+        )
 
 
 # ── ContextVar plumbing ────────────────────────────────────────────
