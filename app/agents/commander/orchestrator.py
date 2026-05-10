@@ -1063,6 +1063,27 @@ class Commander:
                   _t_outer: float | None = None) -> str:
         import time as _time
 
+        # ── Cure B (2026-05-10): inject artifact-producing directive ──
+        # If handle() classified this task as artifact-shape, append
+        # the directive that tells the agent to use coding_session_*
+        # tools, execute the code, and emit ``ARTIFACT: <path>`` in
+        # the response.  Without this, the coder happily produces
+        # text containing code that would produce a file, but never
+        # actually runs it — exactly the failure mode the operator
+        # hit on the forest-age task.
+        try:
+            from app.agents.commander.artifact_intent import (
+                build_artifact_directive,
+                get_active_task_shape,
+            )
+            _shape_for_directive = get_active_task_shape()
+            if _shape_for_directive and _shape_for_directive.is_artifact:
+                _directive = build_artifact_directive(_shape_for_directive)
+                if _directive:
+                    crew_task = f"{crew_task}\n\n{_directive}"
+        except Exception:
+            logger.debug("artifact directive injection failed", exc_info=True)
+
         # ── Semantic result cache — skip crew if near-identical task was answered recently
         # Skip cache for time-sensitive queries (Q6)
         from app.result_cache import lookup as cache_lookup, store as cache_store
@@ -1972,6 +1993,48 @@ class Commander:
                 logger.debug("Post-crew telemetry failed", exc_info=True)
         _ctx_pool.submit(_post_crew_telemetry)
 
+        # ── Cure B (2026-05-10): post-run artifact verification ──
+        # If handle() classified this task as artifact-shape, the
+        # response MUST reference an existing, non-empty artifact.
+        # On failure, prepend a structured failure header — the
+        # orchestrator's existing vetting layer will see it and
+        # reject, triggering the standard retry path with the
+        # ArtifactNotProduced reason as the rejection feedback.
+        try:
+            from app.agents.commander.artifact_intent import (
+                ArtifactNotProduced,
+                get_active_task_shape,
+                verify_artifacts,
+            )
+            _shape_for_verify = get_active_task_shape()
+            if _shape_for_verify and _shape_for_verify.is_artifact:
+                try:
+                    verified_path = verify_artifacts(
+                        _shape_for_verify, result or "",
+                    )
+                    logger.info(
+                        "artifact_intent: %s verified artifact at %s",
+                        crew_name, verified_path,
+                    )
+                except ArtifactNotProduced as _exc:
+                    logger.warning(
+                        "artifact_intent: %s did not produce artifact: %s",
+                        crew_name, _exc,
+                    )
+                    result = (
+                        "[ARTIFACT VERIFICATION FAILED]\n"
+                        f"This task was classified as artifact-producing "
+                        f"({_shape_for_verify.trigger}, expected "
+                        f"{_shape_for_verify.expected_extensions or 'any file'}).\n"
+                        f"The crew response did not deliver an existing, "
+                        f"non-empty artifact.\n"
+                        f"Verifier reason: {_exc}\n"
+                        f"\n--- ORIGINAL CREW RESPONSE ---\n"
+                        f"{result}"
+                    )
+        except Exception:
+            logger.debug("artifact verification raised", exc_info=True)
+
         return result
 
     def _run_with_reflexion(
@@ -2757,6 +2820,29 @@ class Commander:
         if not user_input.strip() and attachment_context:
             user_input = "Analyze the attached file(s) and provide a summary."
             lower = user_input.lower()
+
+        # ── Cure B (2026-05-10): task-shape classification ──
+        # Detect "produce a file" intent at task entry so the crew
+        # task can be augmented with artifact-producing directives
+        # AND so post-run verification knows whether to require an
+        # actual file deliverable.  Pure heuristic, no LLM call —
+        # see app/agents/commander/artifact_intent.py.
+        try:
+            from app.agents.commander.artifact_intent import (
+                classify_task as _classify_task_shape,
+                set_active_task_shape,
+            )
+            _shape = _classify_task_shape(user_input)
+            set_active_task_shape(_shape)
+            if _shape.is_artifact:
+                logger.info(
+                    "task_shape: artifact-producing request "
+                    "(trigger=%s, expected=%s)",
+                    _shape.trigger, _shape.expected_extensions,
+                )
+        except Exception:
+            # Classification is best-effort; never block task entry.
+            logger.debug("task_shape classification failed", exc_info=True)
 
         # ── "Which LLM/model did you use?" — answer from telemetry ──
         # The system tracks which tier/model handled the last request.  Giving
