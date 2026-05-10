@@ -34,6 +34,23 @@ def _service():
     return get_service("gmail")
 
 
+# Headers we ask Gmail to include with each message stub.  The bulk
+# markers (List-Unsubscribe / List-ID / Auto-Submitted / Precedence)
+# are critical for the email_importance scorer — without them the
+# scorer is blind to the most reliable bulk-mail signal and surfaces
+# marketing emails as "urgent unread".  Threading headers (In-Reply-
+# To / References) let the scorer credit personal replies.  Adding
+# headers to ``metadataHeaders`` is FREE — same API call, more
+# fields come back.  See `app/tools/email_importance.py` for the
+# weight each signal carries.
+_GMAIL_METADATA_HEADERS: tuple[str, ...] = (
+    "From", "To", "Cc", "Subject", "Date",
+    "List-Unsubscribe", "List-Id",
+    "Auto-Submitted", "Precedence",
+    "In-Reply-To", "References",
+)
+
+
 def _list_recent(limit: int = 10, query: str = "in:inbox") -> list[dict]:
     svc = _service()
     if svc is None:
@@ -50,7 +67,7 @@ def _list_recent(limit: int = 10, query: str = "in:inbox") -> list[dict]:
             svc.users()
             .messages()
             .get(userId="me", id=stub["id"], format="metadata",
-                 metadataHeaders=["From", "Subject", "Date"])
+                 metadataHeaders=list(_GMAIL_METADATA_HEADERS))
             .execute()
         )
         headers = {h["name"].lower(): h["value"] for h in full.get("payload", {}).get("headers", [])}
@@ -58,10 +75,20 @@ def _list_recent(limit: int = 10, query: str = "in:inbox") -> list[dict]:
             "id": full.get("id"),
             "thread_id": full.get("threadId"),
             "from": headers.get("from", ""),
+            "to": headers.get("to", ""),
+            "cc": headers.get("cc", ""),
             "subject": headers.get("subject", ""),
             "date": headers.get("date", ""),
             "snippet": full.get("snippet", ""),
             "label_ids": full.get("labelIds", []),
+            # Bulk markers — surfaced verbatim so the scorer can apply
+            # weights without needing to re-fetch.  None when absent.
+            "list_unsubscribe": headers.get("list-unsubscribe"),
+            "list_id": headers.get("list-id"),
+            "auto_submitted": headers.get("auto-submitted"),
+            "precedence": headers.get("precedence"),
+            "in_reply_to": headers.get("in-reply-to"),
+            "references": headers.get("references"),
         })
     return out
 

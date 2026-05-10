@@ -59,6 +59,31 @@ _BULK_AUTO_SUBMITTED   = -2
 _BULK_PRECEDENCE_BULK  = -2
 _BULK_NOREPLY_SENDER   = -2
 
+# Gmail's tab-categorization labels.  When the user has Gmail's
+# Promotions / Social / Updates / Forums tabs enabled, the server
+# auto-labels bulk mail with these category labels — that's
+# Google's own ML telling us "this is a marketing email" with
+# higher precision than any single-header rule we can encode here.
+# Pre-2026-05-10 the email_monitor ignored these labels entirely
+# (the scorer didn't even have a field for gmail_labels), which is
+# why marketing emails surfaced with score=2.5: the bulk-marker
+# weights above couldn't fire because metadataHeaders=["From",
+# "Subject", "Date"] never requested List-Unsubscribe et al.,
+# while the labels were in the stub but unread.  Penalty values
+# tuned so that a clear Promotions tag overrides "human From +
+# unread + recent" (which sums to +2.5).
+_BULK_CATEGORY_PROMOTIONS = -4
+_BULK_CATEGORY_SOCIAL     = -3
+_BULK_CATEGORY_UPDATES    = -2
+_BULK_CATEGORY_FORUMS     = -2
+
+_GMAIL_BULK_LABEL_PENALTIES: dict[str, int] = {
+    "CATEGORY_PROMOTIONS": _BULK_CATEGORY_PROMOTIONS,
+    "CATEGORY_SOCIAL":     _BULK_CATEGORY_SOCIAL,
+    "CATEGORY_UPDATES":    _BULK_CATEGORY_UPDATES,
+    "CATEGORY_FORUMS":     _BULK_CATEGORY_FORUMS,
+}
+
 # Per-marketing-keyword in subject (capped at _MARKETING_KEYWORD_CAP)
 _BULK_MARKETING_KEYWORD = -1
 _MARKETING_KEYWORD_CAP  = -3   # i.e. cap penalty at -3 even if 5 keywords match
@@ -142,6 +167,11 @@ class EmailHeaders:
     references: str | None = None
     date: datetime | None = None
     unread: bool = False
+    # Gmail tab-category labels (CATEGORY_PROMOTIONS / SOCIAL /
+    # UPDATES / FORUMS) when fetched via Gmail API.  Empty tuple
+    # for non-Gmail providers (IMAP / Outlook / etc.) where the
+    # bulk-marker headers above carry the signal instead.
+    gmail_labels: tuple[str, ...] = ()
 
 
 @dataclass
@@ -257,6 +287,22 @@ def score_email(
         out.add(_BULK_PRECEDENCE_BULK, f"Precedence: {headers.precedence.lower()}")
     if _NOREPLY_RE.search(from_):
         out.add(_BULK_NOREPLY_SENDER, "noreply-style sender")
+
+    # Gmail tab-category labels — Google's own ML "this is bulk".
+    # We apply the strongest penalty in this group (a message tagged
+    # CATEGORY_PROMOTIONS may also have CATEGORY_UPDATES, but the
+    # promo tag is the more reliable bulk signal).
+    gmail_label_set = {str(label) for label in (headers.gmail_labels or ())}
+    matching_penalties = [
+        (label, _GMAIL_BULK_LABEL_PENALTIES[label])
+        for label in gmail_label_set
+        if label in _GMAIL_BULK_LABEL_PENALTIES
+    ]
+    if matching_penalties:
+        # Pick the most negative (strongest) — don't compound, the
+        # categories overlap and double-counting would over-penalize.
+        worst_label, worst_penalty = min(matching_penalties, key=lambda lp: lp[1])
+        out.add(worst_penalty, f"Gmail label: {worst_label}")
 
     # Marketing keywords in subject — capped to prevent runaway penalty
     mk_hits = _count_keyword_hits(subject, _MARKETING_KEYWORDS)

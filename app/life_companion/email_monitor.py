@@ -100,19 +100,28 @@ def _build_headers(stub: dict) -> "EmailHeaders | None":  # type: ignore[name-de
     label_ids = stub.get("label_ids") or []
     is_unread = "UNREAD" in label_ids
 
+    # Bulk-marker headers + To/Cc/threading fields are populated by
+    # ``app.tools.gmail_tools._list_recent`` (after the 2026-05-10
+    # widening of metadataHeaders).  They were left unread on the
+    # path before that fix, blinding the scorer to the most reliable
+    # bulk-mail signal — which is why marketing emails (DailyOM,
+    # Wild Gym, Swimmer.com.au) surfaced as "urgent unread" with
+    # score=2.5.  Pulling them through here completes the
+    # input-pipeline → scorer contract.
     return EmailHeaders(
         from_=stub.get("from", ""),
-        to="",  # gmail list-format doesn't include To/Cc; full read would
-        cc="",
+        to=stub.get("to", "") or "",
+        cc=stub.get("cc", "") or "",
         subject=stub.get("subject", ""),
-        list_unsubscribe=None,
-        list_id=None,
-        auto_submitted=None,
-        precedence=None,
-        in_reply_to=None,
-        references=None,
+        list_unsubscribe=stub.get("list_unsubscribe"),
+        list_id=stub.get("list_id"),
+        auto_submitted=stub.get("auto_submitted"),
+        precedence=stub.get("precedence"),
+        in_reply_to=stub.get("in_reply_to"),
+        references=stub.get("references"),
         date=parsed_dt,
         unread=is_unread,
+        gmail_labels=tuple(label_ids),
     )
 
 
