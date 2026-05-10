@@ -3972,3 +3972,347 @@ tests/inbox/{test_classifier,test_router,test_scheduler}.py
   flags; the operator decides. This is consistent with the rest of
   the consciousness-layer discipline — observational, never load-
   bearing for any decision.
+
+## 35. 2026-05-10 — Dashboard surface expansion + public HTTPS
+
+Three new operator surfaces, one transport hardening, and a focused
+fix for the iOS PWA Web-Push pipeline. All landed within a few hours
+on top of §26.
+
+### 35.1 Chat tab (`/cp/chat`) — Signal mirror with markdown
+
+`POST /api/cp/chat/send` routes the message through
+``Commander.handle()``, the same dispatch path Signal uses, so every
+slash command, recovery loop, project router, lifecycle hook, and
+affect attachment hook fires identically. ``GET /api/cp/chat/messages``
+reads conversation history from ``conversation_store`` (oldest→
+newest so the React side can append-render directly). ``GET
+/api/cp/signal-commands`` returns the hand-curated catalogue
+defined in ``app/agents/commander/command_registry.py`` —
+85 commands across 13 categories, paired with the dispatcher in
+``commands.py`` by convention rather than introspection.
+
+Frontend ``ChatPage.tsx`` is a split layout: scrolling history with
+markdown bubbles (react-markdown + remark-gfm + remark-math +
+rehype-katex + rehype-highlight, same renderer the Notes view uses)
+and a filterable command sidebar; clicking a row inserts the syntax
+into the composer.
+
+Two paired bugs fixed before the tab actually showed history:
+
+  1. **Sender mismatch.** Signal stores under
+     ``HMAC(phone_number)``; the chat tab passed
+     ``sender="andrus"`` which hashed differently. Added
+     ``_resolve_chat_sender`` mapping ``andrus / owner / primary /
+     me / user`` → ``settings.signal_owner_number`` so the chat
+     tab and Signal share one bucket.
+  2. **`ts` column type.** Newer ``messages.ts`` rows are ISO
+     strings (legacy ones were floats); the helper did
+     ``float(r[2])`` and crashed on every modern row. The route's
+     broad try/except swallowed the ``ValueError`` and returned
+     ``[]``. Helper now detects numeric vs string and parses ISO
+     via ``fromisoformat().timestamp()``.
+
+### 35.2 Monitor tab (`/cp/monitor`) — comprehensive system status
+
+Single aggregator endpoint ``GET /api/cp/system-status`` probes
+every major surface with a soft 1–2 s deadline and returns a flat
+list of status rows the React page groups by category. Probes are
+uniform — ``_probe(name, category, fn)`` measures latency, catches
+exceptions, runs them through ``_interpret_error()`` (translates
+401/402/403/429/5xx + ``connection refused`` / ``timeout`` /
+``unauthorized`` / ``quota`` into one-line operator hints), and
+calls ``_credit_link_for()`` to surface the matching top-up URL
+when an exception matches a credit-exhaustion pattern. Pulls
+active credit alerts from ``firebase.publish._active_alerts``;
+reuses the existing ``_CREDIT_URLS`` map so OpenRouter / Anthropic
+/ OpenAI / Google all surface their billing pages directly on the
+page.
+
+Probes:
+
+  * Containers: PostgreSQL (`SELECT 1` + budget row count),
+    ChromaDB (``list_collections``), Neo4j (``RETURN 1`` via cached
+    driver), gateway HTTP (implicit "you're reading me").
+  * Messaging: signal-cli daemon (GET ``signal_http_url`` +
+    ``/v1/about``), host bridge (config-aware: warn when
+    ``BRIDGE_ENABLED=0``).
+  * Internal: idle scheduler (currently running job), self-heal
+    journal (recent error count + top pattern, **24h window** —
+    fixed in T3.8 because the original "all-time" count flagged
+    "12 recent errors" on a healthy system), budget reconcile
+    (last write timestamp).
+  * External services: per-provider credit alerts, each carrying
+    its top-up link for a "Top up →" button.
+
+Frontend ``MonitorPage.tsx`` is a headline strip (overall
+ok/warn/error + per-category counts), a pinned credit-alert
+call-out visible only when a provider is actually exhausted, and
+one card per category with two-column status rows. Each row shows
+level pill, name, latency, interpreted message, and an "Open →"
+link.
+
+T3.7 fixed the Signal-cli + Host-bridge probes which previously
+hard-coded URLs and ignored runtime config (would always show
+"timed out" even when a daemon was running on a non-default port).
+
+### 35.3 Public HTTPS via Tailscale Funnel + multi-mode auth
+
+iOS Web Push only works in a Secure Context — the Web-Push
+``PushManager`` is silently stripped by every browser when the
+origin is plain HTTP from a non-localhost host. The user's
+home-screen PWA was reaching the dashboard at
+``http://10.0.0.54:3100/cp/`` and saw ``serviceWorker=no /
+pushManager=no`` for that reason. Fix path:
+
+  1. **Tailscale Funnel** terminates HTTPS for the dashboard at
+     ``https://plgs-macbook-pro---andrus.tail5b289b.ts.net/`` →
+     proxy to ``http://localhost:3100``. Free Let's-Encrypt cert,
+     auto-renewing. Setup is two CLI commands once the admin-
+     console toggles are flipped:
+
+         tailscale cert plgs-macbook-pro---andrus.tail5b289b.ts.net
+         tailscale funnel --bg --https=443 http://localhost:3100
+
+     The `tailscale serve --tcp=8765` rule that previously exposed
+     the bare gateway tailnet-wide was removed in the same pass —
+     Funnel-fronted dashboard is now the only external entrypoint.
+
+  2. **HTTP Basic Auth** in front of the public Funnel route
+     (`dashboard/server.mjs`). Reads ``DASHBOARD_USER`` +
+     ``DASHBOARD_PASS`` from the sibling ``.env`` (same pattern
+     ``loadGatewaySecret`` already uses). Loopback (``localhost``
+     / ``127.0.0.1`` / ``::1``) bypasses auth so laptop-localhost
+     dev keeps working.
+
+  3. **Cookie auth** alongside Basic for iOS PWA standalone mode.
+     Basic-Auth credentials saved into the regular Safari keychain
+     are not always inherited by the home-screen icon — every
+     standalone-mode launch hit the 401 wall again. New one-shot
+     login URL:
+
+         GET /cp/login?token=<DASHBOARD_PASS>
+           matches  → 302 /cp/ + Set-Cookie dashboard_auth=...; Max-Age=1y
+           mismatch → 401
+
+     Cookie value is
+     ``HMAC(DASHBOARD_PASS, "dashboard-auth-v1")``. No server-
+     side state; rotating the password invalidates every existing
+     cookie. Cookie path is ``/`` so it covers ``/api/``,
+     ``/config/``, ``/epistemic/``, ``/affect/`` and every other
+     proxied prefix. ``requireAuth`` accepts EITHER cookie OR
+     Basic; iOS users visit the login URL once, get the cookie,
+     and the home-screen PWA inherits it on every launch.
+
+### 35.4 Web Push diagnostic upgrade
+
+The Settings-tab "PWA notifications" card used to show "This
+browser doesn't support Web Push. Install the PWA and try again."
+for every failure — actively misleading on iOS where the PWA WAS
+installed but the launch context wasn't standalone, or the origin
+wasn't secure. Replaced with a four-way diagnostic that prints
+the actual reason:
+
+  * ``isSecure=no`` (LAN HTTP / Tailscale name without HTTPS) →
+    points at Tailscale Funnel + Cloudflare Tunnel + localhost as
+    practical fixes.
+  * iOS + ``isStandalone=no`` → "Tap the home-screen icon, not the
+    URL".
+  * iOS + standalone but no PushManager → "iOS 16.4+ required".
+  * No serviceWorker → "Try a Chromium- or WebKit-based browser".
+  * No PushManager → "Probably private-browsing mode".
+
+A diagnostics line below the message shows each capability flag
+(``iOS / secure / standalone / serviceWorker / pushManager``) so
+the user sees at a glance exactly which prerequisite failed
+without opening DevTools.
+
+
+## 36. 2026-05-10 — Forest-age regression (PRs #106/#107) — Cure B + Cure C follow-ups
+
+The operator re-issued the same forest-age request that had
+triggered §31's three-cure architectural sweep:
+
+```
+1:22 PM  📨 "Please make a graphic about the change of forest age
+            distribution over time in Estonia.  Use data that does
+            not originate from Estonian authorities"
+1:35 PM  🤖 [ARTIFACT VERIFICATION FAILED]
+            ARTIFACT: /tmp/estonia_forest_age_distribution.png
+            ...
+1:39 PM  📨 "Please make average age of forest graph since 2000…"
+2:24 PM  🤖 "Sorry — the task stopped producing partial results
+            (no new rows / findings for several minutes).
+            …please re-send a narrower question to fill the gaps."
+```
+
+Both messages were operator-visible failures that §31's cures
+were SUPPOSED to make impossible.  Investigation found three new
+architectural bugs — one in Cure B, two in Cure C — shipped as
+PRs #106 and #107.
+
+### 36.1 PR #106 — Cure B's path-root allow-list was too narrow
+
+**Symptom**: the agent emitted `ARTIFACT: /tmp/estonia_forest_age_
+distribution.png` and the file *actually existed* at that path
+(353 KB PNG, real Hansen GFC visualization).  The verifier
+rejected it and the operator received a misleading
+`[ARTIFACT VERIFICATION FAILED]` header.
+
+**Root cause**: §31's `_ALLOWED_ROOTS` allow-list was
+(`workspace/`, `output/`, `/tmp/crewai-`, `/app/workspace/`,
+`/app/output/`).  `/tmp/` (without the `crewai-` prefix) wasn't
+on the list — `extract_artifact_paths` filtered the path out at
+the root check, then the verifier reported "no file path
+mentioned" because no candidates survived.  The allow-list was
+PARANOID early gating that turned out to generate false
+positives — rejecting valid artifacts because they lived in
+unfamiliar directories the registry hadn't anticipated.
+
+**The lesson**: existence + non-empty + extension are the REAL
+safety gates.  The root filter was over-engineering.
+
+**Cure**: replace `_ALLOWED_ROOTS` allow-list with `_DENIED_ROOTS`
+deny-list — block obviously-malicious roots (`/etc/`, `/proc/`,
+`/sys/`, `/dev/`, `/boot/`, `/root/`) where an artifact PNG has
+no business living, otherwise let the existence check be the
+authoritative gate.
+
+Also improved the error message: when `extract_artifact_paths`
+returns empty, re-scans WITHOUT the extension filter and records
+any path-shaped tokens with their rejection reason.  Pre-fix
+the verifier said "no file path mentioned" even when paths were
+mentioned but rejected — distinguishing the two makes retry-path
+diagnostics precise.
+
+Test coverage: 4 new tests (added to existing 30 in
+`test_artifact_intent.py` → 34/34 pass) including
+`test_operator_reported_tmp_artifact_passes` — the EXACT Signal
+trace from 13:35 with a real file on disk; verifier now accepts
+and returns the path.
+
+Live verified post-redeploy.
+
+### 36.2 PR #107 — Cure C had two race-shaped bugs
+
+The 13:39 follow-up task stalled with the LEGACY generic
+"narrower question" message — even though the gateway logs
+showed vetting had recorded three specific issues:
+
+```
+INFO vetting[full]: coding FAILED: [
+  "The claimed artifact file /app/output/estonia_forest_avg_age_2000_2024.png
+   does not exist; the response asserts the graph was generated but
+   no artifact was delivered.",
+  "Inconsistent dataset statistics …",
+  "Logical issue in age model description …",
+]
+```
+
+The watchdog should have woven these into the apology.  It
+didn't.  Two bugs:
+
+#### Bug 1 — ContextVar doesn't propagate to `_ctx_pool`
+
+`record_failure_context` defaults its `task_id` from the
+`current_task_id` ContextVar.  `_handle_locked` sets it in the
+commander thread.  But the orchestrator submits vetting to
+`_ctx_pool` via `ThreadPoolExecutor.submit` — which does **NOT**
+propagate ContextVars by default.  So when `vet_response_detailed`
+calls `record_failure_context` in a worker thread,
+`current_task_id.get()` returns the default empty string and the
+function silently no-ops.
+
+**Cure**: wrap the submit in `contextvars.copy_context().run`.
+Standard Python pattern for "submit a callable while preserving
+the calling thread's ContextVars".
+
+```python
+import contextvars as _cv
+_vet_ctx = _cv.copy_context()
+_vet_future = _ctx_pool.submit(
+    _vet_ctx.run,
+    vet_response_detailed, user_input, _synthesis_result, …,
+)
+```
+
+#### Bug 2 — Race between vetting and watchdog
+
+When vetting takes >90s, the future-level timeout fires.  The
+vetting thread KEEPS RUNNING (the future was abandoned, not
+cancelled) and eventually calls `record_failure_context` — but
+by then the watchdog already fired its apology with no context
+to weave in.
+
+**Cure**: when the orchestrator catches the vetting timeout,
+record an explicit `vetting_timeout` failure context
+synchronously, in the orchestrator thread (where ContextVar IS
+set) BEFORE the future is abandoned.  Plus: add a matching
+`vetting_timeout` template to `_FAILURE_CONTEXT_TEMPLATES` in
+`main.py` so the suffix formatter renders actionable text
+instead of falling to the generic "unknown kind" branch.
+
+#### Tests
+
+6 new tests in `tests/test_cure_c_followups.py` including:
+
+  * `test_record_propagates_through_copy_context` — **POSITIVE**:
+    with copy_context.run, ContextVar propagates and record
+    lands under the right tid
+  * `test_record_silently_noops_without_copy_context` —
+    **NEGATIVE**: proves the bug exists when propagation is
+    missing (the failure mode the operator hit)
+  * Source-grep regression guards locking each wire-in so a
+    future refactor that drops them fails CI loudly
+
+### 36.3 What §36 illustrates about §31's cures
+
+§31 was an attempt at a "cure the root cause, not the symptom"
+sweep — three Tier-A architectural fixes for a class of forest-
+age failures.  §36 is the honest follow-up: even the
+architectural cures had bugs of their own.  Specifically:
+
+  * Cure B's allow-list was paranoid — it generated false
+    positives on legitimate artifact paths.
+  * Cure C's record-pipeline didn't account for ContextVar
+    semantics across `ThreadPoolExecutor.submit` boundaries.
+  * Cure C's watchdog read happened on a race with vetting's
+    record write.
+
+The fix discipline matters.  Both PRs ship with negative tests
+that demonstrate the bug on the UNFIXED code path AND positive
+tests showing the fix works.  Source-grep regression guards lock
+the wire-in points so future refactors that drop them fail CI
+loudly.
+
+### 36.4 Files touched
+
+```
+# PR #106
+app/agents/commander/artifact_intent.py    # _ALLOWED_ROOTS → _DENIED_ROOTS
+tests/test_artifact_intent.py              # 4 new tests, 34/34 pass
+
+# PR #107
+app/agents/commander/orchestrator.py       # copy_context.run + vetting_timeout record
+app/main.py                                # _FAILURE_CONTEXT_TEMPLATES +vetting_timeout
+tests/test_cure_c_followups.py             # NEW — 6 tests
+```
+
+10 new tests across the two PRs.
+
+### 36.5 Operator-action items
+
+* **None for the cures themselves** — both shipped with
+  regression-guard tests so the failure modes can't recur
+  without CI failing first.
+
+* **Coder-side reliability gap (separate scope)**: the 13:39
+  follow-up surfaced a different problem that's not architectural —
+  the agent claimed `ARTIFACT: /app/output/estonia_forest_avg_age_
+  2000_2024.png` but the file didn't actually exist.  Cure B's
+  existence check now catches this precisely (post-redeploy)
+  and Cure C surfaces the reason via the templated suffix —
+  but the underlying coder behavior ("claim artifact without
+  actually running the script that produces it") would benefit
+  from an "actually run before reporting" discipline at the
+  coder level.  That's its own future PR.
