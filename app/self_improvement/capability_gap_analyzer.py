@@ -167,6 +167,52 @@ def _cluster_gaps(gaps: list[LearningGap]) -> list[CapabilityCluster]:
     return out
 
 
+def _build_coding_session_spec(cluster: CapabilityCluster) -> dict:
+    """Q2 §39: generate a coding-session scaffold for the cluster.
+
+    Each capability gap maps to a new package under ``app/<slug>/``
+    plus a parallel test directory. The spec is suggestive — the
+    operator / agent picks it up, refines, and runs. Time estimate
+    scales with cluster size (more evidence → richer feature →
+    longer build).
+    """
+    slug = _slug_from_label(cluster.label)
+    estimated_min = min(60 + cluster.size * 10, 240)
+    return {
+        "intent": (
+            f"Address capability gap: {cluster.label[:80]}"
+        ),
+        "files": [
+            {
+                "path": f"app/{slug}/__init__.py",
+                "action": "create",
+                "purpose": "public surface",
+                "size_estimate": "~30 LOC",
+            },
+            {
+                "path": f"app/{slug}/core.py",
+                "action": "create",
+                "purpose": "main implementation",
+                "size_estimate": "~150 LOC",
+            },
+            {
+                "path": f"tests/{slug}/test_core.py",
+                "action": "create",
+                "purpose": (
+                    f"cover the {cluster.size} sample-evidence cases"
+                ),
+                "size_estimate": "~120 LOC",
+            },
+        ],
+        "acceptance": [
+            f"pytest tests/{slug}/ -v",
+            f"ruff check app/{slug}/",
+            f"mypy app/{slug}/",
+        ],
+        "expected_duration_min": estimated_min,
+    }
+
+
 def _render_draft(cluster: CapabilityCluster) -> str:
     package_path = f"app/{_slug_from_label(cluster.label)}/"
     sources_str = ", ".join(f"{c} {k}" for k, c in cluster.sources.items())
@@ -280,6 +326,7 @@ def run_one_pass(
                 title=cluster.label[:80] or "capability gap",
                 body_markdown=_render_draft(cluster),
                 target_path=target_path,
+                coding_session_spec=_build_coding_session_spec(cluster),
             )
         except Exception:
             logger.warning(

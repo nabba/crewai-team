@@ -123,6 +123,12 @@ def _stage_to_cr(state: ProposalState) -> Optional[str]:
                      exc_info=True)
         return None
 
+    # Q2 §39: append the coding-session spec to the CR body for
+    # non-Tier-3 targets. Tier-3 paths route through
+    # ``governance_amendment.protocol`` (different apply path)
+    # and don't use coding sessions, so the spec is suppressed there.
+    body_with_spec = _augment_body_with_spec(body, state)
+
     reason = (
         f"Proposal-bridge promotion of staged {state.source} draft "
         f"`{state.signature}` after {state.cooldown_days}-day cooldown. "
@@ -134,7 +140,7 @@ def _stage_to_cr(state: ProposalState) -> Optional[str]:
         cr = create_request(
             requestor=f"proposal_bridge:{state.source}",
             path=state.target_path,
-            new_content=body,
+            new_content=body_with_spec,
             old_content="",
             reason=reason,
         )
@@ -440,3 +446,91 @@ def stop() -> None:
 # Eager start at import — same pattern as healing/monitors and
 # capability_gap_analyzer.
 start()
+
+
+# ── Coding-session spec rendering (Q2 §39) ───────────────────────────
+
+
+def _augment_body_with_spec(body: str, state: ProposalState) -> str:
+    """Append a "Coding-session spec" markdown section to the proposal
+    body when applicable.
+
+    Spec is added when ALL of:
+      * ``state.coding_session_spec`` is a non-empty dict
+      * ``state.target_path`` is NOT in TIER_IMMUTABLE (Tier-3 paths
+        route through governance_amendment, never coding sessions)
+
+    Spec is rendered as YAML in a fenced block — both human- and
+    machine-readable. An agent reading the resulting CR (or an
+    operator copy-pasting into a chat with the coder) can act on the
+    scaffold directly.
+    """
+    spec = state.coding_session_spec
+    if not isinstance(spec, dict) or not spec:
+        return body
+    if _path_is_tier_immutable(state.target_path):
+        return body
+    return body + "\n\n" + _render_spec_section(spec)
+
+
+def _path_is_tier_immutable(path: str) -> bool:
+    """Best-effort TIER_IMMUTABLE check. Failure → fail-safe (treat
+    as immutable so we don't accidentally render a coding-session
+    spec for a protected path)."""
+    try:
+        from app.auto_deployer import TIER_IMMUTABLE
+        return path in TIER_IMMUTABLE
+    except Exception:
+        return True
+
+
+def _render_spec_section(spec: dict[str, Any]) -> str:
+    """Render the spec dict as a markdown section with a YAML fenced
+    block. JSON inside a ```yaml fence is valid YAML (JSON is a YAML
+    subset for our shapes), so we avoid a PyYAML dep."""
+    intent = spec.get("intent") or "(no intent)"
+    files = spec.get("files") or []
+    acceptance = spec.get("acceptance") or []
+    duration = spec.get("expected_duration_min")
+
+    lines = [
+        "---",
+        "",
+        "## Coding-session spec (non-Tier-3)",
+        "",
+        "An agent (or operator copy-pasting into a chat with the coder) ",
+        "can use this scaffold to actually implement the proposal:",
+        "",
+        "```yaml",
+        f"intent: {intent}",
+    ]
+    if files:
+        lines.append("files:")
+        for f in files:
+            if not isinstance(f, dict):
+                continue
+            lines.append(f"  - path: {f.get('path', '?')}")
+            if "action" in f:
+                lines.append(f"    action: {f['action']}")
+            if "size_estimate" in f:
+                lines.append(f"    size_estimate: {f['size_estimate']}")
+            if "purpose" in f:
+                lines.append(f"    purpose: {f['purpose']}")
+    if acceptance:
+        lines.append("acceptance:")
+        for a in acceptance:
+            lines.append(f"  - {a}")
+    if duration is not None:
+        try:
+            lines.append(f"expected_duration_min: {int(duration)}")
+        except (TypeError, ValueError):
+            pass
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "To execute: spawn a coding-session targeting the files "
+        "above, run the acceptance commands until green, then "
+        "`coding_session_submit` to fan out one CR per touched "
+        "file through the standard /cp/changes operator gate."
+    )
+    return "\n".join(lines)

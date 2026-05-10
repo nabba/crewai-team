@@ -256,6 +256,10 @@ async def set_runtime_settings_endpoint(request: Request):
         set_error_runbooks_enabled, set_tool_supervisor_enabled,
         set_recovery_loop_enabled,
         set_goodhart_hard_gate_disabled, set_goodhart_hard_gate_enforcing,
+        set_structured_diagnosis_threshold_floor,
+        set_structured_diagnosis_threshold_ceiling,
+        set_structured_diagnosis_threshold_override,
+        set_structured_diagnosis_auto_tune_enabled,
         snapshot,
     )
 
@@ -280,6 +284,24 @@ async def set_runtime_settings_endpoint(request: Request):
             set_goodhart_hard_gate_disabled(bool(payload["goodhart_hard_gate_disabled"]))
         if "goodhart_hard_gate_enforcing" in payload:
             set_goodhart_hard_gate_enforcing(bool(payload["goodhart_hard_gate_enforcing"]))
+        # Structured-diagnosis threshold band (Q2 §39).
+        if "structured_diagnosis_threshold_floor" in payload:
+            set_structured_diagnosis_threshold_floor(
+                float(payload["structured_diagnosis_threshold_floor"])
+            )
+        if "structured_diagnosis_threshold_ceiling" in payload:
+            set_structured_diagnosis_threshold_ceiling(
+                float(payload["structured_diagnosis_threshold_ceiling"])
+            )
+        if "structured_diagnosis_threshold_override" in payload:
+            raw = payload["structured_diagnosis_threshold_override"]
+            set_structured_diagnosis_threshold_override(
+                None if raw is None else float(raw)
+            )
+        if "structured_diagnosis_auto_tune_enabled" in payload:
+            set_structured_diagnosis_auto_tune_enabled(
+                bool(payload["structured_diagnosis_auto_tune_enabled"])
+            )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -789,3 +811,43 @@ async def set_life_companion_feature_endpoint(request: Request):
         logger.debug("life_companion audit log failed", exc_info=True)
 
     return {"status": "ok", "overrides": overrides}
+
+
+# ── Structured-diagnosis telemetry + state (Q2 §39) ─────────────────────
+
+
+@router.get("/structured_diagnosis/state")
+async def get_structured_diagnosis_state():
+    """Return the current threshold band + the auto-tune state +
+    a recent-window telemetry summary.
+
+    React ``/cp/settings`` Structured-Diagnosis card consumes this
+    for its inline display (current threshold, recent approval
+    rate, last adjustment).
+    """
+    try:
+        from app.healing.diagnosis_auto_tune import current_state
+        from app.healing.diagnosis_telemetry import summary as telemetry_summary
+        return {
+            "threshold": current_state(),
+            "telemetry_30d": telemetry_summary(window=30),
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/structured_diagnosis/telemetry")
+async def get_structured_diagnosis_telemetry(window: int = 30):
+    """Return paginated telemetry rows (filed events with their
+    resolutions joined). Used by the React ``/cp/structured-diagnosis``
+    detail page."""
+    if window < 1 or window > 200:
+        raise HTTPException(status_code=400, detail="window must be in [1, 200]")
+    try:
+        from app.healing.diagnosis_telemetry import rolling_window_with_resolutions
+        return {
+            "window": window,
+            "rows": rolling_window_with_resolutions(window=window),
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc))

@@ -432,9 +432,46 @@ def _stage_paper_proposal(paper: dict, llm_out: dict) -> None:
             title=(paper.get("title") or "")[:80],
             body_markdown=_render_paper_proposal(paper, llm_out),
             target_path=f"docs/proposed_experiments/{sig}.md",
+            coding_session_spec=_build_coding_session_spec(paper, llm_out, sig),
         )
     except Exception:
         logger.debug("paper_pipeline: stage failed for %s", sig, exc_info=True)
+
+
+def _build_coding_session_spec(paper: dict, llm_out: dict, sig: str) -> dict:
+    """Q2 §39: scaffold for running a paper's experiment proposal.
+
+    The LLM already produced a one-paragraph experiment description
+    in ``llm_out['experiment']`` — we wrap that into a coding-session
+    spec that targets a per-paper experiment script + JSONL output.
+    """
+    experiment = (llm_out.get("experiment") or "").strip()[:200]
+    title = (paper.get("title") or "Untitled")[:80]
+    return {
+        "intent": f"Try paper experiment: {title}",
+        "files": [
+            {
+                "path": f"workspace/experiments/{sig}/run.py",
+                "action": "create",
+                "purpose": (
+                    f"experiment driver — implements: {experiment or 'see proposal'}"
+                ),
+                "size_estimate": "~80 LOC",
+            },
+            {
+                "path": f"workspace/experiments/{sig}/results.jsonl",
+                "action": "create",
+                "purpose": "append-only experiment outcome log",
+                "size_estimate": "(generated)",
+            },
+        ],
+        "acceptance": [
+            f"python workspace/experiments/{sig}/run.py --seed 42",
+            f"verify workspace/experiments/{sig}/results.jsonl is non-empty",
+            "compare against baseline noted in the paper proposal",
+        ],
+        "expected_duration_min": 60,
+    }
 
 
 def _append_proposal(paper: dict, llm_out: dict) -> None:

@@ -499,6 +499,11 @@ export interface RuntimeSettings {
   // Goodhart hard-gate three-way control
   goodhart_hard_gate_disabled: boolean;
   goodhart_hard_gate_enforcing: boolean;
+  // Structured-diagnosis confidence threshold (Q2 §39)
+  structured_diagnosis_threshold_floor?: number;
+  structured_diagnosis_threshold_ceiling?: number;
+  structured_diagnosis_threshold_override?: number | null;
+  structured_diagnosis_auto_tune_enabled?: boolean;
 }
 
 export function useRuntimeSettingsQuery() {

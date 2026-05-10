@@ -189,6 +189,22 @@ def create_request(
     except Exception:
         logger.debug("change_requests: lessons check failed", exc_info=True)
 
+    # Q2 §39: append path-keyed history (continuity ledger + CR audit)
+    # so the operator sees recent activity on the target file inline
+    # with the proposal. Read-only against both sources; failure is
+    # non-blocking (the CR proceeds without the history block).
+    try:
+        from app.identity.relevant_history import (
+            relevant_history,
+            format_for_operator,
+        )
+        history = relevant_history(path)
+        block = format_for_operator(history)
+        if block:
+            cr.reason = f"{cr.reason}\n\n{block}"
+    except Exception:
+        logger.debug("change_requests: relevant_history lookup failed", exc_info=True)
+
     store.save(cr, audit_event="created")
     logger.info(
         "change_requests: created %s by %s for path=%s",
@@ -492,6 +508,10 @@ def reject(
         "change_requests: rejected %s by %s (reason=%s)",
         request_id, source.value, decision_reason,
     )
+    _maybe_emit_diagnosis_telemetry(
+        cr, approved=False, decided_by=source.value,
+        rejection_reason=decision_reason,
+    )
     return cr
 
 
@@ -508,7 +528,37 @@ def mark_timeout(request_id: str) -> ChangeRequest:
     cr.decided_at = _now_iso()
     cr.decided_by = DecisionSource.TIMEOUT
     store.save(cr, audit_event="timeout")
+    _maybe_emit_diagnosis_telemetry(
+        cr, approved=False, decided_by="timeout",
+        rejection_reason="no decision within window",
+    )
     return cr
+
+
+def _maybe_emit_diagnosis_telemetry(cr: ChangeRequest, *, approved: bool,
+                                     decided_by: str,
+                                     rejection_reason: str | None = None) -> None:
+    """Emit a structured-diagnosis telemetry resolution row when the
+    transitioning CR was filed by ``error_diagnosis``. The telemetry
+    auto-tuner reads these joined with the original ``filed`` rows
+    to compute approval rate.
+
+    No-op when the CR's requestor doesn't match — the telemetry
+    log is scoped to structured-diagnosis CRs only.
+    """
+    if not cr or cr.requestor != "error_diagnosis":
+        return
+    try:
+        from app.healing.diagnosis_telemetry import record_resolution
+        record_resolution(
+            cr_id=cr.id,
+            decided_by=decided_by,
+            approved=approved,
+            decided_at=cr.decided_at,
+            rejection_reason=rejection_reason,
+        )
+    except Exception:
+        logger.debug("diagnosis_telemetry resolution emit failed", exc_info=True)
 
 
 def mark_applied(
@@ -543,6 +593,10 @@ def mark_applied(
         "change_requests: applied %s — branch=%s sha=%s pr=%s",
         request_id, git_branch, git_commit_sha[:8] if git_commit_sha else "?",
         pr_url,
+    )
+    _maybe_emit_diagnosis_telemetry(
+        cr, approved=True,
+        decided_by=(cr.decided_by.value if cr.decided_by else "unknown"),
     )
     if _is_soul_path(cr.path):
         try:
@@ -624,6 +678,13 @@ def mark_rolled_back(
     logger.info(
         "change_requests: rolled_back %s by %s — sha=%s",
         request_id, operator, rollback_commit_sha[:8],
+    )
+    # Rollback signals "approval was wrong" — count this as
+    # rejection-equivalent for the telemetry auto-tuner so the
+    # confidence threshold trends conservative.
+    _maybe_emit_diagnosis_telemetry(
+        cr, approved=False, decided_by=f"rollback:{operator}",
+        rejection_reason="rolled back after apply",
     )
     return cr
 

@@ -106,6 +106,19 @@ def _defaults() -> dict[str, Any]:
         # ``docs/SELF_HEAL_V3.md`` for the auto-action contract.
         "chat_blocked_models": [],
         "no_function_calling_models": [],
+        # Structured-diagnosis confidence threshold band (Q2 §39).
+        # The auto-tuner adjusts the active threshold within
+        # ``[floor, ceiling]`` based on recent approval-rate
+        # telemetry. ``override`` is a manual operator pin that
+        # bypasses the auto-tuner entirely when set (None means
+        # "let auto-tuner manage"). ``auto_tune_enabled=False``
+        # also pins the auto-tuner; the difference is override is a
+        # specific value, the disabled flag freezes whatever the
+        # state file currently holds.
+        "structured_diagnosis_threshold_floor": 0.50,
+        "structured_diagnosis_threshold_ceiling": 0.95,
+        "structured_diagnosis_threshold_override": None,
+        "structured_diagnosis_auto_tune_enabled": True,
     }
 
 
@@ -582,3 +595,100 @@ def remove_no_function_calling_model(model_name: str) -> bool:
         name, len(current),
     )
     return True
+
+
+# ── Structured-diagnosis threshold band (Q2 §39) ────────────────────────
+
+
+def get_structured_diagnosis_threshold_floor() -> float:
+    return float(_ensure_initialized().get(
+        "structured_diagnosis_threshold_floor", 0.50,
+    ))
+
+
+def set_structured_diagnosis_threshold_floor(value: float) -> None:
+    v = float(value)
+    if not (0.0 <= v <= 0.99):
+        raise ValueError(
+            f"structured_diagnosis_threshold_floor must be in [0.0, 0.99], got {value!r}"
+        )
+    ceiling = get_structured_diagnosis_threshold_ceiling()
+    if v >= ceiling:
+        raise ValueError(
+            f"floor {v} must be < ceiling {ceiling}; "
+            f"adjust ceiling first OR pick a lower floor"
+        )
+    _update({"structured_diagnosis_threshold_floor": v})
+    logger.info(
+        "runtime_settings: structured_diagnosis_threshold_floor set to %.2f", v,
+    )
+
+
+def get_structured_diagnosis_threshold_ceiling() -> float:
+    return float(_ensure_initialized().get(
+        "structured_diagnosis_threshold_ceiling", 0.95,
+    ))
+
+
+def set_structured_diagnosis_threshold_ceiling(value: float) -> None:
+    v = float(value)
+    if not (0.01 <= v <= 1.0):
+        raise ValueError(
+            f"structured_diagnosis_threshold_ceiling must be in [0.01, 1.0], got {value!r}"
+        )
+    floor = get_structured_diagnosis_threshold_floor()
+    if v <= floor:
+        raise ValueError(
+            f"ceiling {v} must be > floor {floor}; "
+            f"adjust floor first OR pick a higher ceiling"
+        )
+    _update({"structured_diagnosis_threshold_ceiling": v})
+    logger.info(
+        "runtime_settings: structured_diagnosis_threshold_ceiling set to %.2f", v,
+    )
+
+
+def get_structured_diagnosis_threshold_override() -> float | None:
+    """Returns None when no override is set (auto-tuner manages the
+    threshold). Returns a float in (0, 1] when the operator has
+    pinned a specific value."""
+    raw = _ensure_initialized().get("structured_diagnosis_threshold_override")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def set_structured_diagnosis_threshold_override(value: float | None) -> None:
+    if value is None:
+        _update({"structured_diagnosis_threshold_override": None})
+        logger.info("runtime_settings: structured_diagnosis_threshold_override CLEARED")
+        return
+    v = float(value)
+    floor = get_structured_diagnosis_threshold_floor()
+    ceiling = get_structured_diagnosis_threshold_ceiling()
+    if not (floor <= v <= ceiling):
+        raise ValueError(
+            f"override {v} must be within [floor={floor}, ceiling={ceiling}]; "
+            f"adjust the band first OR pick an in-band value"
+        )
+    _update({"structured_diagnosis_threshold_override": v})
+    logger.info(
+        "runtime_settings: structured_diagnosis_threshold_override set to %.2f", v,
+    )
+
+
+def get_structured_diagnosis_auto_tune_enabled() -> bool:
+    return bool(_ensure_initialized().get(
+        "structured_diagnosis_auto_tune_enabled", True,
+    ))
+
+
+def set_structured_diagnosis_auto_tune_enabled(value: bool) -> None:
+    _update({"structured_diagnosis_auto_tune_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: structured_diagnosis_auto_tune_enabled set to %s",
+        bool(value),
+    )

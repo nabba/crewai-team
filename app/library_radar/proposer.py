@@ -139,6 +139,48 @@ def _slug(text: str, fallback: str = "library") -> str:
     return s or fallback
 
 
+def _build_coding_session_spec(d: Discovery, slug: str) -> dict:
+    """Q2 §39: scaffold for trialing a library proposal.
+
+    Library adoption is a structured workflow: confirm PyPI name +
+    license, add a smoke-import test inside a worktree, run pytest
+    + ruff + mypy, file a CR for the requirements.txt change. The
+    spec captures that workflow as a coding-session.
+    """
+    candidates = " | ".join(d.candidate_packages[:3]) if d.candidate_packages else "?"
+    return {
+        "intent": (
+            f"Trial adoption of {d.title[:60]} ({d.category})"
+        ),
+        "files": [
+            {
+                "path": "requirements.txt",
+                "action": "edit",
+                "purpose": (
+                    f"add the chosen package (candidates: {candidates}) "
+                    f"with a version pin"
+                ),
+                "size_estimate": "+1 line",
+            },
+            {
+                "path": f"tests/library_trials/test_{slug[:30]}_smoke.py",
+                "action": "create",
+                "purpose": (
+                    "smoke-import test that imports the package + "
+                    "verifies a top-level public symbol works"
+                ),
+                "size_estimate": "~25 LOC",
+            },
+        ],
+        "acceptance": [
+            f"pip install -r requirements.txt",
+            f"pytest tests/library_trials/test_{slug[:30]}_smoke.py -v",
+            "verify license is compatible with the project license",
+        ],
+        "expected_duration_min": 30,
+    }
+
+
 def _render_proposal(d: Discovery, *, signature: str) -> str:
     pkg_list = ", ".join(f"`{p}`" for p in d.candidate_packages) or "(none extracted)"
     action_block = f"\n## Tech-radar suggested action\n\n{d.action}\n" if d.action else ""
@@ -254,6 +296,7 @@ def run_one_pass(
                 title=discovery.title[:80] or "library proposal",
                 body_markdown=_render_proposal(discovery, signature=sig),
                 target_path=target_path,
+                coding_session_spec=_build_coding_session_spec(discovery, slug),
             )
         except Exception:
             logger.warning(

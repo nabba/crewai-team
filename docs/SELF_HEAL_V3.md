@@ -640,3 +640,136 @@ which already triggers the `app.healing` package init.
   * Auto-apply CR infrastructure (separate, dormant): `docs/AUTO_APPLY.md`
   * Q1 + Q2 narrative: `tests/test_q1_unclog.py` and
     `tests/test_q2_auto_actions.py`
+
+
+## Q2 §39 amendments — structured-diagnosis CRs + Item 9 history lookup
+
+PROGRAM.md §39 closes the May 2026 audit's "0 resolved, 1 attempted"
+finding. The historical `error_diagnosis` path produced PROSE
+proposals that operators had to read, parse, and apply manually.
+This pipeline replaces the prose path (for `fix_type="code"`) with
+a structured `(path, new_content)` proposal that goes through the
+standard CR gate.
+
+### Q2-A — Structured diagnosis pipeline
+
+`app/healing/structured_diagnosis.py` calls Claude Sonnet 4.5 with
+the error + traceback + full file content and asks for a strict
+JSON output: `new_content` + `confidence` + `reasoning` (or
+`declined: true` with a `decline_reason`). Multi-site bugs,
+destructive patches, missing-context cases all decline → caller
+falls back to the existing prose path (preserves degraded-mode
+behavior).
+
+Confidence-gated: filing a CR requires `fix.confidence >=
+current_threshold()`. The threshold auto-adjusts based on operator
+approval rate (see Q2-C).
+
+`app/healing/error_diagnosis.py:_try_structured_path` wires the
+structured path BEFORE the prose `create_proposal` call. Returns
+True on successful CR file → caller marks the error diagnosed and
+exits early.
+
+### Q2-B — Telemetry ledger
+
+`app/healing/diagnosis_telemetry.py` records three event kinds in
+`workspace/healing/structured_diagnosis_telemetry.jsonl`:
+
+  * `filed`     — CR created (above-threshold fix produced)
+  * `declined`  — LLM declined OR confidence below threshold OR
+                  guard fired (file too large / rate limit)
+  * `resolution` — CR transitioned (applied / rejected / rolled-back / timeout)
+
+Resolution rows fire automatically from
+`change_requests/lifecycle.py:_maybe_emit_diagnosis_telemetry`,
+which checks `cr.requestor == "error_diagnosis"` and emits from
+all four resolution paths. Rollbacks count as
+rejection-equivalent for the auto-tuner.
+
+5000-line cap via `app.utils.jsonl_retention.append_with_cap`
+(approx 3 years of cadence).
+
+### Q2-C — Self-adjusting confidence threshold
+
+`app/healing/diagnosis_auto_tune.py` registered as the 24th healing
+monitor. Algorithm:
+
+  * Target band: approval rate ∈ [0.65, 0.85]
+  * Step: ±0.02 per adjustment
+  * Cadence guard: at most one adjustment per 24h
+  * Hysteresis: ≥ 5 NEW resolutions since last change
+  * Clamps to `[floor, ceiling]` from runtime_settings
+
+Runtime knobs (settable from React `/cp/settings`):
+
+| Key | Default | Purpose |
+|---|---|---|
+| `structured_diagnosis_threshold_floor` | 0.50 | Auto-tuner can't go below |
+| `structured_diagnosis_threshold_ceiling` | 0.95 | Auto-tuner can't go above |
+| `structured_diagnosis_threshold_override` | None | Manual operator pin (bypasses auto-tune entirely) |
+| `structured_diagnosis_auto_tune_enabled` | true | Master switch |
+
+Read precedence in `current_threshold()`:
+  1. operator override (when set)
+  2. auto-tune state file (`workspace/healing/structured_diagnosis_threshold.json`)
+  3. fallback default 0.70
+
+**Signal alerting is option B**: silent on routine adjustments,
+fires only when auto-tune wants to move beyond the operator-set
+band (`pinned_at_floor` / `pinned_at_ceiling`), deduped 7d. Routine
+auto-tune drift goes silent; pin events surface as actionable
+"consider widening the band" alerts.
+
+### Q2-D — REST + React surface
+
+Two new endpoints under `/api/cp/config/`:
+
+  * `GET /structured_diagnosis/state` — threshold state + 30d
+    telemetry summary (filed / approved / rejected / pending
+    + rolling approval rate)
+  * `GET /structured_diagnosis/telemetry?window=N` — paginated
+    rolling-window rows joined with their resolutions
+
+React `StructuredDiagnosisCard` in `SettingsPage.tsx` renders the
+state inline: active threshold, recent approval rate, telemetry
+breakdown, floor/ceiling inputs, override pin/clear, auto-tune
+toggle.
+
+### Q2-E — HOT-1 observation hook
+
+Every `generate_structured_fix` invocation emits one row to
+`workspace/subia/observations/metacognitive_repair.jsonl` (capped
+at 5000 lines). Schema documented in
+`docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md`. The future HOT-1 Butlin
+indicator probe will read this log to compute its score; for now
+the log is **passive collection only** — adding it costs nothing
+and gives the future probe months of pre-built observations to
+score against. Goodhart-of-the-indicator is explicitly avoided:
+the auto-tuner optimises for operator approval rate, not for
+hypothesis length / diversity.
+
+### Q2-F — Item 9: continuity-ledger lookup
+
+`app/identity/relevant_history.py:relevant_history(path,
+window_days=90)` aggregates path-keyed history from BOTH the
+continuity ledger AND the CR audit log. Wired into:
+
+  * `change_requests.lifecycle.create_request` — appends a "📜 Recent
+    activity on this path" markdown block to `cr.reason`
+  * `tools.request_tier3_amendment` — passes the lookup as
+    `relevant_history_90d` in `extra_evidence`
+  * `governance_notifier` — Signal alerts include a one-line
+    history summary
+
+Read-only against both sources. The continuity ledger remains a
+narrative artefact emitted by identity-shaping events, not augmented
+by retrospective queries.
+
+### Q2 master switches recap
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `structured_diagnosis_auto_tune_enabled` (runtime_settings) | `true` | Master switch for the auto-tuner |
+| `STRUCTURED_DIAGNOSIS_TELEMETRY_LOG` (env) | `workspace/healing/structured_diagnosis_telemetry.jsonl` | Override telemetry log path (test fixtures) |
+| `STRUCTURED_DIAGNOSIS_THRESHOLD_STATE` (env) | `workspace/healing/structured_diagnosis_threshold.json` | Override state-file path |
+| `HOT1_OBSERVATION_LOG` (env) | `workspace/subia/observations/metacognitive_repair.jsonl` | Override HOT-1 log path |

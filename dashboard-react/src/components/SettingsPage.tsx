@@ -63,6 +63,7 @@ export function SettingsPage() {
       <Tier3AmendmentCard settings={settingsQ.data} />
       <GovernanceRatchetCard />
       <GoodhartHardGateCard settings={settingsQ.data} />
+      <StructuredDiagnosisCard settings={settingsQ.data} />
       <SelfHealSubsystemsCard settings={settingsQ.data} />
       <WebPushCard />
     </div>
@@ -1466,5 +1467,266 @@ function RunbookRow({
         </span>
       )}
     </li>
+  );
+}
+
+
+// ── Structured-diagnosis confidence threshold (Q2 §39) ──────────────────
+
+
+function StructuredDiagnosisCard({ settings }: { settings: RuntimeSettings }) {
+  const update = useUpdateRuntimeSettings();
+  const [stateData, setStateData] = useState<{
+    threshold?: {
+      current?: number;
+      effective?: number;
+      floor?: number;
+      ceiling?: number;
+      override?: number | null;
+      auto_tune_enabled?: boolean;
+      last_adjusted_at?: string | null;
+      last_adjusted_from?: number | null;
+      last_adjusted_to?: number | null;
+      last_approval_rate_at_adjustment?: number | null;
+    };
+    telemetry_30d?: {
+      filed?: number;
+      resolved?: number;
+      approved?: number;
+      rejected?: number;
+      pending?: number;
+      approval_rate?: number | null;
+    };
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/config/structured_diagnosis/state')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setStateData(d);
+      })
+      .catch(() => {
+        /* observability is best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [update.isSuccess]);
+
+  const floor = settings.structured_diagnosis_threshold_floor ?? 0.5;
+  const ceiling = settings.structured_diagnosis_threshold_ceiling ?? 0.95;
+  const override = settings.structured_diagnosis_threshold_override ?? null;
+  const autoTune = settings.structured_diagnosis_auto_tune_enabled ?? true;
+
+  const effective =
+    stateData?.threshold?.effective ?? stateData?.threshold?.current ?? 0.7;
+  const approvalRate = stateData?.telemetry_30d?.approval_rate ?? null;
+
+  const onToggleAutoTune = async () => {
+    if (update.isPending) return;
+    await update.mutateAsync({
+      structured_diagnosis_auto_tune_enabled: !autoTune,
+    });
+  };
+
+  const onClearOverride = async () => {
+    if (update.isPending) return;
+    await update.mutateAsync({ structured_diagnosis_threshold_override: null });
+  };
+
+  const onSetOverride = async (value: number) => {
+    if (update.isPending) return;
+    await update.mutateAsync({
+      structured_diagnosis_threshold_override: value,
+    });
+  };
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold text-[#e2e8f0]">
+          Structured-diagnosis confidence
+        </h2>
+        <span className="text-xs text-[#7a8599]">Q2 §39</span>
+      </div>
+      <p className="text-xs text-[#7a8599] mt-1">
+        Auto-tunes the LLM-confidence floor for filing structured-diagnosis CRs
+        based on rolling operator approval rate. Adjusts within{' '}
+        <code className="text-[#60a5fa]">[floor, ceiling]</code>; operator
+        override pins a specific value.
+      </p>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[#cbd5e1]">
+        <div className="bg-[#0f141d] rounded-lg p-3">
+          <div className="text-[#7a8599] mb-1">Active threshold</div>
+          <div className="text-2xl font-semibold text-[#e2e8f0]">
+            {effective.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-[#7a8599] mt-1">
+            {override !== null
+              ? `pinned by operator override`
+              : autoTune
+                ? `auto-tuned within [${floor.toFixed(2)}, ${ceiling.toFixed(2)}]`
+                : `auto-tune disabled — frozen at ${stateData?.threshold?.current?.toFixed(2) ?? '?'}`}
+          </div>
+        </div>
+        <div className="bg-[#0f141d] rounded-lg p-3">
+          <div className="text-[#7a8599] mb-1">Recent approval rate</div>
+          <div className="text-2xl font-semibold text-[#e2e8f0]">
+            {approvalRate !== null && approvalRate !== undefined
+              ? `${(approvalRate * 100).toFixed(0)}%`
+              : '—'}
+          </div>
+          <div className="text-[10px] text-[#7a8599] mt-1">
+            target band 65–85% (last 30d)
+          </div>
+        </div>
+      </div>
+
+      {/* Telemetry */}
+      <div className="mt-3 bg-[#0f141d] rounded-lg p-3 text-xs">
+        <div className="text-[#7a8599] mb-2">Telemetry (last 30d)</div>
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <div>
+            <div className="text-lg text-[#e2e8f0]">
+              {stateData?.telemetry_30d?.filed ?? 0}
+            </div>
+            <div className="text-[10px] text-[#7a8599]">filed</div>
+          </div>
+          <div>
+            <div className="text-lg text-emerald-300">
+              {stateData?.telemetry_30d?.approved ?? 0}
+            </div>
+            <div className="text-[10px] text-[#7a8599]">approved</div>
+          </div>
+          <div>
+            <div className="text-lg text-red-300">
+              {stateData?.telemetry_30d?.rejected ?? 0}
+            </div>
+            <div className="text-[10px] text-[#7a8599]">rejected</div>
+          </div>
+          <div>
+            <div className="text-lg text-[#7a8599]">
+              {stateData?.telemetry_30d?.pending ?? 0}
+            </div>
+            <div className="text-[10px] text-[#7a8599]">pending</div>
+          </div>
+        </div>
+      </div>
+
+      {stateData?.threshold?.last_adjusted_at && (
+        <div className="mt-2 text-[11px] text-[#7a8599]">
+          Last adjusted: {stateData.threshold.last_adjusted_at?.slice(0, 19)} —{' '}
+          {stateData.threshold.last_adjusted_from?.toFixed(2)} →{' '}
+          {stateData.threshold.last_adjusted_to?.toFixed(2)} (rate was{' '}
+          {((stateData.threshold.last_approval_rate_at_adjustment ?? 0) * 100).toFixed(
+            0,
+          )}
+          %)
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="mt-3 space-y-2">
+        <label className="flex items-center gap-2 text-xs text-[#cbd5e1]">
+          <input
+            type="checkbox"
+            checked={autoTune}
+            onChange={onToggleAutoTune}
+            disabled={update.isPending}
+            className="rounded"
+          />
+          Auto-tune enabled (vs. frozen at current value)
+        </label>
+
+        <div className="flex items-center gap-2 text-xs">
+          <label className="text-[#7a8599] w-16">Floor</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0.0"
+            max="0.99"
+            defaultValue={floor}
+            onBlur={async (e) => {
+              const v = parseFloat(e.target.value);
+              if (Number.isFinite(v) && Math.abs(v - floor) > 0.001) {
+                await update.mutateAsync({
+                  structured_diagnosis_threshold_floor: v,
+                });
+              }
+            }}
+            className="bg-[#0f141d] border border-[#1e2738] rounded px-2 py-1 text-[#e2e8f0] w-20"
+          />
+          <label className="text-[#7a8599] w-16 ml-2">Ceiling</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0.01"
+            max="1.0"
+            defaultValue={ceiling}
+            onBlur={async (e) => {
+              const v = parseFloat(e.target.value);
+              if (Number.isFinite(v) && Math.abs(v - ceiling) > 0.001) {
+                await update.mutateAsync({
+                  structured_diagnosis_threshold_ceiling: v,
+                });
+              }
+            }}
+            className="bg-[#0f141d] border border-[#1e2738] rounded px-2 py-1 text-[#e2e8f0] w-20"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <label className="text-[#7a8599] w-16">Override</label>
+          {override !== null ? (
+            <>
+              <span className="bg-amber-900/40 text-amber-300 px-2 py-1 rounded">
+                pinned at {override.toFixed(2)}
+              </span>
+              <button
+                type="button"
+                onClick={onClearOverride}
+                disabled={update.isPending}
+                className="text-[#7a8599] hover:text-[#e2e8f0]"
+              >
+                clear
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="number"
+                step="0.05"
+                min={floor}
+                max={ceiling}
+                placeholder="—"
+                onBlur={async (e) => {
+                  const raw = e.target.value;
+                  if (!raw) return;
+                  const v = parseFloat(raw);
+                  if (Number.isFinite(v)) {
+                    await onSetOverride(v);
+                    e.target.value = '';
+                  }
+                }}
+                className="bg-[#0f141d] border border-[#1e2738] rounded px-2 py-1 text-[#e2e8f0] w-20"
+              />
+              <span className="text-[#7a8599] text-[10px]">
+                (operator pin — bypasses auto-tune)
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <p className="text-[10px] text-[#7a8599] mt-3">
+        Mechanics: rolling-window approval rate (last 20 resolved CRs) drives
+        the auto-tuner. Below 65% → threshold +0.02 (more conservative).
+        Above 85% → −0.02 (more aggressive). At most one adjustment per
+        24h, requires ≥5 new resolutions since last change. Pinned-at-band
+        events fire a single Signal alert (deduped 7d).
+      </p>
+    </div>
   );
 }

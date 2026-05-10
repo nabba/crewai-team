@@ -245,6 +245,19 @@ def _driver() -> None:
         logger.debug(
             "monitors: crypto_rotation_drill import failed", exc_info=True,
         )
+    # Q2 §39: structured-diagnosis confidence-threshold auto-tuner.
+    # The function has its own 24h gate inside; hourly cadence here
+    # just gives us responsiveness on operator-driven settings flips.
+    try:
+        from app.healing import diagnosis_auto_tune
+        monitors.append((
+            "diagnosis_auto_tune", diagnosis_auto_tune.maybe_adjust_threshold,
+            3600, 0.0,  # hourly probe; internal 24h cadence
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: diagnosis_auto_tune import failed", exc_info=True,
+        )
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

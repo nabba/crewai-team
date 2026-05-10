@@ -4695,3 +4695,189 @@ ships dormant by deliberate design — the empty allowlists are the
 correct safety state until a clean candidate consumer matures
 (see [`docs/AUTO_APPLY.md`](docs/AUTO_APPLY.md) for the activation
 procedure).
+
+
+## 39. 2026-05-10 — Closure for the proposal generators (Q2)
+
+Three threads, each closing a remaining "system noticed but
+nothing happened" gap. Items 7, 8, 9 from the Q2 roadmap.
+
+### 39.1 Item 9 — continuity_ledger lookup in proposal evaluation
+
+When a CR is created or a Tier-3 amendment is proposed, the
+operator now sees recent identity-shaping activity on the target
+path inline with the proposal. New module
+[`app/identity/relevant_history.py`](app/identity/relevant_history.py)
+joins continuity-ledger events + CR-audit-log events filtered by
+path within a 90-day window.
+
+Wiring (read-only — neither source is augmented):
+
+  * [`change_requests/lifecycle.py:create_request`](app/change_requests/lifecycle.py)
+    — appends a "📜 Recent activity on this path" markdown block
+    to ``cr.reason`` after the existing ``lessons_learned`` check.
+  * [`tools/request_tier3_amendment.py`](app/tools/request_tier3_amendment.py)
+    — passes the lookup as ``relevant_history_90d`` in
+    ``extra_evidence`` so it travels in the proposal record + audit
+    chain (no protocol change required).
+  * [`governance_notifier.py`](app/governance_notifier.py) — Signal
+    alerts for state transitions append a one-line history summary
+    extracted from ``proposal.evidence``.
+
+### 39.2 Item 7 delta — coding-session spec on non-Tier-3 proposals
+
+The Q1 §38.1 proposal-bridge ship covered "unify three observational
+paths under one CR-emitting helper." The remaining clause from the
+spec — "+ a coding-session spec for non-Tier-3 changes" — landed
+here. New optional ``coding_session_spec`` field on ``ProposalState``
+(persisted across re-stages, schema: intent / files / acceptance /
+expected_duration_min). Three per-source spec generators:
+
+  * [`capability_gap_analyzer._build_coding_session_spec`](app/self_improvement/capability_gap_analyzer.py)
+    — scaffolds ``app/<slug>/__init__.py`` + ``core.py`` + tests
+  * [`library_radar.proposer._build_coding_session_spec`](app/library_radar/proposer.py)
+    — adds a ``requirements.txt`` line + smoke-import test
+  * [`paper_pipeline._build_coding_session_spec`](app/episteme/paper_pipeline.py)
+    — generates a per-experiment driver script + JSONL output
+
+The promoter renders the spec as a YAML fenced block in the CR
+body **only for non-Tier-3 paths** (Tier-3 routes through
+``governance_amendment.protocol``, never coding sessions). Verified
+by ``test_promoter_suppresses_spec_for_tier_immutable``.
+
+### 39.3 Item 8 — structured-diagnosis CRs (with self-tuning, telemetry, HOT-1 hook)
+
+The May 2026 audit's "0 resolved, 1 attempted" finding traced to
+``error_diagnosis`` producing prose proposals nobody applied. This
+ship changes the LLM contract from prose to ``(path, new_content)``,
+routes through the standard CR gate, and adds a self-adjusting
+confidence threshold + persistent telemetry + HOT-1 observation
+hook for the future consciousness probe.
+
+**§39.3.1 Core structured diagnosis** —
+[`app/healing/structured_diagnosis.py`](app/healing/structured_diagnosis.py).
+LLM (Claude Sonnet 4.5) reads error + traceback + full file content
+and returns strict JSON with ``new_content`` + ``confidence`` +
+``reasoning`` OR ``declined: true`` with a ``decline_reason``.
+Multi-site bugs, destructive patches (>5 lines removed), and
+missing-context scenarios all decline → caller falls back to prose.
+Per-pattern hourly rate limit (3/hr) bounds LLM spend.
+
+**§39.3.2 Telemetry** —
+[`app/healing/diagnosis_telemetry.py`](app/healing/diagnosis_telemetry.py).
+Three event kinds: ``filed`` (CR created), ``declined`` (LLM/guard
+declined), ``resolution`` (CR transitioned to applied/rejected/
+rolled-back/timeout). Persisted to
+``workspace/healing/structured_diagnosis_telemetry.jsonl`` with
+``append_with_cap`` at 5000 lines. Resolution hook in
+[`change_requests/lifecycle.py:_maybe_emit_diagnosis_telemetry`](app/change_requests/lifecycle.py)
+fires from all four resolution paths automatically when
+``cr.requestor == "error_diagnosis"``. Rollbacks count as
+rejection-equivalent for the auto-tuner.
+
+**§39.3.3 Auto-tune** —
+[`app/healing/diagnosis_auto_tune.py`](app/healing/diagnosis_auto_tune.py).
+Reads rolling-window approval rate (last 20 resolved CRs); adjusts
+the active threshold within ``[floor, ceiling]`` from
+runtime_settings. Algorithm: target band [0.65, 0.85]; step 0.02;
+≥ 24h between adjustments; ≥ 5 new resolutions hysteresis. **Signal
+alerting is option B**: silent on routine adjustments, fires only
+when auto-tune wants to move beyond the operator-set band
+(pinned-at-floor / pinned-at-ceiling), deduped 7d. Wired into
+``healing/monitors`` daemon (24th monitor; hourly probe, internal
+24h cadence gate).
+
+**§39.3.4 Operator surface** — four new runtime_settings keys
+(``threshold_floor``, ``threshold_ceiling``, ``threshold_override``,
+``auto_tune_enabled``) with idempotent setters that validate
+floor < ceiling and override ∈ [floor, ceiling]. Two new REST
+endpoints under ``/config/structured_diagnosis/``: ``state`` (state
++ telemetry summary) and ``telemetry`` (paginated rolling-window
+rows). New React ``StructuredDiagnosisCard`` in
+[`SettingsPage.tsx`](dashboard-react/src/components/SettingsPage.tsx)
+with active-threshold display, recent-approval-rate, telemetry
+breakdown (filed / approved / rejected / pending), floor + ceiling
+inputs, override pin / clear, auto-tune toggle.
+
+**§39.3.5 HOT-1 metacognitive-repair observation hook** —
+[`structured_diagnosis._emit_hot1_observation`](app/healing/structured_diagnosis.py)
+emits one row to
+``workspace/subia/observations/metacognitive_repair.jsonl`` for
+EVERY structured-diagnosis attempt (filed OR declined). Schema
+covers originating error + LLM's higher-order thought (causal
+hypothesis + length + confidence + decline status) + proposed
+intervention. The future HOT-1 probe (currently ABSENT from the
+Butlin scorecard) will read this log to compute its score —
+docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md
+([`docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md`](docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md))
+documents the schema + scoring sketch + scope discipline (probe
+observes; doesn't steer). Goodhart-of-the-indicator is the failure
+mode we're avoiding — the auto-tuner explicitly optimises for
+operator approval rate, not hypothesis length or diversity.
+
+### 39.4 SubIA / continuity-ledger / KB integration map
+
+| Surface | Q2 wiring |
+|---|---|
+| SubIA Global Workspace (``workspace_publish``) | + auto-tune pinned-at-band events at salience 0.5 (option B alerts only) |
+| Identity continuity ledger | unchanged — relevant_history is read-only against the existing six event kinds |
+| Phase-5 consciousness gate | unchanged — observation track only |
+| HOT-1 observation log (NEW) | ``workspace/subia/observations/metacognitive_repair.jsonl`` populated by every structured-diagnosis attempt |
+| ``lessons_learned`` KB | reused — ``create_request`` already calls ``check_against`` so structured-diagnosis CRs that match a previously-rejected pattern get the "⚠️ Matches lesson" banner for free |
+| ChromaDB / pgvector / Neo4j | none touched — Q2 is runtime + config + filesystem only |
+
+### 39.5 Test results
+
+- **140 tests pass** locally (Q2 closure 14 wiring + Q2 auto-actions
+  4 + Q1 unclog 3 + auto_apply 30 + proposal_bridge 21 +
+  capability_gap 15 + library_radar 14 + change_requests structural
+  24 + wiki_validator 1 + 14 fresh proposal-bridge / spec / etc.)
+- **52 skipped with reason** (gateway-only deps; runs in CI/docker)
+- **0 regressions** introduced across all touched modules
+- **Production verified**: all 9 daemons running at boot;
+  ``healing.monitors`` driver reports **24 monitors** (was 23 —
+  ``diagnosis_auto_tune`` is the new one); ``/config/structured_diagnosis/state``
+  REST endpoint returns full state + telemetry shape
+
+### 39.6 Files touched
+
+```
+NEW code:
+crewai-team/app/identity/relevant_history.py       # Item 9
+crewai-team/app/healing/structured_diagnosis.py    # Item 8.1
+crewai-team/app/healing/diagnosis_telemetry.py     # Item 8.2
+crewai-team/app/healing/diagnosis_auto_tune.py     # Item 8.3
+
+MODIFIED code:
+crewai-team/app/change_requests/lifecycle.py       # Item 9 history + Item 8.2 resolution hooks
+crewai-team/app/tools/request_tier3_amendment.py   # Item 9 history → extra_evidence
+crewai-team/app/governance_notifier.py             # Item 9 history tail in Signal alerts
+crewai-team/app/proposal_bridge/store.py           # Item 7 coding_session_spec field
+crewai-team/app/proposal_bridge/promoter.py        # Item 7 spec rendering
+crewai-team/app/self_improvement/capability_gap_analyzer.py  # Item 7 spec generator
+crewai-team/app/library_radar/proposer.py          # Item 7 spec generator
+crewai-team/app/episteme/paper_pipeline.py         # Item 7 spec generator
+crewai-team/app/healing/error_diagnosis.py         # Item 8 _try_structured_path
+crewai-team/app/healing/monitors/__init__.py       # Item 8.3 register auto_tune monitor
+crewai-team/app/runtime_settings.py                # Item 8.4 four new threshold keys + setters
+crewai-team/app/api/config_api.py                  # Item 8.4 REST endpoints
+
+NEW tests:
+crewai-team/tests/test_q2_closure.py               # 42 tests (14 pass + 28 skip-deferred)
+
+NEW docs:
+crewai-team/docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md # Item 8.5
+
+UPDATED React:
+crewai-team/dashboard-react/src/components/SettingsPage.tsx  # StructuredDiagnosisCard
+crewai-team/dashboard-react/src/api/queries.ts     # RuntimeSettings type extension
+
+UPDATED docs:
+crewai-team/docs/SELF_HEAL_V3.md                   # Q2 §39 amendments
+CLAUDE.md                                          # subsystem references
+crewai-team/PROGRAM.md                             # this section
+```
+
+No TIER_IMMUTABLE files modified. The structured-diagnosis path
+is gated behind the existing operator approval flow — operator
+approves the CR like any other; nothing auto-applies.

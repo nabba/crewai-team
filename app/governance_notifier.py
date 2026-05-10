@@ -156,13 +156,42 @@ def _format_message(template: str, proposal: Any) -> str:
         or "(none)"
     )
     citation = (getattr(proposal, "citation", "") or "")[:200]
-    return template.format(
+    body = template.format(
         id=getattr(proposal, "id", "?"),
         target=getattr(proposal, "target_path", "?"),
         proposer=getattr(proposal, "proposer", "?"),
         failures=failures,
         citation=citation,
     )
+    # Q2 §39: append the path-keyed history that
+    # ``request_tier3_amendment`` persisted into proposal.evidence.
+    # The summary line is enough for a Signal message — full
+    # detail is in the proposal record + dashboard.
+    history_tail = _format_history_tail(proposal)
+    if history_tail:
+        body = f"{body}\n\n{history_tail}"
+    return body
+
+
+def _format_history_tail(proposal: Any) -> str:
+    """One-line history tail extracted from proposal.evidence.
+
+    The tool persisted the full ``relevant_history(target_path)``
+    dict under ``evidence['relevant_history_90d']`` — we surface
+    only the summary line in the Signal alert (operator can
+    /cp/amendments for the full detail). Empty string when no
+    history is recorded or the activity was nil.
+    """
+    evidence = getattr(proposal, "evidence", None) or {}
+    history = evidence.get("relevant_history_90d") if isinstance(evidence, dict) else None
+    if not isinstance(history, dict):
+        return ""
+    counts = history.get("counts") or {}
+    total = int(counts.get("ledger", 0) or 0) + int(counts.get("cr_audit", 0) or 0)
+    if total == 0:
+        return ""
+    summary = history.get("summary_line") or ""
+    return f"📜 Recent activity: {summary}"
 
 
 def _send_signal_alert(message: str) -> None:

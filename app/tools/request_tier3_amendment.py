@@ -146,6 +146,22 @@ def _build_tool_class():
             # default to a generic value mirroring restricted_write_tool.
             proposer = "self_improver"
 
+            # Q2 §39: surface path-keyed history (last 90d of ledger +
+            # CR-audit events) so the operator sees recent activity
+            # inline with the proposal. Persisted via extra_evidence
+            # so it travels in the proposal's audit chain — no
+            # protocol change required (governance_amendment is
+            # TIER_IMMUTABLE).
+            history_payload: dict = {}
+            try:
+                from app.identity.relevant_history import relevant_history
+                history_payload = {"relevant_history_90d": relevant_history(target_path)}
+            except Exception:
+                logger.debug(
+                    "request_tier3_amendment: history lookup failed",
+                    exc_info=True,
+                )
+
             try:
                 proposal = propose_amendment(
                     target_path=target_path,
@@ -153,7 +169,7 @@ def _build_tool_class():
                     old_content=old_content,
                     citation=citation,
                     proposer=proposer,
-                    extra_evidence=extra_evidence or {},
+                    extra_evidence={**(extra_evidence or {}), **history_payload},
                 )
             except ProtocolDisabled as exc:
                 return (

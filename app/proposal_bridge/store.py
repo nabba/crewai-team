@@ -83,6 +83,15 @@ class ProposalState:
     resolved_at: Optional[str] = None  # applied OR rejected
     expired_at: Optional[str] = None
     notes: dict[str, Any] = field(default_factory=dict)
+    # Q2 §39: optional coding-session spec for non-Tier-3 proposals.
+    # When present, the promoter renders it as a YAML block in the
+    # CR body so an agent (or operator copy-pasting into a chat with
+    # the coder) has a concrete scaffold for actually implementing
+    # the proposal. Tier-3-targeted proposals never get a spec —
+    # those paths route through governance_amendment, not coding
+    # sessions. Schema: {intent, files[], acceptance[],
+    # expected_duration_min}.
+    coding_session_spec: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -106,6 +115,11 @@ class ProposalState:
             resolved_at=data.get("resolved_at"),
             expired_at=data.get("expired_at"),
             notes=dict(data.get("notes") or {}),
+            coding_session_spec=(
+                dict(data["coding_session_spec"])
+                if isinstance(data.get("coding_session_spec"), dict)
+                else None
+            ),
         )
 
 
@@ -198,6 +212,7 @@ def stage(
     body_markdown: str,
     target_path: str,
     cooldown_days: int = 7,
+    coding_session_spec: Optional[dict[str, Any]] = None,
 ) -> tuple[ProposalState, bool]:
     """Stage a proposal for eventual CR promotion.
 
@@ -244,6 +259,9 @@ def stage(
         existing.target_path = target_path
         existing.status = ProposalStatus.STAGED
         existing.cooldown_days = cooldown_days
+        existing.coding_session_spec = (
+            dict(coding_session_spec) if coding_session_spec else None
+        )
         # Clear any stale CR pointer if the proposal regressed back
         # to STAGED — the previous CR (if any) is no longer the
         # canonical artefact.
@@ -262,6 +280,9 @@ def stage(
         staged_at=_now_iso(),
         status=ProposalStatus.STAGED,
         cooldown_days=cooldown_days,
+        coding_session_spec=(
+            dict(coding_session_spec) if coding_session_spec else None
+        ),
     )
     _atomic_write_text(body_path, body_markdown)
     _write_meta(meta_path, state)

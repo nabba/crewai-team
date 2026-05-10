@@ -308,6 +308,16 @@ def _diagnose_background(entry: dict) -> None:
             description = fix.get("description", diagnosis)[:2000]
 
             if fix_type == "code" and description:
+                # Q2 §39: try the structured-diagnosis path FIRST — if
+                # the LLM produces a (path, new_content) fix above the
+                # auto-tuned confidence threshold, file it as a CR
+                # through the standard operator gate. This bypasses
+                # the prose-only proposal path that drove the May 2026
+                # "0 resolved, 1 attempted" gap.
+                if _try_structured_path(entry, diagnosis):
+                    _mark_diagnosed(entry["ts"])
+                    return
+
                 pid = create_proposal(
                     title=title,
                     description=f"Diagnosis: {diagnosis}\n\nFix: {description}",
@@ -403,3 +413,153 @@ def _mark_diagnosed(error_ts: str) -> None:
                 e["diagnosed"] = True
                 break
         _save_journal(journal)
+
+
+# ── Structured-diagnosis path (Q2 §39) ─────────────────────────────────
+
+
+def _try_structured_path(entry: dict, diagnosis: str) -> bool:
+    """Attempt the structured-diagnosis path. Returns True iff a CR
+    was filed (caller skips the prose fallback). Returns False on
+    any failure or decline (caller falls back to prose).
+
+    Failures inside structured_diagnosis already emit telemetry
+    (declined events with reasons). We only emit the ``filed`` event
+    here, after a successful CR creation.
+    """
+    try:
+        from app.healing.structured_diagnosis import (
+            generate_structured_fix, current_threshold,
+        )
+    except Exception:
+        logger.debug("structured_diagnosis unavailable", exc_info=True)
+        return False
+
+    file_path, file_content = _pick_target_file(entry)
+    if not file_path or not file_content:
+        return False
+
+    fix = generate_structured_fix(
+        error_message=entry.get("error_message") or entry.get("error_type") or "",
+        error_traceback="\n".join(entry.get("traceback") or []),
+        file_path=file_path,
+        file_content=file_content,
+        pattern_signature=entry.get("pattern_signature") or entry.get("error_type") or "",
+        error_class=entry.get("error_type") or "",
+    )
+    if fix is None or not fix.is_actionable:
+        # Declined / unavailable / below threshold — prose fallback.
+        return False
+
+    try:
+        from app.change_requests import create_request, send_ask, Status
+    except Exception:
+        logger.debug(
+            "structured_diagnosis: change_requests unavailable", exc_info=True,
+        )
+        return False
+
+    reason = (
+        f"Auto-diagnosis (structured): {fix.reasoning[:300]}\n\n"
+        f"Originating error pattern: "
+        f"{entry.get('pattern_signature') or entry.get('error_type') or '?'}\n"
+        f"LLM self-assessed confidence: {fix.confidence:.2f}\n"
+        f"Active threshold at decision: {current_threshold():.2f}\n\n"
+        f"Operator review: the diff below shows EXACTLY what changed. "
+        f"Approve via Signal 👍 / `/cp/changes` to hot-apply + open PR."
+    )
+    try:
+        cr = create_request(
+            requestor="error_diagnosis",
+            path=fix.path,
+            new_content=fix.new_content,
+            old_content=fix.old_content,
+            reason=reason,
+        )
+    except Exception:
+        logger.warning(
+            "structured_diagnosis: create_request raised", exc_info=True,
+        )
+        return False
+
+    if cr.status != Status.PENDING:
+        # Validator-side rejection (TIER_IMMUTABLE / blocked path /
+        # outside roots / etc). The CR system already audited the
+        # refusal — we just fall back to prose.
+        logger.info(
+            "structured_diagnosis: CR not pending — status=%s for %s",
+            cr.status.value, fix.path,
+        )
+        return False
+
+    # Filed-eligible: emit telemetry + Signal ASK.
+    try:
+        from app.healing.diagnosis_telemetry import record_filed
+        added, removed = _delta_for_telemetry(fix.old_content, fix.new_content)
+        record_filed(
+            cr_id=cr.id,
+            pattern_signature=entry.get("pattern_signature") or "",
+            file_path=fix.path,
+            error_class=entry.get("error_type") or "",
+            confidence=fix.confidence,
+            threshold=current_threshold(),
+            delta_added=added,
+            delta_removed=removed,
+        )
+    except Exception:
+        logger.debug("structured_diagnosis: telemetry filed-emit failed",
+                     exc_info=True)
+
+    try:
+        send_ask(cr.id)
+    except Exception:
+        logger.debug("structured_diagnosis: send_ask failed", exc_info=True)
+
+    logger.info(
+        "structured_diagnosis: filed CR %s for %s (confidence=%.2f)",
+        cr.id, fix.path, fix.confidence,
+    )
+    return True
+
+
+def _pick_target_file(entry: dict) -> tuple[str, str]:
+    """Pick the most-likely-broken file from the traceback. Reads the
+    file content and returns (repo_relative_path, content). Returns
+    ("", "") when no usable file is found."""
+    for frame in entry.get("traceback") or []:
+        match = re.search(r'File "(/app/app/[^"]+)"', frame)
+        if not match:
+            continue
+        absolute = Path(match.group(1))
+        if not absolute.exists() or absolute.suffix != ".py":
+            continue
+        try:
+            content = absolute.read_text()
+        except OSError:
+            continue
+        # Repo-relative path the change-request validator expects.
+        rel = str(absolute).removeprefix("/app/")
+        return rel, content
+    return "", ""
+
+
+def _delta_for_telemetry(old_content: str, new_content: str) -> tuple[int, int]:
+    """Same shape as ``app.change_requests.validator._net_line_delta``."""
+    try:
+        import difflib
+        diff = list(difflib.unified_diff(
+            (old_content or "").splitlines(),
+            (new_content or "").splitlines(),
+            lineterm="",
+        ))
+        added = sum(
+            1 for line in diff
+            if line.startswith("+") and not line.startswith("+++")
+        )
+        removed = sum(
+            1 for line in diff
+            if line.startswith("-") and not line.startswith("---")
+        )
+        return added, removed
+    except Exception:
+        return 0, 0
