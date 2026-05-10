@@ -2731,3 +2731,264 @@ fts5 + change_requests).
   backup-related (operator deploys with their preferred runner).
 * All 8 silent-failure modes from the original years-of-uptime
   audit closed.
+
+
+## 30. 2026-05-10 — Post-§29 redeploy verification (PRs #92–#96)
+
+After §29's PRs #84–#90 landed and the gateway was rebuilt + force-
+recreated, fresh symptoms surfaced that had been hidden by either
+stale `__pycache__` (utils / audit shadows) or stale probe URLs
+(Signal-cli / Host-bridge / Self-heal journal).  This section
+documents the five PRs that closed those gaps plus the operational
+Neo4j auth recovery, all within the same operator session as §29.
+
+### 30.1 PR #92 — chat poller heartbeat consistency (T3.4)
+
+After §29's redeploy, the listener_heartbeat monitor fired:
+
+```
+Self-heal: listener `firebase-chat-poll` has produced NO heartbeat
+— known listener never started, or crashed before its first loop
+iteration. Other listeners are healthy (heartbeat subsystem on).
+```
+
+`start_chat_inbox_poller` had a function-level early-return on
+`not _firebase_enabled()`, so on a deployment with
+`FIREBASE_ENABLED` unset (laptop dev, CI), the thread never started
+and the heartbeat file never appeared.  The other 8 firebase
+pollers (`mode` / `kb` / `phil` / `fiction` / `episteme` /
+`experiential` / `aesthetics` / `tensions`) start their thread
+unconditionally and heartbeat regardless of Firebase availability —
+only the chat poller had the gate.
+
+Fix: bring the chat poller in line with the consistent contract.
+Heartbeat fires once before the first wait + at the top of every
+loop iteration; `_get_db() == None` goes to `continue` (loop
+survives), not `return` (which would have killed the thread on
+the first Firestore hiccup).  Module-level `_chat_poll_stop` event
+allows test isolation.  6 tests.
+
+### 30.2 PR #93 — `app/utils` package-shadow regression (T3.5)
+
+React Evolution Monitor → Genealogy tab failed with:
+
+```
+cannot import name 'now_iso' from 'app.utils'
+(/app/app/utils/__init__.py)
+```
+
+Two things existed at the same import path:
+
+  * `app/utils.py`             (legacy module — `now_iso`,
+                                 `safe_json_parse`, `load_json_file`,
+                                 `save_json_file`, `truncate`)
+  * `app/utils/__init__.py`    (new package — docstring-only)
+
+Python prefers packages over modules with the same name, so
+`from app.utils import now_iso` failed at module-load time for
+every caller — `variant_archive.py` had it at the top level
+(broke the Evolution Monitor); ~25 other call sites had it inside
+try/except and failed lazily.
+
+Fix: merge the legacy module's contents into the package
+`__init__.py`; `git rm app/utils.py`; re-export the three sibling
+submodules (`feed_parser`, `hash_embedding`, `jsonl_retention`)
+so `from app.utils import feed_parser` continues to work.  13 tests.
+
+### 30.3 PR #94 — `app/audit` package-shadow regression (T3.6)
+
+Same shape as T3.5, surfaced by the T3.5 rebuild.  Gateway
+crashlooped on startup with:
+
+```
+ImportError: cannot import name 'log_tool_blocked' from 'app.audit'
+(/app/app/audit/__init__.py)
+```
+
+The crash chain:
+
+```
+main.py:95 → from app.agents.commander import Commander
+commander/__init__.py → from .orchestrator import Commander
+orchestrator.py:12 → from app.tools.attachment_reader import …
+attachment_reader.py:14 → from app.audit import log_tool_blocked
+ImportError → uvicorn fails → container crashloop
+```
+
+**All inbound traffic blocked** until fixed.
+
+**Why now?**  The shadow has existed since commit `3457e712`
+(when `app/audit/` was added as a package).  Previous gateway
+containers must have had stale `__pycache__/audit.cpython-313.pyc`
+that masked the issue.  The T3.5 rebuild produced a fresh image
+with no pyc cache, exposing the real Python 3.13 import-resolution
+behavior — package wins, module is shadowed.
+
+Fix: merge `app/audit.py` into `app/audit/__init__.py`;
+`git rm app/audit.py`; both surfaces remain — six legacy
+event-log helpers (`log_request_received`, `log_response_sent`,
+`log_crew_dispatch`, `log_tool_call`, `log_tool_blocked`,
+`log_security_event`) and the rolled-log primitive
+(`RolledLogStore` / `RolledLogReader` / `RolledLogVerifier` /
+`GENESIS` / `LEGACY_PREFIX` / `SegmentInfo` / `VerificationResult`).
+16 tests.
+
+Codebase audit confirmed no other module/package shadows exist —
+T3.5 + T3.6 are the complete set.
+
+### 30.4 PR #95 — Signal-cli + Host-bridge probes reflect runtime (T3.7)
+
+Two false alarms in the React /cp/monitor System Monitor:
+
+```
+Messaging  ❌ ERROR  Signal-cli daemon  Endpoint not found — HTTP 404
+Messaging  ⚠ WARN   Host bridge        host bridge disabled (BRIDGE_ENABLED=0)
+```
+
+Both reported failures while the underlying systems were fully
+operational:
+
+  * **Signal-cli probe** hit `GET /v1/about` — the path used by the
+    *separate* signal-cli-rest-api Docker wrapper.  Vanilla
+    signal-cli's `--http` mode is **JSON-RPC at `POST /api/v1/rpc`**.
+  * **Host-bridge probe** gated on `settings.bridge_enabled`
+    (env `BRIDGE_ENABLED=1`).  Since §27.3 the actual wiring uses
+    per-agent `BRIDGE_TOKEN_<AGENT>` tokens via
+    `bridge_client.get_bridge(...)` — `BRIDGE_ENABLED` is no
+    longer the source of truth.
+
+Fix: rewrite both probes.
+
+  * Signal-cli: `POST /api/v1/rpc` with `{jsonrpc:2.0, method:version}`,
+    parse JSON-RPC response, surface the version in the OK message:
+    `daemon responding (+372... · v0.14.1)`.
+  * Host bridge: try `bridge_client.get_bridge('change_requests')
+    .is_available()` first.  Fall back to the legacy enable+raw-
+    `/health` probe so laptop-dev setups with `BRIDGE_ENABLED=1`
+    still surface a sensible status.
+
+7 tests.
+
+### 30.5 PR #96 — Self-heal journal probe time-windows the count (T3.8)
+
+The Self-heal journal probe reported `50 recent errors, top:
+coding:BadRequestError×16` indefinitely — even on installs where
+**zero errors** had fired in the last 24 hours.
+
+`get_recent_errors(50)` returns the last 50 entries from the FIFO
+journal **regardless of timestamp**.  On the affected install,
+those 50 entries spanned 2026-04-02 → 2026-04-28 with no entries
+in the past 24 h.  But the journal-FIFO is sticky, so any install
+with historical residue stayed in WARN forever.
+
+Fix: filter by `ts` against a 24 h window.  Status logic:
+
+  * 0 entries in 24 h, 0 historical → OK `no recent errors`
+  * 0 entries in 24 h, N historical → OK `no errors in last 24h
+                                          (N historical in journal)`
+  * N entries in 24 h               → WARN `N errors in last 24h,
+                                          top: <pattern>×<count>`
+
+Top pattern is now computed over the WINDOW, not all-time, so the
+operator sees what's actually firing now (not what fired last
+month).  Pull a generous 200-entry slice so the time-cut isn't
+truncated by FIFO ordering on busy days.  7 tests.
+
+### 30.6 Operational fix — Neo4j auth recovery (no source change)
+
+The 589/wk Neo4j Unauthorized failures had a real upstream cause
+the T3.1 breaker couldn't fix (the breaker only stops the
+hammering, not the auth itself).  Diagnosis:
+
+  * `.env` has `MEM0_NEO4J_PASSWORD=V_sPgr8DI…`.
+  * `docker-compose.yml` correctly passes
+    `NEO4J_AUTH=neo4j/$MEM0_NEO4J_PASSWORD`.
+  * BUT the Neo4j data volume (`workspace/mem0_neo4j/`) was first
+    initialized with a *different* password.  Neo4j 5 reads
+    `NEO4J_AUTH` ONLY on first init; subsequent starts use the
+    on-disk auth state in the `system` database.  Even
+    `neo4j-admin dbms set-initial-password` refuses to overwrite
+    an initialized DB ("this change will only take effect if
+    performed before the database is started for the first time").
+
+Recovery (no data loss; preserves all 516 MB of graph):
+
+  1. Stop the production Neo4j container.
+  2. Start a temp container with `NEO4J_AUTH=none` against the same
+     data volume on a different host port.
+  3. Run `ALTER USER neo4j SET PASSWORD '<env value>'` against the
+     `system` database via `cypher-shell -d system`.
+  4. Stop the temp container; start the real one.
+  5. Force-close the `neo4j_auth` circuit breaker so the
+     `belief_outbox` reconciler resumes immediately.
+
+Verified: `cypher-shell` returns `1` for the test row; the
+System Monitor flips Neo4j from ERROR → OK.
+
+### 30.7 Final System Monitor state (post-fixes)
+
+```
+       Containers     ok  PostgreSQL              connected · 106 budget rows
+       Containers     ok  ChromaDB                connected · 57 collections
+       Containers     ok  Neo4j                   connected           ← T3.1 + 30.6
+       Containers     ok  Gateway HTTP            responding
+        Messaging     ok  Signal-cli daemon       daemon responding (+372... · v0.14.1)  ← T3.7
+        Messaging     ok  Host bridge             responding via per-agent token (change_requests)  ← T3.7
+         Internal     ok  Idle scheduler          running · idle
+         Internal     ok  Self-heal journal       no errors in last 24h (66 historical in journal)  ← T3.8
+         Internal     ok  Budget reconcile        last write 2026-05-10 00:28:04
+External services     ok  LLM provider credits    no active credit alerts
+```
+
+All-green.
+
+### 30.8 Files touched
+
+```
+app/firebase/listeners.py                                  # PR #92
+app/utils/__init__.py                                      # PR #93
+app/utils.py                                               # PR #93 (DELETED)
+app/audit/__init__.py                                      # PR #94
+app/audit.py                                               # PR #94 (DELETED)
+app/control_plane/dashboard_api.py                         # PR #95, #96
+workspace/mem0_neo4j/dbms/auth.ini                         # 30.6 operational
+
+tests/test_firebase_chat_poll_heartbeat_consistency.py     # PR #92 (NEW) — 6 tests
+tests/test_utils_package_imports.py                        # PR #93 (NEW) — 13 tests
+tests/test_audit_package_imports.py                        # PR #94 (NEW) — 16 tests
+tests/test_system_monitor_probes.py                        # PR #95 (NEW) — 7 tests
+tests/test_self_heal_journal_probe_timewindow.py           # PR #96 (NEW) — 7 tests
+```
+
+Total: **49 new tests** across 5 new test files.
+
+### 30.9 Cumulative session totals (§29 + §30)
+
+* 13 PRs merged (#84 → #96, contiguous, no gaps).
+* ~1,500–2,000 false-WARN entries/week eliminated from
+  `errors.jsonl` (§29.4).
+* 4 false-alarm Monitor probes corrected (Signal-cli, Host bridge,
+  Self-heal journal time-window, plus the chat-poller heartbeat
+  contract).
+* 2 Python module/package shadow regressions caught and fixed
+  (T3.5 utils, T3.6 audit), with regression-guard tests so
+  re-introducing the shadow fails CI.
+* 1 operational data-volume auth recovery (Neo4j) without data
+  loss.
+* 100 new tests across 12 new test files
+  (51 in §29 + 49 in §30).
+
+### 30.10 What still needs operator action
+
+* **`workspace/mem0_neo4j/dbms/auth.ini.backup-1778372423`** —
+  the renamed-aside auth file from the 30.6 recovery.  Safe to
+  delete once you're confident the new auth is stable.
+* **Pattern_learner backlog** at `workspace/proposed_runbooks/`
+  still has the 58 markdown scaffolds from §29.1's trigger.  After
+  the next 7-day re-scan window, the scaffolds for the patterns
+  these PRs eliminated will stop being re-flagged; cleaning up
+  the existing files is operator-discretion.
+* **PROGRAM.md duplicate `## 29.` heading** — a parallel agent's
+  "Phase H" section landed at line 2527 with the same number as
+  this session's pattern_learner triage (line 2218).  Renumber
+  one of them when convenient; not blocking.
