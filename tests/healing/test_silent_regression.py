@@ -9,12 +9,13 @@ import pytest
 
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
+    from app.audit import journal as audit_journal
     from app.healing import silent_regression_detector
     from app.healing.handlers import _common as _h_common
 
+    audit_journal._reset_for_tests(tmp_path)
+
     monkeypatch.setattr(_h_common, "_STATE_DIR", tmp_path / "self_heal")
-    monkeypatch.setattr(silent_regression_detector,
-                        "_AUDIT_JOURNAL_PATH", tmp_path / "audit_journal.json")
     monkeypatch.setattr(silent_regression_detector,
                         "_recent_git_commits", lambda *a, **kw: [])
     monkeypatch.setattr(silent_regression_detector,
@@ -26,7 +27,10 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(silent_regression_detector, "audit_event",
                         lambda *a, **k: None)
 
-    yield tmp_path, sent
+    try:
+        yield tmp_path, sent
+    finally:
+        audit_journal._reset_for_tests(None)
 
 
 def _seed_journal(path, events: list[tuple[datetime, str]]) -> None:

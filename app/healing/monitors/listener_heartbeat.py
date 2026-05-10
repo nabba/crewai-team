@@ -48,7 +48,7 @@ _LIVENESS_PROBES = [
     "workspace/audit.log",                  # any audit write
     "workspace/conversations.db",           # any user message
     "workspace/error_journal.json",         # error_diagnosis activity
-    "workspace/audit_journal.json",         # auditor cron
+    "workspace/audit_journal/current.jsonl",  # auditor cron (rolled-segment active)
     "workspace/control_plane/heartbeat.json",  # explicit heartbeat
 ]
 

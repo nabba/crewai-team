@@ -16,6 +16,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.audit import journal as audit_journal
+
 logger = logging.getLogger(__name__)
 
 _WORKSPACE = Path("/app/workspace")
@@ -325,7 +327,7 @@ def generate_and_save() -> str:
     """
     try:
         errors = _load_json("error_journal.json")
-        audits = _load_json("audit_journal.json")
+        audits = audit_journal.read_recent(2000)
         variants = _load_json("variant_archive.json")
         skill_count = _count_skills()
         topic_counts = _extract_skill_topics()
@@ -404,8 +406,11 @@ def get_live_stats() -> dict:
         stats["skills_count"] = _count_skills()
         errors = _load_json("error_journal.json")
         stats["error_count"] = len(errors)
-        audits = _load_json("audit_journal.json")
-        stats["audit_count"] = len(audits)
+        audit_stats = audit_journal.stats()
+        stats["audit_count"] = (
+            audit_stats.get("n_entries_closed", 0)
+            + audit_stats.get("n_entries_current", 0)
+        )
         variants = _load_json("variant_archive.json")
         stats["variants_count"] = len(variants)
         if _CHRONICLE_PATH.exists():

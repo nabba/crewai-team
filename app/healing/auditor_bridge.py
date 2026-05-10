@@ -1,8 +1,8 @@
 """Auditor → Signal + change-request bridge.
 
 The error-resolution cron job in ``app/auditor.py`` produces fix
-proposals (``error_fix_proposed`` events in
-``workspace/audit_journal.json``) but those proposals sit in a
+proposals (``error_fix_proposed`` events in the rolled audit journal
+under ``workspace/audit_journal/``) but those proposals sit in a
 ``proposals`` table that nobody opens — the journal records show
 "0 resolved, 1 attempted" every 30 min for the past month.
 
@@ -32,15 +32,15 @@ Master switch: ``HEALING_AUDITOR_BRIDGE_ENABLED`` (default ON).
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
 import threading
 import time
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.audit import journal as audit_journal
 from app.healing.handlers._common import (
     audit_event,
     file_change_request,
@@ -54,12 +54,7 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = "auditor_bridge.json"
 _POLL_INTERVAL_S = 5 * 60  # check every 5 min — proposals are O(30 min)
 _WARMUP_S = 90
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_AUDIT_JOURNAL_CANDIDATES = [
-    _REPO_ROOT / "workspace" / "audit_journal.json",
-    Path("/app/workspace/audit_journal.json"),
-]
+_LOOKBACK_DAYS = 7  # ignore proposals older than this — re-alerting old ones is noise
 
 
 def _enabled() -> bool:
@@ -68,21 +63,13 @@ def _enabled() -> bool:
     )
 
 
-def _audit_path() -> Path | None:
-    for p in _AUDIT_JOURNAL_CANDIDATES:
-        if p.exists():
-            return p
-    return None
-
-
-def _load_journal() -> list[dict[str, Any]]:
-    p = _audit_path()
-    if p is None:
-        return []
-    try:
-        return json.loads(p.read_text())
-    except (OSError, json.JSONDecodeError):
-        return []
+def _load_recent_proposals() -> list[dict[str, Any]]:
+    """Return ``error_fix_proposed`` payloads from the last ``_LOOKBACK_DAYS``."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_LOOKBACK_DAYS)
+    return [
+        e for e in audit_journal.read_since(cutoff)
+        if e.get("event") == "error_fix_proposed"
+    ]
 
 
 def _proposal_key(detail: str) -> str:
@@ -134,12 +121,12 @@ def _proposal_to_markdown(*, key: str, entry: dict[str, Any]) -> str:
     files_changed = entry.get("files_changed") or []
     return f"""# Auditor proposal — `{pattern_part}` (attempt {attempt_part or '?'})
 
-> Auto-mirrored from `workspace/audit_journal.json` by the
-> ``app.healing.auditor_bridge`` daemon. The auditor's
-> ``run_error_resolution`` cron produced this fix proposal but the
-> proposals system surface (`/cp/proposals`) was unattended; this
-> file gives the change-request gate (`/cp/changes`) a concrete
-> artefact to approve.
+> Auto-mirrored from the rolled audit journal at
+> `workspace/audit_journal/` by the ``app.healing.auditor_bridge``
+> daemon. The auditor's ``run_error_resolution`` cron produced this
+> fix proposal but the proposals system surface (`/cp/proposals`)
+> was unattended; this file gives the change-request gate
+> (`/cp/changes`) a concrete artefact to approve.
 
 - **Pattern:** `{pattern_part}`
 - **Attempt:** {attempt_part or '?'}
@@ -243,22 +230,7 @@ def run_one_pass() -> int:
     if not _enabled():
         return 0
 
-    entries = _load_journal()
-    if not entries:
-        return 0
-
-    # Only consider events from the last 7 days — older proposals are
-    # almost certainly stale and re-alerting them is noise.
-    cutoff_iso = time.strftime(
-        "%Y-%m-%dT%H:%M:%S",
-        time.gmtime(time.time() - 7 * 86400),
-    )
-    relevant = [
-        e for e in entries
-        if e.get("event") == "error_fix_proposed"
-        and (e.get("ts") or "") >= cutoff_iso
-    ]
-
+    relevant = _load_recent_proposals()
     if not relevant:
         return 0
 

@@ -8,17 +8,20 @@ without archival:
     ~5,000 errors/day, that's at most a few days of history retained.
   * ``workspace/audit_journal.json`` — the operational audit journal
     (separate from the immutable Postgres ``control_plane.audit_log``).
-    Currently no rotation; just a single growing file.
+    Single growing file with a silent 200-entry FIFO truncation that
+    capped history at hours rather than days.
 
 This monitor runs daily:
 
   1. Walks the rotated errors.jsonl.{1,2,3} files; gzips them into
      ``workspace/logs/archive/<YYYY-MM>.jsonl.gz`` (one per month;
      append-mode for monthly aggregation).
-  2. Same for audit_journal.json — but since it's monolithic, we
-     check the file size; when it crosses ``_AUDIT_ROTATE_BYTES``
-     (default 10 MB), we copy-then-truncate, gzip the copy into
-     ``workspace/audit_archive/``.
+  2. Audit journal: superseded by the rolled-segment storage
+     introduced in C1+C2. The auditor now writes through
+     ``app.audit.journal`` into ``workspace/audit_journal/``; closed
+     segments accumulate as ``seg-NNNN-<ts>.jsonl`` files and ARE the
+     archive. ``_archive_audit_journal`` stays as a no-op shim so the
+     telemetry tuple in :func:`run` keeps its shape.
   3. Retention: deletes archive files older than
      ``LOG_ARCHIVE_RETENTION_DAYS`` (default 90 days).
 
@@ -51,9 +54,10 @@ _RUN_CADENCE_S = 24 * 3600   # daily
 # Sources we archive.
 _ERRORS_LOG_DIR = Path("/app/workspace/logs")
 _ERRORS_ARCHIVE_DIR = Path("/app/workspace/logs/archive")
-_AUDIT_JOURNAL_PATH = Path("/app/workspace/audit_journal.json")
+# _AUDIT_ARCHIVE_DIR retained so the purge loop can still clean up
+# pre-migration audit archives. New writes don't land here; the
+# rolled-segment storage under workspace/audit_journal/ replaced this path.
 _AUDIT_ARCHIVE_DIR = Path("/app/workspace/audit_archive")
-_AUDIT_ROTATE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 # Phase D #2 (2026-05-09): evolution-run archives. Per-run dirs under
 # ``workspace/shinka_results/`` accumulate forever; we tarball + gzip
@@ -99,35 +103,12 @@ def _archive_errors_jsonl() -> dict:
 
 
 def _archive_audit_journal() -> dict:
-    """If audit_journal.json is past the size cap, gzip-rotate it."""
-    summary = {"rotated": False, "bytes_archived": 0}
-    if not _AUDIT_JOURNAL_PATH.exists():
-        return summary
-    try:
-        size = _AUDIT_JOURNAL_PATH.stat().st_size
-    except OSError:
-        return summary
-    if size < _AUDIT_ROTATE_BYTES:
-        return summary
-
-    _AUDIT_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    archive_path = _AUDIT_ARCHIVE_DIR / f"audit_journal_{ts}.json.gz"
-
-    try:
-        with _AUDIT_JOURNAL_PATH.open("rb") as src, gzip.open(archive_path, "wb") as dst:
-            shutil.copyfileobj(src, dst)
-        # Truncate the live file rather than delete — concurrent writers
-        # already have it open; truncation preserves their FD.
-        with _AUDIT_JOURNAL_PATH.open("w") as f:
-            f.write("[]")
-        summary["rotated"] = True
-        summary["bytes_archived"] = size
-    except OSError:
-        logger.debug(
-            "log_archival: audit-journal rotate failed", exc_info=True,
-        )
-    return summary
+    """No-op shim; rolled-segment rotation under ``workspace/audit_journal/``
+    supersedes this archive path. Closed segments are themselves the
+    archive — they accumulate as ``seg-NNNN-<ts>.jsonl`` and are
+    retained by their own discipline (future: rolled-log retention pass).
+    """
+    return {"rotated": False, "bytes_archived": 0}
 
 
 def _archive_evolution_runs() -> dict:

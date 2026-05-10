@@ -16,7 +16,7 @@ change rather than just the symptom.
 Cadence: 4 h (the daemon driver pings daily; we self-cadence to ≤6×/day).
 
 Algorithm:
-  1. Walk ``workspace/audit_journal.json`` for the last 14 days.
+  1. Walk the rolled audit journal (``workspace/audit_journal/``) for the last 14 days.
   2. For each "cron-like" event type (the ones with regular cadence),
      compute: count_last_24h, count_prior_baseline (mean over the
      13-day window before the trailing 24h).
@@ -36,7 +36,6 @@ State at ``workspace/self_heal/silent_regression_alerts.json``::
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
@@ -45,6 +44,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from app.audit import journal as audit_journal
 from app.healing.handlers._common import (
     audit_event,
     read_state_json,
@@ -56,7 +56,6 @@ logger = logging.getLogger(__name__)
 
 
 _STATE_FILE = "silent_regression_alerts.json"
-_AUDIT_JOURNAL_PATH = Path("/app/workspace/audit_journal.json")
 _RUN_CADENCE_S = 4 * 3600
 _BASELINE_DAYS = 13
 _RECENT_WINDOW_S = 24 * 3600
@@ -96,25 +95,15 @@ def _regression_pct() -> float:
 
 
 def _read_audit_journal(lookback_days: int) -> list[dict]:
-    if not _AUDIT_JOURNAL_PATH.exists():
-        return []
-    try:
-        data = json.loads(_AUDIT_JOURNAL_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        logger.debug("silent_regression: audit journal unreadable", exc_info=True)
-        return []
-    if not isinstance(data, list):
-        return []
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     out: list[dict] = []
-    for row in data:
+    for row in audit_journal.read_since(cutoff):
         ts = (row.get("ts") or "").replace("Z", "+00:00")
         try:
             t = datetime.fromisoformat(ts)
         except (ValueError, TypeError):
             continue
-        if t >= cutoff:
-            out.append({**row, "_ts": t})
+        out.append({**row, "_ts": t})
     return out
 
 

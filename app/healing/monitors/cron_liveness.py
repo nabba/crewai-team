@@ -35,7 +35,7 @@ _ALERT_WINDOW_S = 12 * 3600
 _JOBS = [
     # (name, footprint_relpath, expected_seconds)
     ("error_resolution", "workspace/error_tracker.json", 30 * 60),
-    ("code_audit", "workspace/audit_journal.json", 4 * 3600),
+    ("code_audit", "workspace/audit_journal/current.jsonl", 4 * 3600),
     ("workspace_sync", "workspace/.git/HEAD", 1 * 3600),
     ("retrospective", "workspace/retrospective", 24 * 3600),
     ("self_improve", "workspace/self_improvement", 24 * 3600),
