@@ -456,6 +456,18 @@ def _verify_full(
                 # the generic "produce a substantive answer" boilerplate.
                 if isinstance(issues, list):
                     captured_issues = [str(i) for i in issues if i]
+                # Cure C (2026-05-10): stash the failure on the task's
+                # progress tracker so the watchdog's apology message
+                # can name the specific reasons instead of generic
+                # "please re-send a narrower question".
+                try:
+                    from app.observability.task_progress import (
+                        record_failure_context,
+                    )
+                    detail = "; ".join(captured_issues[:3]) if captured_issues else f"crew={crew_name}"
+                    record_failure_context("vetting_fail", detail)
+                except Exception:
+                    pass
                 # Use corrected version if provided and substantive
                 if corrected and len(corrected) > len(response) * 0.5:
                     result = corrected

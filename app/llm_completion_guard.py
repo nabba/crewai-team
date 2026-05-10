@@ -237,6 +237,21 @@ def check_completion_truncation(
         model, max_tokens, finish_reason, len(partial),
     )
 
+    # Cure C (2026-05-10) — stash on the task tracker so the
+    # watchdog's apology can name the specific failure cause
+    # ("response was truncated mid-output by max_tokens=4096")
+    # instead of generic "narrow your question". Best-effort —
+    # never let the tracker import break the LLM-call boundary.
+    try:
+        from app.observability.task_progress import record_failure_context
+        record_failure_context(
+            "completion_truncated",
+            f"model={model or '?'} max_tokens={max_tokens or '?'} "
+            f"partial_chars={len(partial)}",
+        )
+    except Exception:
+        pass
+
     if raise_on_truncation:
         raise CompletionTruncated(
             partial_text=partial,

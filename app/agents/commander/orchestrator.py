@@ -2021,6 +2021,20 @@ class Commander:
                         "artifact_intent: %s did not produce artifact: %s",
                         crew_name, _exc,
                     )
+                    # Cure C — stash on the task tracker so the
+                    # watchdog can name the failure if the retry
+                    # loop also stalls.
+                    try:
+                        from app.observability.task_progress import (
+                            record_failure_context,
+                        )
+                        record_failure_context(
+                            "artifact_missing",
+                            f"expected {_shape_for_verify.expected_extensions or 'any file'}; "
+                            f"trigger={_shape_for_verify.trigger}",
+                        )
+                    except Exception:
+                        pass
                     result = (
                         "[ARTIFACT VERIFICATION FAILED]\n"
                         f"This task was classified as artifact-producing "

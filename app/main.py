@@ -1474,6 +1474,69 @@ _CREW_TOOL_QUIET_SECS = 240          # tool entry/exit must be ≥ this stale (o
 _PROGRESS_CHECK_EVERY = 30           # how often we re-check after soft
 
 
+# Per-failure-kind apology templates (Cure C, 2026-05-10). When a
+# stall fires AFTER a specific failure was recorded by vetting /
+# artifact verification / completion guard, the watchdog message
+# leads with the actual reason — the user gets actionable feedback
+# instead of generic "narrow your question".
+_FAILURE_CONTEXT_TEMPLATES: dict[str, str] = {
+    "vetting_fail": (
+        "\n\nLast detected issue: the response was rejected by quality "
+        "review with the following reasons:\n  {detail}\n"
+        "Try re-sending with the gaps explicitly addressed (e.g. "
+        "missing data, incorrect identifiers, format mismatch)."
+    ),
+    "artifact_missing": (
+        "\n\nLast detected issue: the task was classified as artifact-"
+        "producing ({detail}) but no actual file was produced. The "
+        "agent returned code that would, if run, generate the file — "
+        "but the file itself never appeared. Try re-sending with an "
+        "explicit instruction to execute the script and confirm the "
+        "output path exists."
+    ),
+    "completion_truncated": (
+        "\n\nLast detected issue: an LLM response was cut off mid-"
+        "output by the token budget ({detail}). Re-sending with a "
+        "narrower scope OR an explicit higher max-tokens hint usually "
+        "recovers."
+    ),
+    "exception": (
+        "\n\nLast detected issue: an internal exception ({detail}) "
+        "interrupted the task. Logs at /api/cp/ops or errors.jsonl "
+        "have the full traceback."
+    ),
+}
+
+
+def _format_failure_context_suffix(ctx: dict | None) -> str:
+    """Render the failure-context dict as an apology suffix.
+
+    ctx schema: ``{"kind": str, "detail": str, "age_s": float}`` —
+    see :func:`app.observability.task_progress.get_failure_context`.
+
+    Returns an empty string when ctx is None or unrecognized; never
+    raises (the watchdog path is already handling an error and we
+    don't want a bug here to swallow the underlying failure).
+    """
+    if not ctx:
+        return ""
+    try:
+        kind = ctx.get("kind") or ""
+        detail = ctx.get("detail") or ""
+        # Truncate the detail to keep the apology bounded.
+        detail_short = detail[:300] + ("…" if len(detail) > 300 else "")
+        template = _FAILURE_CONTEXT_TEMPLATES.get(kind)
+        if template is None:
+            # Unknown kind — render generically so even a future
+            # failure type surfaces SOMETHING actionable.
+            return (
+                f"\n\nLast detected issue ({kind}): {detail_short}"
+            )
+        return template.format(detail=detail_short)
+    except Exception:
+        return ""
+
+
 def _evaluate_stall(task_id: str, elapsed_secs: float) -> tuple[str, float] | None:
     """Tiered stall check used by ``handle_task``.
 
@@ -1938,6 +2001,23 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             except Exception:
                 logger.debug("result_cache.invalidate_by_task on TIMEOUT failed",
                              exc_info=True)
+            # Cure C (2026-05-10): pull the last-known failure context
+            # if any. When a task stalls AFTER hitting an explicit
+            # failure (vetting reject / artifact missing / completion
+            # truncated), the user gets the actual reason instead of
+            # the watchdog's generic "narrow your question" advice.
+            # Pre-fix the apology messages were misleading: a 30-min
+            # stall caused by repeated vetting rejections looked
+            # identical to a stall caused by no progress, even though
+            # the actionable feedback is completely different.
+            _failure_ctx = None
+            try:
+                from app.observability.task_progress import get_failure_context
+                _failure_ctx = get_failure_context(str(sender or ""))
+            except Exception:
+                pass
+            _ctx_suffix = _format_failure_context_suffix(_failure_ctx)
+
             if "crew-zero-progress" in reason.lower():
                 # Stricter sibling of zero-output: tool-activity heartbeat
                 # was stale alongside zero partials, so we killed at 10 min
@@ -1951,7 +2031,7 @@ async def handle_task(sender: str, text: str, attachments: list = None,
                     "exhausted) or a hung external call. Please try "
                     "again — if it recurs, narrow the scope or break the "
                     "request into smaller parts."
-                )
+                ) + _ctx_suffix
             elif "zero-output" in reason.lower():
                 result = (
                     "Sorry — your request ran for 20+ minutes without "
@@ -1963,26 +2043,37 @@ async def handle_task(sender: str, text: str, attachments: list = None,
                     "'make a table of these N companies with these M "
                     "columns' so the researcher reaches for its structured "
                     "research tool."
-                )
+                ) + _ctx_suffix
             elif "output-stall" in reason.lower():
-                result = (
-                    "Sorry — the task stopped producing partial results (no "
-                    "new rows / findings for several minutes).  I'll deliver "
-                    "what's been streamed so far; please re-send a narrower "
-                    "question to fill the gaps."
-                )
+                # If we have a specific failure context, the apology
+                # leads with THAT (the user's actionable signal).
+                # Otherwise fall back to the original generic message.
+                if _failure_ctx:
+                    result = (
+                        f"Sorry — the task stopped after hitting the "
+                        f"failure shown below. The retry path didn't "
+                        f"recover before the output-stall threshold.\n"
+                        f"{_ctx_suffix.lstrip()}"
+                    )
+                else:
+                    result = (
+                        "Sorry — the task stopped producing partial results (no "
+                        "new rows / findings for several minutes).  I'll deliver "
+                        "what's been streamed so far; please re-send a narrower "
+                        "question to fill the gaps."
+                    )
             elif "stall" in reason.lower():
                 result = (
                     "Sorry — your request stalled (no LLM activity for several "
                     "minutes). This usually means a provider outage or a stuck "
                     "retry loop.  Please try again in a moment."
-                )
+                ) + _ctx_suffix
             else:
                 result = (
                     "Sorry — your request hit the absolute 45-minute ceiling. "
                     "I'll deliver what's been assembled where I can; otherwise "
                     "please break the question into smaller parts."
-                )
+                ) + _ctx_suffix
         except Exception as _handle_exc:
             result = "Sorry, an error occurred processing your request. Please try again."
             logger.error(
