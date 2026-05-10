@@ -181,6 +181,17 @@ def install_throttle() -> None:
                 _resolve_credit_if_needed(provider)
                 _record_model_reliability(model, None, success=True)
                 _record_token_usage(response, kwargs, latency_ms=latency_ms)
+                # Cure A (2026-05-10): translate the SDK's
+                # ``finish_reason == "length"`` signal into a typed
+                # ``CompletionTruncated`` exception. Pre-fix the
+                # codebase ignored ``finish_reason`` entirely and a
+                # mid-output truncation looked identical to a clean
+                # completion to every layer except the eventual LLM
+                # vetter — that's the failure mode behind the
+                # operator-reported "30-min stall + please re-send"
+                # symptom for the forest-age task.
+                from app.llm_completion_guard import check_completion_truncation
+                check_completion_truncation(response, kwargs)
                 return response
 
             litellm.completion = _throttled_completion
@@ -218,6 +229,9 @@ def install_throttle() -> None:
                     latency_ms = int((time.monotonic() - t_start) * 1000)
                     _record_model_reliability(model, None, success=True)
                     _record_token_usage(response, kwargs, latency_ms=latency_ms)
+                    # Cure A — same truncation guard as the sync path.
+                    from app.llm_completion_guard import check_completion_truncation
+                    check_completion_truncation(response, kwargs)
                     return response
 
                 litellm.acompletion = _throttled_acompletion
