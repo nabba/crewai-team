@@ -3262,7 +3262,22 @@ class Commander:
             _vet_t0 = time.monotonic()
             _synthesis_result = final_result  # canonical deliverable
             from app.vetting import vet_response_detailed
+            # Cure C bug-1 fix (2026-05-10): wrap the submit in
+            # ``contextvars.copy_context().run`` so the
+            # ``current_task_id`` ContextVar that we set in
+            # ``_handle_locked`` propagates into _ctx_pool worker
+            # threads.  Without this, vetting's
+            # ``record_failure_context`` calls inside vet_response_
+            # detailed get ``tid=""`` and silently no-op — which is
+            # why the operator's 13:39 task stalled with the legacy
+            # generic apology even though vetting had recorded three
+            # specific issues.  Python's ThreadPoolExecutor.submit
+            # does NOT propagate ContextVars by default; the
+            # ``copy_context().run`` wrap is the documented fix.
+            import contextvars as _cv
+            _vet_ctx = _cv.copy_context()
             _vet_future = _ctx_pool.submit(
+                _vet_ctx.run,
                 vet_response_detailed, user_input, _synthesis_result, crew_name,
                 difficulty, get_last_tier() or "unknown",
             )
@@ -3318,6 +3333,26 @@ class Commander:
                 )
                 final_result = _synthesis_result
                 _vet_passed = True  # treat as pass so we skip the retry path
+                # Cure C bug-2 fix (2026-05-10): when vetting times
+                # out (90s), the in-flight ``record_failure_context``
+                # call inside the vetting thread arrives AFTER the
+                # watchdog has already fired its apology.  Record
+                # an explicit ``vetting_timeout`` here, synchronously
+                # in the orchestrator thread (where ContextVar IS
+                # set), so the watchdog's apology has SOMETHING
+                # actionable to surface instead of the generic
+                # "narrow your question" message.
+                try:
+                    from app.observability.task_progress import (
+                        record_failure_context,
+                    )
+                    record_failure_context(
+                        "vetting_timeout",
+                        f"crew={crew_name} ({_vet_exc.__class__.__name__})",
+                        task_id=_progress_tid,
+                    )
+                except Exception:
+                    pass
             _phase_log(
                 "vetting", _vet_t0, crew=crew_name,
                 difficulty=difficulty, passed=_vet_passed,

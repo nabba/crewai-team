@@ -1591,6 +1591,13 @@ _FAILURE_CONTEXT_TEMPLATES: dict[str, str] = {
         "narrower scope OR an explicit higher max-tokens hint usually "
         "recovers."
     ),
+    "vetting_timeout": (
+        "\n\nLast detected issue: the quality-review (vetting) layer "
+        "exceeded its 90s budget ({detail}). The response was delivered "
+        "unvetted, so the watchdog couldn't surface specific issues. "
+        "Re-sending often helps; if the request involves heavy "
+        "synthesis, narrowing the scope reduces vetting load."
+    ),
     "exception": (
         "\n\nLast detected issue: an internal exception ({detail}) "
         "interrupted the task. Logs at /api/cp/ops or errors.jsonl "
