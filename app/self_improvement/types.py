@@ -38,6 +38,7 @@ class GapSource(str, Enum):
     # arXiv:2603.10600 — trajectory-informed memory generation
     TRAJECTORY_ATTRIBUTION  = "trajectory_attribution"   # post-hoc causal analysis of a run
     OBSERVER_MIS_PREDICTION = "observer_mis_prediction"  # Observer systematically wrong on a mode
+    RECOVERY_REFUSAL        = "recovery_refusal"          # recovery loop tried + exhausted strategies
 
 
 class GapStatus(str, Enum):

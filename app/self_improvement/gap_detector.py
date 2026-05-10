@@ -59,6 +59,11 @@ SOURCE_WEIGHTS: dict[GapSource, float] = {
     # the idempotency window + upsert merges repeated observations.
     GapSource.TRAJECTORY_ATTRIBUTION:  0.75,
     GapSource.OBSERVER_MIS_PREDICTION: 0.35,
+    # Recovery-loop refusal: the loop tried multiple strategies and
+    # all failed → strong signal that a capability is missing
+    # (stronger than a generic reflexion failure because at least
+    # ONE strategy attempt happened).
+    GapSource.RECOVERY_REFUSAL:        0.85,
 }
 
 # Retrieval miss threshold: scores below this count as a miss.
@@ -324,6 +329,56 @@ def emit_observer_mis_prediction(
         return emit_gap(gap)
     except Exception:
         logger.debug("emit_observer_mis_prediction failed", exc_info=True)
+        return False
+
+
+def emit_recovery_refusal(
+    task: str,
+    *,
+    category: str = "generic",
+    gap_key: str = "",
+    attempts: int = 0,
+    queued_for_forge: bool = False,
+) -> bool:
+    """Emit a learning gap when the recovery loop exhausts its strategies.
+
+    Called from :mod:`app.recovery.strategies.forge_queue` after the
+    recovery loop's last-resort path is taken. The capability_gap_analyzer
+    picks these up and clusters them into architecture-request drafts —
+    closing the loop from "system gave up" to "operator sees a concrete
+    proposal for a new subsystem".
+
+    ``category`` is the refusal_category emitted by the recovery loop's
+    classifier (e.g. "data_unavailable", "no_sandbox", "generic").
+    ``gap_key`` is the de-duplicated counter key already maintained by
+    the forge queue. ``attempts`` is the number of recovery strategies
+    tried before giving up. ``queued_for_forge`` records whether the
+    recovery loop also queued an offline forge experiment for this gap.
+    """
+    try:
+        task = (task or "").strip()
+        if not task:
+            return False
+
+        gap = LearningGap(
+            id="",
+            source=GapSource.RECOVERY_REFUSAL,
+            description=(
+                f"recovery loop exhausted strategies for [{category}]: "
+                f"{task[:_DESC_MAX]}"
+            ),
+            evidence={
+                "task": task[:_DESC_MAX * 2],
+                "refusal_category": category,
+                "gap_key": gap_key,
+                "attempts": int(attempts),
+                "queued_for_forge": bool(queued_for_forge),
+            },
+            signal_strength=SOURCE_WEIGHTS[GapSource.RECOVERY_REFUSAL],
+        )
+        return emit_gap(gap)
+    except Exception:
+        logger.debug("emit_recovery_refusal failed", exc_info=True)
         return False
 
 

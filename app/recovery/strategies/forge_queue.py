@@ -209,6 +209,21 @@ def execute(task: str, alt: Alternative, ctx: dict) -> StrategyResult:
         except Exception:
             pass
 
+    # Surface the refusal as a LearningGap so the capability_gap_analyzer
+    # can cluster recurring refusals into architecture-request drafts.
+    # Failure-isolated: an emitter outage must NEVER mask the diagnostic.
+    try:
+        from app.self_improvement.gap_detector import emit_recovery_refusal
+        emit_recovery_refusal(
+            task=task,
+            category=category,
+            gap_key=gap_key,
+            attempts=count,
+            queued_for_forge=queued,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("forge_queue: emit_recovery_refusal failed: %s", exc)
+
     return StrategyResult(
         success=True,
         text=_diagnostic_text(task, category, count, queued),
