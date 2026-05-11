@@ -207,6 +207,16 @@ def get_embed_dim() -> int:
 _client = None
 _client_lock = threading.Lock()
 
+# Q3.1 (2026-05-11) — KB-rooted client registry. The default ``get_client()``
+# points at PERSIST_DIR (the ``memory`` KB). Knowledge bases other than
+# ``memory`` (philosophy, episteme, knowledge, experiential, tensions,
+# aesthetics, …) live under their own workspace subdirectories. Callers
+# that need to operate on those KBs — embedding-migration dual-write,
+# cutover, the chromadb_rebuild CLI — use ``get_kb_client(kb_name)`` so
+# they reach the right persist dir instead of silently writing into
+# ``workspace/memory``.
+_kb_clients: dict[str, object] = {}
+
 
 def get_client():
     global _client
@@ -216,6 +226,36 @@ def get_client():
         if _client is None:
             _client = chromadb.PersistentClient(path=str(PERSIST_DIR))
     return _client
+
+
+def get_kb_client(kb_name: str):
+    """Return the ChromaDB client rooted at ``workspace/<kb_name>``.
+
+    For ``kb_name == "memory"`` (the legacy default), this is the same
+    singleton ``get_client()`` returns. For other KBs (philosophy /
+    episteme / knowledge / experiential / tensions / aesthetics), this
+    opens a separate PersistentClient and caches it.
+
+    All clients live until process exit; cache is process-local.
+    """
+    name = (kb_name or "").strip()
+    if not name or name == "memory":
+        return get_client()
+    cached = _kb_clients.get(name)
+    if cached is not None:
+        return cached
+    with _client_lock:
+        cached = _kb_clients.get(name)
+        if cached is not None:
+            return cached
+        try:
+            from app.paths import WORKSPACE_ROOT
+            persist_dir = Path(WORKSPACE_ROOT) / name
+        except Exception:
+            persist_dir = Path("/app/workspace") / name
+        client = chromadb.PersistentClient(path=str(persist_dir))
+        _kb_clients[name] = client
+        return client
 
 
 # E4: Cache collection objects — avoid get_or_create_collection() per operation.

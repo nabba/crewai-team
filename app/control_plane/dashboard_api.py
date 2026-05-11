@@ -218,6 +218,39 @@ def get_budgets(project_id: str = Query(None)):
     from app.control_plane.budgets import get_budget_enforcer
     return get_budget_enforcer().get_status(project_id)
 
+
+@router.get("/budgets/forecast")
+def budgets_forecast(
+    project_id: str = Query(None),
+    history_months: int = Query(12, ge=2, le=36),
+    forecast_months: int = Query(6, ge=1, le=12),
+):
+    """Cross-reference the cost-trend forecast against current budget
+    caps. Returns the months projected to breach the aggregate budget.
+
+    Observational only — system never auto-raises caps in response.
+    PROGRAM §40.1 — Q3.1 (2026-05-11).
+    """
+    try:
+        from app.control_plane.budgets import forecast_breach_periods
+        breaches = forecast_breach_periods(
+            history_months=history_months,
+            forecast_months=forecast_months,
+            project_id=project_id,
+        )
+    except Exception as exc:
+        logger.debug("budgets/forecast failed: %s", exc, exc_info=True)
+        breaches = []
+    return {
+        "breaches": breaches,
+        "params": {
+            "history_months": history_months,
+            "forecast_months": forecast_months,
+            "project_id": project_id,
+        },
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
 @router.post("/budgets")
 def set_budget(body: BudgetSet):
     from app.control_plane.budgets import get_budget_enforcer

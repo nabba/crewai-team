@@ -265,3 +265,92 @@ def reconcile_actual_spend(
         )
     except Exception as exc:
         logger.debug(f"budgets reconcile failed (non-fatal): {exc}")
+
+
+# ── Q3.1 cost-trend integration (PROGRAM §40.1) ──────────────────────────
+
+
+def forecast_breach_periods(
+    history_months: int = 12,
+    forecast_months: int = 6,
+    project_id: str | None = None,
+) -> list[dict]:
+    """Cross-reference the cost-trend forecast against current budgets.
+
+    For each forecast month whose projected spend exceeds the aggregate
+    of current budget limits (across all agents for that project, or
+    system-wide when ``project_id`` is None), emit one row::
+
+        {
+            "month": "2026-11",
+            "projected_usd": 123.45,
+            "ci_low": 110.00,
+            "ci_high": 137.00,
+            "budget_limit_total": 100.00,
+            "headroom_usd": -23.45,
+        }
+
+    Goodhart-resistant: this surface is observational. The system
+    never auto-raises budget caps in response. Operator reads the
+    output and decides whether to lift caps OR cut spend.
+    """
+    try:
+        from app.control_plane.cost_trends import get_cost_trends
+    except Exception:
+        logger.debug("forecast_breach_periods: cost_trends import failed")
+        return []
+    bundle = get_cost_trends(
+        history_months=history_months,
+        forecast_months=forecast_months,
+        project_id=project_id,
+    )
+    forecast = bundle.get("forecast") or []
+    if not forecast:
+        return []
+    # Aggregate current budget caps. We use the CURRENT-period budgets
+    # as the baseline; budgets that auto-renew month-over-month inherit
+    # the same caps unless the operator changes them.
+    period = _current_period()
+    try:
+        if project_id:
+            rows = execute(
+                """SELECT COALESCE(SUM(limit_usd), 0)::float8 AS total_limit
+                   FROM control_plane.budgets
+                   WHERE project_id = %s AND period = %s""",
+                (project_id, period), fetch=True,
+            )
+        else:
+            rows = execute(
+                """SELECT COALESCE(SUM(limit_usd), 0)::float8 AS total_limit
+                   FROM control_plane.budgets
+                   WHERE period = %s""",
+                (period,), fetch=True,
+            )
+    except Exception:
+        logger.debug(
+            "forecast_breach_periods: budget aggregation failed", exc_info=True,
+        )
+        return []
+    total_limit = 0.0
+    if rows and rows[0]:
+        try:
+            total_limit = float(rows[0].get("total_limit") or 0.0)
+        except (TypeError, ValueError):
+            total_limit = 0.0
+    if total_limit <= 0:
+        # No budgets set → no breaches by definition.
+        return []
+    breaches: list[dict] = []
+    for f in forecast:
+        proj = float(f.get("projected_usd") or 0.0)
+        if proj <= total_limit:
+            continue
+        breaches.append({
+            "month": f["month"],
+            "projected_usd": proj,
+            "ci_low": float(f.get("ci_low") or 0.0),
+            "ci_high": float(f.get("ci_high") or 0.0),
+            "budget_limit_total": total_limit,
+            "headroom_usd": round(total_limit - proj, 6),
+        })
+    return breaches

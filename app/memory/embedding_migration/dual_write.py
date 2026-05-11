@@ -163,13 +163,42 @@ def _embed_target(text: str, target_model) -> list[float] | None:
         return None
 
 
+# ── Plan-target lookup ───────────────────────────────────────────────────
+
+
+def _matching_target(plan, source_collection: str):
+    """Return the plan target (or None) whose collection matches the
+    live ``source_collection`` being written to. The matching is
+    collection-name-only because the chromadb_manager hook doesn't know
+    which KB the call originated from — but since the plan validator
+    refuses non-memory KBs today, the routing collapses to: any
+    memory-KB write whose collection matches a planned target.
+
+    When the allowlist is widened in a Q3.x follow-up, the caller (the
+    hook in chromadb_manager.store) will need to pass the KB context
+    in too. For now: matched-by-collection-name is correct."""
+    if plan is None:
+        return None
+    for t in plan.targets:
+        if t.kind != "chromadb":
+            continue
+        if (t.collection or "") == source_collection:
+            return t
+    return None
+
+
 # ── Public hook (called from chromadb_manager.store) ─────────────────────
 
 
 def maybe_dual_write(
     source_collection: str, doc_id: str, text: str, metadata: dict | None,
 ) -> None:
-    """Best-effort shadow write. Never raises."""
+    """Best-effort shadow write. Never raises.
+
+    Routing: looks up the plan target whose collection matches the
+    live source_collection; opens a KB-rooted chromadb client (so the
+    shadow lands in the right persist directory); writes there.
+    """
     try:
         if not state_mod.dual_write_enabled():
             return
@@ -179,11 +208,20 @@ def maybe_dual_write(
         # Skip dual-write for the shadow collection itself (never recurse).
         if _SHADOW_SUFFIX in source_collection:
             return
+        target = _matching_target(plan, source_collection)
+        if target is None:
+            # The write is to a collection not under migration. Skip
+            # silently — the plan only covers a subset of collections.
+            return
         target_emb = _embed_target(text, plan.target)
         if target_emb is None:
             return
         from app.memory import chromadb_manager
-        client = chromadb_manager.get_client()
+        # Q3.1 — KB-rooted client. For the legacy ``memory`` KB this is
+        # the same singleton ``get_client()`` returns, so behavior is
+        # unchanged. For future KBs (once the plan-validator allowlist
+        # widens) the shadow lands in the right persist dir.
+        client = chromadb_manager.get_kb_client(target.kb or "memory")
         shadow_name = shadow_collection_name(source_collection, plan.plan_id)
         shadow_col = client.get_or_create_collection(shadow_name)
         shadow_col.add(
@@ -213,7 +251,8 @@ def backfill_one_collection(
     model, write to the shadow collection. Returns a summary dict.
 
     Idempotent: skips rows already present in the shadow collection
-    (id-based dedup)."""
+    (id-based dedup). Routes through the plan target's KB so the
+    shadow lands in the correct persist directory."""
     plan = plan_mod.load_plan()
     if plan is None:
         return {"ok": False, "error": "no plan loaded"}
@@ -223,8 +262,18 @@ def backfill_one_collection(
     ):
         return {"ok": False, "error": f"phase {cur_state.phase} disallows backfill"}
 
+    target = _matching_target(plan, source_collection)
+    if target is None:
+        return {
+            "ok": False,
+            "error": (
+                f"collection {source_collection!r} is not a target in plan "
+                f"{plan.plan_id!r} — backfill would create an orphan shadow"
+            ),
+        }
+
     from app.memory import chromadb_manager
-    client = chromadb_manager.get_client()
+    client = chromadb_manager.get_kb_client(target.kb or "memory")
     try:
         src = client.get_collection(source_collection)
     except Exception as exc:

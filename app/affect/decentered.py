@@ -45,6 +45,9 @@ import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
+
+from app.utils.jsonl_retention import read_archive
 
 logger = logging.getLogger(__name__)
 
@@ -325,26 +328,51 @@ def _summarise(
 
 # ── I/O helpers ──────────────────────────────────────────────────────────────
 
+def _iter_with_archive(path: Path) -> Iterator[str]:
+    """Yield every line across all monthly archives + the live file, in
+    chronological order. Q3.1 (2026-05-11) — archive rotation moved
+    historical lines out of the live file; daily passes (24h window) are
+    still served from live alone, but operator-initiated long-window
+    passes (e.g. 365d) must walk the archive to see what's actually
+    there. Falls back to live-only when the archive directory is empty.
+    """
+    yielded_live = False
+    try:
+        for line in read_archive(path, include_live=True):
+            yielded_live = True
+            yield line
+    except Exception:
+        logger.debug(
+            "decentered: archive iterator failed, falling back to live",
+            exc_info=True,
+        )
+    if not yielded_live and path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                yield from f
+        except Exception:
+            logger.debug("decentered: live fallback failed", exc_info=True)
+
+
 def _load_salience(path: Path, cutoff_unix: float) -> list[dict]:
     if not path.exists():
         return []
     out: list[dict] = []
     try:
-        with path.open("r", encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if i > _MAX_LINES:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts_unix = _ts_to_unix(row.get("ts", ""))
-                if ts_unix is None or ts_unix < cutoff_unix:
-                    continue
-                out.append(row)
+        for i, line in enumerate(_iter_with_archive(path)):
+            if i > _MAX_LINES:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts_unix = _ts_to_unix(row.get("ts", ""))
+            if ts_unix is None or ts_unix < cutoff_unix:
+                continue
+            out.append(row)
     except Exception:
         logger.debug("decentered: load salience failed", exc_info=True)
     return out
@@ -355,22 +383,21 @@ def _load_trace(path: Path, cutoff_unix: float) -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        with path.open("r", encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                if i > _MAX_LINES:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                affect = row.get("affect") or {}
-                ts_unix = _ts_to_unix(affect.get("ts", ""))
-                if ts_unix is None or ts_unix < cutoff_unix:
-                    continue
-                out.append(row)
+        for i, line in enumerate(_iter_with_archive(path)):
+            if i > _MAX_LINES:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            affect = row.get("affect") or {}
+            ts_unix = _ts_to_unix(affect.get("ts", ""))
+            if ts_unix is None or ts_unix < cutoff_unix:
+                continue
+            out.append(row)
     except Exception:
         logger.debug("decentered: load trace failed", exc_info=True)
     return out

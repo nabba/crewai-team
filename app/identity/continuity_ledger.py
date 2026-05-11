@@ -6,7 +6,7 @@ protocol gates *intentional* edits, but it doesn't surface
 narrative-self FIFO holds 5 identity claims; at year 2 the older
 you is gone. This ledger is the multi-year record.
 
-Six event kinds, all append-only::
+Seven event kinds, all append-only::
 
     tier3_amendment        Tier-3 IMMUTABLE file edit landed
     governance_ratchet     SAFETY/QUALITY threshold raised or relaxed
@@ -14,6 +14,9 @@ Six event kinds, all append-only::
     integrity_regen        SubIA integrity manifest regenerated
     scorecard_change       Butlin/RSM/SK indicator status changed
     self_quarantine_change file added/removed from quarantine list
+    substrate_migration    embedding-model migration cutover applied
+                           (PROGRAM §40 Item 12) — rewrites the meaning
+                           of every embedding the system holds
 
 Storage: ``workspace/identity/continuity_ledger.jsonl``. One
 ``IdentityEvent`` per line. Append-only — never delete, never
@@ -55,6 +58,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "integrity_regen",
     "scorecard_change",
     "self_quarantine_change",
+    "substrate_migration",  # PROGRAM §40 Item 12 — Q3.1
 })
 
 

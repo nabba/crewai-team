@@ -178,9 +178,40 @@ def run() -> None:
             tag="chromadb_hygiene",
         )
 
+    # Q3.1 (2026-05-11) — publish to SubIA Global Workspace so the
+    # consciousness substrate sees its own hygiene pass. Salience scales
+    # with the amount reclaimed; sub-MB passes are below the noise floor
+    # and skipped. Failure-isolated.
+    _publish_hygiene_outcome_to_gw(len(per_file), freed_total)
+
     state["last_summary"] = {
         "files": len(per_file),
         "freed_bytes_total": freed_total,
         "per_file": per_file,
     }
     write_state_json(_STATE_FILE, state)
+
+
+def _publish_hygiene_outcome_to_gw(files: int, freed_bytes: int) -> None:
+    """Best-effort GW publish. Never raises."""
+    if freed_bytes < 1_000_000:   # <1 MB — below the SubIA noise floor
+        return
+    try:
+        from app.workspace_publish import publish_to_workspace
+        freed_mb = freed_bytes / 1024 / 1024
+        # Salience: small-to-medium — substrate hygiene is housekeeping,
+        # not a dispositional event. 50 MB → 0.30; 500 MB → 0.55 (capped).
+        salience = min(0.55, 0.20 + freed_mb / 200.0)
+        publish_to_workspace(
+            source="chromadb_hygiene",
+            content=(
+                f"Quarterly ChromaDB hygiene: VACUUM reclaimed "
+                f"{freed_mb:.1f} MB across {files} files."
+            ),
+            salience=salience,
+            signal_type="disposition",
+        )
+    except Exception:
+        logger.debug(
+            "chromadb_hygiene: GW publish failed", exc_info=True,
+        )

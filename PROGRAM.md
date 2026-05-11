@@ -5104,3 +5104,149 @@ No TIER_IMMUTABLE files modified by this section. The embedding-
 migration cutover (Item 12) is the first consumer that **proposes**
 a Tier-3 amendment, but the proposal itself is gated by the existing
 protocol — the cutover module does not bypass it.
+
+## 40.1 2026-05-11 — Q3.1 cleanup pass
+
+Post-Q3 ultrathink audit identified three real defects and several
+missing-integration gaps. This pass closes them. All additive,
+revertible; no TIER_IMMUTABLE files touched.
+
+### 40.1.1 Real defects fixed
+
+**§40.1.1a — Fail-fast plan validation** (`embedding_migration/plan.py`).
+The Q3 framework's `MigrationPlan` accepted target kinds (`pgvector`)
+and KBs (philosophy / episteme / knowledge / experiential / tensions /
+aesthetics) that the dual-write hook couldn't actually serve. Plans
+saved fine, validated fine, and silently shadowed data into the wrong
+place at runtime — the exact corruption the framework was supposed to
+prevent. New `validate_plan` rejects unsupported targets at save time
+AND at load time (so a hand-edited or post-allowlist-tightening plan
+on disk doesn't silently re-engage). Allowlists today: `kind=chromadb`,
+`kb=memory` only. Widening requires a Q3.x follow-up that verifies
+the corresponding routing end-to-end.
+
+**§40.1.1b — KB-rooted chromadb client routing** (`chromadb_manager.py`
++ `dual_write.py` + `cutover.py`). The Q3 dual-write hook called
+`chromadb_manager.get_client()` (singleton, hardcoded to
+`workspace/memory/`). For any plan target with `kb != "memory"` the
+shadow collection landed in the wrong persist directory — the bug the
+plan-validator change above guards against, but we also fix the
+routing so the framework is correct when the allowlist widens. New
+`get_kb_client(kb_name)` helper opens per-KB persist clients. The
+`_matching_target(plan, source_collection)` helper in `dual_write`
+routes writes through the plan target's `kb` field.
+
+**§40.1.1c — Archive-walking readers** (`affect/salience.py`,
+`affect/welfare.py`, `affect/care_policies.py`, `affect/decentered.py`,
+`affect/calibration.py`). The Q3 archive rotation preserved
+consciousness data forever — but the readers (salience.load_recent,
+welfare.read_audit, care_policies.read_care_ledger, decentered._load_*,
+calibration.load_recent_trace_with_viability) only consulted the live
+file. Once rotation moved historical entries to archive, those readers
+silently truncated their visible window — defeating the purpose of the
+archive. Each reader now escalates to `read_archive` when the requested
+window extends past the live file's earliest entry. Early-exit-guarded:
+when the live file already covers the window (the common case), the
+archive is never opened.
+
+**§40.1.1d — Lazy-resolve workspace paths** (`embedding_migration/plan.py`,
+`dr/export_kbs.py`, `dr/boot_drill.py`). Three module-level
+`/app/workspace/...` constants were resolved at import time, breaking
+local dev with a custom `WORKSPACE_ROOT`. Each now has a
+`_default_*()` helper that lazy-resolves via `app.paths.WORKSPACE_ROOT`.
+Back-compat constants remain for any external imports.
+
+### 40.1.2 SubIA / identity-ledger integration
+
+**§40.1.2a — `substrate_migration` event kind**
+(`identity/continuity_ledger.py`). Seventh event kind. Emitted from
+`cutover.post_apply_hook` on success — substrate migration rewrites
+the meaning of every embedding the system holds; that's as identity-
+shaping as a soul edit and belongs in the multi-year identity record.
+
+**§40.1.2b — Global Workspace publish coverage**. Three new
+`publish_to_workspace` call sites:
+  * `chromadb_hygiene.run` on non-trivial reclaim (>1 MB; salience
+    scales with size).
+  * `cutover.post_apply_hook` on success (high salience 0.85 —
+    major substrate event).
+  * `dr.boot_drill.run_drill` on completion (0.30 routine pass /
+    0.85 substrate-risk failure).
+
+**§40.1.2c — DR drill identity-ledger emission**. Successful drill
+emits `integrity_regen` to the continuity ledger — a passing drill is
+direct evidence of identity-restorability. Failures are NOT recorded
+(Signal alert + JSON report already cover that; ledger noise would
+dilute the narrative).
+
+### 40.1.3 Robustness improvements
+
+**§40.1.3a — Cutover idempotency** (`cutover.post_apply_hook`). Per-
+collection guard: if the live collection already holds vectors of the
+TARGET dim, the swap was already applied — skip silently rather than
+re-archiving target-dim vectors as "old data." Makes partial-failure
+recovery (operator re-invokes the hook) safe. New
+`CutoverApplyResult.skipped_already_swapped` lists the skipped
+collections for operator visibility.
+
+**§40.1.3b — DR drill SHA-256 round-trip verification**. Export now
+records `sha256` per ledger file in the manifest; drill recomputes
+post-extract and flags any mismatch. Backward-compatible with pre-Q3.1
+manifests (no-op when `sha256` field absent). Mismatch → drill fails
+loud with a Signal alert.
+
+### 40.1.4 Cost-trends ↔ Budgets integration
+
+**§40.1.4 — `budgets.forecast_breach_periods`** + `/api/cp/budgets/forecast`
+endpoint. Cross-references the cost-trend OLS forecast against the
+sum of current-period budget caps; emits one row per month projected
+to exceed the aggregate. Operator reads "we're on track to breach
+$X in November" before the breach happens. Goodhart-resistant: the
+system never auto-raises budget caps in response.
+
+### 40.1.5 Tests
+
+`tests/test_q3_1_cleanup.py` — 17 tests covering plan refusal,
+substrate_migration event kind, archive-walking readers
+(salience/welfare/care), cutover idempotency, DR drill SHA-256
+verification (match / mismatch / pre-Q3.1 backward-compat), KB-routing
+source inspection, budgets forecast helper. All 17 pass.
+
+Q1+Q2+Q3+Q3.1 + affect-module regression: **73 pass, 52 skip**
+(gateway-deps), **0 fail**.
+
+### 40.1.6 Files touched
+
+```
+UPDATED backend:
+crewai-team/app/memory/embedding_migration/plan.py      # validate_plan + lazy _default_plan_file
+crewai-team/app/memory/embedding_migration/dual_write.py # _matching_target + get_kb_client routing
+crewai-team/app/memory/embedding_migration/cutover.py   # idempotency + ledger emission + GW publish
+crewai-team/app/memory/chromadb_manager.py              # get_kb_client + _kb_clients registry
+crewai-team/app/identity/continuity_ledger.py           # substrate_migration kind
+crewai-team/app/affect/salience.py                      # archive-walking load_recent
+crewai-team/app/affect/welfare.py                       # archive-walking read_audit
+crewai-team/app/affect/care_policies.py                 # archive-walking read_care_ledger
+crewai-team/app/affect/decentered.py                    # archive-aware iterator helper
+crewai-team/app/affect/calibration.py                   # archive-aware trace loader
+crewai-team/app/healing/monitors/chromadb_hygiene.py    # GW publish on reclaim
+crewai-team/app/dr/export_kbs.py                        # SHA-256 per ledger + lazy path
+crewai-team/app/dr/boot_drill.py                        # hash-verify + GW + ledger emit + lazy paths
+crewai-team/app/control_plane/budgets.py                # forecast_breach_periods
+crewai-team/app/control_plane/dashboard_api.py          # /api/cp/budgets/forecast endpoint
+
+NEW tests:
+crewai-team/tests/test_q3_1_cleanup.py                  # 17 tests, all pass
+
+UPDATED tests:
+crewai-team/tests/test_q3_multiyear_hygiene.py          # monkeypatch lazy _default_plan_file
+
+UPDATED docs:
+crewai-team/PROGRAM.md                                  # this section
+```
+
+No TIER_IMMUTABLE files modified. The embedding-migration cutover
+still routes through the Tier-3 amendment protocol (no bypass).
+Plan-validator changes make the framework HONEST about what it can
+serve today — pgvector / non-memory KBs are explicitly out of scope
+until their dual-write paths are wired in a future pass.

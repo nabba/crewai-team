@@ -299,7 +299,12 @@ def test_migration_plan_roundtrip(tmp_path, monkeypatch):
         "embedding_migration_plan_q3",
         "app/memory/embedding_migration/plan.py",
     )
-    monkeypatch.setattr(plan_mod, "_PLAN_FILE", tmp_path / "plan.json")
+    # Q3.1: plan paths are lazy-resolved via _default_plan_file(); patch
+    # the resolver so save_plan + load_plan use tmp_path.
+    monkeypatch.setattr(
+        plan_mod, "_default_plan_file",
+        lambda: tmp_path / "plan.json",
+    )
     plan = plan_mod.MigrationPlan(
         plan_id="test-plan-1",
         source=plan_mod.EmbeddingModel(provider="ollama", name="nomic", dim=768),

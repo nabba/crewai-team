@@ -51,6 +51,12 @@ def load_recent_trace_with_viability(hours: int = 24) -> tuple[list[AffectState]
     cutoff = (datetime.now(timezone.utc).timestamp() - hours * 3600)
     states: list[AffectState] = []
     frames: list[dict] = []
+    # Q3.1 (2026-05-11) — archive-aware iteration. The 24h default window
+    # is fully served by the live file; long-window operator backfills
+    # (e.g. annual calibration review) need the archive to see what was
+    # actually there. The escalation is early-exit-guarded: the live
+    # file's oldest entry tells us whether we need to walk archives.
+    live_oldest_ts: float | None = None
     try:
         with _TRACE_FILE.open("r", encoding="utf-8") as f:
             for line in f:
@@ -65,9 +71,14 @@ def load_recent_trace_with_viability(hours: int = 24) -> tuple[list[AffectState]
                 viability = row.get("viability", {})
                 ts_str = affect.get("ts", "")
                 try:
-                    if datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp() < cutoff:
-                        continue
+                    ts_unix = datetime.fromisoformat(
+                        ts_str.replace("Z", "+00:00"),
+                    ).timestamp()
                 except ValueError:
+                    continue
+                if live_oldest_ts is None or ts_unix < live_oldest_ts:
+                    live_oldest_ts = ts_unix
+                if ts_unix < cutoff:
                     continue
                 states.append(AffectState(
                     valence=float(affect.get("valence", 0.0)),
@@ -84,7 +95,53 @@ def load_recent_trace_with_viability(hours: int = 24) -> tuple[list[AffectState]
                 frames.append(viability)
     except Exception:
         logger.debug("calibration: trace read failed", exc_info=True)
-    return states, frames
+
+    # If the live file's earliest entry is already older than cutoff,
+    # we have full coverage. Else escalate to the archive.
+    if live_oldest_ts is None or live_oldest_ts <= cutoff:
+        return states, frames
+
+    try:
+        from app.utils.jsonl_retention import read_archive
+        archive_states: list[AffectState] = []
+        archive_frames: list[dict] = []
+        for line in read_archive(_TRACE_FILE, include_live=False):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            affect = row.get("affect", {})
+            viability = row.get("viability", {})
+            ts_str = affect.get("ts", "")
+            try:
+                ts_unix = datetime.fromisoformat(
+                    ts_str.replace("Z", "+00:00"),
+                ).timestamp()
+            except ValueError:
+                continue
+            if ts_unix < cutoff:
+                continue
+            archive_states.append(AffectState(
+                valence=float(affect.get("valence", 0.0)),
+                arousal=float(affect.get("arousal", 0.0)),
+                controllability=float(affect.get("controllability", 0.5)),
+                valence_source=str(affect.get("valence_source", "")),
+                arousal_source=str(affect.get("arousal_source", "")),
+                controllability_source=str(affect.get("controllability_source", "")),
+                attractor=str(affect.get("attractor", "neutral")),
+                internal_state_id=affect.get("internal_state_id"),
+                viability_frame_ts=affect.get("viability_frame_ts"),
+                ts=ts_str,
+            ))
+            archive_frames.append(viability)
+        # Archives are oldest-first, live is appended after.
+        return archive_states + states, archive_frames + frames
+    except Exception:
+        logger.debug("calibration: archive read failed", exc_info=True)
+        return states, frames
 
 
 # ── Reflection cycle entry ──────────────────────────────────────────────────

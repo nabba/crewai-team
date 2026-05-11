@@ -43,7 +43,9 @@ from app.paths import (  # noqa: E402  workspace-aware paths
     AFFECT_ROOT as _AFFECT_DIR,
     AFFECT_CARE_LEDGER as _CARE_LEDGER,
 )
-from app.utils.jsonl_retention import append_with_archive_rotate  # noqa: E402
+from app.utils.jsonl_retention import (  # noqa: E402
+    append_with_archive_rotate, read_archive,
+)
 
 # Cap: care_ledger spans at most 5–50 entries/day. 10k cap ≈ 200 days–years
 # of dense interaction. Older entries rotate to
@@ -157,20 +159,50 @@ def current_modifiers() -> CareModifiers:
 
 
 def read_care_ledger(limit: int = 100) -> list[dict]:
-    """Read recent care-spending events for the dashboard."""
-    if not _CARE_LEDGER.exists():
-        return []
-    rows: list[dict] = []
+    """Read recent care-spending events for the dashboard.
+
+    Q3.1 (2026-05-11) — extended to walk archives when the live file
+    has fewer than ``limit`` rows. In practice the 10k-line live cap
+    always covers ``limit=100``, so this is defensive correctness
+    rather than a hot-path concern. If future callers ask for larger
+    windows we already serve them historical data.
+    """
+    live_rows: list[dict] = []
+    if _CARE_LEDGER.exists():
+        try:
+            with _CARE_LEDGER.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        live_rows.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except Exception:
+            logger.debug("affect.care_policies: ledger read failed", exc_info=True)
+
+    if len(live_rows) >= limit:
+        return live_rows[-limit:]
+
+    # Live didn't satisfy the limit — walk the archive backwards (we
+    # need newest-first to satisfy a `limit` query). Walk forward and
+    # take the tail to keep memory bounded by archive size; callers
+    # asking for huge limits on a multi-year archive get what they ask
+    # for.
+    archive_rows: list[dict] = []
     try:
-        with _CARE_LEDGER.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+        for line in read_archive(_CARE_LEDGER, include_live=False):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                archive_rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
     except Exception:
-        logger.debug("affect.care_policies: ledger read failed", exc_info=True)
-    return rows[-limit:]
+        logger.debug(
+            "affect.care_policies: archive read failed", exc_info=True,
+        )
+
+    return (archive_rows + live_rows)[-limit:]

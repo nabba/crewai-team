@@ -80,6 +80,7 @@ class CutoverApplyResult:
     collections_swapped: int = 0
     rows_swapped: int = 0
     archived_collection_names: list[str] = field(default_factory=list)
+    skipped_already_swapped: list[str] = field(default_factory=list)
     duration_s: float = 0.0
     ok: bool = True
     error: str | None = None
@@ -264,7 +265,6 @@ def post_apply_hook() -> CutoverApplyResult:
 
     try:
         from app.memory import chromadb_manager
-        client = chromadb_manager.get_client()
     except Exception as exc:
         return CutoverApplyResult(
             plan_id=plan.plan_id, ok=False,
@@ -273,6 +273,7 @@ def post_apply_hook() -> CutoverApplyResult:
 
     archived: list[str] = []
     rows_swapped = 0
+    skipped_already_swapped: list[str] = []
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     try:
         for target in plan.targets:
@@ -281,8 +282,34 @@ def post_apply_hook() -> CutoverApplyResult:
             col_name = target.collection
             if not col_name:
                 continue
+            # Q3.1 — KB-rooted client so non-memory KBs land in the
+            # right persist dir (plan validator gates kb=memory today;
+            # routing-correctness is ready for when the allowlist widens).
+            client = chromadb_manager.get_kb_client(target.kb or "memory")
             shadow_name = shadow_collection_name(col_name, plan.plan_id)
             archive_name = f"{col_name}__archive_{ts}"
+
+            # Q3.1 — per-collection idempotency. If the live collection
+            # already holds vectors of the TARGET dim, the swap was
+            # already applied for this collection (perhaps a previous
+            # post_apply_hook call partially succeeded). Skip silently
+            # rather than re-archiving target-dim vectors as "old data."
+            try:
+                live_probe = client.get_collection(col_name)
+                sample = live_probe.peek(1)
+                embs = sample.get("embeddings") if sample else None
+                if embs and embs[0] and len(embs[0]) == plan.target.dim:
+                    skipped_already_swapped.append(col_name)
+                    logger.info(
+                        "cutover: collection %s already at target dim %d; skipping",
+                        col_name, plan.target.dim,
+                    )
+                    continue
+            except Exception:
+                # If peek fails (empty collection / not found), fall
+                # through to the normal swap path and let the proper
+                # error surface there.
+                pass
 
             # Read full source contents (so we can re-create archive).
             src = client.get_collection(col_name)
@@ -372,11 +399,74 @@ def post_apply_hook() -> CutoverApplyResult:
         # Already APPLIED — operator re-ran the hook. Fine.
         pass
 
+    # Q3.1 — identity-continuity ledger emission. Substrate migration
+    # rewrites the meaning of every embedding the system holds; this
+    # is one of the most identity-shaping events the system can do.
+    # Best-effort: ledger append failures must NEVER block the cutover
+    # outcome being returned to the operator.
+    _emit_substrate_migration_event(plan, archived, rows_swapped, skipped_already_swapped)
+
+    # Q3.1 — Global Workspace publish so the SubIA layer notices the
+    # substrate just shifted. High salience because this is a one-off,
+    # high-stakes event.
+    _publish_substrate_migration_to_gw(plan, len(archived), rows_swapped)
+
     return CutoverApplyResult(
         plan_id=plan.plan_id,
         collections_swapped=len(archived),
         rows_swapped=rows_swapped,
         archived_collection_names=archived,
+        skipped_already_swapped=skipped_already_swapped,
         duration_s=time.monotonic() - started,
         ok=True,
     )
+
+
+def _emit_substrate_migration_event(
+    plan, archived: list[str], rows_swapped: int, skipped: list[str],
+) -> None:
+    """Best-effort identity-continuity ledger append. Never raises."""
+    try:
+        from app.identity.continuity_ledger import record_event
+        summary = (
+            f"Embedding cutover applied: {plan.source.display()} → "
+            f"{plan.target.display()} ({len(archived)} collections swapped, "
+            f"{rows_swapped} rows; {len(skipped)} already at target dim)"
+        )
+        record_event(
+            kind="substrate_migration",
+            actor="embedding_migration.cutover",
+            summary=summary,
+            detail={
+                "plan_id": plan.plan_id,
+                "source": plan.source.to_dict(),
+                "target": plan.target.to_dict(),
+                "archived_collections": archived,
+                "rows_swapped": int(rows_swapped),
+                "skipped_already_swapped": skipped,
+            },
+        )
+    except Exception:
+        logger.debug(
+            "cutover: continuity-ledger emission failed", exc_info=True,
+        )
+
+
+def _publish_substrate_migration_to_gw(
+    plan, collections: int, rows: int,
+) -> None:
+    """Best-effort Global Workspace publish. Never raises."""
+    try:
+        from app.workspace_publish import publish_to_workspace
+        publish_to_workspace(
+            source="embedding_migration.cutover",
+            content=(
+                f"Substrate migration applied — embeddings now "
+                f"{plan.target.display()} ({collections} collections, "
+                f"{rows} rows swapped)."
+            ),
+            salience=0.85,                # high — major substrate event
+            signal_type="disposition",    # dispositional change vs sensory
+        )
+    except Exception:
+        logger.debug("cutover: GW publish failed", exc_info=True)

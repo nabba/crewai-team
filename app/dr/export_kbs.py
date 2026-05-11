@@ -29,6 +29,7 @@ Failure model:
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
 import json
 import logging
@@ -47,7 +48,17 @@ logger = logging.getLogger(__name__)
 # ── Configuration ─────────────────────────────────────────────────────────
 
 
-_DEFAULT_BACKUP_ROOT = Path("/app/workspace/backups/dr")
+def _default_backup_root() -> Path:
+    """Lazy-resolve so local dev with custom ``WORKSPACE_ROOT`` works."""
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "backups" / "dr"
+    except Exception:
+        return Path("/app/workspace/backups/dr")
+
+
+# Back-compat: kept for any external caller that imports the constant.
+_DEFAULT_BACKUP_ROOT = _default_backup_root()
 
 # Workspace-relative paths whose contents we include. Anything else is
 # OUT — explicit allowlist is the right shape for a security-sensitive
@@ -133,6 +144,7 @@ class _PostgresTableEntry:
 class _LedgerFileEntry:
     rel_path: str
     bytes: int
+    sha256: str | None = None     # Q3.1 — for drill-time integrity verification
     error: str | None = None
 
 
@@ -267,15 +279,25 @@ def _add_jsonl_gz_to_tar(
     return rows, len(raw)
 
 
-def _add_file_to_tar(tar: tarfile.TarFile, file_path: Path, archive_name: str) -> int:
-    """Add a workspace file as-is (preserves on-disk encoding)."""
+def _add_file_to_tar(
+    tar: tarfile.TarFile, file_path: Path, archive_name: str,
+) -> tuple[int, str]:
+    """Add a workspace file as-is (preserves on-disk encoding). Returns
+    ``(bytes_written, sha256_hex)`` so the manifest can carry the hash
+    for drill-time round-trip verification."""
     info = tarfile.TarInfo(archive_name)
     info.size = file_path.stat().st_size
     info.mtime = int(file_path.stat().st_mtime)
     info.mode = 0o644
+    sha = hashlib.sha256()
+    # Read once to compute hash, then again into the tar. Two passes is
+    # cheaper than buffering large ledger files in memory.
+    with file_path.open("rb") as f:
+        for chunk in iter(lambda: f.read(64 * 1024), b""):
+            sha.update(chunk)
     with file_path.open("rb") as f:
         tar.addfile(info, f)
-    return info.size
+    return info.size, sha.hexdigest()
 
 
 def _walk_ledger_paths(workspace_root: Path) -> Iterator[Path]:
@@ -311,7 +333,7 @@ def export(
     started = time.monotonic()
     started_iso = datetime.now(timezone.utc).isoformat()
     ws_root = Path(workspace_root) if workspace_root else _resolve_workspace_root()
-    out_root = Path(output_dir) if output_dir else _DEFAULT_BACKUP_ROOT
+    out_root = Path(output_dir) if output_dir else _default_backup_root()
     out_root.mkdir(parents=True, exist_ok=True)
 
     manifest = ExportManifest(
@@ -404,9 +426,9 @@ def export(
                     continue
                 archive_name = f"workspace_ledgers/{rel}"
                 try:
-                    byts = _add_file_to_tar(tar, p, archive_name)
+                    byts, sha256 = _add_file_to_tar(tar, p, archive_name)
                     manifest.ledgers.append(_LedgerFileEntry(
-                        rel_path=rel, bytes=byts,
+                        rel_path=rel, bytes=byts, sha256=sha256,
                     ))
                     manifest.total_bytes += byts
                 except Exception as exc:

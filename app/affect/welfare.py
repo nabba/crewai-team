@@ -59,7 +59,9 @@ HARD_ENVELOPE: dict[str, float] = {
 
 
 from app.paths import AFFECT_ROOT as _AFFECT_DIR, AFFECT_AUDIT as _AUDIT_FILE  # noqa: E402
-from app.utils.jsonl_retention import append_with_archive_rotate  # noqa: E402
+from app.utils.jsonl_retention import (  # noqa: E402
+    append_with_archive_rotate, read_archive,
+)
 _AUDIT_LOCK = threading.Lock()
 # Welfare breaches are RARE by design (sustained-negative-valence is the
 # canonical case). 5k cap covers years at expected breach rates; rotated
@@ -174,27 +176,90 @@ def audit(breach: WelfareBreach) -> None:
 
 
 def read_audit(limit: int = 100, since_ts: str | None = None) -> list[dict]:
-    """Read recent breaches for the dashboard / weekly digest."""
-    if not _AUDIT_FILE.exists():
+    """Read recent breaches for the dashboard / weekly digest.
+
+    Q3.1 (2026-05-11) — extended to consult the archive when ``since_ts``
+    extends past the live file's earliest entry. Without this escalation,
+    a ``since_ts="2024-01-01"`` against an archive-rotated welfare audit
+    silently returns only the in-live-window subset. The welfare audit
+    is the canonical "what's gone wrong" record — historical visibility
+    matters for constitutional review.
+
+    When ``since_ts`` is None, the previous behavior is preserved
+    (live-file-only, newest ``limit`` rows) — the dashboard / weekly
+    digest both pass None and don't need archive walks on hot paths.
+    """
+    if not _AUDIT_FILE.exists() and since_ts is None:
         return []
-    rows: list[dict] = []
+
+    # Fast path: no since_ts, live-file-only.
+    if since_ts is None:
+        rows: list[dict] = []
+        if _AUDIT_FILE.exists():
+            try:
+                with _AUDIT_FILE.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            rows.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                logger.debug("welfare: audit read failed", exc_info=True)
+                return []
+        return rows[-limit:]
+
+    # Slow path: since_ts present. Determine if the live file alone
+    # covers the requested window; consult archive only if it doesn't.
+    live_rows: list[dict] = []
+    live_oldest_ts: str | None = None
+    if _AUDIT_FILE.exists():
+        try:
+            with _AUDIT_FILE.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = row.get("ts", "")
+                    if not ts:
+                        continue
+                    if live_oldest_ts is None or ts < live_oldest_ts:
+                        live_oldest_ts = ts
+                    if ts < since_ts:
+                        continue
+                    live_rows.append(row)
+        except Exception:
+            logger.debug("welfare: audit read failed", exc_info=True)
+
+    # Early exit: live file already covers `since_ts`.
+    if live_oldest_ts is not None and live_oldest_ts <= since_ts:
+        return live_rows[-limit:]
+
+    archive_rows: list[dict] = []
     try:
-        with _AUDIT_FILE.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if since_ts and row.get("ts", "") < since_ts:
-                    continue
-                rows.append(row)
+        for line in read_archive(_AUDIT_FILE, include_live=False):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts = row.get("ts", "")
+            if not ts or ts < since_ts:
+                continue
+            archive_rows.append(row)
     except Exception:
-        logger.debug("welfare: audit read failed", exc_info=True)
-        return []
-    return rows[-limit:]
+        logger.debug("welfare: audit archive read failed", exc_info=True)
+
+    combined = archive_rows + live_rows
+    return combined[-limit:]
 
 
 # ── Long-window monotonic drift detection (consumes l9_snapshots) ──────────

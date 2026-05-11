@@ -252,6 +252,21 @@ has no rename API. If it fails partway:
     `app.memory.chromadb_rebuild --kb <kb> --collection <shadow_name> --dry-run`,
     then `--from-snapshot <path>` into the live name.
 
+## Plan validator allowlist (Q3.1 — 2026-05-11)
+
+The framework's chromadb dual-write path is correct only for the
+`memory` KB today. Pgvector dual-write is declared in the plan
+schema but **not yet wired**. To prevent silently shadowing data
+into the wrong place, the plan validator refuses unsupported
+targets at both save and load time:
+
+  * `SUPPORTED_TARGET_KINDS = {"chromadb"}` — pgvector / Neo4j refused
+  * `SUPPORTED_CHROMADB_KBS = {"memory"}` — other KBs refused
+
+Broadening the allowlist requires implementing the corresponding
+dual-write path AND verifying end-to-end. Plans that hand-edit the
+on-disk JSON to bypass the validator are rejected at next load.
+
 ## What the framework does NOT do
 
 * **Migrate pgvector columns.** The pgvector path is declared in the

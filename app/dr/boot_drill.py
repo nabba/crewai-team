@@ -49,8 +49,25 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_EXPORT_DIR = Path("/app/workspace/backups/dr")
-_DRILL_REPORT_DIR = Path("/app/workspace/dr")
+def _default_export_dir() -> Path:
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "backups" / "dr"
+    except Exception:
+        return Path("/app/workspace/backups/dr")
+
+
+def _default_drill_report_dir() -> Path:
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "dr"
+    except Exception:
+        return Path("/app/workspace/dr")
+
+
+# Back-compat constants. Resolved lazily in callers.
+_DEFAULT_EXPORT_DIR = _default_export_dir()
+_DRILL_REPORT_DIR = _default_drill_report_dir()
 
 
 @dataclass
@@ -66,6 +83,14 @@ class CollectionDrillResult:
 
 
 @dataclass
+class LedgerHashCheck:
+    rel_path: str
+    expected_sha256: str
+    observed_sha256: str | None
+    ok: bool
+
+
+@dataclass
 class DrillReport:
     started_at: str = ""
     completed_at: str = ""
@@ -77,6 +102,8 @@ class DrillReport:
     chromadb_results: list[CollectionDrillResult] = field(default_factory=list)
     ledger_files_restored: int = 0
     ledger_bytes_restored: int = 0
+    ledger_hash_checks: list[LedgerHashCheck] = field(default_factory=list)
+    ledger_hash_mismatches: int = 0
     overall_ok: bool = True
     errors: list[str] = field(default_factory=list)
 
@@ -92,6 +119,8 @@ class DrillReport:
             "chromadb_results": [asdict(r) for r in self.chromadb_results],
             "ledger_files_restored": self.ledger_files_restored,
             "ledger_bytes_restored": self.ledger_bytes_restored,
+            "ledger_hash_checks": [asdict(c) for c in self.ledger_hash_checks],
+            "ledger_hash_mismatches": self.ledger_hash_mismatches,
             "overall_ok": self.overall_ok,
             "errors": self.errors,
         }
@@ -166,7 +195,7 @@ def run_drill(
     started_iso = datetime.now(timezone.utc).isoformat()
     report = DrillReport(started_at=started_iso, fresh_export=export_fresh)
 
-    export_root = Path(export_dir) if export_dir else _DEFAULT_EXPORT_DIR
+    export_root = Path(export_dir) if export_dir else _default_export_dir()
 
     # 1. Get the tarball.
     tarball: Path | None = None
@@ -257,6 +286,24 @@ def run_drill(
                     except OSError:
                         continue
             report.ledger_bytes_restored = total_bytes
+
+        # 6. Q3.1 — ledger integrity round-trip verification. Compare
+        # post-extract SHA-256 hashes against the manifest's
+        # export-time hashes. Any mismatch is a corruption signal —
+        # either the tarball is tampered/damaged, or our extract
+        # path is wrong. Both are critical to surface.
+        report.ledger_hash_checks = _verify_ledger_hashes(
+            manifest, ledger_root,
+        )
+        report.ledger_hash_mismatches = sum(
+            1 for c in report.ledger_hash_checks if not c.ok
+        )
+        if report.ledger_hash_mismatches > 0:
+            report.overall_ok = False
+            report.errors.append(
+                f"{report.ledger_hash_mismatches} ledger file(s) failed "
+                f"SHA-256 round-trip — see ledger_hash_checks in the report."
+            )
     except Exception as exc:
         logger.exception("dr.boot_drill: drill failed")
         report.errors.append(f"unexpected: {exc}")
@@ -272,20 +319,145 @@ def run_drill(
     report.duration_s = time.monotonic() - started
     _write_report(report)
     _send_drill_alert(report)
+    # Q3.1 (2026-05-11) — propagate drill outcome to the SubIA Global
+    # Workspace + identity-continuity ledger. A passing drill is direct
+    # evidence of identity-restorability — that's worth recording.
+    _publish_drill_outcome_to_gw(report)
+    _emit_drill_continuity_event(report)
     return report
 
 
 def _write_report(report: DrillReport) -> None:
     try:
-        _DRILL_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        report_dir = _default_drill_report_dir()
+        report_dir.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        fname = _DRILL_REPORT_DIR / f"drill_{ts}.json"
+        fname = report_dir / f"drill_{ts}.json"
         fname.write_text(
             json.dumps(report.to_dict(), indent=2, default=str),
             encoding="utf-8",
         )
     except Exception:
         logger.debug("dr.boot_drill: report write failed", exc_info=True)
+
+
+def _verify_ledger_hashes(
+    manifest: dict[str, Any] | None, ledger_root: Path,
+) -> list[LedgerHashCheck]:
+    """Recompute SHA-256 for each restored ledger file and compare to
+    the manifest's export-time hash. Pre-Q3.1 tarballs have no hashes
+    in the manifest; those entries are silently skipped (returning an
+    empty list when the manifest predates this feature)."""
+    import hashlib
+
+    checks: list[LedgerHashCheck] = []
+    if not manifest:
+        return checks
+    ledgers = manifest.get("ledgers") or []
+    if not isinstance(ledgers, list):
+        return checks
+    for entry in ledgers:
+        if not isinstance(entry, dict):
+            continue
+        rel = entry.get("rel_path")
+        expected = entry.get("sha256")
+        if not rel or not expected:
+            # Older export without hashes — skip silently.
+            continue
+        target = ledger_root / rel
+        if not target.exists() or not target.is_file():
+            checks.append(LedgerHashCheck(
+                rel_path=rel, expected_sha256=expected,
+                observed_sha256=None, ok=False,
+            ))
+            continue
+        sha = hashlib.sha256()
+        try:
+            with target.open("rb") as f:
+                for chunk in iter(lambda: f.read(64 * 1024), b""):
+                    sha.update(chunk)
+            observed = sha.hexdigest()
+        except OSError:
+            checks.append(LedgerHashCheck(
+                rel_path=rel, expected_sha256=expected,
+                observed_sha256=None, ok=False,
+            ))
+            continue
+        checks.append(LedgerHashCheck(
+            rel_path=rel, expected_sha256=expected,
+            observed_sha256=observed, ok=(observed == expected),
+        ))
+    return checks
+
+
+def _publish_drill_outcome_to_gw(report: DrillReport) -> None:
+    """Best-effort GW publish. Salience reflects whether the drill
+    passed (low — routine confirmation) or failed (high — substrate
+    risk). Never raises."""
+    try:
+        from app.workspace_publish import publish_to_workspace
+        if report.overall_ok:
+            content = (
+                f"DR boot drill passed: {len(report.chromadb_results)} "
+                f"collections verified, {report.ledger_files_restored} "
+                f"ledger files restored in {report.duration_s:.1f}s."
+            )
+            salience = 0.30  # routine confirmation
+        else:
+            content = (
+                f"DR boot drill FAILED — {len(report.errors)} errors. "
+                f"Substrate-restorability is in doubt; see "
+                f"workspace/dr/drill_*.json."
+            )
+            salience = 0.85  # potential substrate risk
+        publish_to_workspace(
+            source="dr.boot_drill",
+            content=content,
+            salience=salience,
+            signal_type="disposition",
+        )
+    except Exception:
+        logger.debug("boot_drill: GW publish failed", exc_info=True)
+
+
+def _emit_drill_continuity_event(report: DrillReport) -> None:
+    """Best-effort identity-continuity ledger emission.
+
+    A passing drill is direct evidence of identity-restorability — the
+    system's ability to be reconstituted from its persisted state. That
+    belongs in the multi-year identity record. We use the
+    ``integrity_regen`` event kind because a successful drill validates
+    the same substrate the integrity manifest cryptographically guards.
+
+    Failures do NOT emit — the operator already gets a loud Signal
+    alert and a JSON report; cluttering the identity ledger with
+    failures would dilute its narrative value.
+    """
+    if not report.overall_ok:
+        return
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="integrity_regen",
+            actor="dr.boot_drill",
+            summary=(
+                f"DR boot drill passed — {len(report.chromadb_results)} "
+                f"collections verified, {report.ledger_files_restored} "
+                f"ledger files restored from "
+                f"{Path(report.tarball).name}."
+            ),
+            detail={
+                "tarball": report.tarball,
+                "collections_verified": len(report.chromadb_results),
+                "ledger_files_restored": report.ledger_files_restored,
+                "ledger_bytes_restored": report.ledger_bytes_restored,
+                "duration_s": round(report.duration_s, 3),
+            },
+        )
+    except Exception:
+        logger.debug(
+            "boot_drill: continuity-ledger emit failed", exc_info=True,
+        )
 
 
 def _send_drill_alert(report: DrillReport) -> None:

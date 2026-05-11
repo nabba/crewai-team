@@ -33,7 +33,7 @@ from pathlib import Path
 
 from app.affect.schemas import AffectState, ViabilityFrame, utc_now_iso
 from app.affect.welfare import HARD_ENVELOPE
-from app.utils.jsonl_retention import append_with_archive_rotate
+from app.utils.jsonl_retention import append_with_archive_rotate, read_archive
 
 logger = logging.getLogger(__name__)
 
@@ -236,29 +236,66 @@ def _append(event: SalienceEvent) -> None:
 
 
 def load_recent(hours: int = 24) -> list[SalienceEvent]:
-    """Read recent salience events from disk. Used by episodes/narrative on cold start."""
-    if not SALIENCE_FILE.exists():
-        return []
+    """Read recent salience events from disk. Used by episodes/narrative on cold start.
+
+    Q3.1 (2026-05-11) — extended to consult the archive when the live
+    file's oldest entry is newer than the requested cutoff. Without this
+    escalation, archive rotation silently truncates the visible window —
+    defeating the purpose of preserving history. The escalation is
+    early-exit-guarded: when the live file already covers the window
+    (common case), the archive is never opened.
+    """
     cutoff = datetime.now(timezone.utc).timestamp() - hours * 3600
-    out: list[SalienceEvent] = []
+
+    live_rows: list[SalienceEvent] = []
+    live_oldest_ts: float | None = None
+    if SALIENCE_FILE.exists():
+        try:
+            with SALIENCE_FILE.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts_unix = _ts_to_unix(row.get("ts", ""))
+                    if ts_unix is None:
+                        continue
+                    if live_oldest_ts is None or ts_unix < live_oldest_ts:
+                        live_oldest_ts = ts_unix
+                    if ts_unix < cutoff:
+                        continue
+                    live_rows.append(SalienceEvent(**row))
+        except Exception:
+            logger.debug("affect.salience: live load failed", exc_info=True)
+
+    # If the live file already starts before the cutoff, every in-window
+    # entry is in live. Skip the archive — it can be many months of data.
+    if live_oldest_ts is not None and live_oldest_ts <= cutoff:
+        return live_rows
+
+    # Otherwise, the window extends into rotated data. Walk archives.
+    archive_rows: list[SalienceEvent] = []
     try:
-        with SALIENCE_FILE.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts_str = row.get("ts", "")
-                ts_unix = _ts_to_unix(ts_str)
-                if ts_unix is None or ts_unix < cutoff:
-                    continue
-                out.append(SalienceEvent(**row))
+        for line in read_archive(SALIENCE_FILE, include_live=False):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts_unix = _ts_to_unix(row.get("ts", ""))
+            if ts_unix is None or ts_unix < cutoff:
+                continue
+            archive_rows.append(SalienceEvent(**row))
     except Exception:
-        logger.debug("affect.salience: load failed", exc_info=True)
-    return out
+        logger.debug("affect.salience: archive load failed", exc_info=True)
+
+    # Archive rows are older than live rows (rotation guarantees this).
+    return archive_rows + live_rows
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
