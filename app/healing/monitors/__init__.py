@@ -77,6 +77,7 @@ _DEFAULT_CADENCE_S = {
     "provider_contract_drift": 7 * 24 * 3600,  # weekly probe; §2.7
     "crypto_rotation_drill": 7 * 24 * 3600,    # weekly probe; §2.1
     "chromadb_hygiene": 24 * 3600,             # daily probe — internal 90-day cadence; PROGRAM §40 Item 10
+    "notify_suppression_review": 6 * 3600,     # 6h probe — internal 7d cadence; PROGRAM §41 Item 17
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -256,6 +257,16 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: chromadb_hygiene import failed", exc_info=True,
+        )
+    try:
+        from app.healing.monitors import notify_suppression_review
+        monitors.append((
+            "notify_suppression_review", notify_suppression_review.run,
+            _DEFAULT_CADENCE_S["notify_suppression_review"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: notify_suppression_review import failed", exc_info=True,
         )
     # Q2 §39: structured-diagnosis confidence-threshold auto-tuner.
     # The function has its own 24h gate inside; hourly cadence here

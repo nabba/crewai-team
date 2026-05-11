@@ -43,6 +43,9 @@ def notify(
     signal: bool = True,
     web_push: bool = True,
     metadata: Optional[dict] = None,
+    arbitrate: bool = False,
+    topic: Optional[str] = None,
+    critical: bool = False,
 ) -> dict[str, Any]:
     """Fire-and-forget completion ping. Returns a small delivery summary
     so callers (and tests) can assert what landed where.
@@ -56,8 +59,53 @@ def notify(
         {"skill_id": "...", "recipe_id": "...",
          "task_id": "...", "idea_id": "...",
          "workspace_id": "..."}
+
+    Q4#17 (PROGRAM §41) — surface arbitration. When ``arbitrate=True``,
+    the call routes through ``notify.arbiter.arbitrate_notification``
+    BEFORE Signal/Web Push fire. Three possible outcomes:
+
+      * ``decision == "send_now"``         — proceed as normal
+      * ``decision == "queue_for_digest"`` — skip live send, ledger the
+                                              event for the next briefing
+      * ``decision == "suppress_low_value"``— skip both send + briefing
+
+    ``critical=True`` bypasses arbitration entirely (always sends).
+    ``topic`` is an optional hint for the arbiter to query interest-
+    model salience.
+
+    Default ``arbitrate=False`` preserves the pre-Q4 behavior — every
+    existing caller is unchanged. Opt-in only.
     """
     delivered: dict[str, Any] = {"signal": False, "web_push_count": 0, "signal_ts": None}
+
+    # Q4#17 — optional arbitration. Failure-isolated: on ANY exception
+    # in the arbiter, we default to sending (the pre-Q4 behavior). The
+    # arbiter must NEVER block a notification through a code bug.
+    arbitration: dict[str, Any] | None = None
+    if arbitrate and not critical:
+        try:
+            from app.notify.arbiter import (
+                arbitrate_notification,
+                DECISION_SEND_NOW, DECISION_QUEUE, DECISION_SUPPRESS,
+            )
+            result = arbitrate_notification(
+                title=title, body=body, topic=topic, critical=critical,
+                tag=tag, metadata=metadata,
+            )
+            arbitration = result.to_dict()
+            delivered["arbitration"] = arbitration
+            if result.decision == DECISION_SUPPRESS:
+                # Drop entirely — record in delivered so caller knows.
+                delivered["suppressed"] = True
+                return delivered
+            if result.decision == DECISION_QUEUE:
+                # Deferred — caller can pull from the fatigue store
+                # later for the next digest assembly.
+                delivered["queued_for_digest"] = True
+                return delivered
+            # DECISION_SEND_NOW falls through to normal delivery.
+        except Exception:
+            logger.debug("notify: arbitration raised; sending anyway", exc_info=True)
 
     if signal:
         ts = _send_signal_with_ts(title, body)

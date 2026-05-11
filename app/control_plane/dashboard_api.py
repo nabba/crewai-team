@@ -243,6 +243,29 @@ def companion_tensions(status: str = Query("OPEN"), min_freshness: float = Query
     }
 
 
+@router.get("/notify/fatigue")
+def notify_fatigue(window_hours: float = Query(168.0, ge=1.0, le=720.0)):
+    """Q4#17 (PROGRAM §41) — recent notification arbiter decisions.
+    Operator-facing review surface. Default window = 1 week.
+    """
+    try:
+        from app.notify.fatigue import list_recent, daily_suppression_rate
+        events = list_recent(window_hours=window_hours) or []
+        suppressed, total, rate = daily_suppression_rate()
+    except Exception as exc:
+        logger.debug("notify/fatigue failed: %s", exc, exc_info=True)
+        return {"events": [], "error": str(exc)}
+    return {
+        "events": events,
+        "today_summary": {
+            "suppressed": suppressed,
+            "total_decisions": total,
+            "suppression_rate": round(rate, 4),
+        },
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/companion/cross-modal-patterns")
 def companion_cross_modal_patterns(n: int = Query(20, ge=1, le=100), min_strength: float = Query(0.7, ge=0.0, le=1.0)):
     """Q4#15 (PROGRAM §41) — recent convergence patterns the system

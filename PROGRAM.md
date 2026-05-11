@@ -5612,3 +5612,163 @@ crewai-team/PROGRAM.md                          # this section
 Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4 regression: **113 pass + 56 skip, 0 fail**.
 
 No TIER_IMMUTABLE files modified.
+
+## 41. 2026-05-11 — Q4 Companion depth
+
+Three additive items deepening the companion surface — open
+questions, cross-modal convergence, surface arbitration. All compose
+into a richer "I'm tracking on your behalf" experience without
+touching internal-contemplation systems (SubIA wonder stays
+deliberately separate).
+
+### 41.1 Q4#16 — Companion tensions store
+
+**`app/companion/tensions.py`** — open questions Andrus left with the
+companion, tracked on his behalf. Distinct from SubIA wonder (internal,
+gates task completion) — tensions are user-facing.
+
+  * `Tension` dataclass: id, question, status (OPEN/DORMANT/RESOLVED),
+    sources list, freshness (exp decay, 30d halflife), workspace_id,
+    resolution, detection_source.
+  * `create_tension` / `update_tension` / `resolve_tension` /
+    `list_tensions` / `boost_freshness_for_topic` / `decay_sweep`.
+  * Conservative regex detection from text blobs (5 patterns: "I'm
+    wondering whether…", "open question:", "I haven't decided…",
+    "not sure whether", "need to figure out").
+  * Max 30 OPEN at once + 90d-untouched → DORMANT transition. Caps
+    force selection; over-detection is fine because the surface stays
+    usable.
+  * One JSON file per tension at `workspace/companion/tensions/<id>.json`.
+  * Registered as `companion-tensions` LIGHT idle job (decay sweep).
+  * Daily briefing: new "❓ Open questions you left with me" section.
+  * REST: `GET/POST /api/cp/companion/tensions`,
+    `POST /api/cp/companion/tensions/{tid}/resolve`.
+  * Signal: `/tensions`, `/tensions add <q>`, `/tensions resolve <id> <note>`.
+  * React: `TensionsCard.tsx` mounted as "Tensions" subtab in
+    `/cp/companion` with freshness bar + inline resolution.
+
+### 41.2 Q4#15 — Cross-modal pattern detector
+
+**`app/companion/cross_modal_patterns.py`** — convergence signals
+across input modalities. interest_model answers "what topics is
+Andrus interested in?" (aggregate score); this answers "which topics
+are crossing modalities at unusual rates?" (convergence question).
+
+  * Reuses interest_model.current_profile() for 5 sources (convs,
+    emails, events, feedback, affect); adds 6th: ticket subjects via
+    direct `control_plane.tickets` SQL.
+  * Strength = modality_factor (saturates at 4 modalities) ×
+    log-scaled volume_factor.
+  * Thresholds: ≥3 modalities AND ≥8 total occurrences AND strength ≥ 0.7
+    AND 21d window. Conservative — better silent than spam.
+  * Cross-link to Q4#16: matching open tensions get freshness boost +
+    "pattern" source appended.
+  * Persists to `workspace/companion/cross_modal_patterns.jsonl` with
+    archive rotation (5k cap, monthly archives).
+  * GW publish on detection (salience 0.4..0.7, "trend_reversal").
+  * Registered as `cross-modal-patterns` LIGHT idle job.
+  * Daily briefing: new "💡 Proactive insights" section.
+  * REST: `GET /api/cp/companion/cross-modal-patterns`.
+  * React: `CrossModalPatternsCard.tsx` mounted as "Insights" subtab
+    with modality badges + strength visualization.
+
+### 41.3 Q4#17 — Surface arbitration
+
+**`app/notify/arbiter.py` + `app/notify/fatigue.py`** — opt-in
+"is this worth interrupting?" pre-filter on notifications.
+
+  * Three decisions: `SEND_NOW` / `QUEUE_FOR_DIGEST` / `SUPPRESS_LOW_VALUE`.
+  * Inputs (all read-only, failure-isolated):
+    - interest_model salience for the topic
+    - cross_modal_patterns strength (0..0.3 boost if matching)
+    - open tensions matching topic (0..0.2 boost)
+    - affect.welfare recent breaches (critical → only critical alerts)
+    - fatigue: recent send_now count global (4h) + per-topic (24h)
+  * Critical bypass: `critical=True` ALWAYS sends, arbitration skipped.
+    Welfare/security alerts never get filtered.
+  * Goodhart guards:
+    - Daily suppression rate ceiling at 30%. If we hit it, the next
+      notification force-sends to maintain ground truth on what
+      we're filtering.
+    - Ack-rate is recorded but NOT a primary input. Avoids the
+      feedback loop where the system stops sending useful things
+      because the user ignored them under high load.
+  * Fatigue tracker at `workspace/notify/fatigue_state.json` —
+    bounded 500-event ring with ack-state recording.
+  * **Opt-in only**: `notify(arbitrate=True, topic=…, critical=…)`
+    parameters added. Existing call sites unchanged
+    (default `arbitrate=False`).
+  * Weekly review monitor: `notify_suppression_review` — 27th healing
+    monitor. Internal 7d cadence; sends a Signal digest "we sent N,
+    queued M, suppressed K this week" so operator notices
+    over-filtering.
+  * REST: `GET /api/cp/notify/fatigue` — drill into raw events.
+
+### 41.4 Integration map
+
+```
+                    interest_model (existing)
+                           │
+            ┌──────────────┼──────────────┐
+            ▼              ▼              ▼
+       §41.2 patterns   §41.3 arbiter   §41.1 tensions
+        (convergence)   (salience-gated  (open
+                         notifications)   questions)
+            │              ▲              │
+            │              │              │
+            └──────────────┘              │
+                  ▲                       │
+                  └───────────────────────┘
+                  (cross-modal pattern hits
+                   open tension's topic →
+                   freshness boost + arbiter
+                   promotes notifications about
+                   that topic)
+```
+
+Verified integrations:
+  * `cross_modal_patterns.detect_patterns` calls
+    `tensions.boost_freshness_for_topic` for each detected pattern.
+  * `arbiter.arbitrate_notification` reads interest_score +
+    pattern_boost + tension_boost when scoring salience.
+  * Welfare envelope respected by arbiter (critical valence → only
+    critical alerts).
+  * SubIA wonder NOT bridged (kept deliberately separate per
+    design decision — different semantic).
+
+### 41.5 Tests + files touched
+
+```
+NEW backend:
+crewai-team/app/companion/tensions.py                            # Phase A
+crewai-team/app/companion/cross_modal_patterns.py                # Phase B
+crewai-team/app/notify/arbiter.py                                # Phase C
+crewai-team/app/notify/fatigue.py                                # Phase C
+crewai-team/app/healing/monitors/notify_suppression_review.py    # Phase C
+
+NEW React:
+crewai-team/dashboard-react/src/components/TensionsCard.tsx
+crewai-team/dashboard-react/src/components/CrossModalPatternsCard.tsx
+
+NEW tests:
+crewai-team/tests/test_q4_companion_depth.py     # 20 pass, 0 skip, 0 fail
+
+UPDATED backend:
+crewai-team/app/companion/loop.py                # 2 new idle-job registrations
+crewai-team/app/life_companion/daily_briefing.py # 2 new briefing sections
+crewai-team/app/control_plane/dashboard_api.py   # 4 new endpoints
+crewai-team/app/agents/commander/commands.py     # /tensions command
+crewai-team/app/notify/api.py                    # arbitrate= kwarg opt-in
+crewai-team/app/healing/monitors/__init__.py     # 27th monitor registered
+
+UPDATED React:
+crewai-team/dashboard-react/src/api/endpoints.ts # 4 new endpoints
+crewai-team/dashboard-react/src/api/queries.ts   # 4 new query hooks
+crewai-team/dashboard-react/src/components/CompanionTab.tsx # 2 new subtabs
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4 regression: **133 pass + 56 skip, 0 fail**.
+
+No TIER_IMMUTABLE files modified. SubIA wonder NOT bridged. Welfare
+envelope respected by arbiter (Q4#17). Goodhart guards on suppression
+rate + weekly operator review.
