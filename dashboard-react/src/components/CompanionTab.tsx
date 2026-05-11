@@ -27,6 +27,9 @@ import {
 import { api } from '../api/client';
 import { TensionsCard } from './TensionsCard';
 import { CrossModalPatternsCard } from './CrossModalPatternsCard';
+import { PeopleCard } from './PeopleCard';
+import { SocialGraphCard } from './SocialGraphCard';
+import { PersonSuggestionsCard } from './PersonSuggestionsCard';
 
 // Workspace selector — pulls from the existing /api/workspaces (Phase 0).
 interface WorkspaceListItem {
@@ -60,6 +63,9 @@ type SubTab =
   | 'ideas'
   | 'tensions'
   | 'insights'
+  | 'people'
+  | 'graph'
+  | 'suggestions'
   | 'documents'
   | 'wiki'
   | 'sources'
@@ -72,6 +78,9 @@ const SUB_TABS: { key: SubTab; label: string; icon: string }[] = [
   { key: 'ideas', label: 'Ideas', icon: '💡' },
   { key: 'tensions', label: 'Tensions', icon: '❓' },
   { key: 'insights', label: 'Insights', icon: '🔭' },
+  { key: 'people', label: 'People', icon: '🧑' },
+  { key: 'graph', label: 'Graph', icon: '🕸' },
+  { key: 'suggestions', label: 'Suggestions', icon: '💬' },
   { key: 'documents', label: 'Documents', icon: '📄' },
   { key: 'wiki', label: 'Wiki', icon: '📚' },
   { key: 'sources', label: 'Sources', icon: '🔍' },
@@ -152,6 +161,9 @@ export function CompanionTab() {
         {sub === 'ideas' && <IdeasTab workspaceId={workspaceId} />}
         {sub === 'tensions' && <TensionsCard />}
         {sub === 'insights' && <CrossModalPatternsCard />}
+        {sub === 'people' && <PeopleCard />}
+        {sub === 'graph' && <SocialGraphCard />}
+        {sub === 'suggestions' && <PersonSuggestionsCard />}
         {sub === 'documents' && <DocumentsTab workspaceId={workspaceId} />}
         {sub === 'wiki' && <WikiTab workspaceId={workspaceId} />}
         {sub === 'sources' && <SourcesTab workspaceId={workspaceId} />}

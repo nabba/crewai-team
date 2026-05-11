@@ -566,6 +566,22 @@ export interface RuntimeSettings {
   structured_diagnosis_threshold_ceiling?: number;
   structured_diagnosis_threshold_override?: number | null;
   structured_diagnosis_auto_tune_enabled?: boolean;
+  // Q4.2 — person correlation
+  person_correlation_enabled?: boolean;
+  person_correlation_decay_months?: number;
+  person_centrality_enabled?: boolean;
+  person_centrality_formula?: string;
+  person_suggestions_enabled?: boolean;
+  person_suggestions_dormancy_enabled?: boolean;
+  person_suggestions_responsiveness_enabled?: boolean;
+  person_correlation_social_graph_enabled?: boolean;
+  graph_shortest_path_enabled?: boolean;
+  graph_communities_enabled?: boolean;
+  graph_bridges_enabled?: boolean;
+  graph_suggestions_enabled?: boolean;
+  graph_suggestions_cluster_dormancy_enabled?: boolean;
+  graph_suggestions_bridge_maintenance_enabled?: boolean;
+  graph_suggestions_weak_tie_enabled?: boolean;
 }
 
 export function useRuntimeSettingsQuery() {
@@ -2180,6 +2196,276 @@ export interface CrossModalPatternsResponse {
   as_of: string;
   error?: string;
 }
+
+// ── Q4.2 (PROGRAM §42) — Person correlation ─────────────────────────────
+
+export interface PersonProfile {
+  person_id: string;
+  display_names: string[];
+  first_seen: string;
+  last_seen: string;
+  occurrences_per_modality: Record<string, number>;
+  cooccurring_topics: Record<string, number>;
+  total_occurrences: number;
+  modality_count: number;
+}
+
+export interface PeopleResponse {
+  people: PersonProfile[];
+  muted: string[];
+  enabled: boolean;
+  generated_at?: string;
+  error?: string;
+}
+
+export function useCompanionPeople() {
+  return useQuery({
+    queryKey: ['companion', 'people'] as const,
+    queryFn: () => api<PeopleResponse>(endpoints.companionPeople()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useMutePerson() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { person_id: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleMute(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export function useUnmutePerson() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { person_id: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleUnmute(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export function useForgetPerson() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { person_id: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleForget(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export function useForgetAllPeople() {
+  const qc = useQueryClient();
+  return useMutation<{ forgotten: number }, Error, void>({
+    mutationFn: () =>
+      api(endpoints.companionPeopleForgetAll(), { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companion'] }),
+  });
+}
+
+export interface CentralityScore {
+  person_id: string;
+  display_names: string[];
+  last_seen: string;
+  score: number;
+  total_occurrences: number;
+  modality_count: number;
+}
+
+export interface CentralityResponse {
+  scores: CentralityScore[];
+  enabled: boolean;
+  formula: string;
+  caveat?: string;
+  generated_at?: string;
+}
+
+export function useCompanionCentrality() {
+  return useQuery({
+    queryKey: ['companion', 'people', 'centrality'] as const,
+    queryFn: () => api<CentralityResponse>(endpoints.companionPeopleCentrality()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export interface PersonSuggestionRecord {
+  category: string;
+  person_id: string;
+  display_name: string;
+  text: string;
+  detected_at: string;
+}
+
+export function useCompanionPersonSuggestions(limit = 50) {
+  return useQuery({
+    queryKey: ['companion', 'people', 'suggestions', limit] as const,
+    queryFn: () =>
+      api<{ suggestions: PersonSuggestionRecord[]; error?: string }>(
+        endpoints.companionPeopleSuggestions(limit),
+      ),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useMuteSuggestionsFor() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { person_id: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleMuteSug(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export interface GraphEdge {
+  a: string;
+  b: string;
+  weight: number;
+  last_touched: string;
+}
+
+export interface GraphResponse {
+  edges: GraphEdge[];
+  nodes: string[];
+  enabled: boolean;
+  generated_at?: string;
+  error?: string;
+}
+
+export function useCompanionGraph() {
+  return useQuery({
+    queryKey: ['companion', 'people', 'graph'] as const,
+    queryFn: () => api<GraphResponse>(endpoints.companionPeopleGraph()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useForgetGraph() {
+  const qc = useQueryClient();
+  return useMutation<{ edges_deleted: number }, Error, void>({
+    mutationFn: () =>
+      api(endpoints.companionPeopleGraphForget(), { method: 'POST' }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export function useMutePair() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { a: string; b: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleGraphMutePair(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['companion', 'people', 'graph'] }),
+  });
+}
+
+export interface PathResponse {
+  ok: boolean;
+  path: string[] | null;
+  hops: number;
+  edge_weights: number[];
+  skipped_opt_outs: string[];
+  error: string | null;
+}
+
+export function useGraphPath() {
+  return useMutation<
+    PathResponse,
+    Error,
+    { source: string; target: string; max_hops?: number }
+  >({
+    mutationFn: (body) =>
+      api<PathResponse>(endpoints.companionPeopleGraphPath(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function usePathOptOut() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { person_id: string }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleGraphPathOptOut(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['companion', 'people'] }),
+  });
+}
+
+export interface Cluster {
+  id: string;
+  members: string[];
+  size: number;
+  density: number;
+}
+
+export interface CommunitiesResponse {
+  clusters: Cluster[];
+  modularity: number;
+  enabled: boolean;
+  caveat?: string;
+  generated_at?: string;
+  error?: string;
+}
+
+export function useCompanionCommunities() {
+  return useQuery({
+    queryKey: ['companion', 'people', 'graph', 'communities'] as const,
+    queryFn: () =>
+      api<CommunitiesResponse>(endpoints.companionPeopleGraphCommunities()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useDissolveCluster() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { member_emails: string[] }>({
+    mutationFn: (body) =>
+      api(endpoints.companionPeopleGraphDissolveCluster(), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['companion', 'people', 'graph'] }),
+  });
+}
+
+export interface StructuralResponse {
+  bridges: string[][];
+  cut_vertices: string[];
+  enabled: boolean;
+  caveat?: string;
+  generated_at?: string;
+  error?: string;
+}
+
+export function useCompanionStructural() {
+  return useQuery({
+    queryKey: ['companion', 'people', 'graph', 'structural'] as const,
+    queryFn: () =>
+      api<StructuralResponse>(endpoints.companionPeopleGraphStructural()),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
 
 export function useCrossModalPatterns(n = 20, minStrength = 0.7) {
   return useQuery({

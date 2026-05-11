@@ -128,6 +128,35 @@ def _defaults() -> dict[str, Any]:
         "embedding_migration_shadow_read_enabled": False,
         "embedding_migration_cutover_enabled": False,
         "embedding_migration_state": {},
+        # Person-correlation (PROGRAM §42, 2026-05-11) — four-level
+        # opt-in stack. ALL flags default OFF. Enabling L4 + L4.4
+        # additionally requires a typed-phrase confirmation flowing
+        # through ``app.api.config_api`` (the runtime_settings setter
+        # itself does not enforce; the API endpoint does).
+        #
+        # L1 — Presence (counts only)
+        "person_correlation_enabled": False,
+        "person_correlation_decay_months": 12,
+        # L2 — Centrality scores
+        "person_centrality_enabled": False,
+        "person_centrality_formula": "frequency",   # frequency | recency_weighted | cross_modal
+        # L3 — Suggestions
+        "person_suggestions_enabled": False,
+        "person_suggestions_dormancy_enabled": False,
+        "person_suggestions_responsiveness_enabled": False,
+        # L4 — Social graph (requires typed-phrase "ENABLE SOCIAL GRAPH")
+        "person_correlation_social_graph_enabled": False,
+        # L4 sub-features
+        "graph_shortest_path_enabled": False,
+        "graph_communities_enabled": False,
+        "graph_bridges_enabled": False,
+        # L4.4 — Graph-driven suggestions (requires SECOND typed-phrase
+        # "ENABLE GRAPH-DRIVEN SUGGESTIONS")
+        "graph_suggestions_enabled": False,
+        "graph_suggestions_cluster_dormancy_enabled": False,
+        "graph_suggestions_bridge_maintenance_enabled": False,
+        "graph_suggestions_weak_tie_enabled": False,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -843,3 +872,140 @@ def clear_post_amendment_restart_claims(
         _save(state)
         globals().update({"_cache": state})
         return removed
+
+
+# ── Person correlation (PROGRAM §42) — 14 getters + setters ───────────
+
+
+def get_person_correlation_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_correlation_enabled", False))
+
+
+def set_person_correlation_enabled(value: bool) -> None:
+    _update({"person_correlation_enabled": bool(value)})
+    logger.info("runtime_settings: person_correlation_enabled = %s", bool(value))
+
+
+def get_person_correlation_decay_months() -> int:
+    return int(_ensure_initialized().get("person_correlation_decay_months", 12))
+
+
+def set_person_correlation_decay_months(value: int) -> None:
+    v = max(1, min(60, int(value)))
+    _update({"person_correlation_decay_months": v})
+
+
+def get_person_centrality_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_centrality_enabled", False))
+
+
+def set_person_centrality_enabled(value: bool) -> None:
+    _update({"person_centrality_enabled": bool(value)})
+
+
+def get_person_centrality_formula() -> str:
+    return str(_ensure_initialized().get("person_centrality_formula", "frequency"))
+
+
+def set_person_centrality_formula(value: str) -> None:
+    if value not in {"frequency", "recency_weighted", "cross_modal"}:
+        raise ValueError(f"person_centrality_formula must be one of frequency/recency_weighted/cross_modal, got {value!r}")
+    _update({"person_centrality_formula": value})
+
+
+def get_person_suggestions_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_suggestions_enabled", False))
+
+
+def set_person_suggestions_enabled(value: bool) -> None:
+    _update({"person_suggestions_enabled": bool(value)})
+
+
+def get_person_suggestions_dormancy_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_suggestions_dormancy_enabled", False))
+
+
+def set_person_suggestions_dormancy_enabled(value: bool) -> None:
+    _update({"person_suggestions_dormancy_enabled": bool(value)})
+
+
+def get_person_suggestions_responsiveness_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_suggestions_responsiveness_enabled", False))
+
+
+def set_person_suggestions_responsiveness_enabled(value: bool) -> None:
+    _update({"person_suggestions_responsiveness_enabled": bool(value)})
+
+
+def get_person_correlation_social_graph_enabled() -> bool:
+    return bool(_ensure_initialized().get("person_correlation_social_graph_enabled", False))
+
+
+def set_person_correlation_social_graph_enabled(value: bool) -> None:
+    """Master switch for L4. Enabling this from False→True requires
+    a typed-phrase confirmation in the API surface — this function
+    does NOT enforce that (the config_api endpoint does)."""
+    _update({"person_correlation_social_graph_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: person_correlation_social_graph_enabled = %s",
+        bool(value),
+    )
+
+
+def get_graph_shortest_path_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_shortest_path_enabled", False))
+
+
+def set_graph_shortest_path_enabled(value: bool) -> None:
+    _update({"graph_shortest_path_enabled": bool(value)})
+
+
+def get_graph_communities_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_communities_enabled", False))
+
+
+def set_graph_communities_enabled(value: bool) -> None:
+    _update({"graph_communities_enabled": bool(value)})
+
+
+def get_graph_bridges_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_bridges_enabled", False))
+
+
+def set_graph_bridges_enabled(value: bool) -> None:
+    _update({"graph_bridges_enabled": bool(value)})
+
+
+def get_graph_suggestions_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_suggestions_enabled", False))
+
+
+def set_graph_suggestions_enabled(value: bool) -> None:
+    """L4.4 master. From False→True requires SECOND typed-phrase
+    'ENABLE GRAPH-DRIVEN SUGGESTIONS'. Enforced at config_api layer."""
+    _update({"graph_suggestions_enabled": bool(value)})
+    logger.info("runtime_settings: graph_suggestions_enabled = %s", bool(value))
+
+
+def get_graph_suggestions_cluster_dormancy_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_suggestions_cluster_dormancy_enabled", False))
+
+
+def set_graph_suggestions_cluster_dormancy_enabled(value: bool) -> None:
+    _update({"graph_suggestions_cluster_dormancy_enabled": bool(value)})
+
+
+def get_graph_suggestions_bridge_maintenance_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_suggestions_bridge_maintenance_enabled", False))
+
+
+def set_graph_suggestions_bridge_maintenance_enabled(value: bool) -> None:
+    _update({"graph_suggestions_bridge_maintenance_enabled": bool(value)})
+
+
+def get_graph_suggestions_weak_tie_enabled() -> bool:
+    return bool(_ensure_initialized().get("graph_suggestions_weak_tie_enabled", False))
+
+
+def set_graph_suggestions_weak_tie_enabled(value: bool) -> None:
+    _update({"graph_suggestions_weak_tie_enabled": bool(value)})

@@ -5889,3 +5889,298 @@ No TIER_IMMUTABLE files modified. After Q4.1, the Q4 layer is
 **actually wired**: tensions get detected autonomously, queued
 notifications surface in the daily digest, and the arbiter has real
 callers exercising its decision tree.
+
+## 42. 2026-05-11 — Q4.2 Person-correlation stack (four levels, two typed-phrase gates)
+
+User ask: "I want to start tracking people I interact with". Initial
+shape was a single L1 (presence) feature; after two rounds of
+expansion, the final scope is a **four-level progressive-opt-in
+stack** with two typed-phrase confirmation gates and a hard rule that
+every level defaults OFF. Closes the last open Q4 surface from §41.
+
+Stance: this is the closest the system ever gets to surveilling third
+parties. Even though every byte lives on-host and the DR exporter
+defaults to excluding the entire graph family, the *existence* of a
+"people score" — let alone a social graph — opens four named failure
+modes: Goodhart of the indicator, prescriptive drift, structural-role
+disclosure, off-host leakage. The four-level shape is designed so each
+escalation is its own explicit operator action.
+
+### 42.1 Q4.2 Level 1 — Presence
+
+**`app/companion/person_model.py`** — per-person modality counts.
+
+  * `PersonProfile` dataclass: `person_id` (canonical email) +
+    `display_names` + `first_seen` / `last_seen` + per-modality
+    occurrence counts + `cooccurring_topics` (read-only join against
+    interest_profile).
+  * Sources: gmail senders, calendar attendees,
+    conversation_store participants. **Not** ticket assignees (agent
+    roles), **not** email body content (no NLP).
+  * `mute` / `unmute` / `is_muted` / `forget` / `forget_all`. Muted
+    people are excluded from ALL surfaces; forget deletes the entry.
+  * Decay: a person not seen in `person_decay_months` (default 12)
+    drops from the snapshot but stays in `person_history.jsonl`
+    (audit trail).
+  * Storage: `workspace/companion/person_profile.json` +
+    `person_history.jsonl` + `person_mutes.json`.
+  * Registered as `person-model` LIGHT idle job in
+    `app/companion/loop.py`.
+  * Master switch `person_correlation_enabled` (default OFF).
+  * **Reentrant lock** (`threading.RLock`) — `forget()` holds the lock
+    and calls `unmute()` which also acquires it; non-reentrant would
+    deadlock (caught + fixed during test verification).
+
+### 42.2 Q4.2 Level 2 — Centrality
+
+**`app/companion/person_centrality.py`** — per-person score in [0, 1]
+using an **operator-chosen** formula. Never auto-tuned, never
+learned.
+
+  * Three formulas: `frequency` (normalized count over 30d window),
+    `recency_weighted` (exp decay, 30d half-life), `cross_modal`
+    (`min(modality_count/4, 1.0) × min(log10(total+1)/log10(20+1), 1.0)`).
+  * `compute_centrality()` returns scores **sorted by `last_seen`**,
+    NEVER by score. Sorting by score is the gateway to "optimize
+    against centrality."
+  * `centrality_for(person_id)` single-person lookup for arbiter
+    integration.
+  * Master switches: `person_centrality_enabled` (L2) +
+    `person_centrality_formula` (string enum).
+
+### 42.3 Q4.2 Level 3 — Suggestions (dormancy + responsiveness)
+
+**`app/companion/person_suggestions.py`** — prescriptive nudges
+phrased as questions.
+
+  * Two categories with independent switches:
+    - `dormancy_nudge` — person with high recency_weighted score
+      stopped appearing for ≥30d.
+    - `responsiveness_nudge` — person sent 3+ messages in 14d with
+      no reply.
+  * `PersonSuggestion` dataclass; per-person
+    `mute_suggestions_for` / `unmute_suggestions_for`.
+  * `generate_suggestions()` enforces the **3-per-briefing cap**
+    (shared with L4.4 — both categories fight for the same 3 slots),
+    dedupes by `person_id`.
+  * Every fired nudge appended to
+    `person_suggestions_emitted.jsonl` for operator audit.
+  * All suggestions phrased as **questions**, never imperatives.
+
+### 42.4 Q4.2 Level 4 — Social graph (TYPED-PHRASE GATE)
+
+**`app/companion/social_graph.py`** — co-appearance edge graph.
+
+  * Gate: operator must type `ENABLE SOCIAL GRAPH` in the React
+    settings card OR via the API endpoint. Enforced in
+    `app/api/config_api.py` on the False→True transition.
+  * `GraphEdge` dataclass; `compile_graph` / `current_graph` /
+    `adjacency` / `mute_pair` / `opt_out_of_paths` / `forget_graph`.
+  * **3-month half-life** decay (faster than L1's 12-month profile
+    decay). Edges below weight 0.1 are dropped.
+  * Per-pair mute (zeros + prevents resurrection); per-person path
+    opt-out (consumed by L4.1).
+  * `log_query` writes every L4.1 query to
+    `social_graph_query_log.jsonl` for transparency.
+  * Master switch `person_correlation_social_graph_enabled`.
+
+### 42.5 Q4.2 L4.1 — Shortest-path queries
+
+**`app/companion/graph_features/shortest_path.py`** —
+operator-initiated BFS through the graph.
+
+  * `find_path(a, b)` returns path + edge_weights + skipped_opt_outs.
+  * **Opt-outs honored at intermediate position**: a person who opted
+    out can be source or target but **never an intermediate hop**.
+  * Hop cap (default 6).
+  * Every query logged.
+  * Master switch `graph_shortest_path_enabled`.
+
+### 42.6 Q4.2 L4.2 — Community detection
+
+**`app/companion/graph_features/communities.py`** — pure-Python label
+propagation (no networkx).
+
+  * `_label_propagation(adj, seed=...)` deterministic with seed.
+  * `_compute_modularity(adj, labels)` — Newman's modularity formula.
+  * Operator-dissolvable: `dissolve_cluster(cluster_id)` hides a
+    cluster from all read surfaces; dissolved IDs persist in
+    `social_graph_dissolved_clusters.json`.
+  * Cluster IDs are random 8-char hex — no persona-leaking label.
+  * Master switch `graph_communities_enabled`.
+
+### 42.7 Q4.2 L4.3 — Bridges and cut-vertices
+
+**`app/companion/graph_features/bridges.py`** — iterative Tarjan's
+algorithm (no recursion depth concerns).
+
+  * `_find_bridges_and_articulations(adj)` returns `(bridges, cut_vertices)`.
+  * `is_bridge_or_cut(person_id)` lookup consumed by the arbiter
+    (capped salience boost ≤0.10).
+  * Persists with an explanatory caveat:
+    *"Structural roles are not virtues — the algorithm sees structure,
+    not friendship."*
+  * Master switch `graph_bridges_enabled`.
+
+### 42.8 Q4.2 L4.4 — Graph-driven suggestions (SECOND TYPED-PHRASE GATE)
+
+**`app/companion/graph_features/graph_suggestions.py`** — prescriptive
+nudges from graph topology.
+
+  * Gate: operator must type
+    `ENABLE GRAPH-DRIVEN SUGGESTIONS` (distinct phrase from L4).
+  * Three categories with independent switches:
+    - `cluster_dormancy_enabled` — cluster of ≥3 people inactive ≥45d.
+    - `bridge_maintenance_enabled` — bridge person inactive ≥30d.
+    - `weak_tie_enabled` — once-strong edge now <0.3 weight, inactive ≥60d.
+  * Returns `PersonSuggestion` objects consumed by
+    `person_suggestions.generate_suggestions()` — shares the L3
+    3-per-briefing cap.
+  * Master switch `graph_suggestions_enabled`.
+
+### 42.9 Goodhart-of-the-indicator safeguards (defense in depth)
+
+In order of severity:
+
+1. **List sorts.** People + edges always sort by `last_seen`, never
+   by score/weight. Surfaces this in both Signal output and React.
+2. **Capped salience contributions** in `app/notify/arbiter.py`:
+   `_person_centrality_boost ≤ 0.15`, `_bridge_boost ≤ 0.10`. A
+   perfect-1.0 score / strongest bridge moves the needle less than a
+   quarter of a hard-rule notification.
+3. **Suggestion rate limit** — ≤3 per briefing, shared L3+L4.4.
+   Per-person dedupe within a briefing.
+4. **Hand-coded suggestion templates** — no LLM-generated nudges.
+5. **Operator-visible audit logs** for every nudge fired
+   (`person_suggestions_emitted.jsonl`) and every path query
+   (`social_graph_query_log.jsonl`).
+6. **Operator-dissolvable clusters** + per-person `mute_suggestions_for`
+   + `opt_out_of_paths`.
+7. **No body parsing.** Email source = `From:` header only.
+
+### 42.10 DR exclusion
+
+`app/dr/export_kbs.py` extended with one fragment: `social_graph`.
+Substring match catches all derived files:
+
+```
+workspace/companion/social_graph.json
+workspace/companion/social_graph_pair_mutes.json
+workspace/companion/social_graph_path_opt_outs.json
+workspace/companion/social_graph_communities.json
+workspace/companion/social_graph_dissolved_clusters.json
+workspace/companion/social_graph_structural.json
+workspace/companion/social_graph_query_log.jsonl
+```
+
+`person_profile.json` is **not** excluded (analogous to existing
+`interest_profile.json`).
+
+### 42.11 Integration with existing systems
+
+  * `app/notify/arbiter.py` — `_person_centrality_boost` and
+    `_bridge_boost` helpers added to salience score computation
+    (both capped).
+  * `app/life_companion/daily_briefing.py` — two new sections:
+    "🧑 People showing up" (top 5 by `last_seen` with centrality if
+    L2 on) and "💬 Suggestions" (≤3 nudges from L3+L4.4). Both
+    gated by master switches.
+  * `app/companion/loop.py` — three new LIGHT idle jobs:
+    `person-model`, `social-graph`, `graph-features`.
+  * `app/control_plane/dashboard_api.py` — ~15 new endpoints under
+    `/companion/people/*` and `/companion/social_graph/*`.
+  * `app/agents/commander/commands.py` — `/person` slash command
+    with subcommands: `mute / unmute / mute-suggestions /
+    opt-out-of-paths / forget / forget-all / forget-graph / path-to`.
+  * `app/api/config_api.py` — enforces typed-phrase confirmation on
+    the L4 and L4.4 False→True transitions.
+
+### 42.12 React surface — progressive disclosure
+
+**`dashboard-react/src/components/PersonCorrelationCard.tsx`**
+(`/cp/settings`):
+  * Progressive disclosure — L2/L3/L4 visible only when L1 on; L4.1
+    through L4.4 visible only when L4 on.
+  * Two typed-phrase gates with text inputs; Enable button disabled
+    until the input exactly matches.
+  * Red warning banners on L4 + extra-emoji red on L4.4.
+
+**Three new sub-tabs in `/cp/companion`**:
+  * `PeopleCard.tsx` — tracked people with per-row mute /
+    mute-suggestions / opt-out / forget + top-level "Forget all".
+  * `SocialGraphCard.tsx` — edge list / communities view (dissolve
+    buttons) / structural view (bridges + cut-vertices) / path query
+    form / danger zone (forget-graph).
+  * `PersonSuggestionsCard.tsx` — list of recent nudges with category
+    badges + timestamps.
+
+`dashboard-react/src/api/endpoints.ts` + `queries.ts` extended with
+17 new endpoints + hooks + `RuntimeSettings` interface extended with
+15 new optional fields.
+
+### 42.13 Files touched
+
+```
+NEW backend:
+crewai-team/app/companion/person_model.py
+crewai-team/app/companion/person_centrality.py
+crewai-team/app/companion/person_suggestions.py
+crewai-team/app/companion/social_graph.py
+crewai-team/app/companion/graph_features/__init__.py
+crewai-team/app/companion/graph_features/shortest_path.py
+crewai-team/app/companion/graph_features/communities.py
+crewai-team/app/companion/graph_features/bridges.py
+crewai-team/app/companion/graph_features/graph_suggestions.py
+
+NEW tests:
+crewai-team/tests/test_q4_2_person_correlation.py  # 29 pass
+
+UPDATED backend:
+crewai-team/app/runtime_settings.py                # +15 flags
+crewai-team/app/api/config_api.py                  # typed-phrase enforcement
+crewai-team/app/dr/export_kbs.py                   # +1 deny-fragment
+crewai-team/app/companion/loop.py                  # +3 idle jobs
+crewai-team/app/notify/arbiter.py                  # 2 capped salience helpers
+crewai-team/app/life_companion/daily_briefing.py   # 2 new sections
+crewai-team/app/control_plane/dashboard_api.py     # ~15 endpoints
+crewai-team/app/agents/commander/commands.py       # /person slash command
+
+NEW React:
+dashboard-react/src/components/PersonCorrelationCard.tsx
+dashboard-react/src/components/PeopleCard.tsx
+dashboard-react/src/components/SocialGraphCard.tsx
+dashboard-react/src/components/PersonSuggestionsCard.tsx
+
+UPDATED React:
+dashboard-react/src/api/endpoints.ts               # +17 endpoints
+dashboard-react/src/api/queries.ts                 # +17 hooks + types
+dashboard-react/src/components/CompanionTab.tsx    # +3 sub-tabs
+dashboard-react/src/components/SettingsPage.tsx    # mount PersonCorrelationCard
+
+NEW docs:
+crewai-team/docs/PERSON_CORRELATION.md             # full operator-facing doc
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4+Q4.1+Q4.2 regression: **175 pass + 56
+skip, 0 fail**. 29 new Q4.2 tests added without breaking anything.
+
+No TIER_IMMUTABLE files modified.
+
+### 42.14 What this layer deliberately does NOT do
+
+* No alias resolution — `maria@old` and `maria@new` are separate
+  people until operator manually consolidates.
+* No off-host data — every algorithm runs in pure Python in-process.
+* No score-sorted UI lists, even when scores are visible.
+* No imperative suggestions — every nudge is a question.
+* No automatic L4 enablement — two operator actions required: toggle
+  L1, then type the L4 phrase. Two more for L4.4.
+* No LLM reading message bodies for person tracking.
+* No memory writes from this layer into Mem0 / Neo4j — all state is
+  file-backed and operator-deletable in one shot.
+
+The four-level shape with typed-phrase gates was the user's explicit
+choice for *"elegant seamless solution that is well integrated into
+the system, no hacks or patchwork, no harming other parts of the
+system"*. Q4.2 is observational and additive — no existing behaviors
+change when all switches are OFF.

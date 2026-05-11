@@ -263,6 +263,24 @@ async def set_runtime_settings_endpoint(request: Request):
         set_embedding_migration_dual_write_enabled,
         set_embedding_migration_shadow_read_enabled,
         set_embedding_migration_cutover_enabled,
+        # Q4.2 — person correlation
+        set_person_correlation_enabled,
+        set_person_correlation_decay_months,
+        set_person_centrality_enabled,
+        set_person_centrality_formula,
+        set_person_suggestions_enabled,
+        set_person_suggestions_dormancy_enabled,
+        set_person_suggestions_responsiveness_enabled,
+        set_person_correlation_social_graph_enabled,
+        get_person_correlation_social_graph_enabled,
+        set_graph_shortest_path_enabled,
+        set_graph_communities_enabled,
+        set_graph_bridges_enabled,
+        set_graph_suggestions_enabled,
+        get_graph_suggestions_enabled,
+        set_graph_suggestions_cluster_dormancy_enabled,
+        set_graph_suggestions_bridge_maintenance_enabled,
+        set_graph_suggestions_weak_tie_enabled,
         snapshot,
     )
 
@@ -317,6 +335,82 @@ async def set_runtime_settings_endpoint(request: Request):
         if "embedding_migration_cutover_enabled" in payload:
             set_embedding_migration_cutover_enabled(
                 bool(payload["embedding_migration_cutover_enabled"])
+            )
+
+        # ── Q4.2 — person correlation (PROGRAM §42) ──────────────────
+        if "person_correlation_enabled" in payload:
+            set_person_correlation_enabled(bool(payload["person_correlation_enabled"]))
+        if "person_correlation_decay_months" in payload:
+            set_person_correlation_decay_months(
+                int(payload["person_correlation_decay_months"])
+            )
+        if "person_centrality_enabled" in payload:
+            set_person_centrality_enabled(bool(payload["person_centrality_enabled"]))
+        if "person_centrality_formula" in payload:
+            set_person_centrality_formula(str(payload["person_centrality_formula"]))
+        if "person_suggestions_enabled" in payload:
+            set_person_suggestions_enabled(bool(payload["person_suggestions_enabled"]))
+        if "person_suggestions_dormancy_enabled" in payload:
+            set_person_suggestions_dormancy_enabled(bool(payload["person_suggestions_dormancy_enabled"]))
+        if "person_suggestions_responsiveness_enabled" in payload:
+            set_person_suggestions_responsiveness_enabled(bool(payload["person_suggestions_responsiveness_enabled"]))
+
+        # L4 master — typed-phrase gate on False→True transition.
+        # The phrase MUST be present and match exactly OR the new value
+        # must be False (disable doesn't require a phrase).
+        if "person_correlation_social_graph_enabled" in payload:
+            new_val = bool(payload["person_correlation_social_graph_enabled"])
+            if new_val and not get_person_correlation_social_graph_enabled():
+                # Enabling: require phrase.
+                phrase = str(payload.get("social_graph_confirm_phrase") or "")
+                if phrase != "ENABLE SOCIAL GRAPH":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Enabling the social graph requires the "
+                            "typed-phrase confirmation. Send "
+                            "social_graph_confirm_phrase='ENABLE SOCIAL GRAPH' "
+                            "alongside person_correlation_social_graph_enabled=true."
+                        ),
+                    )
+            set_person_correlation_social_graph_enabled(new_val)
+
+        if "graph_shortest_path_enabled" in payload:
+            set_graph_shortest_path_enabled(bool(payload["graph_shortest_path_enabled"]))
+        if "graph_communities_enabled" in payload:
+            set_graph_communities_enabled(bool(payload["graph_communities_enabled"]))
+        if "graph_bridges_enabled" in payload:
+            set_graph_bridges_enabled(bool(payload["graph_bridges_enabled"]))
+
+        # L4.4 master — SECOND typed-phrase gate on False→True.
+        if "graph_suggestions_enabled" in payload:
+            new_val = bool(payload["graph_suggestions_enabled"])
+            if new_val and not get_graph_suggestions_enabled():
+                phrase = str(payload.get("graph_suggestions_confirm_phrase") or "")
+                if phrase != "ENABLE GRAPH-DRIVEN SUGGESTIONS":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Enabling graph-driven suggestions requires the "
+                            "typed-phrase confirmation. Send "
+                            "graph_suggestions_confirm_phrase="
+                            "'ENABLE GRAPH-DRIVEN SUGGESTIONS' alongside "
+                            "graph_suggestions_enabled=true."
+                        ),
+                    )
+            set_graph_suggestions_enabled(new_val)
+
+        if "graph_suggestions_cluster_dormancy_enabled" in payload:
+            set_graph_suggestions_cluster_dormancy_enabled(
+                bool(payload["graph_suggestions_cluster_dormancy_enabled"])
+            )
+        if "graph_suggestions_bridge_maintenance_enabled" in payload:
+            set_graph_suggestions_bridge_maintenance_enabled(
+                bool(payload["graph_suggestions_bridge_maintenance_enabled"])
+            )
+        if "graph_suggestions_weak_tie_enabled" in payload:
+            set_graph_suggestions_weak_tie_enabled(
+                bool(payload["graph_suggestions_weak_tie_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

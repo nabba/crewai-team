@@ -134,6 +134,41 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
             "companion.loop: tension_detector job skipped", exc_info=True,
         )
 
+    # Q4.2 (PROGRAM §42) — person-correlation stack. All jobs gate on
+    # their own master switches internally; registering them is safe
+    # even when disabled (the run() functions early-out).
+    try:
+        from app.companion.person_model import run as _pm_run
+        jobs.append(("person-model", _pm_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: person_model job skipped", exc_info=True)
+    try:
+        from app.companion.social_graph import run as _sg_run
+        jobs.append(("social-graph", _sg_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: social_graph job skipped", exc_info=True)
+
+    # Communities + bridges share a 24h cadence inside a single
+    # entry-point function so we don't pile job entries.
+    try:
+        from app.companion.graph_features import communities as _comm
+        from app.companion.graph_features import bridges as _br
+
+        def _graph_features_run() -> dict:
+            out = {}
+            try:
+                out["communities"] = _comm.compute_communities()
+            except Exception:
+                logger.debug("graph_features: communities raised", exc_info=True)
+            try:
+                out["structural"] = _br.compute_structural()
+            except Exception:
+                logger.debug("graph_features: bridges raised", exc_info=True)
+            return out
+        jobs.append(("graph-features", _graph_features_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: graph_features job skipped", exc_info=True)
+
     # Q4 Phase B (PROGRAM §41.2) — cross-modal pattern detector.
     # Reads interest_profile + control_plane.tickets; emits convergence
     # signals and boosts matching open tensions.

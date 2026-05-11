@@ -66,6 +66,21 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── Q4.2 (PROGRAM §42) — person correlation ───────────────────────
+    # /person                                       list tracked people
+    # /person mute <email>                          mute from surfaces
+    # /person unmute <email>                        unmute
+    # /person forget <email>                        delete profile
+    # /person forget-all                            nuke everything
+    # /person forget-graph                          delete graph only
+    # /person mute-suggestions <email>              suppress nudges
+    # /person opt-out-of-paths <email>              exclude as conduit
+    # /person path-to <email>                       L4.1 path query
+    if lower.startswith("/person") or lower.startswith("person "):
+        sub = _handle_person_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -2057,3 +2072,101 @@ def _handle_tensions_command(user_input: str) -> str | None:
         return f"✅ Resolved {t.id}: {t.question[:80]}"
 
     return _tensions_help()
+
+
+# ── Q4.2 (PROGRAM §42) — /person Signal commands ──────────────────
+
+
+def _person_help() -> str:
+    return (
+        "/person                                — list tracked people\n"
+        "/person mute <email>                   — exclude from surfaces\n"
+        "/person unmute <email>                 — re-include\n"
+        "/person forget <email>                 — delete profile\n"
+        "/person forget-all                     — nuke all person data\n"
+        "/person forget-graph                   — delete graph only\n"
+        "/person mute-suggestions <email>       — suppress nudges\n"
+        "/person opt-out-of-paths <email>       — exclude as conduit\n"
+        "/person path-to <email>                — shortest-path query (L4.1)\n"
+        "Enable/disable + master switches at /cp/settings."
+    )
+
+
+def _handle_person_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/person"):
+        text = text[len("/person"):].strip()
+    elif text.lower().startswith("person "):
+        text = text[len("person "):].strip()
+
+    if not text or text.lower() in ("list", "help", "?"):
+        if text.lower() in ("help", "?"):
+            return _person_help()
+        try:
+            from app.companion.person_model import current_profile
+            prof = current_profile()
+        except Exception:
+            return "Could not read person profile."
+        if not prof.get("enabled"):
+            return ("Person correlation is disabled. "
+                    "Enable in /cp/settings (and read docs/PERSON_CORRELATION.md).")
+        people = prof.get("people") or []
+        if not people:
+            return "No tracked people yet."
+        lines = [f"📋 {len(people)} tracked person(s):"]
+        for p in people[:15]:
+            display = (p.get("display_names") or [""])[0] or p.get("person_id", "?")
+            total = p.get("total_occurrences", 0)
+            mods = p.get("modality_count", 0)
+            lines.append(f"  {display[:40]:<40s}  {total} hits / {mods} modalities")
+        if len(people) > 15:
+            lines.append(f"  …and {len(people) - 15} more")
+        return "\n".join(lines)
+
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if sub == "mute" and arg:
+        from app.companion.person_model import mute
+        return f"✅ Muted {arg}" if mute(arg) else f"Already muted: {arg}"
+    if sub == "unmute" and arg:
+        from app.companion.person_model import unmute
+        return f"✅ Unmuted {arg}" if unmute(arg) else f"Was not muted: {arg}"
+    if sub == "forget" and arg:
+        from app.companion.person_model import forget
+        return f"✅ Forgotten {arg}" if forget(arg) else f"Not tracked: {arg}"
+    if sub == "forget-all":
+        from app.companion.person_model import forget_all
+        return f"✅ Forgot {forget_all()} person(s)."
+    if sub == "forget-graph":
+        try:
+            from app.companion.social_graph import forget_graph
+            return f"✅ Forgot social graph ({forget_graph()} edges)."
+        except Exception:
+            return "Could not forget graph."
+    if sub == "mute-suggestions" and arg:
+        from app.companion.person_suggestions import mute_suggestions_for
+        return f"✅ Suggestions muted for {arg}" if mute_suggestions_for(arg) else f"Already muted: {arg}"
+    if sub == "opt-out-of-paths" and arg:
+        try:
+            from app.companion.social_graph import opt_out_of_paths
+            return (f"✅ {arg} excluded as path intermediary"
+                    if opt_out_of_paths(arg) else f"Already opted out: {arg}")
+        except Exception:
+            return "Could not opt out (L4 master may be off)."
+    if sub == "path-to" and arg:
+        try:
+            from app.companion.graph_features.shortest_path import find_path
+            result = find_path(source="andrus", target=arg)
+        except Exception:
+            return "Path query failed."
+        if not result.get("ok"):
+            return f"No path: {result.get('error') or 'unknown'}"
+        path = result.get("path") or []
+        hops = result.get("hops", 0)
+        if hops == 0:
+            return "You ARE the target."
+        return f"Path ({hops} hops): " + " → ".join(path)
+
+    return _person_help()

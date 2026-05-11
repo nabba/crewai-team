@@ -279,6 +279,52 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_people_insights(n: int = 5) -> list[str]:
+    """Q4.2 (PROGRAM §42 L1) — people showing cross-modal convergence.
+    Only emits when master switch ON. Soft fail."""
+    try:
+        from app.companion.person_model import current_profile
+        prof = current_profile() or {}
+    except Exception:
+        return []
+    if not prof.get("enabled"):
+        return []
+    people = prof.get("people") or []
+    # Surface those with ≥3 modalities active in the recent window.
+    convergent = [
+        p for p in people
+        if p.get("modality_count", 0) >= 3
+        and p.get("total_occurrences", 0) >= 5
+    ]
+    if not convergent:
+        return []
+    lines: list[str] = []
+    for p in convergent[:n]:
+        display = (p.get("display_names") or [""])[0] or p.get("person_id", "?")
+        mods = p.get("modality_count", 0)
+        total = p.get("total_occurrences", 0)
+        lines.append(f"  • {display[:40]} — {mods} modalities × {total} hits")
+    return lines
+
+
+def _gather_person_suggestions(n: int = 3) -> list[str]:
+    """Q4.2 (PROGRAM §42 L3 + L4.4) — operator-facing nudges from the
+    person-suggestions emitter. Shares the 3-per-briefing cap with
+    L4.4 graph-suggestions (the rate limit lives in the emitter)."""
+    try:
+        from app.companion.person_suggestions import generate_suggestions
+        sugs = generate_suggestions() or []
+    except Exception:
+        return []
+    if not sugs:
+        return []
+    lines: list[str] = []
+    for s in sugs[:n]:
+        text = (s.get("text") or "")[:160]
+        lines.append(f"  • {text}")
+    return lines
+
+
 def _gather_queued_notifications(n: int = 10) -> tuple[list[str], list[float]]:
     """Q4.1 (PROGRAM §41.4) — pull arbiter-queued notifications for
     the digest. Returns ``(formatted_lines, ts_set)`` where ts_set is
@@ -454,6 +500,16 @@ def _compose_morning() -> tuple[str, list[float]]:
         # the list is empty so the briefing stays clean.
         parts.append("\n❓ Open questions you left with me:")
         parts.extend(tensions)
+    people_insights = _gather_people_insights(n=5)
+    if people_insights:
+        # Q4.2 L1 — people showing cross-modal convergence
+        parts.append("\n🧑 People showing up:")
+        parts.extend(people_insights)
+    person_suggestions = _gather_person_suggestions(n=3)
+    if person_suggestions:
+        # Q4.2 L3 + L4.4 — operator-facing nudges (combined cap of 3)
+        parts.append("\n💬 Suggestions:")
+        parts.extend(person_suggestions)
     if queued_lines:
         # Q4#17 — notifications the arbiter deferred. Pull them out
         # of the fatigue queue into the digest so "queue_for_digest"

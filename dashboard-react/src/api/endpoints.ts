@@ -71,6 +71,29 @@ export const endpoints = {
   companionCrossModalPatterns: (n = 20, minStrength = 0.7) =>
     `${CP}/companion/cross-modal-patterns?n=${n}&min_strength=${minStrength}`,
 
+  // Q4.2 — person correlation stack
+  companionPeople: () => `${CP}/companion/people`,
+  companionPeopleMute: () => `${CP}/companion/people/mute`,
+  companionPeopleUnmute: () => `${CP}/companion/people/unmute`,
+  companionPeopleForget: () => `${CP}/companion/people/forget`,
+  companionPeopleForgetAll: () => `${CP}/companion/people/forget-all`,
+  companionPeopleCentrality: () => `${CP}/companion/people/centrality`,
+  companionPeopleSuggestions: (limit = 50) =>
+    `${CP}/companion/people/suggestions?limit=${limit}`,
+  companionPeopleMuteSug: () => `${CP}/companion/people/mute-suggestions`,
+  companionPeopleGraph: () => `${CP}/companion/people/graph`,
+  companionPeopleGraphForget: () => `${CP}/companion/people/graph/forget`,
+  companionPeopleGraphMutePair: () => `${CP}/companion/people/graph/mute-pair`,
+  companionPeopleGraphPath: () => `${CP}/companion/people/graph/path`,
+  companionPeopleGraphPathOptOut: () =>
+    `${CP}/companion/people/graph/path-opt-out`,
+  companionPeopleGraphCommunities: () =>
+    `${CP}/companion/people/graph/communities`,
+  companionPeopleGraphDissolveCluster: () =>
+    `${CP}/companion/people/graph/dissolve-cluster`,
+  companionPeopleGraphStructural: () =>
+    `${CP}/companion/people/graph/structural`,
+
   health: () => `${CP}/health`,
   consciousness: (historyLimit = 30) => `${CP}/consciousness?history_limit=${historyLimit}`,
   tokens: (projectId?: string) =>

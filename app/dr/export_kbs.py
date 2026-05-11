@@ -95,6 +95,10 @@ _PATH_DENY_FRAGMENTS = (
     ".gpg", "secring", "pubring",  # GPG keyrings
     ".pgp",            # PGP keys
     ".pem", ".key",    # generic key files (covered by .pem/.key suffix)
+    # Q4.2 — person correlation social graph and its derived analyses.
+    # Substring match catches social_graph.json + social_graph_*.json
+    # so all four graph-feature outputs are excluded by one fragment.
+    "social_graph",
 )
 _PATH_DENY_REGEX = re.compile(
     r"(^|/)("

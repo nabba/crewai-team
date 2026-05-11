@@ -107,6 +107,37 @@ def _pattern_boost(topic: str) -> float:
     return 0.0
 
 
+def _person_centrality_boost(topic: str) -> float:
+    """Q4.2 (PROGRAM §42 L2) — if the topic references a person whose
+    centrality is high, modest salience boost. Capped at 0.15 so it
+    doesn't dominate. Off when L2 disabled."""
+    if not topic:
+        return 0.0
+    try:
+        from app.companion.person_centrality import centrality_for
+        # If topic looks like an email, use it directly.
+        if "@" in topic:
+            return min(0.15, centrality_for(topic) * 0.15)
+    except Exception:
+        logger.debug("notify.arbiter: centrality lookup failed", exc_info=True)
+    return 0.0
+
+
+def _bridge_boost(topic: str) -> float:
+    """Q4.2 (PROGRAM §42 L4.3) — if the topic mentions a person who
+    is currently a bridge/cut-vertex, modest salience boost. Capped
+    at 0.10. Off when L4.3 disabled."""
+    if not topic:
+        return 0.0
+    try:
+        from app.companion.graph_features.bridges import is_bridge_or_cut
+        if "@" in topic and is_bridge_or_cut(topic):
+            return 0.10
+    except Exception:
+        logger.debug("notify.arbiter: bridge lookup failed", exc_info=True)
+    return 0.0
+
+
 def _tension_boost(topic: str) -> float:
     """0..0.2 boost if topic matches an open tension question."""
     if not topic:
@@ -231,7 +262,12 @@ def arbitrate_notification(
     interest = _interest_score(topic or "") if topic else 0.0
     pattern = _pattern_boost(topic or "") if topic else 0.0
     tension = _tension_boost(topic or "") if topic else 0.0
-    score = min(1.0, interest + pattern + tension)
+    # Q4.2 — person-correlation salience inputs (capped contributions
+    # so they augment but never dominate). Failure-isolated; off when
+    # corresponding levels disabled.
+    centrality = _person_centrality_boost(topic or "")
+    bridge = _bridge_boost(topic or "")
+    score = min(1.0, interest + pattern + tension + centrality + bridge)
 
     # 4. Fatigue inputs.
     try:
@@ -245,6 +281,8 @@ def arbitrate_notification(
         "interest_score": round(interest, 3),
         "pattern_boost": round(pattern, 3),
         "tension_boost": round(tension, 3),
+        "centrality_boost": round(centrality, 3),
+        "bridge_boost": round(bridge, 3),
         "computed_salience": round(score, 3),
         "recent_global_4h": recent_global,
         "recent_topic_24h": recent_topic,
