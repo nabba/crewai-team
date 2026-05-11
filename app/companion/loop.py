@@ -114,6 +114,25 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
     except Exception:
         logger.debug("companion.loop: interest_model job skipped", exc_info=True)
 
+    # Q4 Phase A (PROGRAM §41.1) — companion tensions housekeeping.
+    # Decay sweep transitions OPEN ≥90d to DORMANT.
+    try:
+        from app.companion.tensions import run as _tensions_run
+        jobs.append(("companion-tensions", _tensions_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug("companion.loop: tensions job skipped", exc_info=True)
+
+    # Q4 Phase B (PROGRAM §41.2) — cross-modal pattern detector.
+    # Reads interest_profile + control_plane.tickets; emits convergence
+    # signals and boosts matching open tensions.
+    try:
+        from app.companion.cross_modal_patterns import run as _xmp_run
+        jobs.append(("cross-modal-patterns", _xmp_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: cross_modal_patterns job skipped", exc_info=True,
+        )
+
     # Phase C (2026-05-09) — adapter performance / paper pipeline / governance auto-propose.
     try:
         from app.training.adapter_performance import run as _ap_run

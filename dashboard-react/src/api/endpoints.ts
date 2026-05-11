@@ -67,6 +67,10 @@ export const endpoints = {
   companionTensionResolve: (tid: string) =>
     `${CP}/companion/tensions/${encodeURIComponent(tid)}/resolve`,
 
+  // Q4#15 — cross-modal pattern detector
+  companionCrossModalPatterns: (n = 20, minStrength = 0.7) =>
+    `${CP}/companion/cross-modal-patterns?n=${n}&min_strength=${minStrength}`,
+
   health: () => `${CP}/health`,
   consciousness: (historyLimit = 30) => `${CP}/consciousness?history_limit=${historyLimit}`,
   tokens: (projectId?: string) =>

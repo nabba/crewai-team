@@ -2161,6 +2161,38 @@ export function useCreateCompanionTension() {
   });
 }
 
+// ── Q4#15 (PROGRAM §41) — Cross-modal patterns ──────────────────────────
+
+export interface CrossModalPattern {
+  topic: string;
+  modalities: string[];
+  occurrences_per_modality: Record<string, number>;
+  occurrences_total: number;
+  window_days: number;
+  strength: number;
+  detected_at: string;
+  first_seen_age_days: number | null;
+  triggered_tension_boost: number;
+}
+
+export interface CrossModalPatternsResponse {
+  patterns: CrossModalPattern[];
+  as_of: string;
+  error?: string;
+}
+
+export function useCrossModalPatterns(n = 20, minStrength = 0.7) {
+  return useQuery({
+    queryKey: ['companion', 'cross-modal-patterns', n, minStrength] as const,
+    queryFn: () =>
+      api<CrossModalPatternsResponse>(
+        endpoints.companionCrossModalPatterns(n, minStrength),
+      ),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+
 export function useResolveCompanionTension() {
   const qc = useQueryClient();
   return useMutation<

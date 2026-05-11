@@ -243,6 +243,24 @@ def companion_tensions(status: str = Query("OPEN"), min_freshness: float = Query
     }
 
 
+@router.get("/companion/cross-modal-patterns")
+def companion_cross_modal_patterns(n: int = Query(20, ge=1, le=100), min_strength: float = Query(0.7, ge=0.0, le=1.0)):
+    """Q4#15 (PROGRAM §41) — recent convergence patterns the system
+    detected across modalities (conversations, emails, calendar,
+    feedback, affect, tickets). Read-only.
+    """
+    try:
+        from app.companion.cross_modal_patterns import list_recent_patterns
+        patterns = list_recent_patterns(n=n, min_strength=min_strength) or []
+    except Exception as exc:
+        logger.debug("companion/cross-modal-patterns failed: %s", exc, exc_info=True)
+        return {"patterns": [], "error": str(exc)}
+    return {
+        "patterns": patterns,
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 class TensionResolve(BaseModel):
     resolution: str
 

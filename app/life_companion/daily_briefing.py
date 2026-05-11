@@ -279,6 +279,33 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_cross_modal_insights(n: int = 3) -> list[str]:
+    """Q4#15 (PROGRAM §41) — proactive insights from the cross-modal
+    pattern detector. Surfaces topics that crossed ≥3 modalities at
+    high strength in the recent window. Soft fail."""
+    try:
+        from app.companion.cross_modal_patterns import list_recent_patterns
+    except Exception:
+        return []
+    try:
+        patterns = list_recent_patterns(n=n, min_strength=0.7) or []
+    except Exception:
+        return []
+    if not patterns:
+        return []
+    lines: list[str] = []
+    for p in patterns[:n]:
+        topic = (p.get("topic") or "")[:60]
+        mods = p.get("modalities") or []
+        total = p.get("occurrences_total") or 0
+        window = p.get("window_days") or 0
+        lines.append(
+            f"  • {topic} — {len(mods)} modalities × {total} hits / {window}d "
+            f"({', '.join(mods[:4])})"
+        )
+    return lines
+
+
 def _gather_open_tensions(n: int = 5) -> list[str]:
     """Q4#16 (PROGRAM §41) — open questions the operator left with the
     companion. Sorted newest-touched first; filters to OPEN status +
@@ -349,6 +376,11 @@ def _compose_morning() -> str:
     parts.extend(mail or ["  • (inbox clean)"])
     parts.append("\n🎯 Open tickets:")
     parts.extend(tickets or ["  • (no open tickets)"])
+    insights = _gather_cross_modal_insights(n=3)
+    if insights:
+        # Q4#15 — proactive insights from cross-modal pattern detector.
+        parts.append("\n💡 Proactive insights:")
+        parts.extend(insights)
     if tensions:
         # Q4#16 — open questions you left with me. Only show when
         # there's something to surface; the section disappears when
