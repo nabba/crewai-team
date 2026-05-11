@@ -293,12 +293,14 @@ def store(collection_name: str, text: str, metadata: dict = None):
         pass
     col = _get_col(collection_name)
     embedding = embed(text)
+    # Generate ONE id so source + shadow share it (dual-write hook).
+    doc_id = str(uuid.uuid4())
     try:
         col.add(
             documents=[text],
             embeddings=[embedding],
             metadatas=[metadata or {}],
-            ids=[str(uuid.uuid4())],
+            ids=[doc_id],
         )
     except Exception as e:
         # Dimension mismatch: collection has 384-dim but model produces 768-dim
@@ -315,11 +317,20 @@ def store(collection_name: str, text: str, metadata: dict = None):
                 documents=[text],
                 embeddings=[embedding],
                 metadatas=[metadata or {}],
-                ids=[str(uuid.uuid4())],
+                ids=[doc_id],
             )
         else:
             raise
     _count_cache.pop(collection_name, None)
+    # PROGRAM §40 Item 12 — best-effort shadow write. Hook is a no-op
+    # unless the migration master switch is on AND the state machine
+    # is in a phase that wants shadow writes. Failures swallowed —
+    # never block the source write path.
+    try:
+        from app.memory.embedding_migration.dual_write import maybe_dual_write
+        maybe_dual_write(collection_name, doc_id, text, metadata)
+    except Exception:
+        logger.debug("chromadb_manager: dual_write hook failed", exc_info=True)
 
 
 def retrieve(collection_name: str, query: str, n: int = 5) -> list[str]:
@@ -346,6 +357,17 @@ def retrieve(collection_name: str, query: str, n: int = 5) -> list[str]:
             client.get_or_create_collection(collection_name)
             return []
         raise
+    # PROGRAM §40 Item 12 — best-effort shadow-read divergence sample.
+    # Hook is a no-op unless the migration master switch is on AND the
+    # state machine is in SHADOW_READ / READY. Sampling is internal.
+    try:
+        from app.memory.embedding_migration.shadow_read import maybe_shadow_read
+        observed_ids = (results.get("ids") or [[]])[0]
+        maybe_shadow_read(
+            collection_name, query, list(observed_ids), n_results=n,
+        )
+    except Exception:
+        logger.debug("chromadb_manager: shadow_read hook failed", exc_info=True)
     return results["documents"][0]
 
 

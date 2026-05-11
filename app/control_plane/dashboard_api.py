@@ -669,6 +669,77 @@ def costs_daily(project_id: str = Query(None), days: int = Query(30)):
     )
     return rows or []
 
+
+@router.get("/embedding-migration")
+def embedding_migration_status():
+    """Read-only embedding-migration status. PROGRAM §40 Item 12.
+
+    Returns plan + state-machine snapshot + verifier report + window
+    summary so the React side can render the migration card without
+    issuing four separate calls. Safe to poll.
+    """
+    out: dict = {
+        "plan": None,
+        "state": None,
+        "verify": None,
+        "shadow_window": None,
+        "switches": None,
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        from app.memory.embedding_migration import plan as plan_mod
+        from app.memory.embedding_migration import state as state_mod
+        from app.memory.embedding_migration import shadow_read as sr_mod
+        from app.memory.embedding_migration import verify as verify_mod
+        from app.runtime_settings import (
+            get_embedding_migration_dual_write_enabled,
+            get_embedding_migration_shadow_read_enabled,
+            get_embedding_migration_cutover_enabled,
+        )
+        plan = plan_mod.load_plan()
+        out["plan"] = plan.to_dict() if plan else None
+        out["state"] = state_mod.get_state().to_dict()
+        out["shadow_window"] = sr_mod.get_window_summary()
+        # Verifier is best-effort; don't crash the endpoint if it raises.
+        try:
+            out["verify"] = verify_mod.verify().to_dict()
+        except Exception as exc:
+            out["verify"] = {"ok": False, "error": str(exc)}
+        out["switches"] = {
+            "dual_write_enabled": bool(get_embedding_migration_dual_write_enabled()),
+            "shadow_read_enabled": bool(get_embedding_migration_shadow_read_enabled()),
+            "cutover_enabled": bool(get_embedding_migration_cutover_enabled()),
+        }
+    except Exception as exc:
+        logger.debug("embedding-migration endpoint failed", exc_info=True)
+        out["error"] = str(exc)
+    return out
+
+
+@router.get("/costs/trends")
+def costs_trends(
+    project_id: str = Query(None),
+    history_months: int = Query(12, ge=2, le=36),
+    forecast_months: int = Query(6, ge=0, le=12),
+    anomaly_window: int = Query(30, ge=7, le=90),
+    anomaly_z: float = Query(3.0, ge=2.0, le=5.0),
+):
+    """Trend bundle for the React CostTrendsCard.
+
+    PROGRAM §40 — Q3 Item 14. Returns ``{summary, monthly, forecast,
+    anomalies, params, as_of}``. Read-only on ``audit_log``; safe per
+    page-load (single round-trip per panel; no caching).
+    """
+    from app.control_plane.cost_trends import get_cost_trends
+    return get_cost_trends(
+        history_months=history_months,
+        forecast_months=forecast_months,
+        anomaly_window=anomaly_window,
+        anomaly_z=anomaly_z,
+        project_id=project_id,
+    )
+
+
 # ── Operations: errors, anomalies, self-deploy pipeline ──────────────────────
 
 @router.get("/errors")

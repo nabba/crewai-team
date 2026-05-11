@@ -260,6 +260,9 @@ async def set_runtime_settings_endpoint(request: Request):
         set_structured_diagnosis_threshold_ceiling,
         set_structured_diagnosis_threshold_override,
         set_structured_diagnosis_auto_tune_enabled,
+        set_embedding_migration_dual_write_enabled,
+        set_embedding_migration_shadow_read_enabled,
+        set_embedding_migration_cutover_enabled,
         snapshot,
     )
 
@@ -301,6 +304,19 @@ async def set_runtime_settings_endpoint(request: Request):
         if "structured_diagnosis_auto_tune_enabled" in payload:
             set_structured_diagnosis_auto_tune_enabled(
                 bool(payload["structured_diagnosis_auto_tune_enabled"])
+            )
+        # Embedding-migration master switches (PROGRAM §40 Item 12).
+        if "embedding_migration_dual_write_enabled" in payload:
+            set_embedding_migration_dual_write_enabled(
+                bool(payload["embedding_migration_dual_write_enabled"])
+            )
+        if "embedding_migration_shadow_read_enabled" in payload:
+            set_embedding_migration_shadow_read_enabled(
+                bool(payload["embedding_migration_shadow_read_enabled"])
+            )
+        if "embedding_migration_cutover_enabled" in payload:
+            set_embedding_migration_cutover_enabled(
+                bool(payload["embedding_migration_cutover_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

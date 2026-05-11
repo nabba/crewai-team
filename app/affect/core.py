@@ -31,11 +31,16 @@ from typing import Any
 
 from app.affect.schemas import AffectState, ViabilityFrame, utc_now_iso
 from app.affect.viability import compute_viability_frame
+from app.utils.jsonl_retention import append_with_archive_rotate
 
 logger = logging.getLogger(__name__)
 
 from app.paths import AFFECT_TRACE as _TRACE_FILE  # noqa: E402  workspace-aware path
 _TRACE_LOCK = threading.Lock()
+# Cap: ~100k lines of dense trace ≈ 2 months at 1/min cadence. Older records
+# rotate to workspace/affect/archive/<YYYY-MM>_trace.jsonl — preserved forever
+# for HOT-1 / decentered-reflection / backward-counterfactual replay probes.
+_TRACE_MAX_LINES = 100_000
 
 # Rolling buffer for trend / arousal computation (in-process; trace.jsonl is durable).
 _recent_states: deque[AffectState] = deque(maxlen=64)
@@ -236,16 +241,22 @@ def recent_affect(n: int = 32) -> list[AffectState]:
 
 
 def _append_trace(state: AffectState, frame: ViabilityFrame) -> None:
-    """Append one line to trace.jsonl. Locked so concurrent steps don't interleave."""
+    """Append one line to trace.jsonl with bounded archive rotation.
+
+    Locked so concurrent steps don't interleave. Once the live file exceeds
+    ``_TRACE_MAX_LINES``, the oldest half rotates to
+    ``workspace/affect/archive/<YYYY-MM>_trace.jsonl`` — history preserved
+    indefinitely while the live file stays read-hot.
+    """
     try:
-        _TRACE_FILE.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps({
             "affect": state.to_dict(),
             "viability": frame.to_dict(),
         }, default=str)
         with _TRACE_LOCK:
-            with _TRACE_FILE.open("a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            append_with_archive_rotate(
+                _TRACE_FILE, line, max_lines=_TRACE_MAX_LINES,
+            )
     except Exception:
         logger.debug("affect.core: trace append failed", exc_info=True)
 

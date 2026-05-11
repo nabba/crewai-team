@@ -43,6 +43,22 @@ export const endpoints = {
     projectId ? `${CP}/costs/by-crew?project_id=${encodeURIComponent(projectId)}` : `${CP}/costs/by-crew`,
   costsByInternalAgent: (projectId?: string) =>
     projectId ? `${CP}/costs/by-internal-agent?project_id=${encodeURIComponent(projectId)}` : `${CP}/costs/by-internal-agent`,
+  costsTrends: (
+    historyMonths = 12,
+    forecastMonths = 6,
+    anomalyWindow = 30,
+    anomalyZ = 3.0,
+    projectId?: string,
+  ) => {
+    const qs = new URLSearchParams({
+      history_months: String(historyMonths),
+      forecast_months: String(forecastMonths),
+      anomaly_window: String(anomalyWindow),
+      anomaly_z: String(anomalyZ),
+    });
+    if (projectId) qs.set('project_id', projectId);
+    return `${CP}/costs/trends?${qs.toString()}`;
+  },
   health: () => `${CP}/health`,
   consciousness: (historyLimit = 30) => `${CP}/consciousness?history_limit=${historyLimit}`,
   tokens: (projectId?: string) =>

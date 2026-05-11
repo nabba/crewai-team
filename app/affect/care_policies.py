@@ -43,6 +43,13 @@ from app.paths import (  # noqa: E402  workspace-aware paths
     AFFECT_ROOT as _AFFECT_DIR,
     AFFECT_CARE_LEDGER as _CARE_LEDGER,
 )
+from app.utils.jsonl_retention import append_with_archive_rotate  # noqa: E402
+
+# Cap: care_ledger spans at most 5–50 entries/day. 10k cap ≈ 200 days–years
+# of dense interaction. Older entries rotate to
+# workspace/affect/attachments/archive/<YYYY-MM>_care_ledger.jsonl —
+# preserved indefinitely for attachment-pattern audits.
+_CARE_LEDGER_MAX_LINES = 10_000
 
 
 # ── Per-OtherModel daily-budget reset ───────────────────────────────────────
@@ -88,16 +95,19 @@ def record_spend(model: OtherModel, tokens: int, kind: str, note: str = "") -> b
     model.care_actions_taken += 1
 
     try:
-        _CARE_LEDGER.parent.mkdir(parents=True, exist_ok=True)
-        with _CARE_LEDGER.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "ts": utc_now_iso(),
-                "identity": model.identity,
-                "tokens": int(tokens),
-                "kind": kind,
-                "note": note[:200],
-                "remaining_today": MAX_CARE_BUDGET_TOKENS_PER_DAY - model.care_tokens_spent_today,
-            }, default=str) + "\n")
+        line = json.dumps({
+            "ts": utc_now_iso(),
+            "identity": model.identity,
+            "tokens": int(tokens),
+            "kind": kind,
+            "note": note[:200],
+            "remaining_today": MAX_CARE_BUDGET_TOKENS_PER_DAY - model.care_tokens_spent_today,
+        }, default=str)
+        # Archive-rotate (not truncate) so the full attachment-history
+        # remains queryable for HOT-1 / decentered-reflection probes.
+        append_with_archive_rotate(
+            _CARE_LEDGER, line, max_lines=_CARE_LEDGER_MAX_LINES,
+        )
     except Exception:
         logger.debug("affect.care_policies: ledger write failed", exc_info=True)
 

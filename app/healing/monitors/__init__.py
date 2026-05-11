@@ -22,6 +22,7 @@ Currently registered monitors:
   * ``log_archival``             — daily errors.jsonl + audit_journal rotate (Wave 0/1 #A5).
   * ``db_backup``                — opt-in weekly Postgres+Neo4j+ChromaDB (Wave 0/1 #A1).
   * ``crypto_rotation_drill``    — weekly probe; missing/stale pins + readiness drill (§2.1).
+  * ``chromadb_hygiene``         — quarterly SQLite VACUUM on every chroma.sqlite3; PROGRAM §40 Item 10.
 
 The driver runs each monitor on its own cadence inside a single daemon
 thread. Failure in one monitor never breaks the others — every step is
@@ -75,6 +76,7 @@ _DEFAULT_CADENCE_S = {
     "version_upgrade_drill": 24 * 3600,      # daily probe — alerts at 100d stale; §2.5
     "provider_contract_drift": 7 * 24 * 3600,  # weekly probe; §2.7
     "crypto_rotation_drill": 7 * 24 * 3600,    # weekly probe; §2.1
+    "chromadb_hygiene": 24 * 3600,             # daily probe — internal 90-day cadence; PROGRAM §40 Item 10
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -244,6 +246,16 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: crypto_rotation_drill import failed", exc_info=True,
+        )
+    try:
+        from app.healing.monitors import chromadb_hygiene
+        monitors.append((
+            "chromadb_hygiene", chromadb_hygiene.run,
+            _DEFAULT_CADENCE_S["chromadb_hygiene"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: chromadb_hygiene import failed", exc_info=True,
         )
     # Q2 §39: structured-diagnosis confidence-threshold auto-tuner.
     # The function has its own 24h gate inside; hourly cadence here

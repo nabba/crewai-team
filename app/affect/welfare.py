@@ -59,7 +59,13 @@ HARD_ENVELOPE: dict[str, float] = {
 
 
 from app.paths import AFFECT_ROOT as _AFFECT_DIR, AFFECT_AUDIT as _AUDIT_FILE  # noqa: E402
+from app.utils.jsonl_retention import append_with_archive_rotate  # noqa: E402
 _AUDIT_LOCK = threading.Lock()
+# Welfare breaches are RARE by design (sustained-negative-valence is the
+# canonical case). 5k cap covers years at expected breach rates; rotated
+# entries persist forever in workspace/affect/archive/<YYYY-MM>_welfare_audit.jsonl
+# — the welfare audit is the highest-priority history to preserve.
+_WELFARE_AUDIT_MAX_LINES = 5_000
 
 
 # ── Running monitor state ───────────────────────────────────────────────────
@@ -148,13 +154,20 @@ def check(
 
 
 def audit(breach: WelfareBreach) -> None:
-    """Append a single breach to the audit log. Atomic, locked."""
+    """Append a single breach to the audit log. Atomic, locked.
+
+    When the live audit exceeds ``_WELFARE_AUDIT_MAX_LINES``, the oldest
+    half rotates to ``workspace/affect/archive/<YYYY-MM>_welfare_audit.jsonl``
+    rather than being truncated. The welfare audit is the highest-priority
+    history to preserve — every breach must remain queryable forever for
+    constitutional review and monotonic-drift detection.
+    """
     try:
-        _AFFECT_DIR.mkdir(parents=True, exist_ok=True)
         line = json.dumps(breach.to_dict(), default=str)
         with _AUDIT_LOCK:
-            with _AUDIT_FILE.open("a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            append_with_archive_rotate(
+                _AUDIT_FILE, line, max_lines=_WELFARE_AUDIT_MAX_LINES,
+            )
         logger.warning(f"welfare: breach recorded — {breach.kind}: {breach.message}")
     except Exception:
         logger.error("welfare: audit append failed", exc_info=True)

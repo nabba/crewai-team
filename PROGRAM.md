@@ -4881,3 +4881,226 @@ crewai-team/PROGRAM.md                             # this section
 No TIER_IMMUTABLE files modified. The structured-diagnosis path
 is gated behind the existing operator approval flow — operator
 approves the CR like any other; nothing auto-applies.
+
+## 40. 2026-05-10/11 — Q3: Multi-year hygiene
+
+Five additive items closing the long-tail "the system runs for years
+and then this becomes a problem" gaps. Everything observational,
+revertible, default-OFF for the consequential bits (Item 12 dual-write
++ shadow read; Item 13 backup), default-ON for the cheap quarterly
+hygiene (Item 10 SQLite VACUUM, Item 11 archive rotation).
+
+### 40.1 Item 10 — ChromaDB hygiene (SQLite VACUUM + operator rebuild)
+
+**Reframed from the original "ChromaDB compaction" item.** ChromaDB
+has no public `compact()` API — HNSW segments are managed by
+chromadb-internal code. What we CAN do without taking the store
+offline is plain SQLite `VACUUM` on the metadata file (`chroma.sqlite3`)
+to recover space from soft-deleted rows that never got their pages
+freed.
+
+  * **`app/healing/monitors/chromadb_hygiene.py`** — 25th healing
+    monitor. Scans `workspace/*/chroma.sqlite3` (skipping `corrupt_*`
+    / `bak_*` recovery snapshots), runs `PRAGMA optimize` + `VACUUM`
+    on each. Internal cadence 90 days; daemon driver pings daily.
+    Sends one Signal alert if total reclaim ≥50 MB.
+  * **`app/memory/chromadb_rebuild.py`** — operator-initiated full
+    rebuild for HNSW reclaim. Streams rows out, snapshots to
+    `workspace/<kb>/.rebuild_backups/<collection>__<ts>.jsonl.gz`,
+    drops + recreates the collection, replays the snapshot. Has a
+    `--dry-run` flag (snapshot-only, no mutation) and a
+    `--from-snapshot <path>` recovery flow for mid-rebuild failures.
+
+### 40.2 Item 11 — JSONL caps with archive rotation
+
+**Two retention patterns now distinguished**: truncate-on-overflow
+for operational telemetry (existing `cap_jsonl` / `append_with_cap`),
+and **rotate-to-monthly-archive** for consciousness-relevant logs.
+
+  * **`app/utils/jsonl_retention.py`** extended with:
+    - `append_with_archive_rotate(path, line, *, max_lines, keep_fraction=0.5)`
+      — appends + rotates oldest 50% to
+      `<path.parent>/archive/<YYYY-MM>_<basename>` when over cap.
+    - `read_archive(path)` — lazy iterator across all monthly archive
+      files + live file in chronological order. Decade-scale safe.
+    - `archive_stats(path)` — summary for the dashboard.
+  * **Wired into 5 writers**:
+    - `app/affect/core.py:_append_trace` — `trace.jsonl`, cap 100k
+    - `app/affect/salience.py:_append` — `salience.jsonl`, cap 50k
+    - `app/affect/welfare.py:audit` — `welfare_audit.jsonl`, cap 5k
+    - `app/affect/care_policies.py:record_spend` — `care_ledger.jsonl`, cap 10k
+    - `app/training/adapter_lifecycle.py:_append_history_snapshot`
+      — operational; uses simple `append_with_cap` at 1000 snapshots.
+
+Welfare/affect/salience/care archives preserve consciousness data
+forever for HOT-1 / decentered-reflection / backward-counterfactual
+replay probes.
+
+### 40.3 Item 12 — Embedding-model migration framework
+
+The first production consumer of the previously-dormant Tier-3
+amendment path. Migrating `_EMBED_DIM` is a TIER_IMMUTABLE edit; the
+framework makes the surrounding setup deliberate, reversible, and
+gated.
+
+  * **`app/memory/embedding_migration/`** — new package, 8 modules:
+    - `plan.py` — typed `MigrationPlan` + `EmbeddingModel` + `MigrationTarget`
+    - `state.py` — 10-state machine over `runtime_settings.embedding_migration_state`
+    - `dual_write.py` — best-effort shadow write via target embedder; backfill driver
+    - `shadow_read.py` — sampled NDCG@10 divergence telemetry, rolling window
+    - `verify.py` — pre-cutover invariants (counts, dim, NDCG threshold, DR freshness)
+    - `cutover.py` — Tier-3-amendment-gated atomic swap (delete source, create from shadow, archive)
+    - `dry_run.py` — full pipeline against sandbox collection; CLI entrypoint
+    - `__init__.py` — package boundary doc
+  * **`app/memory/chromadb_manager.py`** hooks: `store()` now generates
+    one shared `doc_id` and calls `maybe_dual_write()`; `retrieve()`
+    calls `maybe_shadow_read()` with the source's top-N ids.
+  * **`app/runtime_settings.py`** — 4 new keys with paired getters/setters:
+    - `embedding_migration_dual_write_enabled` (bool, default OFF)
+    - `embedding_migration_shadow_read_enabled` (bool, default OFF)
+    - `embedding_migration_cutover_enabled` (bool, default OFF)
+    - `embedding_migration_state` (dict, state-machine blob)
+  * **`app/api/config_api.py`** — 3 toggle endpoints wired into
+    `POST /api/cp/settings`.
+  * **`app/control_plane/dashboard_api.py`** — `GET /api/cp/embedding-migration`
+    one-shot status endpoint (plan + state + verify + window + switches).
+
+### 40.4 Item 13 — DR drill (portable export + boot drill)
+
+Container-independent backup path that complements the existing
+`app/healing/db_backup.py` binary dumps. Answers a different question:
+**"Could we rebuild from a tarball on a fresh laptop?"** — not the
+fast same-cluster restore.
+
+  * **`HEALING_DB_BACKUP_ENABLED=true`** flipped in `.env`. The
+    existing weekly backup runner now actually fires on the dev
+    workstation.
+  * **`app/dr/`** — new package, 3 modules + scripts wrapper + ops doc:
+    - `export_kbs.py` — produces self-contained `.tar.gz` with every
+      ChromaDB collection (as JSONL), key Postgres tables (as JSONL),
+      canonical workspace ledgers. **Deliberate secret denylist**:
+      `.env`, `secrets/`, `google_token.json`, `vapid_*.pem`, anything
+      matching `token`/`credential`/`private_key`. Records every
+      excluded path in the manifest.
+    - `import_kbs.py` — reads tarball into ephemeral target dir.
+      Deliberately no "overwrite live workspace" mode — that's a
+      destructive op operators do by hand with full awareness.
+    - `boot_drill.py` — end-to-end exercise. Take latest export →
+      import to ephemeral dir → run sanity queries (count match,
+      peek dim, smoke retrieve) → write report → Signal alert.
+  * **`scripts/dr_boot_drill.sh`** — shell wrapper.
+  * **`docs/DR_DRILL.md`** — operator runbook with auditing
+    instructions (manifest inspection, restore-to-sandbox flow).
+
+### 40.5 Item 14 — Cost trend dashboard
+
+Multi-year cost trajectory visualisation. Read-only on `audit_log`.
+
+  * **`app/control_plane/cost_trends.py`** — pure-stdlib OLS linear
+    regression on monthly totals. 95% CI band from regression
+    residuals. Rolling-window z-score anomaly detection on daily
+    totals. Goodhart-resistant: forecast is observational, system
+    never optimises against it.
+  * **`GET /api/cp/costs/trends`** — one-shot bundle:
+    `{summary, monthly, forecast, anomalies, params, as_of}`.
+  * **`dashboard-react/src/components/CostTrendsCard.tsx`** — new
+    component mounted in `CostCharts.tsx`. History blue line +
+    forecast violet dashed line + 95% CI translucent band + KPI
+    cards (total, trend %/month, projected next-12-mo) + anomalies
+    table.
+
+### 40.6 Test sweep
+
+**`tests/test_q3_multiyear_hygiene.py`** — 22 tests covering:
+  * Archive rotation: lines preserved, monthly filenames, stats summary.
+  * OLS math: perfect fit zero-sigma, noisy fit positive sigma, month
+    rollover, perfect-fit CI collapse, anomaly z-threshold, summary
+    growth rate, CI clamping at zero, zero-variance anomaly guard.
+  * ChromaDB hygiene: corrupt-dir skip, real SQLite VACUUM.
+  * DR export: secret-path denylist.
+  * Migration plan: roundtrip serialization.
+  * State machine: invalid transition raises, valid progression,
+    counter increments.
+  * NDCG@10: perfect match, zero overlap, partial overlap < 1.
+
+All 22 pass. Q1+Q2+Q3 regression: 43 pass, 52 skip (gateway-deps).
+Affect-module tests: 13 pass.
+
+### 40.7 SubIA / KB integration map
+
+  * **Affect substrate** (Item 11) — `trace.jsonl`, `salience.jsonl`,
+    `welfare_audit.jsonl`, `care_ledger.jsonl` all now archive
+    forever to monthly buckets. HOT-1 / decentered-reflection /
+    backward-counterfactual replay get decade-scale data.
+  * **ChromaDB layer** (Item 10) — every KB's SQLite metadata stays
+    bounded without losing rows.
+  * **Tier-3 amendment** (Item 12) — first real consumer of the
+    protocol shipped in §25.1. The post-apply hook moves state to
+    APPLIED and the continuity ledger gets a `tier3_amendment` entry
+    via existing `governance_amendment.mark_applied` instrumentation.
+  * **DR layer** (Item 13) — portable tarball excludes secrets via
+    aggressive denylist; preserves affect archives + identity ledger
+    + audit_journal. Manifest is operator-auditable.
+  * **Goodhart discipline** (Item 14) — forecast is observational.
+    System never trains against the cost trajectory. The metric
+    serves the operator's decisions, not the system's.
+
+### 40.8 Files touched
+
+```
+NEW backend:
+crewai-team/app/healing/monitors/chromadb_hygiene.py
+crewai-team/app/memory/chromadb_rebuild.py
+crewai-team/app/control_plane/cost_trends.py
+crewai-team/app/dr/__init__.py
+crewai-team/app/dr/export_kbs.py
+crewai-team/app/dr/import_kbs.py
+crewai-team/app/dr/boot_drill.py
+crewai-team/app/memory/embedding_migration/__init__.py
+crewai-team/app/memory/embedding_migration/plan.py
+crewai-team/app/memory/embedding_migration/state.py
+crewai-team/app/memory/embedding_migration/dual_write.py
+crewai-team/app/memory/embedding_migration/shadow_read.py
+crewai-team/app/memory/embedding_migration/verify.py
+crewai-team/app/memory/embedding_migration/cutover.py
+crewai-team/app/memory/embedding_migration/dry_run.py
+
+NEW React:
+crewai-team/dashboard-react/src/components/CostTrendsCard.tsx
+
+NEW scripts:
+crewai-team/scripts/dr_boot_drill.sh
+
+NEW tests:
+crewai-team/tests/test_q3_multiyear_hygiene.py     # 22 tests, all pass
+
+NEW docs:
+crewai-team/docs/DR_DRILL.md
+crewai-team/docs/EMBEDDING_MIGRATION.md
+
+UPDATED backend:
+crewai-team/app/utils/jsonl_retention.py           # +3 functions (archive rotation)
+crewai-team/app/affect/core.py                     # wire archive rotation
+crewai-team/app/affect/salience.py                 # wire archive rotation
+crewai-team/app/affect/welfare.py                  # wire archive rotation
+crewai-team/app/affect/care_policies.py            # wire archive rotation
+crewai-team/app/training/adapter_lifecycle.py      # wire cap (simple)
+crewai-team/app/healing/monitors/__init__.py       # register 25th monitor
+crewai-team/app/memory/chromadb_manager.py         # dual-write + shadow-read hooks
+crewai-team/app/runtime_settings.py                # 4 new keys + getters/setters
+crewai-team/app/api/config_api.py                  # 3 new toggle endpoints
+crewai-team/app/control_plane/dashboard_api.py     # 2 new GET endpoints
+
+UPDATED React:
+crewai-team/dashboard-react/src/api/endpoints.ts   # costsTrends route
+crewai-team/dashboard-react/src/api/queries.ts     # useCostTrendsQuery + CostTrendBundle type
+crewai-team/dashboard-react/src/components/CostCharts.tsx  # mount CostTrendsCard
+
+UPDATED config:
+crewai-team/.env                                   # HEALING_DB_BACKUP_ENABLED=true
+```
+
+No TIER_IMMUTABLE files modified by this section. The embedding-
+migration cutover (Item 12) is the first consumer that **proposes**
+a Tier-3 amendment, but the proposal itself is gated by the existing
+protocol — the cutover module does not bypass it.

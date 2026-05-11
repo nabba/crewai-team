@@ -37,6 +37,12 @@ export const keys = {
   costsByAgent: ['costs', 'by-agent'] as const,
   costsByCrew: ['costs', 'by-crew'] as const,
   costsByInternalAgent: ['costs', 'by-internal-agent'] as const,
+  costsTrends: (
+    historyMonths: number,
+    forecastMonths: number,
+    anomalyWindow: number,
+    anomalyZ: number,
+  ) => ['costs', 'trends', historyMonths, forecastMonths, anomalyWindow, anomalyZ] as const,
   health: ['health'] as const,
   evolutionSummary: ['evolution', 'summary'] as const,
   evolutionResults: (engine: string, status: string) => ['evolution', 'results', engine, status] as const,
@@ -317,6 +323,62 @@ export function useInternalAgentCostsQuery(projectId?: string) {
   return useQuery({
     queryKey: [...keys.costsByInternalAgent, projectId ?? 'all'],
     queryFn: () => api<{ by_actor: AgentCost[]; total_cost: number }>(endpoints.costsByInternalAgent(projectId)),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+// ── Cost trends (Q3 Item 14) ────────────────────────────────────────────────
+export interface CostTrendBundle {
+  summary: {
+    total_history_usd: number;
+    trend_pct_per_month: number | null;
+    projected_next_12mo_usd: number;
+    history_months_observed: number;
+  };
+  monthly: Array<{
+    month: string;          // YYYY-MM
+    total_cost_usd: number;
+    total_tokens: number;
+    call_count: number;
+  }>;
+  forecast: Array<{
+    month: string;
+    projected_usd: number;
+    ci_low: number;
+    ci_high: number;
+  }>;
+  anomalies: Array<{
+    day: string;            // YYYY-MM-DD
+    total_cost_usd: number;
+    expected_usd: number;
+    z_score: number;
+    kind: 'spike' | 'drop';
+  }>;
+  params: {
+    history_months: number;
+    forecast_months: number;
+    anomaly_window: number;
+    anomaly_z_threshold: number;
+  };
+  as_of: string;
+}
+
+export function useCostTrendsQuery(
+  historyMonths = 12,
+  forecastMonths = 6,
+  anomalyWindow = 30,
+  anomalyZ = 3.0,
+  projectId?: string,
+) {
+  return useQuery({
+    queryKey: [
+      ...keys.costsTrends(historyMonths, forecastMonths, anomalyWindow, anomalyZ),
+      projectId ?? 'all',
+    ],
+    queryFn: () =>
+      api<CostTrendBundle>(
+        endpoints.costsTrends(historyMonths, forecastMonths, anomalyWindow, anomalyZ, projectId),
+      ),
     refetchInterval: POLL.oneMin,
   });
 }

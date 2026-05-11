@@ -24,6 +24,7 @@ import type { AgentCost } from '../types';
 import { useProject } from '../context/useProject';
 import { TokenUsageCard } from './TokenUsageCard';
 import { MonthlyProjectionCard } from './MonthlyProjectionCard';
+import { CostTrendsCard } from './CostTrendsCard';
 
 ChartJS.register(
   CategoryScale,
@@ -240,6 +241,8 @@ export function CostCharts() {
       </div>
 
       <MonthlyProjectionCard />
+
+      <CostTrendsCard />
 
       <TokenUsageCard />
 

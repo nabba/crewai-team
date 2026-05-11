@@ -33,11 +33,16 @@ from pathlib import Path
 
 from app.affect.schemas import AffectState, ViabilityFrame, utc_now_iso
 from app.affect.welfare import HARD_ENVELOPE
+from app.utils.jsonl_retention import append_with_archive_rotate
 
 logger = logging.getLogger(__name__)
 
 from app.paths import AFFECT_SALIENCE as SALIENCE_FILE  # noqa: E402  workspace-aware path
 _SALIENCE_LOCK = threading.Lock()
+# Cap: ~50k salience events ≈ months-to-years at typical event rates.
+# Older records rotate to workspace/affect/archive/<YYYY-MM>_salience.jsonl
+# — preserved for narrative-self / decentered-reflection retrospection.
+_SALIENCE_MAX_LINES = 50_000
 
 NEAR_MISS_FRACTION = 0.80          # ≥80% of hard-envelope bound = near miss
 DELTA_THRESHOLD = 0.40              # |ΔV| or |ΔA| above this = spike
@@ -216,12 +221,16 @@ def last_event_ts() -> str | None:
 
 
 def _append(event: SalienceEvent) -> None:
+    """Append + rotate. Older entries persist in
+    ``workspace/affect/archive/<YYYY-MM>_salience.jsonl`` rather than
+    being lost — narrative-self / decentered-reflection probes can walk
+    the full multi-year history."""
     try:
-        SALIENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event.to_dict(), default=str)
         with _SALIENCE_LOCK:
-            with SALIENCE_FILE.open("a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            append_with_archive_rotate(
+                SALIENCE_FILE, line, max_lines=_SALIENCE_MAX_LINES,
+            )
     except Exception:
         logger.debug("affect.salience: append failed", exc_info=True)
 

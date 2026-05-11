@@ -119,6 +119,15 @@ def _defaults() -> dict[str, Any]:
         "structured_diagnosis_threshold_ceiling": 0.95,
         "structured_diagnosis_threshold_override": None,
         "structured_diagnosis_auto_tune_enabled": True,
+        # Embedding-migration master switches (PROGRAM §40 Item 12,
+        # 2026-05-10). Default OFF — the entire framework is
+        # observational until the operator opts in. ``state`` is the
+        # state-machine blob; the three ``_enabled`` flags are user-
+        # facing toggles surfaced on /cp/settings.
+        "embedding_migration_dual_write_enabled": False,
+        "embedding_migration_shadow_read_enabled": False,
+        "embedding_migration_cutover_enabled": False,
+        "embedding_migration_state": {},
     }
 
 
@@ -692,3 +701,65 @@ def set_structured_diagnosis_auto_tune_enabled(value: bool) -> None:
         "runtime_settings: structured_diagnosis_auto_tune_enabled set to %s",
         bool(value),
     )
+
+
+# ── Embedding-migration master switches (PROGRAM §40 Item 12) ───────────
+
+
+def get_embedding_migration_dual_write_enabled() -> bool:
+    return bool(_ensure_initialized().get(
+        "embedding_migration_dual_write_enabled", False,
+    ))
+
+
+def set_embedding_migration_dual_write_enabled(value: bool) -> None:
+    _update({"embedding_migration_dual_write_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: embedding_migration_dual_write_enabled set to %s",
+        bool(value),
+    )
+
+
+def get_embedding_migration_shadow_read_enabled() -> bool:
+    return bool(_ensure_initialized().get(
+        "embedding_migration_shadow_read_enabled", False,
+    ))
+
+
+def set_embedding_migration_shadow_read_enabled(value: bool) -> None:
+    _update({"embedding_migration_shadow_read_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: embedding_migration_shadow_read_enabled set to %s",
+        bool(value),
+    )
+
+
+def get_embedding_migration_cutover_enabled() -> bool:
+    return bool(_ensure_initialized().get(
+        "embedding_migration_cutover_enabled", False,
+    ))
+
+
+def set_embedding_migration_cutover_enabled(value: bool) -> None:
+    _update({"embedding_migration_cutover_enabled": bool(value)})
+    logger.info(
+        "runtime_settings: embedding_migration_cutover_enabled set to %s",
+        bool(value),
+    )
+
+
+def get_embedding_migration_state() -> dict[str, Any]:
+    """Read the embedding-migration state blob. Returns ``{}`` on
+    first boot. Mutated by ``app.memory.embedding_migration.state``."""
+    blob = _ensure_initialized().get("embedding_migration_state")
+    if not isinstance(blob, dict):
+        return {}
+    return dict(blob)
+
+
+def set_embedding_migration_state(value: dict[str, Any]) -> None:
+    """Persist the embedding-migration state blob. The state-machine
+    module owns the schema; runtime_settings is just the storage."""
+    if not isinstance(value, dict):
+        raise TypeError("embedding_migration_state must be a dict")
+    _update({"embedding_migration_state": dict(value)})

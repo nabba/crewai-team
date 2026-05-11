@@ -61,7 +61,9 @@
                        ├─ db_vacuum
                        ├─ log_archival
                        ├─ db_backup
-                       └─ crypto_rotation_drill
+                       ├─ crypto_rotation_drill
+                       ├─ diagnosis_auto_tune              (PROGRAM §39)
+                       └─ chromadb_hygiene                 (PROGRAM §40 Item 10)
                                 │
                        Single daemon driver in __init__.py
                        (60 s tick + per-monitor cadence guards)

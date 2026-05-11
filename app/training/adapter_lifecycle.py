@@ -53,8 +53,16 @@ from app.life_companion._common import (
     send_signal_alert,
     write_state_json,
 )
+from app.utils.jsonl_retention import append_with_cap
 
 logger = logging.getLogger(__name__)
+
+# Adapter-lifecycle history is OPERATIONAL telemetry (eval_scores +
+# promotion timestamps); truncating older snapshots is fine. Cap at 1000
+# snapshots ≈ ~80 years at the 30-day cadence — effectively unbounded
+# for the operator's lifetime, with a hard ceiling against runaway
+# growth from a misconfigured cadence.
+_HISTORY_MAX_LINES = 1_000
 
 # Mirror the training_pipeline constants — read directly so we don't
 # depend on the orchestrator class being instantiated.
@@ -265,8 +273,9 @@ def _append_history_snapshot(registry: dict[str, dict[str, Any]]) -> None:
                 if isinstance(info, dict)
             },
         }
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(snapshot, default=str) + "\n")
+        append_with_cap(
+            path, json.dumps(snapshot, default=str), max_lines=_HISTORY_MAX_LINES,
+        )
     except Exception:
         logger.debug("adapter_lifecycle: history append failed", exc_info=True)
 
