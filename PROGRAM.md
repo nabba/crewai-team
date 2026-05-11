@@ -5512,3 +5512,103 @@ of normal code review — not new correctness issues. **Q3 closed for
 real this time.** Future work should target a different quarter
 (Q1 audit showed CR queue already drained; Q4 / new program goals
 are higher-value than continued Q3 polish).
+
+## 40.4 2026-05-11 — Q1 cleanup pass after re-audit
+
+The Q1 prompt was re-issued; full audit confirmed 7 of 9 items
+already shipped in §38 / §39 (wiki spam fix, db_pool_reset 5→1,
+336-CR queue drained, TIER3_AMENDMENT_ENABLED flip, proposal bridge,
+structured diagnosis, continuity-ledger lookup). The remaining two
+(Q1#3 auto-apply allowlist patterns, Q1#6 Goodhart Enforcing flip)
+each had non-obvious reasons the deliberate hold-back was correct.
+This pass documents the rationale + closes one real wiring gap.
+
+### 40.4.1 — Q1#3 pattern-eligibility audit recorded
+
+The recurring proposal: *"populate auto-apply allowlists with the
+schema-drift handlers (`_handle_numeric_overflow` +
+`_handle_missing_column` from `app/healing/handlers/schema_drift.py`)."*
+This came up in Q1 planning rounds repeatedly. **The answer is
+deliberately no, for two independent reasons:**
+
+  1. `migrations/` is in `_AUTO_APPLY_FORBIDDEN_PREFIXES` because
+     the auto-revert watcher's blast-radius guarantee fails for
+     out-of-tree side effects (schema changes already executed
+     against the live DB can't be rolled back by reverting a git
+     commit).
+  2. The handlers produce TODO scaffolds with literal `<TABLE>` /
+     `<COLUMN>` placeholders that the operator must hand-edit
+     before running. Auto-applying would land unrunnable files —
+     strictly worse than the current gated flow.
+
+Both rationales are now recorded in two places so future audits
+don't re-propose this:
+
+  * `app/change_requests/validator.py:182-228` — code-adjacent
+    comment block documenting the disqualifiers + what a future
+    qualifying handler would need to look like.
+  * `docs/AUTO_APPLY.md` — new "Pattern-eligibility audit" section
+    with concrete code excerpts + the three preconditions for
+    future eligibility (executable patches, idempotent reverts,
+    migrations-prefix lift).
+
+The allowlists remain `frozenset()` / `()`. The test sweep includes
+a regression guard that fails if either allowlist becomes non-empty
+without explicit review.
+
+### 40.4.2 — Q1#6 Goodhart-Enforcing proposer GW publish
+
+Audit confirmed:
+  * `app/governance_ratchet/goodhart_enforcing_proposer.py` is
+    already running daily (registered in `companion/loop.py`).
+  * It already files proposals to `workspace/governance_proposals.jsonl`.
+  * It already sends a Signal alert when filing.
+  * `runtime_settings.set_goodhart_hard_gate_enforcing` already
+    emits a `governance_ratchet` event to the identity continuity
+    ledger when the operator approves the flip.
+
+**One real wiring gap**: the proposer didn't publish to the SubIA
+Global Workspace. A pending substrate-governance change (the gating
+regime that decides which promotions ship is about to tighten) is
+exactly the kind of dispositional event the GW should see — not
+just the operator via Signal. Pattern matches the other GW publish
+sites added in Q3 (chromadb_hygiene, cutover, boot_drill).
+
+Added `_publish_proposal_to_gw` helper called after the Signal
+alert. Salience 0.75 (high — substrate-governance), signal_type
+`disposition`. Failure-isolated; never raises.
+
+### 40.4.3 — Items NOT shipped (and why)
+
+| Item | Why no action |
+|------|---------------|
+| Q1#1 wiki spam | Already shipped §38.2 (3 defensive layers) |
+| Q1#2 db_pool_reset 5→1 | Already shipped §38.4 |
+| Q1#3 allowlist patterns | Documented above — proposed patterns don't qualify by design |
+| Q1#4 336 stuck CRs | Verified drained: 2 live CRs, 355 archived |
+| Q1#5 TIER3 flip | Already shipped §38.4 |
+| Q1#6 Goodhart Enforcing flip | Auto-proposer running; daemon will surface when ready (≥30 promotion decisions in 14d window, ≤5% block rate). Manual premature flip would have zero baseline data — `workspace/goodhart_reports.json` doesn't exist yet (Advisory mode started 2026-05-10) |
+| Q2#7 proposal bridge | Already shipped §38.1 |
+| Q2#8 structured diagnosis | Already shipped §39.3 |
+| Q2#9 continuity-ledger lookup | Already shipped §39.1 |
+
+### 40.4.4 Tests + files touched
+
+```
+NEW tests:
+crewai-team/tests/test_q1_cleanup.py            # 7 pass — eligibility-audit
+                                                #   regression guards + GW
+                                                #   publish source-level checks
+
+UPDATED backend:
+crewai-team/app/change_requests/validator.py    # Q1.4 pattern-eligibility audit comment block
+crewai-team/app/governance_ratchet/goodhart_enforcing_proposer.py  # _publish_proposal_to_gw
+
+UPDATED docs:
+crewai-team/docs/AUTO_APPLY.md                  # Pattern-eligibility audit section
+crewai-team/PROGRAM.md                          # this section
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4 regression: **113 pass + 56 skip, 0 fail**.
+
+No TIER_IMMUTABLE files modified.

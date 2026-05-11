@@ -306,6 +306,14 @@ def run() -> dict[str, Any]:
             "goodhart_enforcing_proposer: alert failed", exc_info=True,
         )
 
+    # Q1.4 (PROGRAM §40.4) — also publish to the SubIA Global Workspace
+    # so the consciousness layer sees a pending substrate-governance
+    # event, not just the operator. High-salience dispositional event:
+    # the gating regime that decides which promotions ship is about to
+    # tighten. Best-effort; failure non-fatal (Signal alert already
+    # surfaced the proposal).
+    _publish_proposal_to_gw(proposal)
+
     write_state_json(_STATE_FILE, state)
     audit_event(
         "goodhart_enforcing_propose_pass",
@@ -314,3 +322,27 @@ def run() -> dict[str, Any]:
         n_signals=len(signals),
     )
     return summary
+
+
+def _publish_proposal_to_gw(proposal: dict) -> None:
+    """Best-effort GW publish. Never raises."""
+    try:
+        from app.workspace_publish import publish_to_workspace
+        evidence = proposal.get("evidence") or {}
+        n_promotions = int(evidence.get("n_promotions") or 0)
+        block_pct = float(evidence.get("would_block_pct") or 0.0)
+        publish_to_workspace(
+            source="goodhart_enforcing_proposer",
+            content=(
+                f"Goodhart hard-gate auto-proposal: Advisory → Enforcing "
+                f"({n_promotions} promotions in window, "
+                f"{block_pct:.1%} would-block rate). Awaiting operator "
+                f"approval via /cp/settings."
+            ),
+            salience=0.75,                # high — substrate-governance event
+            signal_type="disposition",    # gating regime change is dispositional
+        )
+    except Exception:
+        logger.debug(
+            "goodhart_enforcing_proposer: GW publish failed", exc_info=True,
+        )

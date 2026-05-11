@@ -176,6 +176,91 @@ explicitly. The empty allowlists mean a misconfigured handler cannot
 sneak a patch through — every auto-apply requires deliberate operator
 action to enable.
 
+## Pattern-eligibility audit (PROGRAM §40.4, 2026-05-11)
+
+The recurring proposal: *"populate the allowlist with the two
+schema-drift handlers — `_handle_numeric_overflow` and
+`_handle_missing_column`."* This audit explains why those handlers
+do **not** qualify, so future planning rounds don't re-propose them.
+
+### Disqualifier 1 — `migrations/` is in `_AUTO_APPLY_FORBIDDEN_PREFIXES`
+
+The categorical forbidden-prefix list (in
+[`validator.py`](../app/change_requests/validator.py)) refuses
+auto-apply for ANY caller targeting `migrations/`:
+
+```python
+_AUTO_APPLY_FORBIDDEN_PREFIXES = (
+    "app/memory/", "app/souls/", "wiki/governance/",
+    "migrations/",      # ← schema migrations need eyeballs
+    "deploy/", "host_bridge/",
+)
+```
+
+Both schema-drift handlers write to
+`migrations/YYYYMMDD_HHMMSS_*.sql`. Even if a future operator
+populated the requestor + path allowlists, the forbidden-prefix
+check (step 2 in `validate_auto_apply`) would still refuse.
+
+**Why migrations is forbidden**: the auto-revert watcher rolls back
+a CR by reverting the git commit. For a SQL migration that's
+already executed against the live database, reverting the file does
+NOT roll back the schema change — the column / type / index already
+exists. The blast-radius guarantee fails for any change with
+out-of-tree side effects.
+
+### Disqualifier 2 — the handlers produce scaffolds, not executable patches
+
+The migration content the handlers emit is a **TODO scaffold**, not
+runnable SQL. From
+[`app/healing/handlers/schema_drift.py`](../app/healing/handlers/schema_drift.py):
+
+```sql
+-- _propose_widening_migration (numeric_overflow)
+ALTER TABLE control_plane.<TABLE>
+  ALTER COLUMN <COLUMN> TYPE NUMERIC(<new_precision>, <scale>)
+  USING <COLUMN>::NUMERIC(<new_precision>, <scale>);
+```
+
+The handler can't determine **which** table+column overflowed from
+the error context — query-site introspection isn't available at
+runbook time. So the patch ships with literal `<TABLE>` /
+`<COLUMN>` placeholders the operator MUST fill in.
+
+```sql
+-- _propose_pending_migration_marker (missing_column)
+-- OPERATOR ACTION:
+--   1. Run `alembic upgrade head`...
+--   2. Verify the column now exists...
+--   4. Delete this file once the migration has run; it's only a marker.
+```
+
+The missing-column handler writes a paper-trail marker — its own
+docstring says "delete this file once the migration has run." Auto-
+applying a file whose creator says "delete me" is meaningless.
+
+### What WOULD qualify
+
+For schema-drift handlers to be auto-apply candidates, they would
+need to:
+
+1. **Capture executable patches**, not scaffolds. The handler must
+   know the concrete `(schema, table, column)` at error time —
+   requires query-context capture upstream of where the runbooks
+   currently see the error.
+2. **Idempotent reverts**. `ADD COLUMN IF NOT EXISTS` plus a
+   companion `DROP COLUMN IF EXISTS` revert that the auto-revert
+   watcher can run if a downstream regression appears. Currently no
+   handler tracks the revert artifact.
+3. **Path move out of `migrations/`**. Or alternatively, the
+   `migrations/` forbidden-prefix gets explicitly lifted in
+   validator.py with a code comment documenting the new safety
+   model.
+
+None of (1)-(3) are present today. Until they are, the deliberate
+empty-allowlist stance is the **correct** safety position — not a
+gap to close.
+
 ## See also
 
 - [`app/change_requests/validator.py`](../app/change_requests/validator.py) — `validate_auto_apply` + allowlists + forbidden prefixes

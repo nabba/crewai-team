@@ -199,8 +199,44 @@ def is_protected(path: str) -> bool:
 # Bypassing the auto-apply criteria does NOT reject the CR — the
 # ``create_request`` lifecycle gracefully downgrades the risk_class
 # to STANDARD, sending the CR through the normal operator gate.
+#
+# ── Q1.4 (PROGRAM §40.4) — pattern-eligibility audit ─────────────────
+#
+# Recurring proposal: "auto-apply the schema-drift handlers
+# (`_handle_numeric_overflow` + `_handle_missing_column` in
+# ``app/healing/handlers/schema_drift.py``)." This has come up in
+# Q1 planning rounds repeatedly. The answer is DELIBERATELY NO.
+#
+# Two independent disqualifiers:
+#
+#   1. **`migrations/` is in `_AUTO_APPLY_FORBIDDEN_PREFIXES`.** That
+#      list categorically refuses auto-apply for ANY caller — schema
+#      changes need eyeballs. Both schema-drift handlers write to
+#      ``migrations/YYYYMMDD_HHMMSS_*.sql``.
+#
+#   2. **The handlers produce TODO scaffolds, not executable patches.**
+#      ``_propose_widening_migration`` emits literal ``<TABLE>`` /
+#      ``<COLUMN>`` placeholders that the operator MUST hand-edit
+#      before running the migration. ``_propose_pending_migration_
+#      marker`` writes an audit-trail marker whose docstring says
+#      "Delete this file once the migration has run; it's only a
+#      marker." Auto-applying either would land an unrunnable file
+#      under ``migrations/`` AND require the operator to clean it up
+#      anyway — strictly worse than the current operator-gated flow.
+#
+# This rationale is recorded here so future Q1 / Q-N audits don't
+# re-propose it. If a future handler emits truly additive, executable,
+# idempotent migration content (e.g. `ADD COLUMN IF NOT EXISTS` with
+# concrete TABLE+COLUMN derived from the captured error context), it
+# would still hit disqualifier #1 — the `migrations/` forbidden
+# prefix would need to be revisited first, with explicit consideration
+# of how the auto-revert watcher rolls back a schema change. (Spoiler:
+# it doesn't, cleanly. That's the right reason for the prefix to
+# stay forbidden.)
 
 # Allowed callers (requestor agent_id). Empty by default.
+# See the "pattern-eligibility audit" comment above for why this
+# stays empty even for the seemingly-safe schema-drift handlers.
 _AUTO_APPLY_ALLOWED_REQUESTORS: frozenset[str] = frozenset()
 
 # Allowed target paths. Exact match OR prefix match (with trailing
