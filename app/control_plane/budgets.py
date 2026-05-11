@@ -310,20 +310,28 @@ def forecast_breach_periods(
     # Aggregate current budget caps. We use the CURRENT-period budgets
     # as the baseline; budgets that auto-renew month-over-month inherit
     # the same caps unless the operator changes them.
+    #
+    # Q3.3 (PROGRAM §40.3 Item 3) — exclude PAUSED agents. A paused
+    # budget's ``limit_usd`` doesn't represent spendable headroom
+    # because the agent is blocked from running. Including paused
+    # caps would inflate the headroom estimate and hide real breach
+    # risk.
     period = _current_period()
     try:
         if project_id:
             rows = execute(
                 """SELECT COALESCE(SUM(limit_usd), 0)::float8 AS total_limit
                    FROM control_plane.budgets
-                   WHERE project_id = %s AND period = %s""",
+                   WHERE project_id = %s AND period = %s
+                     AND COALESCE(is_paused, false) = false""",
                 (project_id, period), fetch=True,
             )
         else:
             rows = execute(
                 """SELECT COALESCE(SUM(limit_usd), 0)::float8 AS total_limit
                    FROM control_plane.budgets
-                   WHERE period = %s""",
+                   WHERE period = %s
+                     AND COALESCE(is_paused, false) = false""",
                 (period,), fetch=True,
             )
     except Exception:

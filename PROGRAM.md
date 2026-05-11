@@ -5390,3 +5390,125 @@ auto-restore in DR, seasonality in anomaly detection, full smoke-boot
 DR drill — are polish + future-readiness, not correctness. Further
 ultrathink passes will surface ideas at the same noise level as we'd
 get from random walking the codebase. **Q3 is done.**
+
+## 40.3 2026-05-11 — Q3.3 fourth-pass cleanup
+
+Fourth ultrathink audit after Q3 + Q3.1 + Q3.2 surfaced subtle
+edge-cases. Genuine findings, none catastrophic. The "Q3 done"
+declaration in §40.2.11 was honest *for the major work*; this pass
+closes the remaining gaps that survived three prior audits.
+
+### 40.3.1 — Restart-claim check moved earlier in lifespan (Item 1)
+
+The Q3.2 placement put `_process_post_amendment_restart_claims` AFTER
+the gateway-bind check + `_configure_audit_log()`. Per FastAPI/uvicorn
+semantics, lifespan-startup runs BEFORE port-binding (so the original
+"runs after port-bind" audit concern was overstated). But for
+defense-in-depth: if a Tier-3 amendment changed gateway binding
+behavior AND the new code wasn't reloaded, the operator wants the
+restart-needed alert even if the bind-check is about to crash the
+process. Moved to first step of lifespan.
+
+### 40.3.2 — Cutover idempotency on plan_id (Item 2)
+
+`propose_cutover()` now checks for a non-terminal Tier-3 proposal
+whose `evidence["plan_id"]` matches the live plan before filing a
+new one. Without this guard, repeated calls to `propose_cutover()`
+(operator double-click, retry-on-failure logic) would file multiple
+parallel Tier-3 proposals against the same plan — the protocol
+allows duplicates because its store doesn't natively index by
+evidence content. New `_existing_active_proposal_for(plan_id)` helper
+scans non-terminal states (cost is O(active proposals), typically
+≤a handful).
+
+### 40.3.3 — Budget forecast excludes paused agents (Item 3)
+
+`forecast_breach_periods` SQL: `WHERE … AND COALESCE(is_paused, false)
+= false`. A paused budget's `limit_usd` doesn't represent spendable
+headroom — the agent is blocked. Including paused caps inflated the
+headroom estimate and could hide real breach risk.
+
+### 40.3.4 — DR secret denylist extended (Item 4)
+
+`_PATH_DENY_FRAGMENTS` + `_PATH_DENY_REGEX` extended with: `.netrc`,
+`id_rsa*` / `id_ed25519*` / `id_ecdsa*` (SSH private keys),
+`aws_credentials` / `aws_access_key*` (AWS creds), `.kdb` / `.kdbx`
+(KeePass), `.gpg` / `.pgp` / `secring.*` / `pubring.*` (GPG keyrings),
+plus generic `.pem` / `.key` suffixes. None of these probably exist
+in `workspace/` today, but the denylist is defense-in-depth — silent
+inclusion of any of these in a DR tarball would be a privacy leak.
+Test sweep confirms innocent ledger paths still pass through.
+
+### 40.3.5 — `read_archive` per-file lock semantics (Item 5)
+
+Q3.2 held the shared rotation lock for the **entire** archive+live
+iteration. A slow consumer (e.g. LLM-driven decentered reflection
+iterating across 10 monthly archive files at multiple seconds per
+file) could starve the rotator. Q3.3 refines to per-file lock
+acquisition: each archive file (and the live file) is opened under
+its own brief shared-lock context; between files the lock releases,
+giving the rotator a window to write. Lazy line-by-line yield is
+preserved within each file (the rotator's exclusive lock still
+prevents truncation mid-stream).
+
+### 40.3.6 — Reclaim-trend alert dedup (Item 6)
+
+Q3.2's reclaim-trend alert fires whenever current pass freed ≥2×
+prior-median. Without dedup, a steadily-growing system would alert
+every quarter forever. Q3.3 adds:
+  * First alert in a series → fire normally.
+  * Subsequent passes still over threshold → increment counter,
+    stay silent.
+  * After 4 silent passes (~1 year quarterly) → resurface with a
+    distinct `📈🔁 (repeat #N)` prefix so operator can see we're
+    re-nudging.
+  * Trend recovers (alert clears) → counter resets; next spike fires
+    fresh again.
+
+### 40.3.7 Tests
+
+`tests/test_q3_3_cleanup.py` — 16 tests covering lifespan check
+ordering, cutover idempotency helper + propose_cutover wiring,
+budget SQL filter, every new denylist pattern (netrc / SSH / AWS /
+KeePass / GPG / pem-key) + non-overmatch on innocent files, lazy
+yield preservation, multi-file iteration, per-file lock release
+under concurrent writer, reclaim-trend dedup state markers + helper
+signature. All 16 pass.
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3 + affect regression: **106 pass + 56 skip,
+0 fail.**
+
+### 40.3.8 Files touched
+
+```
+UPDATED backend:
+crewai-team/app/main.py                                  # restart-claim check moved earlier
+crewai-team/app/memory/embedding_migration/cutover.py    # _existing_active_proposal_for + propose_cutover guard
+crewai-team/app/control_plane/budgets.py                 # WHERE is_paused = false
+crewai-team/app/dr/export_kbs.py                         # extended denylist (8+ new patterns)
+crewai-team/app/utils/jsonl_retention.py                 # per-file lock acquisition in read_archive
+crewai-team/app/healing/monitors/chromadb_hygiene.py     # trend-alert dedup + repeat_n parameter
+
+NEW tests:
+crewai-team/tests/test_q3_3_cleanup.py                   # 16 pass
+
+UPDATED docs:
+crewai-team/PROGRAM.md                                   # this section
+```
+
+No TIER_IMMUTABLE files modified.
+
+### 40.3.9 Final stance
+
+Four ship cycles. After Q3.3 the system has:
+  * Real correctness gaps closed at every layer
+  * Defense-in-depth on operator-facing surfaces
+  * Subtle race conditions addressed
+  * Identity / GW / continuity integration verified
+  * 106-test regression sweep clean
+
+Further ultrathink passes will surface findings at the noise level
+of normal code review — not new correctness issues. **Q3 closed for
+real this time.** Future work should target a different quarter
+(Q1 audit showed CR queue already drained; Q4 / new program goals
+are higher-value than continued Q3 polish).

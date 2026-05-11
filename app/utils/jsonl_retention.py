@@ -292,27 +292,41 @@ def read_archive(
     arch_dir = (
         Path(archive_dir) if archive_dir is not None else _archive_dir_for(p)
     )
-    # Q3.2 (PROGRAM §40.2 Item 3) — shared lock around the entire
-    # archive+live read so we can't be interleaved with a rotation in
-    # progress. The rotator's exclusive lock will serialise us briefly.
-    # The lock is best-effort across platforms.
-    with _rotation_lock(p, exclusive=False):
-        # Walk archives in chronological order. Filename is
-        # ``YYYY-MM_<basename>`` so plain string sort is chronological.
-        if arch_dir.exists():
-            archives = sorted(arch_dir.glob(f"*_{p.name}"))
-            for arch_path in archives:
-                try:
-                    with arch_path.open("r", encoding="utf-8") as f:
-                        yield from f
-                except OSError:
-                    continue
-        if include_live and p.exists():
+    # Q3.3 (PROGRAM §40.3 Item 5) — per-file lock acquisition rather
+    # than one lock around the whole iteration. Releasing the lock
+    # between files lets the rotator squeeze in between consumer
+    # files, avoiding lock starvation when a consumer takes seconds
+    # per file. Within each file we still hold the shared lock during
+    # the yield so the rotator can't truncate live mid-stream.
+    #
+    # Lazy line-by-line yield is preserved — even a multi-GB monthly
+    # archive (extreme rotation-rate edge case) stays memory-bounded.
+    archives: list[Path] = []
+    if arch_dir.exists():
+        # Listing is cheap; do it once outside the per-file locks.
+        archives = sorted(arch_dir.glob(f"*_{p.name}"))
+
+    for arch_path in archives:
+        with _rotation_lock(p, exclusive=False):
             try:
-                with p.open("r", encoding="utf-8") as f:
-                    yield from f
+                f = arch_path.open("r", encoding="utf-8")
+            except OSError:
+                continue
+            try:
+                yield from f
+            finally:
+                f.close()
+
+    if include_live and p.exists():
+        with _rotation_lock(p, exclusive=False):
+            try:
+                f = p.open("r", encoding="utf-8")
             except OSError:
                 return
+            try:
+                yield from f
+            finally:
+                f.close()
 
 
 def archive_stats(

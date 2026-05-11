@@ -150,6 +150,41 @@ def _build_new_content(plan) -> tuple[str, str]:
     return old_content, new_content
 
 
+# ── Idempotency helper (PROGRAM §40.3 Item 2) ────────────────────────────
+
+
+def _existing_active_proposal_for(plan_id: str) -> str | None:
+    """Return the id of any non-terminal Tier-3 proposal whose
+    ``evidence["plan_id"]`` matches ``plan_id``, or None.
+
+    The Tier-3 protocol stores proposals by id (UUID) and indexes by
+    state, not by evidence content — so we scan non-terminal states
+    and match in-memory. Cost is O(active proposals), typically
+    ≤a handful. Safe to call on every propose_cutover invocation.
+
+    Failure-isolated: if the governance_amendment module isn't
+    importable (rare), we return None and let the caller proceed —
+    the worst case is a duplicate proposal filed, which the operator
+    will see in /cp/governance.
+    """
+    try:
+        from app.governance_amendment.protocol import list_proposals
+        from app.governance_amendment._state import State, TERMINAL_STATES
+    except Exception:
+        return None
+
+    active_states = [s for s in State if s not in TERMINAL_STATES]
+    for st in active_states:
+        try:
+            for p in list_proposals(state=st):
+                evidence = getattr(p, "evidence", None) or {}
+                if evidence.get("plan_id") == plan_id:
+                    return p.id
+        except Exception:
+            continue
+    return None
+
+
 # ── Pre-cutover safety export (PROGRAM §40.2 Item 2) ─────────────────────
 
 
@@ -190,11 +225,36 @@ def _run_pre_cutover_export(plan_id: str):
 
 
 def propose_cutover() -> CutoverProposalResult:
-    """Run the verifier; if ok, file a Tier-3 amendment proposal."""
+    """Run the verifier; if ok, file a Tier-3 amendment proposal.
+
+    Q3.3 (PROGRAM §40.3 Item 2) — idempotent on plan_id. If a non-
+    terminal Tier-3 proposal already exists for this plan, we refuse
+    to file a duplicate. The state machine moving to CUTOVER on the
+    first propose already gates the cutover_enabled toggle, but the
+    Tier-3 proposal store has no native plan_id dedup — without this
+    check, repeated propose calls would file multiple proposals
+    against the same plan.
+    """
     plan = plan_mod.load_plan()
     if plan is None:
         return CutoverProposalResult(
             plan_id="?", error="no migration plan loaded",
+        )
+
+    # Idempotency: refuse if a non-terminal proposal already exists
+    # for this plan_id.
+    existing_proposal_id = _existing_active_proposal_for(plan.plan_id)
+    if existing_proposal_id:
+        return CutoverProposalResult(
+            plan_id=plan.plan_id,
+            proposal_id=existing_proposal_id,
+            error=(
+                f"a non-terminal Tier-3 proposal already exists for "
+                f"plan {plan.plan_id!r}: id={existing_proposal_id}. "
+                f"Wait for that proposal to resolve (APPLIED / STABLE / "
+                f"REJECTED / REVERTED) before filing a new one, or "
+                f"abort the migration to start fresh."
+            ),
         )
 
     report = verify_mod.verify()

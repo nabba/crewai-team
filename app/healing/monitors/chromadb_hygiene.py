@@ -199,9 +199,33 @@ def run() -> None:
     # pass, the SQLite freelist isn't the bottleneck — HNSW segments
     # need a full rebuild. Compare current freed_total against the
     # last 4 passes; alert when reclaim grows ≥2× the rolling median.
+    #
+    # Q3.3 (PROGRAM §40.3 Item 6) — alert dedup. The trend alert
+    # exists to nudge the operator "run a rebuild." Repeating that
+    # nudge every quarterly pass without acknowledgment becomes
+    # noise. We suppress repeat alerts within a 4-pass window
+    # (~1 year of quarterly cadence) tracked by alert count in
+    # `state["trend_alerts"]`. The first alert in a series fires;
+    # subsequent ones increment a counter but stay silent until
+    # the trend recovers (alert clears) — at which point the
+    # counter resets and a future spike alerts again.
     trend = _update_and_check_reclaim_trend(state, freed_total)
     if trend.get("alert"):
-        _alert_growing_reclaim(trend)
+        # Q3.3 dedup logic.
+        repeats = int(state.get("trend_alert_repeats") or 0)
+        if repeats == 0:
+            _alert_growing_reclaim(trend)
+            state["trend_alert_repeats"] = 1
+        elif repeats >= 4:
+            # Resurface the alert after 4 silent passes — operator
+            # may have missed the first one.
+            _alert_growing_reclaim(trend, repeat_n=repeats + 1)
+            state["trend_alert_repeats"] = 1
+        else:
+            state["trend_alert_repeats"] = repeats + 1
+    else:
+        # Trend cleared — reset dedup so future spikes alert fresh.
+        state["trend_alert_repeats"] = 0
 
     state["last_summary"] = {
         "files": len(per_file),
@@ -356,14 +380,19 @@ def _update_and_check_reclaim_trend(
     }
 
 
-def _alert_growing_reclaim(trend: dict) -> None:
+def _alert_growing_reclaim(trend: dict, repeat_n: int = 1) -> None:
+    """Send the growing-reclaim Signal alert. ``repeat_n=1`` is the
+    first alert in a series (fresh trend). Higher values are the
+    resurfacing alert after the dedup window — formatted differently
+    so the operator can see we're nagging."""
     try:
+        prefix = "📈" if repeat_n == 1 else f"📈🔁 (repeat #{repeat_n})"
         send_signal_alert(
-            f"📈 ChromaDB hygiene reclaim growing — current pass freed "
-            f"{trend['current'] / 1024 / 1024:.1f} MB vs prior-median "
-            f"{trend['median_prior'] / 1024 / 1024:.1f} MB. SQLite "
-            f"VACUUM alone isn't keeping up; consider a full collection "
-            f"rebuild via `python -m app.memory.chromadb_rebuild`.",
+            f"{prefix} ChromaDB hygiene reclaim growing — current pass "
+            f"freed {trend['current'] / 1024 / 1024:.1f} MB vs prior-"
+            f"median {trend['median_prior'] / 1024 / 1024:.1f} MB. "
+            f"SQLite VACUUM alone isn't keeping up; consider a full "
+            f"collection rebuild via `python -m app.memory.chromadb_rebuild`.",
             tag="chromadb_hygiene_growing_reclaim",
         )
     except Exception:

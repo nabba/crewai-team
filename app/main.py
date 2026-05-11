@@ -284,6 +284,22 @@ def _process_post_amendment_restart_claims() -> None:
 async def lifespan(app: FastAPI):
     from app.crews.self_improvement_crew import SelfImprovementCrew
 
+    # ── Q3.3 (PROGRAM §40.3 Item 1) — Post-amendment restart claims FIRST.
+    # Per FastAPI/uvicorn semantics, lifespan-startup runs BEFORE port-
+    # binding, so the claim surface here is already before any route
+    # serves. We moved it to the VERY FIRST step of lifespan (above the
+    # gateway-bind check) for defense-in-depth: if a Tier-3 amendment
+    # changed binding behavior AND the new code wasn't reloaded, the
+    # operator wants the restart-needed alert even if the bind check is
+    # about to crash. The check is failure-isolated; it never raises.
+    try:
+        _process_post_amendment_restart_claims()
+    except Exception:
+        logger.exception(
+            "main: post-amendment restart-claim self-check raised; "
+            "claims left in place for operator visibility",
+        )
+
     # Fail fast if gateway is misconfigured to bind on a public interface.
     # Exception: when running inside Kubernetes (KUBERNETES_SERVICE_HOST is set
     # automatically by kubelet for every pod), 0.0.0.0 is correct — the pod
@@ -299,21 +315,6 @@ async def lifespan(app: FastAPI):
         )
 
     _configure_audit_log()
-
-    # ── Q3.2 (PROGRAM §40.2 Item 1) — Tier-3 post-amendment restart claims.
-    # When a Tier-3 amendment with restart-effect-on-running-process
-    # was applied to disk in the previous boot but the gateway never
-    # restarted, the restart-claim queue carries the operator's debt.
-    # A boot SATISFIES claims only when the live module state matches
-    # what the claim demands; satisfied claims are cleared so the
-    # banner goes away. Unsatisfied claims stay and re-alert.
-    try:
-        _process_post_amendment_restart_claims()
-    except Exception:
-        logger.exception(
-            "main: post-amendment restart-claim self-check raised; "
-            "claims left in place for operator visibility",
-        )
 
     # Validate cron expressions early so misconfiguration fails fast
     try:

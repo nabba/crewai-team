@@ -78,13 +78,41 @@ _LEDGER_INCLUDES: list[str] = [
 # Path-fragment denylist — applied AFTER the allowlist as a defense-in-depth
 # guard against accidental inclusion of secrets that happen to live under
 # an allowed root in the future.
+#
+# Q3.3 (PROGRAM §40.3 Item 4) — extended with additional real-world secret
+# patterns (.netrc, SSH private keys, AWS credentials, KeePass DBs, GPG
+# keyrings). None of these should land in workspace/ today but the
+# denylist is defense-in-depth — silent inclusion of any of these in a
+# DR tarball would be a serious privacy leak.
 _PATH_DENY_FRAGMENTS = (
     ".env", "secret", "credential", "token", "private_key",
     "google_token", "vapid", "client_secret",
+    # Q3.3 additions:
+    ".netrc",          # netrc auth file
+    "id_rsa", "id_ed25519", "id_ecdsa",   # SSH private keys
+    "aws_credentials", "aws_access_key",  # AWS creds
+    ".kdb",            # KeePass DB (matches .kdb + .kdbx)
+    ".gpg", "secring", "pubring",  # GPG keyrings
+    ".pgp",            # PGP keys
+    ".pem", ".key",    # generic key files (covered by .pem/.key suffix)
 )
 _PATH_DENY_REGEX = re.compile(
-    r"(^|/)(\.env(?:\..+)?|secrets/|google_token\.json|vapid_.*\.pem|"
-    r".*credentials.*|.*private_key.*)",
+    r"(^|/)("
+    r"\.env(?:\..+)?|"
+    r"secrets/|"
+    r"google_token\.json|"
+    r"vapid_.*\.pem|"
+    r".*credentials.*|"
+    r".*private_key.*|"
+    # Q3.3 additions:
+    r"\.netrc(?:\..+)?|"
+    r"id_(?:rsa|ed25519|ecdsa)(?:\..+)?|"   # SSH private keys (with or without .pub)
+    r".*aws_(?:credentials|access_key).*|"
+    r".*\.kdbx?|"                            # KeePass
+    r".*\.(?:gpg|pgp)|"
+    r"secring\..*|pubring\..*|"
+    r".*\.(?:pem|key)$"                       # explicit key-file suffixes
+    r")",
     re.IGNORECASE,
 )
 
