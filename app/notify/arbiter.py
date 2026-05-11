@@ -188,6 +188,16 @@ def _welfare_breaching() -> bool:
     return False
 
 
+def welfare_breaching() -> bool:
+    """Q4.2.2#2 — public alias of ``_welfare_breaching`` so other
+    subsystems (briefing-direct path, person_suggestions) can consult
+    the same welfare gate the arbiter uses for ``notify()``.
+
+    Returns True iff the operator has had a critical-severity welfare
+    breach in the last 10 minutes. Failure-isolated."""
+    return _welfare_breaching()
+
+
 # ── Decision logic ───────────────────────────────────────────────────────
 
 

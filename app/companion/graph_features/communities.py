@@ -60,11 +60,13 @@ def _default_communities_path() -> Path:
 
 
 def _default_dissolved_path() -> Path:
+    # Q4.2.1#4 — name matches docs/PERSON_CORRELATION.md and PROGRAM §42.
+    # Substring "social_graph" still catches it in DR exclusion regardless.
     try:
         from app.paths import WORKSPACE_ROOT
-        return Path(WORKSPACE_ROOT) / "companion" / "social_graph_dissolved.json"
+        return Path(WORKSPACE_ROOT) / "companion" / "social_graph_dissolved_clusters.json"
     except Exception:
-        return Path("/app/workspace/companion/social_graph_dissolved.json")
+        return Path("/app/workspace/companion/social_graph_dissolved_clusters.json")
 
 
 # ── Dissolved clusters (operator-hidden) ─────────────────────────────────

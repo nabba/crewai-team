@@ -59,6 +59,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "scorecard_change",
     "self_quarantine_change",
     "substrate_migration",  # PROGRAM §40 Item 12 — Q3.1
+    "person_correlation_policy",  # PROGRAM §42 — Q4.2 (Q4.2.2#1)
 })
 
 

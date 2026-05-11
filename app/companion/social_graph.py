@@ -208,6 +208,19 @@ def forget_graph() -> int:
         edges = _load_graph()
         n = len(edges)
         _save_graph({})
+    # Q4.2.2#1 — destroying the whole graph is the strongest policy
+    # reversal in the stack; record it for annual reflection.
+    if n > 0:
+        try:
+            from app.identity.continuity_ledger import record_event
+            record_event(
+                kind="person_correlation_policy",
+                actor="operator",
+                summary=f"forget_graph — {n} edges destroyed",
+                detail={"level": "L4", "action": "forget_graph", "edges": n},
+            )
+        except Exception:
+            logger.debug("forget_graph ledger emit failed", exc_info=True)
     return n
 
 
@@ -297,6 +310,26 @@ def compile_graph() -> dict[str, Any]:
                 decayed_count += 1
 
         _save_graph(edges)
+
+    # Q4.2.2#5 — GW publish OPAQUE COUNTS only (no person_ids, no pair
+    # identifiers). SubIA observes graph-topology shifts without ever
+    # seeing who. Only fires on meaningful change (new pairs or
+    # significant drops). Failure-isolated.
+    if new_pairs > 0 or dropped > 0:
+        try:
+            from app.workspace_publish import publish_to_workspace
+            publish_to_workspace(
+                source="social_graph",
+                content=(
+                    f"social graph: {new_pairs} new pairs; "
+                    f"{dropped} edges dropped below threshold; "
+                    f"{len(edges)} edges total."
+                ),
+                salience=0.3,
+                signal_type="background",
+            )
+        except Exception:
+            logger.debug("social_graph: GW publish failed", exc_info=True)
 
     return {
         "ok": True,

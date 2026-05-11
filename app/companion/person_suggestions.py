@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 _PER_BRIEFING_CAP = 3
 _DORMANCY_THRESHOLD_DAYS = 60
 _HIGH_PRESENCE_MODALITY_THRESHOLD = 3
+# Q4.2.1#6 — re-emission cooldown: don't re-fire the same (category,
+# person_id) within this window. Keeps morning briefings from broadcasting
+# the same dormancy nudge daily until the operator acts.
+_REEMIT_COOLDOWN_HOURS = 24
 
 
 def _default_emitted_log() -> Path:
@@ -220,6 +224,20 @@ def generate_suggestions() -> list[dict[str, Any]]:
     if not people:
         return []
 
+    # Q4.2.2#2 — Affect/welfare gate: a dormancy nudge during a critical
+    # affect window is exactly the wrong pressure. The arbiter already
+    # gates `notify()` consumers; the briefing-direct path here did not.
+    # Suppress emission entirely under welfare breach.
+    try:
+        from app.notify.arbiter import welfare_breaching
+        if welfare_breaching():
+            logger.debug("person_suggestions: suppressed under welfare breach")
+            return []
+    except Exception:
+        # Failure-isolated — if affect probing fails, fall through to
+        # normal generation rather than suppressing silently.
+        logger.debug("person_suggestions: welfare probe failed", exc_info=True)
+
     suggestions: list[PersonSuggestion] = []
     suggestions.extend(_generate_dormancy_nudges(people))
     suggestions.extend(_generate_responsiveness_nudges(people))
@@ -236,12 +254,27 @@ def generate_suggestions() -> list[dict[str, Any]]:
     except Exception:
         logger.debug("person_suggestions: graph suggestions skipped", exc_info=True)
 
+    # Q4.2.1#1 — Apply mute-suggestions filter to the FULL merged list
+    # so L4.4 bridge/weak-tie nudges respect /person mute-suggestions
+    # the same way L3 dormancy nudges do. Without this filter an
+    # operator who muted Maria's L3 nudge still got L4.4 nudges about
+    # her, breaking the advertised feature.
+    sug_mutes = _load_sug_mutes()
+    suggestions = [s for s in suggestions if s.person_id not in sug_mutes]
+
+    # Q4.2.1#6 — Re-emission cooldown: skip (category, person_id) we've
+    # already emitted within the last 24h so daily briefings don't
+    # broadcast the same nudge every morning.
+    recent_keys = _recent_emission_keys(_REEMIT_COOLDOWN_HOURS)
+
     # Rate limit + dedupe by person_id (one suggestion per person max
     # to avoid double-pinging the same person across categories).
     seen_pids: set[str] = set()
     capped: list[dict[str, Any]] = []
     for s in suggestions:
         if s.person_id in seen_pids:
+            continue
+        if (s.category, s.person_id) in recent_keys:
             continue
         capped.append(s.to_dict())
         seen_pids.add(s.person_id)
@@ -268,7 +301,14 @@ def _log_emitted(suggestions: list[dict[str, Any]]) -> None:
 
 
 def recent_emitted(limit: int = 50) -> list[dict[str, Any]]:
-    """Read recent emitted suggestions for the operator review surface."""
+    """Read recent emitted suggestions for the operator review surface.
+
+    Q4.2.1#2 — gate on master switch. When the operator has disabled L3
+    suggestions, the historical log shouldn't leak via this endpoint.
+    The audit trail remains on disk for review if they re-enable.
+    """
+    if not _enabled():
+        return []
     path = _default_emitted_log()
     if not path.exists():
         return []
@@ -287,3 +327,38 @@ def recent_emitted(limit: int = 50) -> list[dict[str, Any]]:
         return []
     rows.sort(key=lambda r: r.get("detected_at", ""), reverse=True)
     return rows[:limit]
+
+
+def _recent_emission_keys(window_hours: int) -> set[tuple[str, str]]:
+    """Q4.2.1#6 — return (category, person_id) tuples emitted within the
+    last ``window_hours``. Used by ``generate_suggestions`` to dedupe
+    against prior briefings."""
+    path = _default_emitted_log()
+    if not path.exists():
+        return set()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    keys: set[tuple[str, str]] = set()
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_str = row.get("detected_at") or ""
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if ts < cutoff:
+                    continue
+                cat = row.get("category") or ""
+                pid = (row.get("person_id") or "").lower()
+                if cat and pid:
+                    keys.add((cat, pid))
+    except OSError:
+        return set()
+    return keys

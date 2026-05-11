@@ -6184,3 +6184,171 @@ choice for *"elegant seamless solution that is well integrated into
 the system, no hacks or patchwork, no harming other parts of the
 system"*. Q4.2 is observational and additive — no existing behaviors
 change when all switches are OFF.
+
+## 42.1 2026-05-11 — Q4.2.1 + Q4.2.2 ultrathink-audit follow-ups
+
+Two parallel deep-audit passes — one for implementation bugs, one for
+missing wires — surfaced 12 findings against the just-shipped §42
+stack. Six bugs (Q4.2.1) and six missing wires (Q4.2.2) close out in
+this section. Verdict before: architecture sound, wiring incomplete.
+
+### 42.1.1 Q4.2.1 — bug fixes
+
+**Q4.2.1#1 — L4.4 mute-suggestions filter** (`person_suggestions.py`):
+the `/person mute-suggestions <email>` command silenced L3 dormancy
+nudges but left L4.4 `bridge_maintenance` and `weak_tie_dormant`
+nudges still firing for the same person. Broken advertised feature.
+`generate_suggestions` now applies `_load_sug_mutes()` to the FULL
+merged L3+L4.4 list before dedup.
+
+**Q4.2.1#2 — `recent_emitted` master-switch gate**: the REST endpoint
+leaked historical nudges from the on-disk JSONL even when the operator
+had subsequently disabled L3. Now returns `[]` when `_enabled()` is
+False; the audit trail remains on disk for review if re-enabled.
+
+**Q4.2.1#3 — Stale structural freshness check** (`graph_suggestions.py`):
+`bridge_maintenance` + `weak_tie_dormant` + `cluster_dormancy` read
+`social_graph_structural.json` and `social_graph_communities.json`
+without checking `generated_at`. If the `graph-features` idle job
+crashed or got stuck, nudges fired against weeks-old topology. Added
+`_is_fresh(data, max_hours=72)` helper; all three generators now
+skip-with-debug-log when source is stale (72h ceiling; idle cadence
+12h gives 6× headroom).
+
+**Q4.2.1#4 — File naming consistency**: `communities.py` wrote to
+`social_graph_dissolved.json`; docs + PROGRAM §42 referenced
+`social_graph_dissolved_clusters.json`. Renamed the code path to
+match the more descriptive doc name. DR exclusion (substring
+`social_graph`) catches both regardless.
+
+**Q4.2.1#5 — `_gather_conversation_participants` time-bound**
+(`person_model.py`): the SQL query scanned the entire conversation_store
+with no time bound. On multi-year DBs this resurrected long-forgotten
+people. Now bounded by `lookback_days` via `AND ts >= ?`; falls back
+to unbounded on schema failure (mirrors Q4.1 `tension_detector`'s
+windowing pattern).
+
+**Q4.2.1#6 — Per-briefing 24h re-emission cooldown**: the in-briefing
+3-cap was correct but had no memory across briefings. The same
+dormancy nudge could re-fire every morning until the operator acted.
+New `_recent_emission_keys(window_hours)` reads the emitted-log and
+the cap loop skips `(category, person_id)` keys already seen in the
+last 24h.
+
+### 42.1.2 Q4.2.2 — missing wires
+
+**Q4.2.2#1 — Identity continuity ledger emission** (`app/identity/`):
+the strongest gap — enabling L1, L4, or L4.4, and running
+`forget_all` / `forget_graph`, are identity-shaping policy decisions
+on par with `governance_ratchet` flips, yet they fired silently. The
+`annual_reflection` and `legacy_essay` jobs would never know the
+operator started/stopped tracking people. **Added 7th event kind
+`person_correlation_policy`** to `IDENTITY_EVENT_KINDS` and wired
+emission from `runtime_settings.set_person_correlation_enabled` /
+`set_person_correlation_social_graph_enabled` / `set_graph_suggestions_enabled`
+(only on actual transitions) + `person_model.forget_all` +
+`social_graph.forget_graph`. Helper `_emit_person_correlation_policy_event`
+keeps the setter code uncluttered. `summarise_drift` (Counter-based)
+picks up the new kind automatically (verified per Q3.2.7).
+
+**Q4.2.2#2 — Affect/welfare gating of L3 emission**
+(`notify/arbiter.py` + `person_suggestions.py`): the arbiter already
+gated `notify()` consumers via `_welfare_breaching()` but the
+briefing-direct path called `generate_suggestions()` without going
+through the arbiter. A dormancy nudge during a critical-valence
+window was the wrong pressure. **Promoted `_welfare_breaching` to
+public `welfare_breaching()`** and added an early-return at the top
+of `generate_suggestions()`. Failure-isolated: if the welfare probe
+itself raises, suggestions fall through normally (don't fail-closed).
+
+**Q4.2.2#3 — Cross-modal patterns over PEOPLE**
+(`cross_modal_patterns.py`): the convergence detector ran over topics
+only. The user's framing — "Maria's name appears across email +
+calendar + conversations" — is structurally identical to a topic
+crossing modalities. `PersonProfile.occurrences_per_modality` already
+aggregates exactly that signal. **Added `detect_person_patterns()`**
+using the same `_strength()` formula + thresholds; emits
+`Pattern(kind="person", topic=display_name)` records into the same
+JSONL stream with a discriminator field. Extended `run()` to call
+both detectors and report `topic_patterns` + `person_patterns`
+counts. Cross-link to Q4.2.2#4 below (tension person-boost).
+
+**Q4.2.2#4 — Tension ↔ person cross-link** (`tensions.py`):
+symmetric to the existing `boost_freshness_for_topic`. New
+`boost_freshness_for_person(person_id, display_names)` matches against
+display names (or email local-part as fallback) with a ≥3-char floor
+to avoid spurious matches. Source kind `person_sighting` distinguishes
+from topic patterns. Wired into `person_model.compile_profile` (every
+re-sighting boosts matching tensions) AND
+`cross_modal_patterns.detect_person_patterns` (convergence is a
+stronger signal). Composes with §41 + §42 without modifying either's
+core.
+
+**Q4.2.2#5 — GW publish opaque counts**
+(`person_model.compile_profile` + `social_graph.compile_graph`):
+8 other companion idle jobs publish to the SubIA Global Workspace
+via `workspace_publish.publish_to_workspace`; person-correlation
+didn't. **Now publishes — OPAQUE COUNTS ONLY**, never person_ids or
+names ("1 new person-sightings across 47 active; 0 decayed."). SubIA
+observes "the operator's input universe is broadening/narrowing"
+without ever seeing identities. Salience 0.3 (routine, never urgent).
+Failure-isolated. Only fires on meaningful change (`new_sightings > 0`
+or `decayed > 0` for compile_profile; `new_pairs > 0` or `dropped > 0`
+for compile_graph).
+
+**Q4.2.2#6 — `/cp/monitor` person-correlation probe**
+(`control_plane/dashboard_api.py`): operator couldn't glance at the
+monitor tab to confirm the idle job ran. Added a `_person_correlation`
+check under the "Internal" category. Three states: `disabled`
+(master OFF — clean OK row), `warn` (last compile >36h ago — cadence
+is 12h, so >36h means at least two missed cycles), or `ok` with
+people-count + last-compile age. Skipped silently when master OFF
+so the row never broadcasts that tracking is on/off through the
+monitor surface (privacy).
+
+### 42.1.3 Tests + files touched
+
+```
+NEW tests:
+crewai-team/tests/test_q4_2_followup.py            # 16 pass
+
+UPDATED tests:
+crewai-team/tests/identity/test_continuity_ledger.py  # +2 known kinds
+
+UPDATED backend:
+crewai-team/app/companion/person_suggestions.py       # Q4.2.1#1+#2+#6, Q4.2.2#2
+crewai-team/app/companion/graph_features/graph_suggestions.py  # Q4.2.1#3
+crewai-team/app/companion/graph_features/communities.py        # Q4.2.1#4
+crewai-team/app/companion/person_model.py             # Q4.2.1#5, Q4.2.2#1+#4+#5
+crewai-team/app/companion/social_graph.py             # Q4.2.2#1+#5
+crewai-team/app/identity/continuity_ledger.py         # Q4.2.2#1 — +1 event kind
+crewai-team/app/runtime_settings.py                   # Q4.2.2#1 — ledger emits
+crewai-team/app/notify/arbiter.py                     # Q4.2.2#2 — public alias
+crewai-team/app/companion/cross_modal_patterns.py     # Q4.2.2#3 — person variant
+crewai-team/app/companion/tensions.py                 # Q4.2.2#4 — person boost
+crewai-team/app/control_plane/dashboard_api.py        # Q4.2.2#6 — monitor probe
+
+UPDATED docs:
+crewai-team/PROGRAM.md                                # this section
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4+Q4.1+Q4.2+Q4.2.1+Q4.2.2 regression:
+**240 pass + 56 skip, 0 fail**. 16 new tests for the followup
+findings; original 29 Q4.2 tests unchanged. No TIER_IMMUTABLE files
+modified.
+
+### 42.1.4 Deliberate exclusions verified (no action)
+
+The audit also identified 9 missing wires that should NOT be added:
+SubIA ToM (surveillance pivot), SubIA wonder bridging (separate by
+design), Mem0 read for `cooccurring_topics` (violates "no body
+content" invariant), interest_model bidirectional (circular dep),
+SubIA scene/belief/memory consolidation (operator-facing not
+AI-cognition), SubIA connections bridge, agent-callable person tools
+(agent surveillance over operator's contacts), Phronesis values
+influence on nudge thresholds (Goodhart trap), Companion ideation
+referencing tracked people (out-of-scope pivot). Each verified to
+have zero cross-imports today; documented as deliberate firewall in
+`docs/PERSON_CORRELATION.md` §18 *What this layer deliberately does
+NOT do*. The "operator-facing vs. AI-internal" separation is the
+load-bearing concept distinction.

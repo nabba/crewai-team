@@ -331,6 +331,59 @@ def boost_freshness_for_topic(
     return boosted
 
 
+def boost_freshness_for_person(
+    person_id: str,
+    display_names: list[str] | None = None,
+    base: Path | None = None,
+) -> int:
+    """Q4.2.2#4 — symmetric to ``boost_freshness_for_topic`` for the
+    person-correlation cross-link (PROGRAM §42).
+
+    When a person re-appears (compile_profile bump) or shows up in a
+    cross-modal pattern, any OPEN tension whose question references
+    that person — by person_id OR any display name — gets its freshness
+    bumped. Source kind ``person_sighting`` distinguishes from topic
+    patterns.
+
+    Match strategy: case-insensitive substring against display names
+    (or the person_id if no names are known). We require ≥3 chars to
+    avoid spurious matches on short tokens; this means single-letter
+    or two-letter display names won't match (acceptable trade-off)."""
+    if not person_id:
+        return 0
+    needles: list[str] = []
+    for nm in (display_names or []):
+        nm_l = (nm or "").strip().lower()
+        if len(nm_l) >= 3:
+            needles.append(nm_l)
+    # Fall back to the local-part of an email if no display name fits.
+    if not needles:
+        local = person_id.split("@", 1)[0].strip().lower()
+        if len(local) >= 3:
+            needles.append(local)
+    if not needles:
+        return 0
+    boosted = 0
+    seen_ids: set[str] = set()
+    for t in list_tensions(status=STATUS_OPEN, base=base):
+        q_lower = t.question.lower()
+        if any(n in q_lower for n in needles):
+            if t.id in seen_ids:
+                continue
+            update_tension(
+                t.id,
+                add_sources=[TensionSource(
+                    kind="person_sighting",
+                    ts=datetime.now(timezone.utc).isoformat(),
+                    snippet=f"Person re-appearance: {person_id}",
+                )],
+                bump_touched=True, base=base,
+            )
+            seen_ids.add(t.id)
+            boosted += 1
+    return boosted
+
+
 def decay_sweep(base: Path | None = None) -> dict[str, int]:
     """Idle-job task: transition OPEN tensions ≥90d untouched to
     DORMANT. Returns counts. Run from companion.loop.

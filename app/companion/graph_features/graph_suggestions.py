@@ -32,6 +32,27 @@ logger = logging.getLogger(__name__)
 _CLUSTER_DORMANCY_DAYS = 30
 _BRIDGE_DORMANCY_DAYS = 45
 _WEAK_TIE_DORMANCY_DAYS = 30
+# Q4.2.1#3 — skip graph-derived nudges when the source-of-truth JSON
+# is older than this. If the graph-features idle job crashed or got
+# stuck, its output can rot for weeks; nudging against weeks-old
+# topology would surface false structural roles. 72h is generous —
+# the idle job runs every 12h.
+_STRUCTURAL_FRESHNESS_HOURS = 72
+
+
+def _is_fresh(data: dict, max_hours: int = _STRUCTURAL_FRESHNESS_HOURS) -> bool:
+    """Check whether a graph-features JSON payload was generated
+    recently. Returns False on missing/unparseable timestamp — caller
+    treats stale-or-unknown as a skip."""
+    ts_str = (data or {}).get("generated_at") or ""
+    if not ts_str:
+        return False
+    try:
+        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    age = datetime.now(timezone.utc) - ts
+    return age < timedelta(hours=max_hours)
 
 
 def _enabled() -> bool:
@@ -99,6 +120,10 @@ def _generate_cluster_dormancy(profile_people: list[dict]) -> list:
         data = json.loads(p.read_text(encoding="utf-8"))
         clusters = data.get("clusters") or []
     except Exception:
+        return []
+    # Q4.2.1#3 — refuse to fire nudges from stale topology.
+    if not _is_fresh(data):
+        logger.debug("graph_suggestions: cluster_dormancy skipped — stale")
         return []
 
     now = datetime.now(timezone.utc)
@@ -168,6 +193,10 @@ def _generate_bridge_maintenance(profile_people: list[dict]) -> list:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return []
+    # Q4.2.1#3 — stale structural data → no nudges.
+    if not _is_fresh(data):
+        logger.debug("graph_suggestions: bridge_maintenance skipped — stale")
+        return []
 
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=_BRIDGE_DORMANCY_DAYS)
@@ -228,6 +257,10 @@ def _generate_weak_tie_dormant(profile_people: list[dict]) -> list:
             return []
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
+        return []
+    # Q4.2.1#3 — stale structural data → no nudges.
+    if not _is_fresh(data):
+        logger.debug("graph_suggestions: weak_tie_dormant skipped — stale")
         return []
 
     now = datetime.now(timezone.utc)

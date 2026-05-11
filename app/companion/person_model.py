@@ -237,6 +237,19 @@ def forget_all(path: Path | None = None) -> int:
         n = len(profile)
         _save_profile({}, path)
         _save_mutes(set())
+    # Q4.2.2#1 — major policy reversal → continuity ledger. Opaque
+    # count only, never person_ids.
+    if n > 0:
+        try:
+            from app.identity.continuity_ledger import record_event
+            record_event(
+                kind="person_correlation_policy",
+                actor="operator",
+                summary=f"forget_all — {n} people removed from profile",
+                detail={"level": "L1", "action": "forget_all", "count": n},
+            )
+        except Exception:
+            logger.debug("forget_all ledger emit failed", exc_info=True)
     return n
 
 
@@ -321,19 +334,34 @@ def _gather_calendar_attendees(lookback_days: int) -> list[tuple[str, str, float
 def _gather_conversation_participants(lookback_days: int) -> list[tuple[str, str, float]]:
     """Yield (sender_id, '', age_days) for non-andrus participants in
     conversation_store. Sender IDs may be Signal phones or Discord
-    user IDs; we treat them as person_ids regardless of email shape."""
+    user IDs; we treat them as person_ids regardless of email shape.
+
+    Q4.2.1#5 — time-bound to ``lookback_days`` rather than scanning all
+    history. Mirrors how Q4.1's tension_detector windows the same
+    table; on multi-year DBs the unbounded scan was unnecessarily
+    expensive and resurfaced people the operator may have forgotten."""
     try:
         from app import conversation_store
         conn = conversation_store._get_conn()
     except Exception:
         return []
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
     try:
         rows = conn.execute(
             """SELECT DISTINCT sender_id FROM messages
-                WHERE role = 'user'"""
+                WHERE role = 'user' AND ts >= ?""",
+            (cutoff,),
         ).fetchall()
     except Exception:
-        return []
+        # Schema may not have `ts` on older DBs — fall back to
+        # unbounded so we never crash the idle job.
+        try:
+            rows = conn.execute(
+                """SELECT DISTINCT sender_id FROM messages
+                    WHERE role = 'user'"""
+            ).fetchall()
+        except Exception:
+            return []
     out: list[tuple[str, str, float]] = []
     for (sender_id,) in rows:
         if not sender_id:
@@ -406,6 +434,25 @@ def compile_profile(lookback_days: int = 30) -> dict[str, Any]:
     except Exception:
         logger.debug("person_model: topic co-occurrence skipped", exc_info=True)
 
+    # Q4.2.2#4 — when a person re-appears in this pass, boost any open
+    # tension that mentions them. This composes with the cross-modal
+    # detector's convergence-boost: direct sighting is a weaker but more
+    # frequent signal than convergence. Best-effort, failure-isolated.
+    person_tension_boosts = 0
+    try:
+        from app.companion.tensions import boost_freshness_for_person
+        for pp in profile.values():
+            if pp.last_seen != now_iso:
+                continue
+            try:
+                person_tension_boosts += boost_freshness_for_person(
+                    pp.person_id, list(pp.display_names),
+                )
+            except Exception:
+                continue
+    except Exception:
+        logger.debug("person_model: tension person-boost skipped", exc_info=True)
+
     # Apply decay: drop people not seen in decay_months
     try:
         from app.runtime_settings import get_person_correlation_decay_months
@@ -437,12 +484,32 @@ def compile_profile(lookback_days: int = 30) -> dict[str, Any]:
     except Exception:
         logger.debug("person_model: history append failed", exc_info=True)
 
+    # Q4.2.2#5 — GW publish OPAQUE COUNTS only (no person_ids, no
+    # names). Lets SubIA observe the "operator's input universe is
+    # broadening/narrowing" signal without seeing identities. Skipped
+    # silently on failure.
+    if new_sightings > 0 or decayed > 0:
+        try:
+            from app.workspace_publish import publish_to_workspace
+            publish_to_workspace(
+                source="person_correlation",
+                content=(
+                    f"{new_sightings} new person-sightings across "
+                    f"{len(profile)} active; {decayed} decayed."
+                ),
+                salience=0.3,  # routine — never urgent
+                signal_type="background",
+            )
+        except Exception:
+            logger.debug("person_model: GW publish failed", exc_info=True)
+
     return {
         "ok": True,
         "new_sightings": new_sightings,
         "active_people": len(profile),
         "decayed": decayed,
         "muted_count": len(muted),
+        "tension_boosts": person_tension_boosts,
     }
 
 

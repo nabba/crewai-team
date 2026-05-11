@@ -2608,6 +2608,50 @@ def system_status():
         return {"status": "ok", "message": f"last write {row['last_ts']}"}
     checks.append(_probe("Budget reconcile", "Internal", _budget_reconcile))
 
+    def _person_correlation():
+        """Q4.2.2#6 — surface person-correlation idle-job health.
+        Skipped silently when master switch is OFF (the stack is
+        invisible to the operator until they opt in)."""
+        try:
+            from app.runtime_settings import get_person_correlation_enabled
+            if not get_person_correlation_enabled():
+                return {"status": "ok", "message": "disabled (L1 master OFF)"}
+        except Exception:
+            return {"status": "warn", "message": "master switch unreadable"}
+        try:
+            from app.companion.person_model import current_profile
+            prof = current_profile() or {}
+        except Exception:
+            return {"status": "warn", "message": "profile read failed"}
+        n = len(prof.get("people") or [])
+        # Probe the history file age as a liveness signal.
+        try:
+            from app.companion.person_model import _default_history_path
+            hp = _default_history_path()
+            if hp.exists():
+                from datetime import datetime, timezone
+                mtime = datetime.fromtimestamp(hp.stat().st_mtime, tz=timezone.utc)
+                age = datetime.now(timezone.utc) - mtime
+                age_hours = age.total_seconds() / 3600.0
+                if age_hours > 36:
+                    return {
+                        "status": "warn",
+                        "message": (
+                            f"{n} tracked · last compile "
+                            f"{int(age_hours)}h ago (cadence 12h)"
+                        ),
+                    }
+                return {
+                    "status": "ok",
+                    "message": (
+                        f"{n} tracked · last compile {int(age_hours)}h ago"
+                    ),
+                }
+        except Exception:
+            pass
+        return {"status": "ok", "message": f"{n} people tracked"}
+    checks.append(_probe("Person correlation", "Internal", _person_correlation))
+
     # ── External services / credit alerts ──────────────────────
     try:
         from app.firebase.publish import _active_alerts, _CREDIT_URLS

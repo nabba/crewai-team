@@ -882,8 +882,15 @@ def get_person_correlation_enabled() -> bool:
 
 
 def set_person_correlation_enabled(value: bool) -> None:
+    prev = get_person_correlation_enabled()
     _update({"person_correlation_enabled": bool(value)})
     logger.info("runtime_settings: person_correlation_enabled = %s", bool(value))
+    # Q4.2.2#1 — identity-shaping policy flip → continuity ledger.
+    if prev != bool(value):
+        _emit_person_correlation_policy_event(
+            level="L1",
+            enabled=bool(value),
+        )
 
 
 def get_person_correlation_decay_months() -> int:
@@ -945,11 +952,20 @@ def set_person_correlation_social_graph_enabled(value: bool) -> None:
     """Master switch for L4. Enabling this from False→True requires
     a typed-phrase confirmation in the API surface — this function
     does NOT enforce that (the config_api endpoint does)."""
+    prev = get_person_correlation_social_graph_enabled()
     _update({"person_correlation_social_graph_enabled": bool(value)})
     logger.info(
         "runtime_settings: person_correlation_social_graph_enabled = %s",
         bool(value),
     )
+    # Q4.2.2#1 — L4 enablement is the most identity-shaping flip in the
+    # stack (this is the typed-phrase one). Log it to the continuity
+    # ledger so annual reflection picks it up.
+    if prev != bool(value):
+        _emit_person_correlation_policy_event(
+            level="L4",
+            enabled=bool(value),
+        )
 
 
 def get_graph_shortest_path_enabled() -> bool:
@@ -983,8 +999,35 @@ def get_graph_suggestions_enabled() -> bool:
 def set_graph_suggestions_enabled(value: bool) -> None:
     """L4.4 master. From False→True requires SECOND typed-phrase
     'ENABLE GRAPH-DRIVEN SUGGESTIONS'. Enforced at config_api layer."""
+    prev = get_graph_suggestions_enabled()
     _update({"graph_suggestions_enabled": bool(value)})
     logger.info("runtime_settings: graph_suggestions_enabled = %s", bool(value))
+    # Q4.2.2#1 — L4.4 is the second typed-phrase gate; identity-shaping.
+    if prev != bool(value):
+        _emit_person_correlation_policy_event(
+            level="L4.4",
+            enabled=bool(value),
+        )
+
+
+def _emit_person_correlation_policy_event(*, level: str, enabled: bool) -> None:
+    """Q4.2.2#1 helper — emit a ``person_correlation_policy`` event to
+    the identity continuity ledger. Failure-isolated: never raises
+    out to the setter."""
+    try:
+        from app.identity.continuity_ledger import record_event
+        direction = "enabled" if enabled else "disabled"
+        record_event(
+            kind="person_correlation_policy",
+            actor="operator",
+            summary=f"person-correlation {level} {direction}",
+            detail={
+                "level": level,
+                "enabled": enabled,
+            },
+        )
+    except Exception:
+        logger.debug("person_correlation_policy ledger emit failed", exc_info=True)
 
 
 def get_graph_suggestions_cluster_dormancy_enabled() -> bool:

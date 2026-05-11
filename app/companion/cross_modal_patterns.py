@@ -92,6 +92,10 @@ class Pattern:
     detected_at: str                       # ISO-8601
     first_seen_age_days: float | None      # from interest_model.last_seen_age_days
     triggered_tension_boost: int           # how many tensions had freshness boosted
+    # Q4.2.2#3 — discriminator: "topic" (original) or "person" (new).
+    # Default preserves backward-compat with existing readers + persisted
+    # JSONL (the field will just be absent on pre-Q4.2.2 lines).
+    kind: str = "topic"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -247,6 +251,91 @@ def _boost_matching_tensions(topic: str) -> int:
         return 0
 
 
+def _boost_matching_tensions_for_person(
+    person_id: str, display_names: list[str],
+) -> int:
+    """Q4.2.2#4 — symmetric to ``_boost_matching_tensions`` but for the
+    person variant. Tensions are matched against the display name or
+    the person_id; if any match, their freshness is bumped. Best-effort,
+    never raises."""
+    try:
+        from app.companion.tensions import boost_freshness_for_person
+        return boost_freshness_for_person(person_id, display_names or [])
+    except Exception:
+        logger.debug(
+            "cross_modal_patterns: person tension boost failed",
+            exc_info=True,
+        )
+        return 0
+
+
+# ── Person convergence detector (Q4.2.2#3) ───────────────────────────────
+
+
+def detect_person_patterns(
+    min_modalities: int = _MIN_MODALITIES,
+    min_total: int = _MIN_TOTAL_OCCURRENCES,
+    min_strength: float = _MIN_STRENGTH,
+) -> list[Pattern]:
+    """Q4.2.2#3 — detect convergence in PERSON presence across modalities.
+
+    Mirrors ``detect_patterns`` for topics but operates over
+    ``person_model.current_profile()``. A person appearing across 3+
+    modalities at high volume produces the same shape of "convergence
+    signal" as a topic that crosses sources — the user's framing of
+    "Maria's name appears across email + calendar + conversations".
+
+    Read-only on person_model; failure-isolated. Returns empty when
+    person-correlation master switch is OFF (no profile snapshot).
+    """
+    try:
+        from app.companion.person_model import current_profile
+    except Exception:
+        return []
+    try:
+        prof = current_profile() or {}
+    except Exception:
+        logger.debug("person convergence: current_profile failed", exc_info=True)
+        return []
+    if not prof.get("enabled"):
+        return []
+    people = prof.get("people") or []
+    if not people:
+        return []
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    out: list[Pattern] = []
+    for p in people:
+        modality_count = int(p.get("modality_count") or 0)
+        total = int(p.get("total_occurrences") or 0)
+        if modality_count < min_modalities or total < min_total:
+            continue
+        s = _strength(modality_count, total)
+        if s < min_strength:
+            continue
+        pid = (p.get("person_id") or "").lower()
+        names = p.get("display_names") or []
+        display = names[0] if names else pid
+        # Q4.2.2#4 — boost any open tensions referencing this person.
+        boosted = _boost_matching_tensions_for_person(pid, names)
+        occurrences = dict(p.get("occurrences_per_modality") or {})
+        modalities = sorted(k for k, v in occurrences.items() if v > 0)
+        out.append(Pattern(
+            topic=display,
+            modalities=modalities,
+            occurrences_per_modality=occurrences,
+            occurrences_total=total,
+            window_days=_WINDOW_DAYS,
+            strength=s,
+            detected_at=now_iso,
+            first_seen_age_days=None,
+            triggered_tension_boost=boosted,
+            kind="person",
+        ))
+    out.sort(key=lambda p: p.strength, reverse=True)
+    return out
+
+
 # ── Persistence ──────────────────────────────────────────────────────────
 
 
@@ -312,16 +401,29 @@ def list_recent_patterns(
 def run() -> dict[str, Any]:
     """One detection pass. Cadence-guarded by the caller
     (companion.loop / healing monitors). Read-only on inputs; persists
-    new patterns + boosts matching tensions."""
+    new patterns + boosts matching tensions.
+
+    Q4.2.2#3 — also runs person-convergence detection when the
+    person-correlation master switch is ON. Person patterns are
+    persisted to the same JSONL with ``kind: "person"`` so the
+    dashboard can split surfaces."""
     try:
-        patterns = detect_patterns()
+        topic_patterns = detect_patterns()
     except Exception:
         logger.debug("cross_modal_patterns: detect raised", exc_info=True)
-        return {"ok": False, "patterns_detected": 0}
+        topic_patterns = []
+    try:
+        person_patterns = detect_person_patterns()
+    except Exception:
+        logger.debug("cross_modal_patterns: person-detect raised", exc_info=True)
+        person_patterns = []
+    patterns = topic_patterns + person_patterns
     persisted = _persist_patterns(patterns)
     summary = {
         "ok": True,
         "patterns_detected": len(patterns),
+        "topic_patterns": len(topic_patterns),
+        "person_patterns": len(person_patterns),
         "persisted": persisted,
         "tension_boosts": sum(p.triggered_tension_boost for p in patterns),
     }
