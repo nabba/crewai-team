@@ -59,6 +59,14 @@ export const endpoints = {
     if (projectId) qs.set('project_id', projectId);
     return `${CP}/costs/trends?${qs.toString()}`;
   },
+
+  // Q4#16 — companion tensions store
+  companionTensions: (status = 'OPEN', minFreshness = 0.0) =>
+    `${CP}/companion/tensions?status=${encodeURIComponent(status)}&min_freshness=${minFreshness}`,
+  companionTensionCreate: () => `${CP}/companion/tensions`,
+  companionTensionResolve: (tid: string) =>
+    `${CP}/companion/tensions/${encodeURIComponent(tid)}/resolve`,
+
   health: () => `${CP}/health`,
   consciousness: (historyLimit = 30) => `${CP}/consciousness?history_limit=${historyLimit}`,
   tokens: (projectId?: string) =>

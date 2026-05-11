@@ -2095,3 +2095,86 @@ export function useApplyProposalAction() {
       }),
   });
 }
+
+
+// ── Q4#16 (PROGRAM §41) — Companion tensions store ──────────────────────
+//
+// "Open questions Andrus left with me" — distinct from companion ideation
+// (workspace-scoped) and SubIA wonder (internal contemplation).
+
+export interface TensionSource {
+  kind: string;
+  ts: string;
+  snippet: string;
+  ref: string | null;
+}
+
+export interface Tension {
+  id: string;
+  question: string;
+  created_at: string;
+  last_touched_at: string;
+  status: 'OPEN' | 'DORMANT' | 'RESOLVED';
+  sources: TensionSource[];
+  workspace_id: string | null;
+  resolution: string | null;
+  resolved_at: string | null;
+  detection_source: string;
+  freshness: number;
+}
+
+export interface TensionsResponse {
+  tensions: Tension[];
+  as_of: string;
+  error?: string;
+}
+
+export function useCompanionTensions(status = 'OPEN', minFreshness = 0.0) {
+  return useQuery({
+    queryKey: ['companion', 'tensions', status, minFreshness] as const,
+    queryFn: () =>
+      api<TensionsResponse>(
+        endpoints.companionTensions(status, minFreshness),
+      ),
+    refetchInterval: POLL.oneMin,
+  });
+}
+
+export function useCreateCompanionTension() {
+  const qc = useQueryClient();
+  return useMutation<
+    Tension,
+    Error,
+    { question: string; workspaceId?: string }
+  >({
+    mutationFn: ({ question, workspaceId }) =>
+      api<Tension>(endpoints.companionTensionCreate(), {
+        method: 'POST',
+        body: JSON.stringify({
+          question,
+          workspace_id: workspaceId ?? null,
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companion', 'tensions'] });
+    },
+  });
+}
+
+export function useResolveCompanionTension() {
+  const qc = useQueryClient();
+  return useMutation<
+    Tension,
+    Error,
+    { tid: string; resolution: string }
+  >({
+    mutationFn: ({ tid, resolution }) =>
+      api<Tension>(endpoints.companionTensionResolve(tid), {
+        method: 'POST',
+        body: JSON.stringify({ resolution }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companion', 'tensions'] });
+    },
+  });
+}

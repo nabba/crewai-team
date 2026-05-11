@@ -219,6 +219,74 @@ def get_budgets(project_id: str = Query(None)):
     return get_budget_enforcer().get_status(project_id)
 
 
+@router.get("/companion/tensions")
+def companion_tensions(status: str = Query("OPEN"), min_freshness: float = Query(0.0, ge=0.0, le=1.0)):
+    """Q4#16 (PROGRAM §41) — open questions the companion tracks on
+    the operator's behalf. Read-only; mutations go through the
+    POST endpoints below.
+    """
+    try:
+        from app.companion.tensions import list_tensions
+        tensions = list_tensions(status=status, min_freshness=min_freshness) or []
+    except Exception as exc:
+        logger.debug("companion/tensions failed: %s", exc, exc_info=True)
+        return {"tensions": [], "error": str(exc)}
+    return {
+        "tensions": [
+            {
+                **t.to_dict(),
+                "freshness": round(t.freshness(), 4),
+            }
+            for t in tensions
+        ],
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+class TensionResolve(BaseModel):
+    resolution: str
+
+
+@router.post("/companion/tensions/{tid}/resolve")
+def companion_tensions_resolve(tid: str, body: TensionResolve):
+    """Operator marks a tension RESOLVED with a short resolution note."""
+    try:
+        from app.companion.tensions import resolve_tension
+        t = resolve_tension(tid, body.resolution)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"tension {tid!r} not found")
+    return t.to_dict()
+
+
+class TensionCreate(BaseModel):
+    question: str
+    workspace_id: str | None = None
+
+
+@router.post("/companion/tensions")
+def companion_tensions_create(body: TensionCreate):
+    """Operator manually files a tension. Use case: operator says
+    'I'm wondering about X' via /cp/companion rather than letting
+    the regex detector pick it up from conversation."""
+    try:
+        from app.companion.tensions import create_tension
+        t = create_tension(
+            question=body.question,
+            workspace_id=body.workspace_id,
+            detection_source="manual:operator",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    if t is None:
+        raise HTTPException(
+            status_code=400,
+            detail="tension rejected (question length or OPEN cap reached)",
+        )
+    return t.to_dict()
+
+
 @router.get("/budgets/forecast")
 def budgets_forecast(
     project_id: str = Query(None),

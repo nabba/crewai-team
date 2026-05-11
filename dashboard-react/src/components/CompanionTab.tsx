@@ -25,6 +25,7 @@ import {
   type IdeaSummary,
 } from '../api/companion';
 import { api } from '../api/client';
+import { TensionsCard } from './TensionsCard';
 
 // Workspace selector — pulls from the existing /api/workspaces (Phase 0).
 interface WorkspaceListItem {
@@ -56,6 +57,7 @@ function useWorkspaces() {
 type SubTab =
   | 'live'
   | 'ideas'
+  | 'tensions'
   | 'documents'
   | 'wiki'
   | 'sources'
@@ -66,6 +68,7 @@ type SubTab =
 const SUB_TABS: { key: SubTab; label: string; icon: string }[] = [
   { key: 'live', label: 'Live', icon: '🌀' },
   { key: 'ideas', label: 'Ideas', icon: '💡' },
+  { key: 'tensions', label: 'Tensions', icon: '❓' },
   { key: 'documents', label: 'Documents', icon: '📄' },
   { key: 'wiki', label: 'Wiki', icon: '📚' },
   { key: 'sources', label: 'Sources', icon: '🔍' },
@@ -144,6 +147,7 @@ export function CompanionTab() {
       <div className="bg-[#0c1118] border border-[#1e2738] rounded-lg p-4">
         {sub === 'live' && <LiveTab workspaceId={workspaceId} />}
         {sub === 'ideas' && <IdeasTab workspaceId={workspaceId} />}
+        {sub === 'tensions' && <TensionsCard />}
         {sub === 'documents' && <DocumentsTab workspaceId={workspaceId} />}
         {sub === 'wiki' && <WikiTab workspaceId={workspaceId} />}
         {sub === 'sources' && <SourcesTab workspaceId={workspaceId} />}

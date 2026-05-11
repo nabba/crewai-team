@@ -279,6 +279,32 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_open_tensions(n: int = 5) -> list[str]:
+    """Q4#16 (PROGRAM §41) — open questions the operator left with the
+    companion. Sorted newest-touched first; filters to OPEN status +
+    freshness ≥ 0.3 (drops decayed-stale OPENs). Soft fail."""
+    try:
+        from app.companion.tensions import list_tensions, STATUS_OPEN
+    except Exception:
+        return []
+    try:
+        tensions = list_tensions(status=STATUS_OPEN, min_freshness=0.3) or []
+    except Exception:
+        return []
+    if not tensions:
+        return []
+    lines: list[str] = []
+    for t in tensions[:n]:
+        q = (t.question or "")[:90]
+        # Source-count hint helps operator gauge whether material accumulated.
+        n_sources = len(t.sources or [])
+        if n_sources > 0:
+            lines.append(f"  • {q}  ({n_sources} note{'s' if n_sources != 1 else ''})")
+        else:
+            lines.append(f"  • {q}")
+    return lines
+
+
 def _gather_companion_surfaced() -> list[str]:
     """Recent companion ideas surfaced to the user (last 24 h). Soft fail."""
     try:
@@ -314,6 +340,7 @@ def _compose_morning() -> str:
     mail = _gather_top_emails(n=3)
     tickets = _gather_open_tickets(n=5)
     health = _gather_health_summary()
+    tensions = _gather_open_tensions(n=5)
 
     parts = ["☀️  Morning briefing\n"]
     parts.append("📅 Today's events:")
@@ -322,6 +349,12 @@ def _compose_morning() -> str:
     parts.extend(mail or ["  • (inbox clean)"])
     parts.append("\n🎯 Open tickets:")
     parts.extend(tickets or ["  • (no open tickets)"])
+    if tensions:
+        # Q4#16 — open questions you left with me. Only show when
+        # there's something to surface; the section disappears when
+        # the list is empty so the briefing stays clean.
+        parts.append("\n❓ Open questions you left with me:")
+        parts.extend(tensions)
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)

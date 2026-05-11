@@ -56,6 +56,16 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── Q4#16 (PROGRAM §41, 2026-05-11) — companion tensions ──────────
+    # /tensions                                     list open tensions
+    # /tensions list                                same
+    # /tensions add <question>                      manually file a tension
+    # /tensions resolve <id> <resolution>           mark RESOLVED
+    if lower.startswith("/tensions") or lower.startswith("tensions "):
+        sub = _handle_tensions_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -1973,3 +1983,77 @@ def _handle_topic_command(user_input: str) -> str | None:
         except Exception:
             return "Could not update mute state."
     return _topic_help()
+
+
+# ── Q4#16 (PROGRAM §41) — companion tensions Signal commands ───────
+
+
+def _tensions_help() -> str:
+    return (
+        "/tensions               — list open tensions you've left with me\n"
+        "/tensions add <q>       — manually file a tension\n"
+        "/tensions resolve <id> <text>  — mark RESOLVED with a note"
+    )
+
+
+def _handle_tensions_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/tensions"):
+        text = text[len("/tensions"):].strip()
+    elif text.lower().startswith("tensions "):
+        text = text[len("tensions "):].strip()
+    # Empty body = list (default action)
+    if not text or text.lower() in ("list", "help", "?"):
+        if text.lower() in ("help", "?"):
+            return _tensions_help()
+        try:
+            from app.companion.tensions import list_tensions, STATUS_OPEN
+            tensions = list_tensions(status=STATUS_OPEN, min_freshness=0.0) or []
+        except Exception:
+            return "Could not read tensions."
+        if not tensions:
+            return "No open tensions. Use /tensions add <question> to file one."
+        lines = [f"📋 {len(tensions)} open tension(s):"]
+        for t in tensions[:10]:
+            lines.append(f"  {t.id}  {t.question[:80]}")
+        if len(tensions) > 10:
+            lines.append(f"  …and {len(tensions) - 10} more")
+        return "\n".join(lines)
+
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if sub == "add":
+        if not arg or len(arg) < 8:
+            return "Question too short (need ≥8 chars). Try: /tensions add <question>"
+        try:
+            from app.companion.tensions import create_tension
+            t = create_tension(
+                question=arg, detection_source="manual:signal",
+            )
+        except Exception:
+            return "Could not create tension."
+        if t is None:
+            return (
+                "Tension rejected — either OPEN cap (30) reached, or "
+                "question length out of bounds. Resolve some existing "
+                "tensions first."
+            )
+        return f"✅ Filed tension {t.id}: {t.question[:100]}"
+
+    if sub == "resolve":
+        parts2 = arg.split(maxsplit=1)
+        if len(parts2) < 2:
+            return "Usage: /tensions resolve <id> <resolution>"
+        tid, resolution = parts2[0], parts2[1]
+        try:
+            from app.companion.tensions import resolve_tension
+            t = resolve_tension(tid, resolution)
+        except Exception:
+            return "Could not resolve tension."
+        if t is None:
+            return f"Tension {tid!r} not found."
+        return f"✅ Resolved {t.id}: {t.question[:80]}"
+
+    return _tensions_help()
