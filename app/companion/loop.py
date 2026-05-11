@@ -122,6 +122,18 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
     except Exception:
         logger.debug("companion.loop: tensions job skipped", exc_info=True)
 
+    # Q4.1 (PROGRAM §41.4) — autonomous tension detection from
+    # recent user messages. Closes the loop on "tracking on his
+    # behalf" by scanning conversation_store rather than requiring
+    # operator-curated /tensions add.
+    try:
+        from app.companion.tension_detector import run as _td_run
+        jobs.append(("tension-detector", _td_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: tension_detector job skipped", exc_info=True,
+        )
+
     # Q4 Phase B (PROGRAM §41.2) — cross-modal pattern detector.
     # Reads interest_profile + control_plane.tickets; emits convergence
     # signals and boosts matching open tensions.

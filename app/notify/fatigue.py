@@ -50,6 +50,13 @@ class NotifyEvent:
     decision: str      # "send_now" | "queue_for_digest" | "suppress_low_value"
     salience_score: float | None = None
     ack_state: str | None = None    # "acked" | "unacked" | None
+    # Q4.1 (PROGRAM §41.4) — title + body retained for queue_for_digest
+    # entries so the daily briefing can compose a digest section. NOT
+    # populated for send_now / suppress decisions (privacy + storage
+    # discipline — no need to carry the body twice).
+    title: str | None = None
+    body: str | None = None
+    digest_consumed_at: float | None = None  # set by the briefing once surfaced
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -85,10 +92,19 @@ def record_event(
     topic: str | None,
     decision: str,
     salience_score: float | None = None,
+    title: str | None = None,
+    body: str | None = None,
     path: Path | None = None,
 ) -> None:
     """Append a notification decision to the fatigue store. Caps the
-    list at _MAX_EVENTS (drops oldest)."""
+    list at _MAX_EVENTS (drops oldest).
+
+    Q4.1: ``title`` + ``body`` are only retained for the
+    ``queue_for_digest`` decision — the briefing assembler pulls
+    those for the next morning/evening digest. Send + suppress paths
+    don't carry the body (privacy + storage discipline)."""
+    keep_title = title if decision == "queue_for_digest" else None
+    keep_body = body if decision == "queue_for_digest" else None
     event = NotifyEvent(
         ts=time.time(),
         tag=tag,
@@ -96,6 +112,8 @@ def record_event(
         decision=decision,
         salience_score=salience_score,
         ack_state=None,
+        title=keep_title,
+        body=keep_body,
     )
     with _lock:
         events = _load(path)
@@ -107,6 +125,64 @@ def record_event(
             _save(events, path)
         except OSError:
             logger.debug("notify.fatigue: save failed", exc_info=True)
+
+
+# ── Digest accessors (Q4.1) ──────────────────────────────────────────────
+
+
+def pending_digest_entries(
+    window_hours: float = 24.0, path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Return queue_for_digest events in the window that haven't yet
+    been surfaced in a digest. Used by daily_briefing to assemble the
+    'queued from arbiter' section."""
+    events = _load(path)
+    cutoff = time.time() - window_hours * 3600.0
+    out: list[dict[str, Any]] = []
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        if e.get("decision") != "queue_for_digest":
+            continue
+        if e.get("digest_consumed_at") is not None:
+            continue
+        if float(e.get("ts") or 0) < cutoff:
+            continue
+        out.append(e)
+    return out
+
+
+def mark_digest_consumed(
+    event_ts_set: set[float], path: Path | None = None,
+) -> int:
+    """Mark events with ts in ``event_ts_set`` as surfaced. Returns
+    count marked. Idempotent — already-marked events are skipped."""
+    if not event_ts_set:
+        return 0
+    with _lock:
+        events = _load(path)
+        marked = 0
+        now = time.time()
+        for e in events:
+            if not isinstance(e, dict):
+                continue
+            if e.get("decision") != "queue_for_digest":
+                continue
+            if e.get("digest_consumed_at") is not None:
+                continue
+            try:
+                ts = float(e.get("ts") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if ts in event_ts_set:
+                e["digest_consumed_at"] = now
+                marked += 1
+        if marked > 0:
+            try:
+                _save(events, path)
+            except OSError:
+                pass
+        return marked
 
 
 def mark_acked(tag: str, window_seconds: float = 3600.0, path: Path | None = None) -> int:

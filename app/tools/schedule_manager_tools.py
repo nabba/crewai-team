@@ -105,6 +105,14 @@ def _execute_scheduled_task(name: str, task: str) -> None:
     @notify_on_complete(
         label=f"Schedule: {name}",
         metadata={"job_id": f"schedule:{name}"},
+        # Q4.1 (PROGRAM §41.4) — user-defined scheduled tasks route
+        # through the arbiter: many of them are routine ("daily
+        # weather", "morning poetry") and should arbitrate. Failures
+        # are operationally meaningful (user notices it stopped
+        # running) so they bypass arbitration via critical_on_failure.
+        arbitrate=True,
+        topic=f"schedule:{name}",
+        critical_on_failure=True,
     )
     def _run() -> None:
         # Update last_run

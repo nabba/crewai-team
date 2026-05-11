@@ -279,6 +279,64 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_queued_notifications(n: int = 10) -> tuple[list[str], list[float]]:
+    """Q4.1 (PROGRAM §41.4) — pull arbiter-queued notifications for
+    the digest. Returns ``(formatted_lines, ts_set)`` where ts_set is
+    the event timestamps the caller should mark as consumed after
+    the briefing fires successfully.
+
+    Newest-first; truncates to n entries. Soft fail."""
+    try:
+        from app.notify.fatigue import pending_digest_entries
+    except Exception:
+        return [], []
+    try:
+        events = pending_digest_entries(window_hours=24.0) or []
+    except Exception:
+        return [], []
+    if not events:
+        return [], []
+    # Sort newest-first, take n.
+    events.sort(key=lambda e: float(e.get("ts") or 0), reverse=True)
+    events = events[:n]
+    lines: list[str] = []
+    ts_set: list[float] = []
+    for e in events:
+        title = (e.get("title") or "").strip()
+        body = (e.get("body") or "").strip()
+        topic = e.get("topic")
+        # Compose a tight one-liner.
+        if title and body:
+            display = f"{title}: {body[:70]}"
+        elif title:
+            display = title
+        elif body:
+            display = body[:80]
+        else:
+            display = "(notification body empty)"
+        if topic:
+            display = f"[{topic}] {display}"
+        lines.append(f"  • {display}")
+        try:
+            ts_set.append(float(e.get("ts") or 0))
+        except (TypeError, ValueError):
+            continue
+    return lines, ts_set
+
+
+def _mark_digest_consumed(ts_set: list[float]) -> None:
+    """Best-effort cleanup after the briefing fires. Failure is non-
+    fatal — worst case is the items resurface in the next digest,
+    which is observably better than dropping them silently."""
+    if not ts_set:
+        return
+    try:
+        from app.notify.fatigue import mark_digest_consumed
+        mark_digest_consumed(set(ts_set))
+    except Exception:
+        pass
+
+
 def _gather_cross_modal_insights(n: int = 3) -> list[str]:
     """Q4#15 (PROGRAM §41) — proactive insights from the cross-modal
     pattern detector. Surfaces topics that crossed ≥3 modalities at
@@ -362,12 +420,21 @@ def _gather_companion_surfaced() -> list[str]:
 # ── Compose ──────────────────────────────────────────────────────────────
 
 
-def _compose_morning() -> str:
+def _compose_morning() -> tuple[str, list[float]]:
+    """Compose the morning briefing.
+
+    Q4.1 (PROGRAM §41.4) returns a 2-tuple: ``(body, consume_ts_list)``
+    where ``consume_ts_list`` is the timestamps of arbiter-queued
+    notifications that should be marked consumed AFTER successful
+    send. The caller (``run()``) only marks them on Signal-send
+    success so failed briefings preserve the queue.
+    """
     cal = _gather_calendar_24h()
     mail = _gather_top_emails(n=3)
     tickets = _gather_open_tickets(n=5)
     health = _gather_health_summary()
     tensions = _gather_open_tensions(n=5)
+    queued_lines, queued_ts = _gather_queued_notifications(n=10)
 
     parts = ["☀️  Morning briefing\n"]
     parts.append("📅 Today's events:")
@@ -387,17 +454,24 @@ def _compose_morning() -> str:
         # the list is empty so the briefing stays clean.
         parts.append("\n❓ Open questions you left with me:")
         parts.extend(tensions)
+    if queued_lines:
+        # Q4#17 — notifications the arbiter deferred. Pull them out
+        # of the fatigue queue into the digest so "queue_for_digest"
+        # actually surfaces somewhere.
+        parts.append("\n📨 Queued notifications (deferred by arbiter):")
+        parts.extend(queued_lines)
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)
-    return "\n".join(parts)
+    return "\n".join(parts), queued_ts
 
 
-def _compose_evening() -> str:
+def _compose_evening() -> tuple[str, list[float]]:
     cal = _gather_calendar_24h()  # also covers tonight + tomorrow morning
     mail = _gather_top_emails(n=3)
     surfaced = _gather_companion_surfaced()
     health = _gather_health_summary()
+    queued_lines, queued_ts = _gather_queued_notifications(n=10)
 
     parts = ["🌙 Evening wrap\n"]
     parts.append("📅 Tomorrow:")
@@ -406,13 +480,16 @@ def _compose_evening() -> str:
     parts.extend(mail or ["  • (inbox clean)"])
     parts.append("\n💡 Companion surfaced today:")
     parts.extend(surfaced or ["  • (no surfaced ideas)"])
+    if queued_lines:
+        parts.append("\n📨 Queued notifications (deferred by arbiter):")
+        parts.extend(queued_lines)
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)
-    return "\n".join(parts)
+    return "\n".join(parts), queued_ts
 
 
-def _compose_weekly() -> str:
+def _compose_weekly() -> tuple[str, list[float]]:
     cal = _gather_calendar_24h()
     tickets = _gather_open_tickets(n=8)
     surfaced = _gather_companion_surfaced()
@@ -434,7 +511,8 @@ def _compose_weekly() -> str:
         # daily morning/evening cadences don't need this noise.
         parts.append("\n🧭 Topics you've cared about:")
         parts.extend(interests)
-    return "\n".join(parts)
+    # Weekly composer doesn't pull from the queue — daily covers that.
+    return "\n".join(parts), []
 
 
 # ── Cadence-aware entry point ─────────────────────────────────────────────
@@ -486,7 +564,7 @@ def run() -> None:
         return
 
     try:
-        body = composer()
+        body, consume_ts = composer()
     except Exception:
         logger.debug("daily_briefing: composer %s raised", flavour, exc_info=True)
         return
@@ -496,8 +574,14 @@ def run() -> None:
         flavour=flavour,
         key=key,
         body_chars=len(body),
+        queued_notifications_included=len(consume_ts),
     )
     sent = send_signal_alert(body, tag=f"daily_briefing_{flavour}")
     if sent:
         _set_last_key(state, flavour, key)
         write_state_json(_STATE_FILE, state)
+        # Q4.1 — mark queued notifications consumed ONLY after the
+        # briefing actually fires. A failed Signal send preserves the
+        # queue for the next cadence window.
+        if consume_ts:
+            _mark_digest_consumed(consume_ts)

@@ -79,10 +79,18 @@ def _maybe_notify(result) -> None:
         title = f"Inbox — {len(result.failed) + len(result.skipped_unknown)} need attention"
 
     try:
+        # Q4.1 (PROGRAM §41.4) — inbox events arbitrate when they're
+        # purely informational (successful imports, unrecognised file
+        # types). Failures are operator-actionable and bypass via
+        # critical=True so they always reach Signal.
+        has_failures = bool(result.failed)
         notify(
             title,
             "\n".join(body_lines[:10]),  # cap to keep the push readable
             url="/cp/files",
+            arbitrate=not has_failures,
+            topic="inbox",
+            critical=has_failures,
         )
     except Exception:
         logger.debug("inbox scheduler: notify failed", exc_info=True)

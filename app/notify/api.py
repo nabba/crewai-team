@@ -130,6 +130,9 @@ def notify_on_complete(
     url: str = _DEFAULT_DEEP_LINK,
     silent: bool = False,
     metadata: Optional[dict] = None,
+    arbitrate: bool = False,
+    topic: Optional[str] = None,
+    critical_on_failure: bool = False,
 ) -> Callable[[F], F]:
     """Decorator: ping Signal + Web Push when the wrapped fn finishes.
 
@@ -149,6 +152,23 @@ def notify_on_complete(
             ``{"job_id": "self_improve", "task_id": "..."}``. Without
             metadata the completion ping is still sent — operator just
             can't react to it for skill/recipe credit.
+
+        Q4.1 (PROGRAM §41.4) additions:
+
+        arbitrate: When True, success pings route through the
+            notification arbiter (``app/notify/arbiter.py``). Low-
+            salience completions may queue for digest or be suppressed.
+            Failures ALWAYS escalate (the arbiter call on failure
+            promotes critical=True automatically, see below).
+        topic: Optional topic hint passed to the arbiter so it can
+            consult interest_model salience + cross-modal patterns +
+            open tensions. Same string the operator's topics module
+            would use (e.g. "psd2", "company_dossier").
+        critical_on_failure: When True, failures bypass arbitration
+            and ALWAYS reach Signal. Use for jobs whose failures
+            represent operational risk (workspace sync, db backups).
+            Default False — for routine jobs whose failures are
+            informational, not actionable.
     """
 
     def deco(fn: F) -> F:
@@ -170,7 +190,9 @@ def notify_on_complete(
                         _emit_completion(
                             job_label, error, time.monotonic() - start,
                             notify_on_failure_only=notify_on_failure_only,
-                            url=url,
+                            url=url, metadata=metadata,
+                            arbitrate=arbitrate, topic=topic,
+                            critical_on_failure=critical_on_failure,
                         )
 
             return awrapper  # type: ignore[return-value]
@@ -190,6 +212,8 @@ def notify_on_complete(
                         job_label, error, time.monotonic() - start,
                         notify_on_failure_only=notify_on_failure_only,
                         url=url, metadata=metadata,
+                        arbitrate=arbitrate, topic=topic,
+                        critical_on_failure=critical_on_failure,
                     )
 
         return wrapper  # type: ignore[return-value]
@@ -207,13 +231,24 @@ def _emit_completion(
     notify_on_failure_only: bool,
     url: str,
     metadata: Optional[dict] = None,
+    arbitrate: bool = False,
+    topic: Optional[str] = None,
+    critical_on_failure: bool = False,
 ) -> None:
-    """Build the one-line message and dispatch."""
+    """Build the one-line message and dispatch.
+
+    Q4.1: arbitration kwargs are forwarded to ``notify()``. Failures
+    promote to ``critical=True`` when ``critical_on_failure`` is set,
+    so jobs whose failures are operationally meaningful bypass the
+    arbiter even if success pings are arbitrated.
+    """
     if error is None:
         if notify_on_failure_only:
             return  # success suppressed for this job
         title = f"{label}"
         body = f"✓ done in {_human_duration(elapsed_s)}"
+        # Successes use the configured arbitration setting.
+        critical_flag = False
     else:
         # Skip silent SystemExit / KeyboardInterrupt — the operator
         # initiated those, no need to alert.
@@ -224,8 +259,13 @@ def _emit_completion(
             f"✗ failed: {type(error).__name__}: "
             f"{str(error)[:120]} (after {_human_duration(elapsed_s)})"
         )
+        # Failures promote to critical when configured.
+        critical_flag = critical_on_failure
     try:
-        notify(title, body, url=url, metadata=metadata)
+        notify(
+            title, body, url=url, metadata=metadata,
+            arbitrate=arbitrate, topic=topic, critical=critical_flag,
+        )
     except Exception:
         # Never propagate notification failures back to the wrapped fn.
         logger.debug("notify_on_complete: dispatch failed", exc_info=True)

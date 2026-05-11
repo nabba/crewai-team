@@ -184,7 +184,7 @@ def arbitrate_notification(
             salience_score=1.0,
             inputs={"critical": True},
         )
-        _record(tag, topic, result)
+        _record(tag, topic, result, title=title, body=body)
         return result
 
     # 1. Welfare guard — if operator is in critical-valence state,
@@ -197,7 +197,7 @@ def arbitrate_notification(
                 salience_score=0.0,
                 inputs={"welfare_breaching": True},
             )
-            _record(tag, topic, result)
+            _record(tag, topic, result, title=title, body=body)
             return result
     except Exception:
         # Welfare check itself failed; don't restrict notifications.
@@ -222,7 +222,7 @@ def arbitrate_notification(
                     "suppression_rate": rate,
                 },
             )
-            _record(tag, topic, result)
+            _record(tag, topic, result, title=title, body=body)
             return result
     except Exception:
         pass
@@ -276,18 +276,33 @@ def arbitrate_notification(
         salience_score=score,
         inputs=inputs,
     )
-    _record(tag, topic, result)
+    _record(tag, topic, result, title=title, body=body)
     return result
 
 
-def _record(tag: str, topic: str | None, result: ArbitrationResult) -> None:
-    """Best-effort fatigue-store append. Never raises."""
+def _record(
+    tag: str,
+    topic: str | None,
+    result: ArbitrationResult,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+) -> None:
+    """Best-effort fatigue-store append. Never raises.
+
+    Q4.1: title + body are forwarded to ``record_event`` so the
+    ``queue_for_digest`` path retains the body for later digest
+    assembly. The fatigue helper retains them only for that decision
+    kind — send_now/suppress paths drop the body for storage discipline.
+    """
     try:
         record_event(
             tag=tag,
             topic=topic,
             decision=result.decision,
             salience_score=result.salience_score,
+            title=title,
+            body=body,
         )
     except Exception:
         logger.debug("notify.arbiter: fatigue record failed", exc_info=True)

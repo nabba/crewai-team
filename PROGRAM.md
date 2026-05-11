@@ -5772,3 +5772,120 @@ Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4 regression: **133 pass + 56 skip, 0 fail**.
 No TIER_IMMUTABLE files modified. SubIA wonder NOT bridged. Welfare
 envelope respected by arbiter (Q4#17). Goodhart guards on suppression
 rate + weekly operator review.
+
+## 41.4 2026-05-11 — Q4.1 wiring pass
+
+Round-2 audit on Q4 surfaced three gaps in what had just shipped:
+infrastructure was built but not actually wired into the runtime.
+This pass closes those gaps.
+
+### 41.4.1 — Tension autonomous detection (Q4.1 #1)
+
+The Q4 Phase A `tensions.detect_from_text` helper was shipped but
+nothing invoked it — tensions could only be created via /tensions add
+or REST. The user's framing was "tracking on his behalf" which
+implies autonomous detection.
+
+**`app/companion/tension_detector.py`** — new idle job:
+  * Scans `conversation_store` for user-role messages in the trailing
+    24h window (cursored by last_scanned_ts to avoid reprocessing).
+  * Runs `detect_from_text` against each message ≥30 chars.
+  * Per-pass cap of 5 detections (operator-friendly throttle on top
+    of the absolute 30-OPEN cap).
+  * Persistent state at `workspace/self_heal/tension_detector.json`.
+  * Registered as `tension-detector` LIGHT idle job (6h cadence).
+  * User-role ONLY — assistant replies never become tracked tensions
+    (assistant "wonderings" belong to SubIA wonder, deliberately
+    separate).
+
+### 41.4.2 — Queued-notification digest (Q4.1 #2)
+
+Q4 Phase C's arbiter could return `decision=queue_for_digest` but the
+body was thrown away — no assembler pulled queued items into any
+digest. That made "queue" semantically equivalent to "suppress" with
+worse metrics.
+
+**`app/notify/fatigue.py`** extended:
+  * `NotifyEvent` dataclass gains `title`, `body`, `digest_consumed_at`
+    fields. Only queue-for-digest decisions retain title+body (privacy
+    + storage discipline; send_now / suppress drop the body).
+  * New `pending_digest_entries(window_hours)` reads unconsumed queue
+    events in window.
+  * New `mark_digest_consumed(ts_set)` atomically marks events as
+    surfaced. Idempotent.
+
+**`app/notify/arbiter.py`** — `_record` helper now forwards
+`title`/`body` from the arbitrate call to `record_event` so the queue
+decision retains the body.
+
+**`app/life_companion/daily_briefing.py`**:
+  * `_gather_queued_notifications(n)` pulls pending queue entries +
+    returns the consume-ts list for the caller.
+  * Morning + evening composers refactored to return
+    `tuple[str, list[float]]` so `run()` can mark items consumed
+    ONLY after Signal-send success. Failed briefings preserve the
+    queue for the next cadence window.
+  * New "📨 Queued notifications (deferred by arbiter)" section in
+    morning + evening briefings (only shown when there's anything
+    pending).
+  * Weekly composer also returns the tuple but doesn't pull from
+    queue (daily covers that).
+
+### 41.4.3 — `arbitrate=` wired to real callers (Q4.1 #3)
+
+`notify(arbitrate=False)` default was correct for the initial ship
+(zero behavior change). This pass identifies which concrete callers
+should opt in.
+
+**`app/notify/api.py:notify_on_complete`** extended with
+`arbitrate=False / topic=None / critical_on_failure=False` kwargs:
+  * Success-pings honor `arbitrate`.
+  * Failures promote to `critical=True` when `critical_on_failure`
+    is set — for jobs whose failures are operationally meaningful
+    (workspace sync, scheduled tasks).
+  * Defaults preserve pre-Q4.1 behavior; opt-in per decoration.
+
+**Two concrete call sites wired**:
+
+  * `app/tools/schedule_manager_tools.py:_execute_scheduled_task` —
+    user-defined scheduled tasks (`/schedule add ...`). Routine
+    success pings ("daily weather", "morning poetry") arbitrate.
+    Failures bypass via `critical_on_failure=True` — operator must
+    notice when a schedule stopped running.
+  * `app/inbox/scheduler.py:_maybe_notify` — inbox file-drop events.
+    Successes + unrecognised arbitrate. Failures critical=True bypass
+    (operator-actionable).
+
+These are the only two notify call sites currently in the codebase
+that aren't either welfare/security-critical (where arbitration
+would be unsafe) or the suppression-review monitor itself. Future
+callers can opt in per-call.
+
+### 41.4.4 Tests + files touched
+
+```
+NEW backend:
+crewai-team/app/companion/tension_detector.py    # 6h-cadence idle job
+
+NEW tests:
+crewai-team/tests/test_q4_1_wiring.py            # 13 pass — all 3 gaps closed
+
+UPDATED backend:
+crewai-team/app/companion/loop.py                # +1 idle-job registration
+crewai-team/app/notify/fatigue.py                # title/body retention + consume API
+crewai-team/app/notify/arbiter.py                # _record forwards title/body
+crewai-team/app/notify/api.py                    # decorator gains arbitrate/topic/critical_on_failure
+crewai-team/app/life_companion/daily_briefing.py # tuple return + queue section + consume on success
+crewai-team/app/tools/schedule_manager_tools.py  # opt-in arbitrate=True
+crewai-team/app/inbox/scheduler.py               # opt-in arbitrate (when no failures)
+
+UPDATED docs:
+crewai-team/PROGRAM.md                           # this section
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4+Q4.1 regression: **146 pass + 56 skip, 0 fail**.
+
+No TIER_IMMUTABLE files modified. After Q4.1, the Q4 layer is
+**actually wired**: tensions get detected autonomously, queued
+notifications surface in the daily digest, and the arbiter has real
+callers exercising its decision tree.
