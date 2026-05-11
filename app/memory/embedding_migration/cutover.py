@@ -150,6 +150,42 @@ def _build_new_content(plan) -> tuple[str, str]:
     return old_content, new_content
 
 
+# ── Pre-cutover safety export (PROGRAM §40.2 Item 2) ─────────────────────
+
+
+def _run_pre_cutover_export(plan_id: str):
+    """Best-effort: run a fresh DR export labelled with the plan_id.
+    Returns the tarball Path on success, None on failure (which is
+    non-fatal — the verifier already required a recent backup so the
+    operator is never bare-naked)."""
+    try:
+        from app.dr.export_kbs import export
+        label = f"pre_cutover_{plan_id}"
+        # Truncate label to a filesystem-friendly length.
+        safe_label = "".join(
+            ch for ch in label if ch.isalnum() or ch in "._-"
+        )[:64]
+        tarball, manifest = export(label=safe_label)
+        if manifest.ok:
+            logger.info(
+                "cutover: pre-cutover export ok → %s", tarball,
+            )
+            return tarball
+        else:
+            logger.warning(
+                "cutover: pre-cutover export reported errors: %s",
+                manifest.errors[:3],
+            )
+            return tarball  # partial tarball still useful
+    except Exception:
+        logger.debug(
+            "cutover: pre-cutover export failed — verifier-confirmed "
+            "backup still available as fallback",
+            exc_info=True,
+        )
+        return None
+
+
 # ── Step 1: propose the Tier-3 amendment ─────────────────────────────────
 
 
@@ -174,6 +210,18 @@ def propose_cutover() -> CutoverProposalResult:
             f"Resolve before proposing cutover."
         )
         return result
+
+    # Q3.2 (PROGRAM §40.2 Item 2) — pre-cutover fresh export. The
+    # verifier already requires a DR backup ≤7 days old, but a backup
+    # from a week ago doesn't capture the most-recent shadow-read
+    # ground truth. We run a fresh export labelled with the plan_id
+    # before filing the Tier-3 proposal — so the operator has a
+    # POINT-IN-TIME-of-cutover snapshot if the swap goes sideways.
+    # Failure here is non-fatal: we still propose the amendment; the
+    # operator just won't have the fresh tarball as a safety net.
+    pre_cutover_tarball = _run_pre_cutover_export(plan.plan_id)
+    if pre_cutover_tarball:
+        result.verify_report["pre_cutover_tarball"] = str(pre_cutover_tarball)
 
     # Mark cutover requested in counters.
     cur = state_mod.get_state()
@@ -411,6 +459,15 @@ def post_apply_hook() -> CutoverApplyResult:
     # high-stakes event.
     _publish_substrate_migration_to_gw(plan, len(archived), rows_swapped)
 
+    # Q3.2 — restart-required claim + loud Signal alert. The running
+    # Python interpreter still holds the OLD ``_EMBED_DIM`` until
+    # process restart; without this surface, retrieves between cutover
+    # and restart will dimension-mismatch. The startup self-check (in
+    # `app/main.py`) consults the claim queue and refuses to serve
+    # retrievals while a restart_required claim is outstanding for
+    # the cutover whose source != live module state.
+    _claim_restart_after_cutover(plan)
+
     return CutoverApplyResult(
         plan_id=plan.plan_id,
         collections_swapped=len(archived),
@@ -470,3 +527,59 @@ def _publish_substrate_migration_to_gw(
         )
     except Exception:
         logger.debug("cutover: GW publish failed", exc_info=True)
+
+
+def _claim_restart_after_cutover(plan) -> None:
+    """File a restart-required claim + send a loud operator alert.
+
+    After `post_apply_hook` swaps the chromadb collections, the running
+    interpreter STILL holds the old ``_EMBED_DIM`` module constant.
+    Until restart, ``chromadb_manager.get_embed_dim()`` returns the
+    pre-cutover value while the data on disk has post-cutover vectors.
+    Without explicit operator action, the next retrieve will
+    dim-mismatch.
+
+    This is Goodhart-resistant by construction — we DON'T silently
+    reload the module (which would mask other state assumptions),
+    DON'T auto-restart (which is operator territory), and DON'T fail
+    silently. We loudly tell the operator and let the gateway's
+    startup self-check enforce.
+    """
+    claim_id = f"embedding_migration_cutover::{plan.plan_id}::restart_required"
+    from datetime import datetime, timezone
+    try:
+        from app.runtime_settings import append_post_amendment_restart_claim
+        append_post_amendment_restart_claim({
+            "id": claim_id,
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "source": "embedding_migration.cutover",
+            "claim_kind": "restart_required",
+            "reason": (
+                f"Embedding-substrate migration {plan.plan_id} applied. "
+                f"Running interpreter still holds _EMBED_DIM={plan.source.dim}; "
+                f"disk has {plan.target.dim}-dim vectors. Restart gateway to "
+                f"reload chromadb_manager."
+            ),
+            "tier3_proposal_id": None,    # filled in if known by caller
+            "expected_embed_dim": plan.target.dim,
+            "plan_id": plan.plan_id,
+        })
+    except Exception:
+        logger.debug(
+            "cutover: restart-claim append failed", exc_info=True,
+        )
+    # Loud Signal alert — separate from the GW publish (which is
+    # observational); this one is operational.
+    try:
+        from app.life_companion._common import send_signal_alert
+        send_signal_alert(
+            f"⚠️ Substrate migration applied — RESTART REQUIRED.\n"
+            f"Plan: {plan.plan_id}\n"
+            f"Live data is now {plan.target.dim}-dim; running gateway "
+            f"still holds {plan.source.dim}. Retrievals will dim-mismatch "
+            f"until restart. After restart, the startup self-check will "
+            f"clear the claim automatically.",
+            tag="embedding_migration_restart_required",
+        )
+    except Exception:
+        logger.debug("cutover: Signal alert failed", exc_info=True)

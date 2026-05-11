@@ -197,6 +197,89 @@ def _write_response_md(full_text: str, user_question: str) -> str | None:
     return _write_response_md_impl(full_text, user_question, settings)
 
 
+# ── Q3.2 (PROGRAM §40.2) — restart-claim self-check ──────────────────────
+
+
+def _process_post_amendment_restart_claims() -> None:
+    """At every boot: walk the post-amendment-restart-claim queue.
+    For each claim, decide if the current process satisfies it. If
+    yes, clear it. If no (and any remain), log a loud warning, send
+    a Signal, and let the operator know they're running stale.
+
+    The mechanism is generic so future Tier-3 amendments with hot-
+    reload-incompatible effects can use it (just write a checker
+    that looks at the live module state vs the claim's expected
+    state).
+    """
+    try:
+        from app.runtime_settings import (
+            get_post_amendment_restart_claims,
+            clear_post_amendment_restart_claims,
+        )
+    except Exception:
+        return
+
+    claims = get_post_amendment_restart_claims()
+    if not claims:
+        return
+
+    satisfied_ids: list[str] = []
+    unsatisfied: list[dict] = []
+
+    for claim in claims:
+        kind = claim.get("claim_kind", "")
+        source = claim.get("source", "")
+        if (
+            kind == "restart_required"
+            and source == "embedding_migration.cutover"
+        ):
+            # Satisfied when the live ``_EMBED_DIM`` matches the
+            # plan's target dim — i.e. the running process is
+            # already reading the post-cutover source.
+            expected = claim.get("expected_embed_dim")
+            try:
+                from app.memory.chromadb_manager import get_embed_dim
+                live = get_embed_dim()
+                if expected is not None and int(expected) == int(live):
+                    satisfied_ids.append(claim["id"])
+                    continue
+            except Exception:
+                pass
+            unsatisfied.append(claim)
+        else:
+            # Unknown claim kinds are kept (operator gets visibility);
+            # this lets the mechanism be forward-compatible without a
+            # release-coupled enum.
+            unsatisfied.append(claim)
+
+    if satisfied_ids:
+        cleared = clear_post_amendment_restart_claims(ids=satisfied_ids)
+        logger.info(
+            "post-amendment restart claims: %d satisfied + cleared", cleared,
+        )
+
+    if unsatisfied:
+        msg_lines = [
+            f"⚠️ {len(unsatisfied)} post-amendment restart claim(s) "
+            f"outstanding after boot — system is running STALE relative "
+            f"to a recently-applied Tier-3 amendment:",
+        ]
+        for c in unsatisfied[:5]:
+            msg_lines.append(
+                f"  • [{c.get('claim_kind', '?')}] {c.get('source', '?')}: "
+                f"{c.get('reason', '?')[:160]}"
+            )
+        if len(unsatisfied) > 5:
+            msg_lines.append(f"  • …and {len(unsatisfied) - 5} more")
+        msg = "\n".join(msg_lines)
+        logger.warning(msg)
+        try:
+            from app.life_companion._common import send_signal_alert
+            send_signal_alert(msg, tag="post_amendment_restart")
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.crews.self_improvement_crew import SelfImprovementCrew
@@ -216,6 +299,21 @@ async def lifespan(app: FastAPI):
         )
 
     _configure_audit_log()
+
+    # ── Q3.2 (PROGRAM §40.2 Item 1) — Tier-3 post-amendment restart claims.
+    # When a Tier-3 amendment with restart-effect-on-running-process
+    # was applied to disk in the previous boot but the gateway never
+    # restarted, the restart-claim queue carries the operator's debt.
+    # A boot SATISFIES claims only when the live module state matches
+    # what the claim demands; satisfied claims are cleared so the
+    # banner goes away. Unsatisfied claims stay and re-alert.
+    try:
+        _process_post_amendment_restart_claims()
+    except Exception:
+        logger.exception(
+            "main: post-amendment restart-claim self-check raised; "
+            "claims left in place for operator visibility",
+        )
 
     # Validate cron expressions early so misconfiguration fails fast
     try:

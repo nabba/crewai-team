@@ -184,12 +184,192 @@ def run() -> None:
     # and skipped. Failure-isolated.
     _publish_hygiene_outcome_to_gw(len(per_file), freed_total)
 
+    # Q3.2 Item 5 — HNSW orphan segment detection. Each chromadb
+    # collection's HNSW data lives in a per-collection UUID directory
+    # next to chroma.sqlite3. Orphan dirs (segment dirs present on
+    # disk but not referenced by the collections table) accumulate
+    # from crashes mid-write. We don't auto-delete — that's destructive
+    # and chromadb may legitimately know about dirs we don't expect.
+    # We only ALERT so the operator can run the rebuild manually.
+    orphan_findings = _scan_for_orphan_segments(sqlites)
+    if orphan_findings:
+        _alert_orphan_segments(orphan_findings)
+
+    # Q3.2 Item 6 — reclaim trend. If we keep freeing more bytes each
+    # pass, the SQLite freelist isn't the bottleneck — HNSW segments
+    # need a full rebuild. Compare current freed_total against the
+    # last 4 passes; alert when reclaim grows ≥2× the rolling median.
+    trend = _update_and_check_reclaim_trend(state, freed_total)
+    if trend.get("alert"):
+        _alert_growing_reclaim(trend)
+
     state["last_summary"] = {
         "files": len(per_file),
         "freed_bytes_total": freed_total,
         "per_file": per_file,
+        "orphan_findings": orphan_findings,
+        "reclaim_trend": trend,
     }
     write_state_json(_STATE_FILE, state)
+
+
+def _scan_for_orphan_segments(sqlites: list[Path]) -> list[dict]:
+    """For each chroma.sqlite3, find UUID-named subdirectories that
+    aren't referenced by the ``collections`` table. Returns one
+    summary dict per chroma file with non-empty findings.
+
+    Best-effort: SQLite read errors / unexpected schema variants
+    silently skip that file."""
+    findings: list[dict] = []
+    for db_path in sqlites:
+        kb_dir = db_path.parent
+        try:
+            # 1. Collect on-disk UUID dirs.
+            disk_uuids: set[str] = set()
+            for sub in kb_dir.iterdir():
+                if not sub.is_dir():
+                    continue
+                name = sub.name
+                # ChromaDB collection dirs are UUID4. Cheap filter:
+                # 36 chars, 4 dashes at canonical positions.
+                if (
+                    len(name) == 36
+                    and name[8] == "-" and name[13] == "-"
+                    and name[18] == "-" and name[23] == "-"
+                ):
+                    disk_uuids.add(name)
+            if not disk_uuids:
+                continue
+            # 2. Collect known collection IDs from SQLite.
+            known: set[str] = set()
+            try:
+                conn = sqlite3.connect(str(db_path), timeout=10.0)
+                try:
+                    cur = conn.execute("SELECT id FROM collections")
+                    for (cid,) in cur.fetchall():
+                        if isinstance(cid, str):
+                            known.add(cid)
+                finally:
+                    conn.close()
+            except sqlite3.OperationalError:
+                # Unknown schema variant — skip silently.
+                continue
+            orphans = sorted(disk_uuids - known)
+            if not orphans:
+                continue
+            # 3. Compute orphan disk usage for the alert weight.
+            orphan_bytes = 0
+            for u in orphans:
+                p = kb_dir / u
+                if not p.is_dir():
+                    continue
+                for f in p.rglob("*"):
+                    try:
+                        if f.is_file():
+                            orphan_bytes += f.stat().st_size
+                    except OSError:
+                        continue
+            findings.append({
+                "kb": kb_dir.name,
+                "orphan_count": len(orphans),
+                "orphan_uuids": orphans[:10],   # truncate for the report
+                "orphan_bytes": orphan_bytes,
+            })
+        except Exception:
+            logger.debug(
+                "chromadb_hygiene: orphan scan failed for %s",
+                db_path, exc_info=True,
+            )
+    return findings
+
+
+def _alert_orphan_segments(findings: list[dict]) -> None:
+    """Single consolidated alert for all KBs with orphans."""
+    total_orphans = sum(f["orphan_count"] for f in findings)
+    total_bytes = sum(f["orphan_bytes"] for f in findings)
+    if total_orphans == 0:
+        return
+    # Suppress noise: only alert if orphan disk usage is meaningful.
+    if total_bytes < 10 * 1024 * 1024:    # <10 MB → ignore
+        return
+    per_kb = ", ".join(
+        f"{f['kb']}: {f['orphan_count']} orphans / "
+        f"{f['orphan_bytes'] / 1024 / 1024:.1f} MB"
+        for f in findings
+    )
+    try:
+        send_signal_alert(
+            f"🗂 ChromaDB orphan segments detected — "
+            f"{total_orphans} orphans, "
+            f"{total_bytes / 1024 / 1024:.1f} MB total. {per_kb}. "
+            f"Run `python -m app.memory.chromadb_rebuild --kb <kb> "
+            f"--collection <name>` per affected collection to reclaim.",
+            tag="chromadb_hygiene_orphans",
+        )
+    except Exception:
+        logger.debug(
+            "chromadb_hygiene: orphan alert failed", exc_info=True,
+        )
+
+
+def _update_and_check_reclaim_trend(
+    state: dict, current_freed: int,
+) -> dict:
+    """Maintain a rolling 4-pass history of reclaim sizes. Alert if
+    the current pass freed ≥2× the median of the prior passes — a
+    signal that SQLite VACUUM isn't enough and a full collection
+    rebuild would reclaim much more.
+
+    Returns ``{history: [...], median_prior, alert: bool, reason}``.
+    """
+    history = list(state.get("reclaim_history") or [])
+    history.append(int(current_freed))
+    history = history[-5:]   # keep last 5 (4 prior + current)
+    state["reclaim_history"] = history
+    if len(history) < 4:
+        return {
+            "history": history,
+            "median_prior": None,
+            "alert": False,
+            "reason": "not enough history yet",
+        }
+    prior = sorted(history[:-1])
+    median_prior = prior[len(prior) // 2]
+    if median_prior < 10 * 1024 * 1024:   # ignore tiny baselines
+        return {
+            "history": history,
+            "median_prior": median_prior,
+            "alert": False,
+            "reason": "baseline reclaim too small to be meaningful",
+        }
+    alert = current_freed >= 2 * median_prior
+    return {
+        "history": history,
+        "median_prior": median_prior,
+        "current": current_freed,
+        "alert": alert,
+        "reason": (
+            f"current {current_freed / 1024 / 1024:.1f} MB ≥ 2× "
+            f"prior-median {median_prior / 1024 / 1024:.1f} MB"
+            if alert else "within normal range"
+        ),
+    }
+
+
+def _alert_growing_reclaim(trend: dict) -> None:
+    try:
+        send_signal_alert(
+            f"📈 ChromaDB hygiene reclaim growing — current pass freed "
+            f"{trend['current'] / 1024 / 1024:.1f} MB vs prior-median "
+            f"{trend['median_prior'] / 1024 / 1024:.1f} MB. SQLite "
+            f"VACUUM alone isn't keeping up; consider a full collection "
+            f"rebuild via `python -m app.memory.chromadb_rebuild`.",
+            tag="chromadb_hygiene_growing_reclaim",
+        )
+    except Exception:
+        logger.debug(
+            "chromadb_hygiene: trend alert failed", exc_info=True,
+        )
 
 
 def _publish_hygiene_outcome_to_gw(files: int, freed_bytes: int) -> None:

@@ -128,6 +128,29 @@ def _defaults() -> dict[str, Any]:
         "embedding_migration_shadow_read_enabled": False,
         "embedding_migration_cutover_enabled": False,
         "embedding_migration_state": {},
+        # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
+        # 2026-05-11). When a Tier-3 amendment applies a code change
+        # whose effect requires reloading the running interpreter
+        # (e.g. ``_EMBED_DIM`` substrate migration; future soul edits
+        # whose hooks load at import), the amendment's post-apply
+        # path appends a claim here. The gateway's startup self-check
+        # consults this list; un-cleared claims surface as a loud
+        # banner + Signal alert so the operator knows a restart is
+        # the only thing that brings the new behavior live.
+        #
+        # Schema per claim:
+        #   {
+        #     "id": "<unique-id>",
+        #     "issued_at": ISO-8601 UTC,
+        #     "reason": "<short operator-readable>",
+        #     "source": "<subsystem>",      # e.g. "embedding_migration.cutover"
+        #     "tier3_proposal_id": "<id>",  # optional cross-link
+        #     "claim_kind": "<kind>",       # e.g. "restart_required"
+        #   }
+        #
+        # Cleared (popped) by the gateway after a confirmed boot that
+        # observed the amendment in effect.
+        "post_amendment_restart_claims": [],
     }
 
 
@@ -763,3 +786,60 @@ def set_embedding_migration_state(value: dict[str, Any]) -> None:
     if not isinstance(value, dict):
         raise TypeError("embedding_migration_state must be a dict")
     _update({"embedding_migration_state": dict(value)})
+
+
+# ── Post-amendment restart claims (PROGRAM §40.2) ────────────────────────
+
+
+def get_post_amendment_restart_claims() -> list[dict[str, Any]]:
+    """Return all outstanding restart claims. List of dicts; see the
+    schema in ``_defaults``. Empty list = no pending restart."""
+    raw = _ensure_initialized().get("post_amendment_restart_claims")
+    if not isinstance(raw, list):
+        return []
+    return [dict(c) for c in raw if isinstance(c, dict)]
+
+
+def append_post_amendment_restart_claim(claim: dict[str, Any]) -> None:
+    """Append one claim. Idempotent on ``claim["id"]``: a claim with an
+    id that already exists is silently dropped. The caller is
+    responsible for generating a stable id (e.g. tier3_proposal_id +
+    claim_kind)."""
+    if not isinstance(claim, dict):
+        raise TypeError("claim must be a dict")
+    if not claim.get("id"):
+        raise ValueError("claim must have a non-empty id")
+    with _lock:
+        state = _cache if _cache is not None else _load()
+        existing = list(state.get("post_amendment_restart_claims") or [])
+        ids = {c.get("id") for c in existing if isinstance(c, dict)}
+        if claim["id"] in ids:
+            return
+        existing.append(dict(claim))
+        state["post_amendment_restart_claims"] = existing
+        _save(state)
+        globals().update({"_cache": state})
+
+
+def clear_post_amendment_restart_claims(
+    ids: list[str] | None = None,
+) -> int:
+    """Drop claims. When ``ids`` is None, clears ALL — the gateway
+    calls this after a confirmed boot that satisfied every outstanding
+    claim. When ``ids`` is a list, drops only the matching ones (so
+    a partial-satisfaction flow can clear what it knows is live).
+    Returns the number of claims removed."""
+    with _lock:
+        state = _cache if _cache is not None else _load()
+        existing = list(state.get("post_amendment_restart_claims") or [])
+        if ids is None:
+            removed = len(existing)
+            state["post_amendment_restart_claims"] = []
+        else:
+            id_set = set(ids)
+            keep = [c for c in existing if c.get("id") not in id_set]
+            removed = len(existing) - len(keep)
+            state["post_amendment_restart_claims"] = keep
+        _save(state)
+        globals().update({"_cache": state})
+        return removed

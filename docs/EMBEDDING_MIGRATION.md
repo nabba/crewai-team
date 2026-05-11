@@ -267,6 +267,77 @@ Broadening the allowlist requires implementing the corresponding
 dual-write path AND verifying end-to-end. Plans that hand-edit the
 on-disk JSON to bypass the validator are rejected at next load.
 
+
+## ⚠️ Multi-layer migration risk (Q3.2 — 2026-05-11)
+
+`_EMBED_DIM` is a SYSTEM-WIDE invariant. It governs the dimension of
+every embedding the system holds — across **at least four storage
+layers**:
+
+| Layer | Where | Migration status |
+|------|-------|------------------|
+| ChromaDB (`memory`) | `workspace/memory/chroma.sqlite3` + segment dirs | **Wired** in this framework |
+| ChromaDB (other KBs) | `workspace/{philosophy,episteme,knowledge,experiential,tensions,aesthetics}/chroma.sqlite3` | **Refused** by plan validator |
+| pgvector | Postgres tables `agent_experiences`, `beliefs`, `workspace_items`, Mem0-managed columns | **NOT wired** — plan validator refuses |
+| Neo4j belief graph | Belief node embeddings (synced via outbox from pgvector) | **Inherits from pgvector** |
+
+### Why this matters
+
+A real cutover that ONLY migrates `memory` chromadb but leaves the
+other layers at the source dim creates **dimension-mismatch corruption
+at retrieval time**. The system's RAG / memory / belief paths often
+JOIN across layers (e.g. agent retrieves from chromadb AND from Mem0
+in the same call). After cutover, those joins compare 1024-dim
+vectors against 768-dim vectors — silent garbage, not an error.
+
+The plan-validator allowlist refuses non-memory targets to PREVENT
+the operator from accidentally firing a partial cutover. **The
+correct way to widen the migration is to implement each layer's
+dual-write path first, then add it to the allowlist** — not the
+other way around.
+
+### Sequencing for a future real migration
+
+When the operator actually wants to migrate `_EMBED_DIM`:
+
+  1. **Stop**. Confirm the new model is available system-wide on the
+     relevant providers.
+  2. **Implement pgvector dual-write** in a new
+     `app/memory/embedding_migration/pgvector_dual_write.py` module
+     that mirrors `dual_write.py` but operates on Postgres rows
+     instead of chromadb collections. Add a backfill driver.
+  3. **Implement per-KB chromadb dual-write** broadening
+     `SUPPORTED_CHROMADB_KBS`. Each KB's manager module needs the
+     same `store()`/`retrieve()` hooks `chromadb_manager` already has.
+  4. **Coordinate cutover across layers** — the Tier-3 amendment
+     must edit `_EMBED_DIM` AND any per-layer constants atomically
+     (one combined amendment, not separate ones).
+  5. **Post-cutover restart claim** (Q3.2) fires regardless; the
+     gateway must restart before reads will work against the new
+     substrate.
+
+Until items 2–4 are implemented, the framework is honest about its
+narrow coverage by refusing un-implemented plans at the door.
+
+### Post-cutover restart requirement (Q3.2 — 2026-05-11)
+
+`_EMBED_DIM` is a module-level Python constant. After the Tier-3
+amendment lands the new value on disk, the running gateway interpreter
+**still holds the old value in memory** until restart. The cutover's
+`post_apply_hook` enqueues a `restart_required` claim into
+`runtime_settings.post_amendment_restart_claims` AND emits a loud
+Signal alert. The gateway's startup self-check (in `app/main.py`)
+walks the claim queue at every boot:
+
+  * If the live `chromadb_manager._EMBED_DIM` matches the claim's
+    `expected_embed_dim`, the claim is **satisfied + cleared**.
+  * Otherwise the claim stays and a warning re-alerts.
+
+Until restart, retrievals will dim-mismatch — they're not silent
+errors, but they ARE failures. Plan the cutover in a maintenance
+window so the operator can restart immediately after the Tier-3
+amendment APPLIED state.
+
 ## What the framework does NOT do
 
 * **Migrate pgvector columns.** The pgvector path is declared in the

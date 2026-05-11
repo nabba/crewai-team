@@ -5250,3 +5250,143 @@ still routes through the Tier-3 amendment protocol (no bypass).
 Plan-validator changes make the framework HONEST about what it can
 serve today — pgvector / non-memory KBs are explicitly out of scope
 until their dual-write paths are wired in a future pass.
+
+## 40.2 2026-05-11 — Q3.2 third-pass cleanup
+
+Third ultrathink pass after Q3 + Q3.1 surfaced subtler issues. This
+pass closes them. No correctness defects shipped; mostly closing
+edge-cases and adding operator-facing safety nets.
+
+### 40.2.1 Generic restart-claim mechanism (Items 1 + 9)
+
+When a Tier-3 amendment lands a source-file edit whose effect requires
+reloading the running interpreter (e.g. `_EMBED_DIM` is a module-level
+constant), the running process still holds the OLD value until restart.
+Without a coordinated signal, retrievals between cutover and restart
+would silently dim-mismatch.
+
+  * **`app/runtime_settings.py`** — new `post_amendment_restart_claims`
+    queue + `get_/append_/clear_post_amendment_restart_claim*` helpers.
+    Append is idempotent on `claim["id"]`; clear takes optional list.
+  * **`app/main.py:_process_post_amendment_restart_claims`** —
+    startup self-check. Walks the queue at every boot; for each claim,
+    decides if the live process state satisfies it. Satisfied claims
+    clear; unsatisfied stay + re-alert via Signal. Generic so future
+    amendment kinds can use it.
+  * **`embedding_migration/cutover.py:_claim_restart_after_cutover`** —
+    files a `restart_required` claim with `expected_embed_dim` after
+    a successful post-apply swap. Loud Signal alert separately.
+
+### 40.2.2 Pre-cutover auto-export (Item 2)
+
+`propose_cutover` now runs a fresh `app.dr.export_kbs.export(label=…)`
+as its first action AFTER verification passes. Labelled
+`pre_cutover_<plan_id>` so the operator can identify the exact
+point-in-time snapshot if they need to roll back. Non-fatal on failure
+(the verifier already required a recent backup; this is belt-and-
+suspenders).
+
+### 40.2.3 Cross-rotation reader/writer flock (Item 3)
+
+`append_with_archive_rotate` and `read_archive` now coordinate via a
+POSIX advisory lock on a sidecar `.{name}.rotation_lock` file:
+
+  * Rotator holds **LOCK_EX** during the archive-append + atomic live-
+    truncate critical section.
+  * Readers hold **LOCK_SH** while iterating across archive + live.
+
+Without this lock, a reader chaining `read_archive(include_live=True)`
+during a rotation pass could observe the rotated lines BOTH in the
+archive (just-appended) AND in the live file (not-yet-truncated) —
+yielding silent duplicates. Window is microseconds in single-process
+gateways, but multi-process readers (dashboard / decentered probe /
+healing monitors) collided. The lock is best-effort: platforms
+without fcntl fall through to pre-Q3.2 behavior; multiple shared
+readers can hold simultaneously; writer-vs-reader serialises briefly.
+
+### 40.2.4 Welfare audit access — verified, no action (Item 4)
+
+Round-3 audit suspected `monotonic_drift_check` bypassed `read_audit`.
+Verified: `monotonic_drift_check` reads its own data source
+(`l9_snapshots.jsonl`, daily-cadence ≤365 entries/year → no archive
+rotation candidate), NOT the welfare audit. All welfare-audit
+consumers (`affect/api.py:welfare_audit`, `calibration.py:read_audit`,
+`affect/welfare.py:read_audit` itself) go through the Q3.1 archive-
+aware path. No bug; documented as verified-clean.
+
+### 40.2.5 ChromaDB HNSW orphan detection (Item 5)
+
+`chromadb_hygiene.run` now scans each KB directory for UUID-named
+subdirectories that aren't referenced by the SQLite `collections`
+table — orphan segment dirs from crashed writes / failed rebuilds.
+Reports per-KB orphan count + bytes. Alert threshold: ≥10 MB of
+orphans across all KBs (suppress noise on negligible findings).
+Operator-actionable via `chromadb_rebuild` per affected collection.
+Never auto-deletes — destructive op stays operator-initiated.
+
+### 40.2.6 ChromaDB reclaim trend tracking (Item 6)
+
+Each hygiene pass records its `freed_total` in a rolling 4-pass
+history. If the current pass reclaims ≥2× the prior-window median
+AND the baseline is ≥10 MB, an alert fires: SQLite VACUUM alone isn't
+keeping pace with whatever's churning the segment store; full
+collection rebuild would reclaim much more. State persists in
+`workspace/healing/chromadb_hygiene.json`.
+
+### 40.2.7 Annual reflection coverage — verified (Item 7)
+
+`summarise_drift.by_kind` is a `Counter` over `event.kind` — dynamic,
+no hardcoded kind list. The new `substrate_migration` event kind
+surfaces automatically in `wiki/self/value_reflections/<year>.md`
+without code changes. Verified with a regression test.
+
+### 40.2.8 Multi-layer migration documentation (Item 8)
+
+`docs/EMBEDDING_MIGRATION.md` extended with explicit warnings about
+the 4-layer migration surface: ChromaDB (memory) is wired, ChromaDB
+(other KBs) refused, pgvector/Mem0 not wired, Neo4j inherits from
+pgvector. Documents that the chromadb-only migration is correct ONLY
+because the plan-validator allowlist prevents partial cutovers; the
+honest sequencing for a real future migration is explicit.
+
+### 40.2.9 Tests
+
+`tests/test_q3_2_cleanup.py` — 21 tests covering restart-claim queue
+(append/clear/dedup/source-level), pre-cutover export hook, flock
+helper, shared/exclusive lock concurrency, rotation under lock, HNSW
+orphan scanning (found / quiet / non-UUID dirs), reclaim trend
+(no-alert before baseline / 2× spike / tiny baseline), annual
+reflection drift coverage. 17 pass + 4 skip (pydantic_settings dep).
+
+Q1+Q2+Q3+Q3.1+Q3.2 + affect regression: **90 pass + 56 skip, 0 fail.**
+
+### 40.2.10 Files touched
+
+```
+UPDATED backend:
+crewai-team/app/runtime_settings.py                  # post_amendment_restart_claims + 3 helpers
+crewai-team/app/main.py                              # _process_post_amendment_restart_claims startup check
+crewai-team/app/memory/embedding_migration/cutover.py # pre-cutover export + restart claim + Signal
+crewai-team/app/utils/jsonl_retention.py             # flock-coordinated rotation + read
+crewai-team/app/healing/monitors/chromadb_hygiene.py # orphan scan + reclaim trend
+
+NEW tests:
+crewai-team/tests/test_q3_2_cleanup.py               # 17 pass + 4 skip
+
+UPDATED docs:
+crewai-team/docs/EMBEDDING_MIGRATION.md              # multi-layer migration warning + restart requirement
+crewai-team/PROGRAM.md                               # this section
+```
+
+No TIER_IMMUTABLE files modified. The framework remains observational
++ revertible at every layer Q3.2 touched.
+
+### 40.2.11 Honest assessment
+
+After three ship cycles (Q3 + Q3.1 + Q3.2), the multi-year hygiene
+work has crossed into diminishing returns. The remaining open items —
+log-linear cost forecast, yearly archive consolidation, Postgres
+auto-restore in DR, seasonality in anomaly detection, full smoke-boot
+DR drill — are polish + future-readiness, not correctness. Further
+ultrathink passes will surface ideas at the same noise level as we'd
+get from random walking the codebase. **Q3 is done.**

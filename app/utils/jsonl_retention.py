@@ -27,12 +27,84 @@ rows is preferable to crashing a writer because the disk filled.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
 logger = logging.getLogger(__name__)
+
+
+# ── Cross-rotation reader/writer lock (PROGRAM §40.2 Item 3) ─────────────
+#
+# Without a coordinated lock, a reader chaining
+# ``read_archive(include_live=True)`` can briefly see lines BOTH in the
+# archive (just-appended) AND in the live file (not-yet-truncated)
+# during a rotation pass — yielding duplicates. The window is
+# microseconds in single-process gateways, but multi-process readers
+# (dashboard poll, decentered probe, healing monitors) DO collide.
+#
+# We use a POSIX advisory lock on a sidecar ``.rotation_lock`` file
+# adjacent to the JSONL. The rotator takes LOCK_EX during the
+# archive-write + live-truncate critical section; readers take LOCK_SH
+# while iterating across archive + live. The lock is best-effort —
+# platforms without fcntl (Windows) silently fall through to the
+# pre-Q3.2 behavior. macOS + Linux + Docker Linux all support it.
+
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
+
+def _lock_path_for(path: Path) -> Path:
+    """Sidecar lock-file path. Adjacent to the JSONL so the same
+    filesystem permissions apply. Hidden by ``.`` prefix."""
+    return path.parent / f".{path.name}.rotation_lock"
+
+
+@contextlib.contextmanager
+def _rotation_lock(path: Path, exclusive: bool):
+    """Acquire LOCK_EX (writer) or LOCK_SH (reader) on the sidecar
+    lock file for ``path``. Best-effort: silently degrades to no-op
+    when fcntl isn't available, when the lock file can't be opened,
+    or when the lock acquisition fails. The rotator IS still
+    correctness-isolated by the in-process ``_LOCK`` writers hold;
+    this lock additionally guards cross-process readers."""
+    if not _HAS_FCNTL:
+        yield
+        return
+    lp = _lock_path_for(path)
+    try:
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        # Open in read+write+create mode; fcntl works on any open fd.
+        fd = os.open(str(lp), os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        yield
+        return
+    try:
+        op = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        try:
+            fcntl.flock(fd, op)
+        except OSError:
+            # Couldn't take the lock — degrade gracefully.
+            yield
+            return
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 def cap_jsonl(path: Path | str, max_lines: int) -> int:
@@ -166,28 +238,33 @@ def append_with_archive_rotate(
     now = _now or datetime.now(timezone.utc)
     arch_path = arch_dir / _archive_name(now, p.name)
 
-    # Append-rotate: archive file accumulates OLDEST-first within
-    # its month. Then atomic-rewrite the live file with the kept tail.
-    try:
-        with arch_path.open("a", encoding="utf-8") as f:
-            f.writelines(rotate_lines)
-    except OSError:
-        logger.debug(
-            "jsonl_retention: archive write failed for %s → %s",
-            p, arch_path, exc_info=True,
-        )
-        return
+    # Q3.2 (PROGRAM §40.2 Item 3) — exclusive lock around archive
+    # append + live truncate, so cross-process readers can't observe
+    # the lines in BOTH archive and live simultaneously and double-
+    # count them.
+    with _rotation_lock(p, exclusive=True):
+        # Append-rotate: archive file accumulates OLDEST-first within
+        # its month. Then atomic-rewrite the live file with the kept tail.
+        try:
+            with arch_path.open("a", encoding="utf-8") as f:
+                f.writelines(rotate_lines)
+        except OSError:
+            logger.debug(
+                "jsonl_retention: archive write failed for %s → %s",
+                p, arch_path, exc_info=True,
+            )
+            return
 
-    try:
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_text("".join(keep_lines), encoding="utf-8")
-        tmp.replace(p)
-    except OSError:
-        logger.debug(
-            "jsonl_retention: live-rewrite failed for %s after archive write",
-            p, exc_info=True,
-        )
-        return
+        try:
+            tmp = p.with_suffix(p.suffix + ".tmp")
+            tmp.write_text("".join(keep_lines), encoding="utf-8")
+            tmp.replace(p)
+        except OSError:
+            logger.debug(
+                "jsonl_retention: live-rewrite failed for %s after archive write",
+                p, exc_info=True,
+            )
+            return
 
     logger.info(
         "jsonl_retention: rotated %d lines from %s → %s (kept %d live)",
@@ -215,22 +292,27 @@ def read_archive(
     arch_dir = (
         Path(archive_dir) if archive_dir is not None else _archive_dir_for(p)
     )
-    # Walk archives in chronological order. Filename is
-    # ``YYYY-MM_<basename>`` so plain string sort is chronological.
-    if arch_dir.exists():
-        archives = sorted(arch_dir.glob(f"*_{p.name}"))
-        for arch_path in archives:
+    # Q3.2 (PROGRAM §40.2 Item 3) — shared lock around the entire
+    # archive+live read so we can't be interleaved with a rotation in
+    # progress. The rotator's exclusive lock will serialise us briefly.
+    # The lock is best-effort across platforms.
+    with _rotation_lock(p, exclusive=False):
+        # Walk archives in chronological order. Filename is
+        # ``YYYY-MM_<basename>`` so plain string sort is chronological.
+        if arch_dir.exists():
+            archives = sorted(arch_dir.glob(f"*_{p.name}"))
+            for arch_path in archives:
+                try:
+                    with arch_path.open("r", encoding="utf-8") as f:
+                        yield from f
+                except OSError:
+                    continue
+        if include_live and p.exists():
             try:
-                with arch_path.open("r", encoding="utf-8") as f:
+                with p.open("r", encoding="utf-8") as f:
                     yield from f
             except OSError:
-                continue
-    if include_live and p.exists():
-        try:
-            with p.open("r", encoding="utf-8") as f:
-                yield from f
-        except OSError:
-            return
+                return
 
 
 def archive_stats(
