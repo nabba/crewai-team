@@ -530,4 +530,36 @@ def evaluate_and_apply(
         f"affect.calibration: applied {len(delta_applied)} setpoint shifts "
         f"({list(delta_applied.keys())})"
     )
+
+    # Q5.1 (PROGRAM §43.1) — Philosophy panel consultation on accepted
+    # calibration shifts. Observational: the panel does NOT gate
+    # acceptance (acceptance already passed all 6 guardrails). The
+    # panel result is appended to the operator-visible report so the
+    # multi-tradition perspective is surfaced; unresolved tensions are
+    # filed to the Q4.1 tensions store via the panel bridge.
+    # Failure-isolated.
+    try:
+        from app.philosophy.dialectics import consult_panel
+        from app.sentience_experiments.panel_bridge import (
+            file_unresolved_tensions,
+        )
+        var_names = ", ".join(delta_applied.keys())
+        panel_q = (
+            f"Was it wise to adjust welfare setpoints for "
+            f"{var_names}? (calibration shift after guardrail review)"
+        )
+        panel = consult_panel(panel_q, max_perspectives=3)
+        if panel is not None:
+            report["philosophy_panel"] = panel.to_dict()
+            file_unresolved_tensions(
+                panel,
+                source_kind="calibration",
+                source_ref=f"shift:{report['ts']}",
+            )
+    except Exception:
+        logger.debug(
+            "affect.calibration: panel consult failed",
+            exc_info=True,
+        )
+
     return report

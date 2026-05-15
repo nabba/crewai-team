@@ -217,6 +217,18 @@ def _ratify_identity_claims(proposed: list, drift_signal: str) -> list[str]:
     """Filter, dedupe, FIFO-evict. Reject all proposals when drift is severe.
 
     Returns the post-merge list of accepted claim texts.
+
+    Q5.1 (PROGRAM §43.1) — Each candidate claim is consulted against
+    the philosophy decision panel (multi-tradition perspective check)
+    BEFORE being persisted. Claims where the panel surfaces ≥2
+    unresolved tensions are NOT auto-ratified — they get flagged into
+    the Q4.1 tensions store for operator review and the claim is
+    skipped from the ratified list. This converts silent FIFO
+    ratification into operator-gated ratification for philosophically
+    contested claims.
+
+    Failure-isolated: panel/bridge failures fall through to the
+    original (auto-ratify) behavior — never fail-closed on identity.
     """
     if drift_signal == "severe":
         logger.warning("affect.narrative: drift severe; skipping identity-claim update")
@@ -234,6 +246,38 @@ def _ratify_identity_claims(proposed: list, drift_signal: str) -> list[str]:
         if lower.startswith(("i am", "i ", "this system", "as a system")):
             cleaned.append(text)
 
+    # Q5.1 — Panel-contested claims are deferred to operator review
+    # (tensions store) rather than auto-ratified. Panel failures fall
+    # through silently to original behavior.
+    contested: set[str] = set()
+    if cleaned:
+        try:
+            from app.philosophy.dialectics import consult_panel
+            from app.sentience_experiments.panel_bridge import (
+                file_unresolved_tensions,
+            )
+            for text in cleaned:
+                panel = consult_panel(
+                    f"Is this identity claim authentic? {text}",
+                    traditions=["Stoicism", "Virtue ethics", "Pragmatism"],
+                    max_perspectives=3,
+                )
+                if panel is None:
+                    continue
+                n_unresolved = len(panel.unresolved_tensions or [])
+                if n_unresolved >= 2:
+                    contested.add(text)
+                    file_unresolved_tensions(
+                        panel,
+                        source_kind="identity_claim",
+                        source_ref=text[:60],
+                    )
+        except Exception:
+            logger.debug(
+                "affect.narrative: panel ratification check failed",
+                exc_info=True,
+            )
+
     with _IDENTITY_LOCK:
         existing = _read_identity_claims()
         existing_lower = {c["text"].lower() for c in existing}
@@ -241,6 +285,12 @@ def _ratify_identity_claims(proposed: list, drift_signal: str) -> list[str]:
             return [c["text"] for c in existing]
         now = utc_now_iso()
         for text in cleaned:
+            if text in contested:
+                logger.info(
+                    "affect.narrative: deferring contested claim to "
+                    "operator review: %r", text[:60],
+                )
+                continue
             if text.lower() in existing_lower:
                 continue
             existing.append({

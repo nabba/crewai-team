@@ -157,6 +157,37 @@ def _defaults() -> dict[str, Any]:
         "graph_suggestions_bridge_maintenance_enabled": False,
         "graph_suggestions_weak_tie_enabled": False,
 
+        # Q5 — Targeted sentience experiments (PROGRAM §43, 2026-05-13).
+        # Each module reifies a functional approximation of a capability
+        # the Butlin scorecard declares architecturally ABSENT. None of
+        # these flip the scorecard — the evaluators check canonical
+        # paths in ``app/subia/*``. These modules live in
+        # ``app/sentience_experiments/`` and are observational only.
+        #
+        # Two modules default OFF for blast-radius reasons:
+        #   * HOT-4 hooks live LoadableAgent telemetry; async-only,
+        #     but worth keeping behind an explicit toggle until the
+        #     latency-budget assertion has run in production.
+        #
+        # User explicitly approved these defaults during the Q5 plan.
+        "sentience_ae2_enabled": True,
+        "sentience_hot1_enabled": True,
+        "sentience_hot4_enabled": True,
+        "sentience_rpt1_enabled": True,
+        # Philosophy decision panel (PROGRAM §43.1 — Q5.1) — pre-decision
+        # multi-tradition consult surface for Tier-3 amendments,
+        # identity-claim ratification, and welfare-bound calibration.
+        # ON by default (cache-bounded; very low cost).
+        "philosophy_panel_enabled": True,
+        # Ledger-as-governor (PROGRAM §43.1 — Q5.1) — file-kind history
+        # in addition to the existing per-path history.
+        "ledger_governor_enabled": True,
+        # LLM-prose gate for sentience modules. When OFF the modules
+        # emit structured observations only — no inferred-affect
+        # prose. ON enables hypothesis generation (passed through the
+        # decentering filter regardless).
+        "sentience_llm_hypothesis_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1052,3 +1083,62 @@ def get_graph_suggestions_weak_tie_enabled() -> bool:
 
 def set_graph_suggestions_weak_tie_enabled(value: bool) -> None:
     _update({"graph_suggestions_weak_tie_enabled": bool(value)})
+
+
+# ── Q5 — Targeted sentience experiments (PROGRAM §43) ────────────────
+
+
+def get_sentience_ae2_enabled() -> bool:
+    return bool(_ensure_initialized().get("sentience_ae2_enabled", True))
+
+
+def set_sentience_ae2_enabled(value: bool) -> None:
+    _update({"sentience_ae2_enabled": bool(value)})
+
+
+def get_sentience_hot1_enabled() -> bool:
+    return bool(_ensure_initialized().get("sentience_hot1_enabled", True))
+
+
+def set_sentience_hot1_enabled(value: bool) -> None:
+    _update({"sentience_hot1_enabled": bool(value)})
+
+
+def get_sentience_hot4_enabled() -> bool:
+    return bool(_ensure_initialized().get("sentience_hot4_enabled", True))
+
+
+def set_sentience_hot4_enabled(value: bool) -> None:
+    _update({"sentience_hot4_enabled": bool(value)})
+
+
+def get_sentience_rpt1_enabled() -> bool:
+    return bool(_ensure_initialized().get("sentience_rpt1_enabled", True))
+
+
+def set_sentience_rpt1_enabled(value: bool) -> None:
+    _update({"sentience_rpt1_enabled": bool(value)})
+
+
+def get_philosophy_panel_enabled() -> bool:
+    return bool(_ensure_initialized().get("philosophy_panel_enabled", True))
+
+
+def set_philosophy_panel_enabled(value: bool) -> None:
+    _update({"philosophy_panel_enabled": bool(value)})
+
+
+def get_ledger_governor_enabled() -> bool:
+    return bool(_ensure_initialized().get("ledger_governor_enabled", True))
+
+
+def set_ledger_governor_enabled(value: bool) -> None:
+    _update({"ledger_governor_enabled": bool(value)})
+
+
+def get_sentience_llm_hypothesis_enabled() -> bool:
+    return bool(_ensure_initialized().get("sentience_llm_hypothesis_enabled", True))
+
+
+def set_sentience_llm_hypothesis_enabled(value: bool) -> None:
+    _update({"sentience_llm_hypothesis_enabled": bool(value)})

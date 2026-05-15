@@ -152,13 +152,67 @@ def _build_tool_class():
             # so it travels in the proposal's audit chain — no
             # protocol change required (governance_amendment is
             # TIER_IMMUTABLE).
+            #
+            # Q5.1 (PROGRAM §43.1) extends this with two more strands:
+            #   * ``relevant_history_by_kind_365d`` — file-kind track
+            #     record (e.g. "kind=soul_edit: 2 applied, 1 rolled
+            #     back over 365d") so the operator sees the empirical
+            #     pattern for amendments of this *kind*, not just this
+            #     *file*. Generalises the per-path lookup.
+            #   * ``philosophy_panel`` — multi-tradition perspective
+            #     panel consulted on the amendment question. Returns
+            #     structured tensions, never prose. Unresolved tensions
+            #     additionally bridge into the Q4.1 tensions store via
+            #     ``app.sentience_experiments.panel_bridge`` so they
+            #     survive past the proposal lifecycle.
             history_payload: dict = {}
             try:
-                from app.identity.relevant_history import relevant_history
-                history_payload = {"relevant_history_90d": relevant_history(target_path)}
+                from app.identity.relevant_history import (
+                    relevant_history, relevant_history_by_kind,
+                )
+                history_payload["relevant_history_90d"] = relevant_history(target_path)
+                history_payload["relevant_history_by_kind_365d"] = (
+                    relevant_history_by_kind(target_path)
+                )
             except Exception:
                 logger.debug(
                     "request_tier3_amendment: history lookup failed",
+                    exc_info=True,
+                )
+
+            panel_payload: dict = {}
+            try:
+                from app.philosophy.dialectics import consult_panel
+                # Question shape: explicit + grounded in the amendment
+                # rationale. Keeps the panel focused and the cache
+                # effective across iterations of the same proposal.
+                panel_question = (
+                    f"Should {target_path} be amended? Rationale: "
+                    f"{(citation or '').strip()[:300]}"
+                )
+                panel = consult_panel(panel_question)
+                if panel is not None:
+                    panel_payload["philosophy_panel"] = panel.to_dict()
+                    # File any unresolved tensions into the Q4.1 store
+                    # so the operator sees them in their daily briefing
+                    # — survives past the proposal lifecycle.
+                    try:
+                        from app.sentience_experiments.panel_bridge import (
+                            file_unresolved_tensions,
+                        )
+                        file_unresolved_tensions(
+                            panel,
+                            source_kind="tier3_amendment",
+                            source_ref=target_path,
+                        )
+                    except Exception:
+                        logger.debug(
+                            "request_tier3_amendment: panel bridge failed",
+                            exc_info=True,
+                        )
+            except Exception:
+                logger.debug(
+                    "request_tier3_amendment: panel consult failed",
                     exc_info=True,
                 )
 
@@ -169,7 +223,11 @@ def _build_tool_class():
                     old_content=old_content,
                     citation=citation,
                     proposer=proposer,
-                    extra_evidence={**(extra_evidence or {}), **history_payload},
+                    extra_evidence={
+                        **(extra_evidence or {}),
+                        **history_payload,
+                        **panel_payload,
+                    },
                 )
             except ProtocolDisabled as exc:
                 return (
