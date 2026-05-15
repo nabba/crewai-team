@@ -589,6 +589,9 @@ export interface RuntimeSettings {
   drill_secret_rotation_enabled?: boolean;
   drill_kill_the_gateway_enabled?: boolean;
   drill_staleness_monitor_enabled?: boolean;
+  // Q7.1 — architecture-request primitive (PROGRAM §45.1)
+  architecture_requests_enabled?: boolean;
+  architecture_adoption_monitor_enabled?: boolean;
 }
 
 export function useRuntimeSettingsQuery() {

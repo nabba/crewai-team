@@ -80,6 +80,7 @@ _DEFAULT_CADENCE_S = {
     "notify_suppression_review": 6 * 3600,     # 6h probe — internal 7d cadence; PROGRAM §41 Item 17
     "drill_staleness": 24 * 3600,              # daily probe; alerts when any drill past cadence+grace; PROGRAM §44.2 Q6.2
     "backup_freshness": 24 * 3600,             # daily probe; alerts when local DR tarball > 14d old; PROGRAM §44.5 Q6.5 P2#3
+    "architecture_adoption": 24 * 3600,        # daily probe; proposes rollback CR for unused subsystems; PROGRAM §45.1 Q7.1
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -295,6 +296,20 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: backup_freshness import failed", exc_info=True,
+        )
+    # PROGRAM §45.1 Q7.1 — proposes rollback CRs for architecture
+    # requests that have been COMPLETED for 30+ days but show
+    # zero/low adoption signal. Never auto-applies — operator gate
+    # intact through the normal CR review flow.
+    try:
+        from app.healing.monitors import architecture_adoption
+        monitors.append((
+            "architecture_adoption", architecture_adoption.run,
+            _DEFAULT_CADENCE_S["architecture_adoption"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: architecture_adoption import failed", exc_info=True,
         )
     # Q2 §39: structured-diagnosis confidence-threshold auto-tuner.
     # The function has its own 24h gate inside; hourly cadence here

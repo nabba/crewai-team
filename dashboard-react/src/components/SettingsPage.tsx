@@ -27,6 +27,7 @@ import {
 } from '../api/pwa';
 import { PersonCorrelationCard } from './PersonCorrelationCard';
 import { ResilienceDrillsCard } from './ResilienceDrillsCard';
+import { ArchitectureRequestsCard } from './ArchitectureRequestsCard';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -72,6 +73,10 @@ export function SettingsPage() {
         onSettingsChange={() => settingsQ.refetch()}
       />
       <ResilienceDrillsCard
+        settings={settingsQ.data}
+        onSettingsChange={() => settingsQ.refetch()}
+      />
+      <ArchitectureRequestsCard
         settings={settingsQ.data}
         onSettingsChange={() => settingsQ.refetch()}
       />

@@ -43,8 +43,34 @@ class InvalidTransition(RuntimeError):
     """Raised when a state transition would violate the state machine."""
 
 
+class ProtocolDisabled(RuntimeError):
+    """Q7.1 — raised when the top-level architecture_requests master
+    switch is OFF. Callers should treat this as a refusal class
+    distinct from validation failures."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _check_protocol_enabled() -> None:
+    """Q7.1 — gate any state-mutating operation behind the master
+    switch. GET endpoints are NOT gated; operator can always audit
+    historical requests even when the protocol is paused."""
+    try:
+        from app.runtime_settings import get_architecture_requests_enabled
+        if not get_architecture_requests_enabled():
+            raise ProtocolDisabled(
+                "architecture_requests protocol is disabled — toggle "
+                "'architecture_requests_enabled' in /cp/settings to enable"
+            )
+    except ProtocolDisabled:
+        raise
+    except Exception:
+        # If runtime_settings is unavailable, default to ALLOWING
+        # the operation (fail-open) so a config-system outage doesn't
+        # silently block architecture-request work.
+        pass
 
 
 def _require_status(
@@ -74,7 +100,12 @@ def create_request(
     env_switches: dict[str, str],
     test_plan: str,
 ) -> ArchitectureRequest:
-    """Validate the proposal and persist as PROPOSED (or TIER_IMMUTABLE_REFUSED)."""
+    """Validate the proposal and persist as PROPOSED (or TIER_IMMUTABLE_REFUSED).
+
+    Q7.1 — gated by ``architecture_requests_enabled`` master switch.
+    When OFF, raises ``ProtocolDisabled`` rather than silently
+    persisting (callers see refusal explicitly)."""
+    _check_protocol_enabled()
     req = ArchitectureRequest(
         id=str(uuid.uuid4()),
         created_at=_now_iso(),

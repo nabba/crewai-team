@@ -205,6 +205,12 @@ def _defaults() -> dict[str, Any]:
         # sync cron died" failure mode without needing cloud SDKs.
         "backup_freshness_monitor_enabled": True,
 
+        # Q7.1 — Architecture-request primitive (PROGRAM §45.1).
+        # Top-level subsystem switch + per-feature adoption monitor.
+        # Both default ON per operator decision.
+        "architecture_requests_enabled": True,
+        "architecture_adoption_monitor_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1222,3 +1228,22 @@ def get_backup_freshness_monitor_enabled() -> bool:
 
 def set_backup_freshness_monitor_enabled(value: bool) -> None:
     _update({"backup_freshness_monitor_enabled": bool(value)})
+
+
+# ── Q7.1 — Architecture-request primitive (PROGRAM §45.1) ────────────
+
+
+def get_architecture_requests_enabled() -> bool:
+    return bool(_ensure_initialized().get("architecture_requests_enabled", True))
+
+
+def set_architecture_requests_enabled(value: bool) -> None:
+    _update({"architecture_requests_enabled": bool(value)})
+
+
+def get_architecture_adoption_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("architecture_adoption_monitor_enabled", True))
+
+
+def set_architecture_adoption_monitor_enabled(value: bool) -> None:
+    _update({"architecture_adoption_monitor_enabled": bool(value)})

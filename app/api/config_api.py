@@ -288,6 +288,9 @@ async def set_runtime_settings_endpoint(request: Request):
         set_drill_secret_rotation_enabled,
         set_drill_kill_the_gateway_enabled,
         set_drill_staleness_monitor_enabled,
+        # Q7.1 — architecture-requests
+        set_architecture_requests_enabled,
+        set_architecture_adoption_monitor_enabled,
         snapshot,
     )
 
@@ -447,6 +450,20 @@ async def set_runtime_settings_endpoint(request: Request):
         if "drill_staleness_monitor_enabled" in payload:
             set_drill_staleness_monitor_enabled(
                 bool(payload["drill_staleness_monitor_enabled"])
+            )
+
+        # Q7.1 (PROGRAM §45.1) — Architecture-request primitive
+        # toggles. Top-level master + adoption-monitor switch. The
+        # top-level switch gates the lifecycle's protocol_enabled
+        # check; the monitor switch gates the daily auto-rollback
+        # probe. Both default ON.
+        if "architecture_requests_enabled" in payload:
+            set_architecture_requests_enabled(
+                bool(payload["architecture_requests_enabled"])
+            )
+        if "architecture_adoption_monitor_enabled" in payload:
+            set_architecture_adoption_monitor_enabled(
+                bool(payload["architecture_adoption_monitor_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
