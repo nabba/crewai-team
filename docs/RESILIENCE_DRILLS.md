@@ -222,8 +222,64 @@ optimize for. Specifically:
 | `app/healing/monitors/drill_staleness.py` | Past-due alerter |
 | `docs/RESILIENCE_POSTURE.md` | Architectural decision (#22) |
 
+## Who watches the watchers?
+
+**The drill subsystem has no probe of its own health.** Open question
+flagged in the Q6.4 audit. Two practical mitigations close it in
+practice without adding meta-monitor complexity:
+
+1. **Continuity ledger emission is operator-visible.** If drills stop
+   emitting landmark events for 6+ months — visible via
+   `summarise_drift` in the annual reflection — something is wrong
+   with the drill subsystem itself, not just an individual drill.
+
+2. **`drill_staleness` monitor depends on the audit file being
+   readable.** If the audit file becomes corrupt or is silently
+   deleted, the monitor sees "no successful runs ever" → fires
+   alerts (after the 7-day boot-grace window). This is the
+   degraded-mode signal.
+
+**Operator heuristic**: if you see no `resilience_drill` ledger events
+for 120+ days AND no `drill_staleness` alerts have fired, something
+in the drill subsystem is broken — investigate. Routine
+verification of subsystem health is operator-driven; no
+gateway-side meta-monitor exists by design (avoids infinite
+regress).
+
+## CLI entry point
+
+For manual operator-trigger outside the REST surface (useful during
+gateway debugging or recovery):
+
+```
+# List drills with last-run state
+python -m app.resilience_drills list
+
+# Run a specific drill
+python -m app.resilience_drills run backup_restore
+python -m app.resilience_drills run kill_the_gateway --dry-run
+
+# Show the posture decision
+python -m app.resilience_drills posture
+
+# Show recent audit entries
+python -m app.resilience_drills audit --limit 10
+python -m app.resilience_drills audit --drill backup_restore
+```
+
+The CLI runs from the same Python process as the gateway, so
+runtime-settings master switches apply identically. For
+`kill_the_gateway`, the CLI runs ONLY the pre-drill check — the
+LIVE drill remains gated to `scripts/drills/kill_the_gateway.sh`
+outside the gateway.
+
 ## Audit history
 
 - 2026-05-13 — Q6.1 foundation: protocol + audit + posture + tests
 - 2026-05-13 — Q6.2 drills + scheduler + staleness monitor
 - 2026-05-13 — Q6.3 REST + React + briefing + DR export inclusion + this doc
+- 2026-05-13 — Q6.4 post-ship audit fixes: recovery-landmark order +
+  test exercises production sequence + per-drill in-flight lock +
+  `is_first_run` uses successful-history + `inspect.getsource` +
+  SOUL.md guard regex + boot-grace for staleness monitor + CLI
+  entry point + React state display + self-monitoring docs

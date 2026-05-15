@@ -11,10 +11,19 @@ significantly past-due — typically because the operator hasn't acted
 on the scheduler's prior notifications.
 
 Master switch: ``drill_staleness_monitor_enabled`` (default ON).
+
+Q6.4 P1#5 — boot-grace. On a fresh deploy, every drill is "never
+run" so without grace the monitor would fire 4 alerts on first
+probe. The grace period suppresses alerts for the first
+``_BOOT_GRACE_DAYS`` after the resilience subsystem first appeared
+(detected via the audit file's mtime; absent file = brand-new
+install).
 """
 from __future__ import annotations
 
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -25,6 +34,35 @@ logger = logging.getLogger(__name__)
 NAME = "drill_staleness"
 CADENCE_SECONDS = 86_400          # daily probe
 MASTER_SWITCH_KEY = "drill_staleness_monitor_enabled"
+
+# Q6.4 — fresh-install grace window. On a brand-new deploy the
+# operator needs time to schedule first runs; staleness alerts in
+# the first week would be noise.
+_BOOT_GRACE_DAYS = 7
+
+
+def _in_boot_grace_window() -> bool:
+    """True when the resilience-drill subsystem is in its initial
+    grace window. Heuristic: if the audit file doesn't exist yet OR
+    is younger than ``_BOOT_GRACE_DAYS``, we're brand new.
+
+    Once the audit file ages past the grace window, this returns
+    False permanently — alerts resume."""
+    try:
+        from app.resilience_drills.audit import _default_audit_path
+        path = _default_audit_path()
+    except Exception:
+        # If we can't even import the audit module, we definitely
+        # don't want noisy alerts — keep grace on.
+        return True
+    if not path.exists():
+        # No audit history at all → brand new install → grace.
+        return True
+    try:
+        age_s = time.time() - path.stat().st_mtime
+        return age_s < (_BOOT_GRACE_DAYS * 86_400)
+    except OSError:
+        return True
 
 
 def run() -> dict[str, Any]:
@@ -46,6 +84,14 @@ def run() -> dict[str, Any]:
     except Exception:
         # Fall through — default ON behavior.
         pass
+
+    # Q6.4 P1#5 — fresh-install grace window. Suppress staleness
+    # alerts for the first 7 days after the audit file first appears
+    # (or while it doesn't exist at all).
+    if _in_boot_grace_window():
+        summary["skipped"] = True
+        summary["reason"] = "boot_grace"
+        return summary
 
     # Force-import drills package so registry is populated.
     try:

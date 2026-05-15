@@ -598,6 +598,35 @@ export function useRuntimeSettingsQuery() {
   });
 }
 
+// ── Resilience drills registry (PROGRAM §44.4 Q6.4 P2#8) ───────────
+
+export interface DrillRegistryEntry {
+  name: string;
+  cadence_days: number;
+  grace_days: number;
+  risk: string;
+  description: string;
+  requires_typed_phrase: string | null;
+  requires_master_switch: string | null;
+  enabled: boolean;
+  last_status: string | null;
+  last_run_at: string | null;
+  days_since_last_success: number | null;
+}
+
+export interface DrillRegistryResponse {
+  drills: DrillRegistryEntry[];
+  error?: string;
+}
+
+export function useDrillsRegistryQuery() {
+  return useQuery({
+    queryKey: ['drills-registry'] as const,
+    queryFn: () => api<DrillRegistryResponse>('/api/cp/drills/registry'),
+    refetchInterval: 60_000, // 1 min — drill state changes are slow
+  });
+}
+
 export function useUpdateRuntimeSettings() {
   const qc = useQueryClient();
   return useMutation({

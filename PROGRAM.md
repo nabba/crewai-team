@@ -7162,3 +7162,210 @@ Three Q5.5 post-ship checklist items honored from the start:
    observable change?"** — deletion would cause `drill_staleness` to
    alert; DR export would silently lose `resilience/` (pinned by
    test).
+
+## 44.4 2026-05-13 — Q6.4: first-cycle audit follow-ups
+
+First audit pass on Q6 surfaced ONE P0 logic bug + one P0 test-pattern
+issue + 5 P1 fixes + 3 P2 polish items. All shipped (operator
+explicitly asked for "deferred for future" list too).
+
+The P0 bug is a recurrence of the exact Q5.5 lesson #2 — the test
+mocked the wrong layer. I shipped Q6 claiming Q5.5 lessons were
+applied; this audit demonstrated I hadn't actually applied #2.
+
+### 44.4.1 — P0#1: Recovery-landmark via explicit `prior_status`
+
+`audit.py:emit_landmark_for` read the audit log to determine
+`prior_status`. But drills call `append_result(result)` BEFORE
+`emit_landmark_for(result)`, so the "prior" returned was the
+just-appended new result — recovery branch saw `prior_status="pass"`
+and never fired.
+
+**Recovery landmarks were broken end-to-end.** A drill that failed
+for months then finally recovered would not emit a
+`resilience_drill_recovered` continuity-ledger event.
+
+Fix: `emit_landmark_for` takes `prior_status` as an EXPLICIT keyword
+parameter. Drills snapshot prior state BEFORE `append_result` and
+pass it through:
+
+```python
+prior_any = last_result_for(SPEC.name)
+is_first_run = last_successful_for(SPEC.name) is None
+prior_status = (prior_any or {}).get("status") if prior_any else None
+append_result(result)
+emit_landmark_for(result, is_first_run=is_first_run,
+                  prior_status=prior_status)
+```
+
+Applied to all four drills + `kill_the_gateway.ingest_external_report`.
+
+### 44.4.2 — P0#2: Recovery test exercises production sequence
+
+`test_audit_emit_landmark_on_recovery` originally called
+`emit_landmark_for(new_r)` WITHOUT first calling
+`append_result(new_r)` — exactly the inversion of production order.
+Test passed, production was broken.
+
+Fix: test now snapshots prior state, then appends, then emits — the
+production sequence. New
+`test_recovery_landmark_exercised_via_production_sequence` in Q6.4
+makes this canonical (and would fail under the original
+`emit_landmark_for` implementation that read the audit log).
+
+### 44.4.3 — P1#3: Per-drill in-flight lock
+
+`audit.py` gains `acquire_drill_lock(name)` / `release_drill_lock(name)`
+/ `is_drill_in_flight(name)` writing to
+`workspace/resilience/.<name>.lock`. Stale locks (>1h old) treated
+as crash residue and ignored. Each drill wraps its body in a
+try/finally with `acquire → ... → release`. Concurrent invocation
+from the scheduler short-circuits to SKIPPED with
+``reason="drill already in-flight"``.
+
+### 44.4.4 — P1#4: `is_first_run` uses `last_successful_for`
+
+A previously-SKIPPED drill row was making `last_result_for` non-None
+which suppressed the first_pass landmark when the first actual PASS
+landed. All four drills now use `last_successful_for` for
+`is_first_run`. Pinned by
+`test_skipped_first_run_does_not_suppress_first_pass`.
+
+### 44.4.5 — P1#5: Boot grace for staleness monitor
+
+`drill_staleness` monitor on fresh deploys would fire 4 alerts on
+first probe (all drills "never run"). New `_in_boot_grace_window()`
+helper suppresses alerts when the audit file doesn't exist yet OR
+is younger than 7 days. Once the audit ages past that, alerts resume.
+
+### 44.4.6 — P1#6: `inspect.getsource` in secret_rotation
+
+`_check_per_agent_token_enumeration` was `open(bc.__file__).read()`
+which fails on `.pyc`-only deployments. Replaced with
+`inspect.getsource(bc)` which handles `.py` / `.pyc` / frozen
+modules uniformly.
+
+### 44.4.7 — P1#7: SOUL.md guard regex actually implemented
+
+The Q6.2 `secret_rotation` drill had a dead `pass`-block placeholder
+where the SOUL.md guard was supposed to live. Q6.4 implements it as
+a regex scan over the serialized audit detail for full-length
+secret-shaped substrings:
+
+```python
+_LEAKED_SECRET_PATTERNS = (
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"sk-or-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\bBearer\s+[A-Za-z0-9_-]{32,}"),
+)
+```
+
+Match → drill marks ERROR with message that **never includes the
+matched value** (pinned by
+`test_soul_md_guard_catches_anthropic_key_shaped_string`).
+
+### 44.4.8 — P2#8: React card shows drill state
+
+`useDrillsRegistryQuery()` hook + `DrillRegistryEntry` type added.
+`ResilienceDrillsCard.tsx` renders a per-drill status badge next to
+each toggle showing:
+
+- "Xd ago" (green) — recent successful run
+- "STALE" (amber) — past cadence + grace
+- "FAIL" / "ERROR" (red) — last run failed
+- "skipped" (dim) — last run was skipped
+- "never run" (dim) — no history
+
+Tooltip shows the actual `last_run_at` timestamp.
+
+### 44.4.9 — P2#9: CLI entry point
+
+New `app/resilience_drills/__main__.py` exposes 4 subcommands:
+
+```
+python -m app.resilience_drills list
+python -m app.resilience_drills run <name> [--dry-run]
+python -m app.resilience_drills posture
+python -m app.resilience_drills audit [--limit N] [--drill NAME]
+```
+
+For `kill_the_gateway`, the CLI runs ONLY the pre-drill check (same
+as REST). The LIVE drill remains gated to
+`scripts/drills/kill_the_gateway.sh` outside the gateway.
+
+### 44.4.10 — P2#10: SPEC description clarifies toggle semantics
+
+`kill_the_gateway` SPEC.description now explicitly explains:
+
+> The master switch ``drill_kill_the_gateway_enabled`` gates
+> SCHEDULER notifications (default OFF — opt-in). The external
+> script respects the typed-phrase requirement, not the master
+> switch — operator can always run it manually with the typed phrase.
+
+Closes the "subtle asymmetry" concern from the audit.
+
+### 44.4.11 — #11: Self-monitoring documentation
+
+New "Who watches the watchers?" section in
+`docs/RESILIENCE_DRILLS.md`. Names the meta-question (drill
+subsystem itself can break) + two practical mitigations:
+
+1. Continuity-ledger emission gap (no `resilience_drill` events for
+   6+ months) is operator-visible via annual reflection
+2. `drill_staleness` monitor's own degraded-mode signal: corrupt /
+   missing audit file → "never run" → alert (after boot grace)
+
+Plus operator heuristic: if no events for 120+ days AND no
+staleness alerts, investigate the subsystem itself. No
+gateway-side meta-monitor (avoids infinite regress).
+
+### 44.4.12 — Tests + regression
+
+```
+NEW tests:
+crewai-team/tests/test_q6_4_audit_followup.py    # 21 pass
+
+UPDATED tests (production-sequence alignment):
+crewai-team/tests/test_q6_1_foundation.py  # recovery test signature
+crewai-team/tests/test_q6_2_drills.py      # staleness audit-file age fix
+crewai-team/tests/test_q6_3_surfaces.py    # restore registry after clear
+
+UPDATED backend:
+crewai-team/app/resilience_drills/audit.py
+  # emit_landmark_for accepts prior_status + lock helpers
+crewai-team/app/resilience_drills/drills/backup_restore.py
+crewai-team/app/resilience_drills/drills/embedding_migration.py
+crewai-team/app/resilience_drills/drills/secret_rotation.py
+crewai-team/app/resilience_drills/drills/kill_the_gateway.py
+  # all four: prior_status snapshot + in-flight lock + last_successful_for
+crewai-team/app/healing/monitors/drill_staleness.py
+  # boot-grace window
+
+NEW backend:
+crewai-team/app/resilience_drills/__main__.py    # CLI entry point
+
+UPDATED React:
+crewai-team/dashboard-react/src/api/queries.ts
+  # useDrillsRegistryQuery + DrillRegistryEntry type
+crewai-team/dashboard-react/src/components/ResilienceDrillsCard.tsx
+  # per-drill state badge with color coding
+
+UPDATED docs:
+crewai-team/docs/RESILIENCE_DRILLS.md    # CLI section + self-monitoring
+```
+
+Q1→Q6.4 regression: **432 pass + 61 skip, 0 fail**. Butlin scorecard
+unchanged.
+
+### 44.4.13 — Honest accounting
+
+I shipped Q6 claiming the Q5.5 lessons were applied from the start.
+The Q6.4 audit demonstrated I had NOT actually applied lesson #2
+(does the test exercise the real call path?). The Q5.5 lesson list
+needs to be more than aspirational text in commit messages — it
+needs to be a checklist that runs before pressing ship.
+
+The good news: each audit cycle DOES catch the recurrence. The
+pinning test `test_recovery_landmark_exercised_via_production_sequence`
+now permanently encodes the production-sequence requirement in CI,
+so a future regression of THIS bug will fail at commit time.

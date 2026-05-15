@@ -16,9 +16,12 @@ import time
 from datetime import datetime, timezone
 
 from app.resilience_drills.audit import (
+    acquire_drill_lock,
     append_result,
     emit_landmark_for,
     last_result_for,
+    last_successful_for,
+    release_drill_lock,
 )
 from app.resilience_drills.protocol import (
     DrillResult,
@@ -69,44 +72,70 @@ def run(*, dry_run: bool = True) -> DrillResult:
             detail={"reason": "master switch off"},
         )
 
-    is_first_run = last_result_for(SPEC.name) is None
-    detail: dict = {"dry_run": dry_run}
-    errors: list[str] = []
-    status = DrillStatus.PASS
-    try:
-        from app.dr.boot_drill import run_drill as _run_boot_drill
-        report = _run_boot_drill(export_fresh=False, keep_target=False)
-        detail["tarball"] = getattr(report, "tarball", None)
-        detail["overall_ok"] = getattr(report, "overall_ok", False)
-        detail["collections_checked"] = len(
-            getattr(report, "collections", []) or [],
+    # Q6.4 P1#3 — defensive in-flight lock against concurrent invocation.
+    if not acquire_drill_lock(SPEC.name):
+        return DrillResult(
+            drill_name=SPEC.name,
+            status=DrillStatus.SKIPPED,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+            duration_s=time.monotonic() - t0,
+            dry_run=dry_run,
+            detail={"reason": "drill already in-flight"},
         )
-        detail["fresh_export"] = getattr(report, "fresh_export", False)
-        # Propagate any boot_drill errors into the drill result.
-        report_errors = list(getattr(report, "errors", []) or [])
-        if report_errors:
-            errors.extend(report_errors[:10])  # cap for surface readability
-        if not detail["overall_ok"]:
-            status = DrillStatus.FAIL
-    except Exception as exc:  # noqa: BLE001
-        status = DrillStatus.ERROR
-        errors.append(f"{type(exc).__name__}: {exc}")
-        logger.debug("backup_restore drill raised", exc_info=True)
 
-    completed_dt = datetime.now(timezone.utc)
-    result = DrillResult(
-        drill_name=SPEC.name,
-        status=status,
-        started_at=started_at,
-        completed_at=completed_dt.isoformat(),
-        duration_s=round(time.monotonic() - t0, 3),
-        dry_run=dry_run,
-        detail=detail,
-        errors=errors,
-    )
-    append_result(result)
-    emit_landmark_for(result, is_first_run=is_first_run)
-    return result
+    try:
+        # Q6.4 P0#1 + P1#4 — snapshot prior state BEFORE the new
+        # result is appended. is_first_run uses last_successful_for so
+        # a previously-SKIPPED row doesn't suppress the first_pass
+        # landmark when the first actual PASS lands.
+        prior_any = last_result_for(SPEC.name)
+        is_first_run = last_successful_for(SPEC.name) is None
+        prior_status = (prior_any or {}).get("status") if prior_any else None
+
+        detail: dict = {"dry_run": dry_run}
+        errors: list[str] = []
+        status = DrillStatus.PASS
+        try:
+            from app.dr.boot_drill import run_drill as _run_boot_drill
+            report = _run_boot_drill(export_fresh=False, keep_target=False)
+            detail["tarball"] = getattr(report, "tarball", None)
+            detail["overall_ok"] = getattr(report, "overall_ok", False)
+            detail["collections_checked"] = len(
+                getattr(report, "collections", []) or [],
+            )
+            detail["fresh_export"] = getattr(report, "fresh_export", False)
+            # Propagate any boot_drill errors into the drill result.
+            report_errors = list(getattr(report, "errors", []) or [])
+            if report_errors:
+                errors.extend(report_errors[:10])  # cap for surface readability
+            if not detail["overall_ok"]:
+                status = DrillStatus.FAIL
+        except Exception as exc:  # noqa: BLE001
+            status = DrillStatus.ERROR
+            errors.append(f"{type(exc).__name__}: {exc}")
+            logger.debug("backup_restore drill raised", exc_info=True)
+
+        completed_dt = datetime.now(timezone.utc)
+        result = DrillResult(
+            drill_name=SPEC.name,
+            status=status,
+            started_at=started_at,
+            completed_at=completed_dt.isoformat(),
+            duration_s=round(time.monotonic() - t0, 3),
+            dry_run=dry_run,
+            detail=detail,
+            errors=errors,
+        )
+        append_result(result)
+        emit_landmark_for(
+            result,
+            is_first_run=is_first_run,
+            prior_status=prior_status,
+        )
+        return result
+    finally:
+        release_drill_lock(SPEC.name)
 
 
 # Register at import.

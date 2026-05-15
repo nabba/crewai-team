@@ -273,7 +273,12 @@ def test_audit_emit_landmark_on_first_pass(audit, proto, monkeypatch, tmp_path):
 
 
 def test_audit_emit_landmark_on_recovery(audit, proto, monkeypatch, tmp_path):
-    """PASS after a previous FAIL emits a 'recovered' landmark."""
+    """PASS after a previous FAIL emits a 'recovered' landmark.
+
+    Q6.4 — emit_landmark_for now takes prior_status as an EXPLICIT
+    parameter (it no longer reads the audit log itself). This
+    matches the production call sequence: callers snapshot prior
+    state BEFORE appending the new result. See PROGRAM §44.4 P0#1."""
     log = tmp_path / "drill_audit.jsonl"
     monkeypatch.setattr(audit, "_default_audit_path", lambda: log)
     # Seed audit with a prior FAIL.
@@ -288,14 +293,16 @@ def test_audit_emit_landmark_on_recovery(audit, proto, monkeypatch, tmp_path):
         "app.identity.continuity_ledger.record_event",
         lambda **kw: (captured.append(kw), True)[1],
     )
-    # Now PASS — should emit recovery landmark.
     new_r = proto.DrillResult(
         drill_name="backup_restore", status=proto.DrillStatus.PASS,
         started_at="2026-05-13T10:00:00+00:00",
         completed_at="2026-05-13T10:01:00+00:00",
         duration_s=60.0, dry_run=True,
     )
-    audit.emit_landmark_for(new_r)
+    # Snapshot prior status BEFORE appending (production sequence).
+    prior_status = audit.last_result_for("backup_restore").get("status")
+    audit.append_result(new_r)
+    audit.emit_landmark_for(new_r, prior_status=prior_status)
     assert len(captured) == 1
     assert "recovered" in captured[0]["summary"]
 

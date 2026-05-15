@@ -36,9 +36,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.resilience_drills.audit import (
+    acquire_drill_lock,
     append_result,
     emit_landmark_for,
     last_result_for,
+    last_successful_for,
+    release_drill_lock,
 )
 from app.resilience_drills.protocol import (
     DrillResult,
@@ -120,14 +123,19 @@ def _check_per_agent_token_enumeration() -> tuple[bool, str | None, dict]:
     """For each agent in TIER_IMMUTABLE allow-list, verify
     BRIDGE_TOKEN_<AGENT_UPPER> slot is declared. We only check
     presence of the env-var NAME in the bridge_client module, not
-    its value."""
+    its value.
+
+    Q6.4 — use ``inspect.getsource`` instead of ``open(__file__).read()``
+    so the check works on frozen / AOT-compiled / .pyc-only deployments.
+    """
     try:
+        import inspect
         import app.bridge_client as bc
-        source = open(bc.__file__).read()
-    except Exception as exc:
+        source = inspect.getsource(bc)
+    except (OSError, TypeError) as exc:
         return False, f"bridge_client unreadable: {exc}", {}
-    # The bridge uses BRIDGE_TOKEN_{AGENT_ID_UPPER} pattern. Look for
-    # the pattern in the source.
+    except Exception as exc:
+        return False, f"bridge_client import failed: {exc}", {}
     pattern_present = "BRIDGE_TOKEN_" in source
     info: dict[str, Any] = {"pattern_present": pattern_present}
     if not pattern_present:
@@ -184,67 +192,116 @@ def run(*, dry_run: bool = True) -> DrillResult:
             detail={"reason": "master switch off"},
         )
 
-    is_first_run = last_result_for(SPEC.name) is None
-    detail: dict[str, Any] = {"checks": {}}
-    errors: list[str] = []
-    status = DrillStatus.PASS
+    # Q6.4 P1#3 — in-flight lock.
+    if not acquire_drill_lock(SPEC.name):
+        return DrillResult(
+            drill_name=SPEC.name,
+            status=DrillStatus.SKIPPED,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+            duration_s=time.monotonic() - t0,
+            dry_run=True,
+            detail={"reason": "drill already in-flight"},
+        )
 
-    # Run each procedural check.
-    ok, err = _check_gateway_secret_generation()
-    detail["checks"]["gateway_secret_generation"] = ok
-    if not ok:
-        errors.append(f"gateway_secret_generation: {err}")
-        status = DrillStatus.FAIL
+    try:
+        # Q6.4 P0#1 + P1#4 — snapshot prior state BEFORE append.
+        prior_any = last_result_for(SPEC.name)
+        is_first_run = last_successful_for(SPEC.name) is None
+        prior_status = (prior_any or {}).get("status") if prior_any else None
 
-    ok, err = _check_bearer_token_round_trip()
-    detail["checks"]["bearer_token_round_trip"] = ok
-    if not ok:
-        errors.append(f"bearer_token_round_trip: {err}")
-        status = DrillStatus.FAIL
+        detail: dict[str, Any] = {"checks": {}}
+        errors: list[str] = []
+        status = DrillStatus.PASS
 
-    ok, err, info = _check_per_agent_token_enumeration()
-    detail["checks"]["per_agent_token_enumeration"] = ok
-    detail["per_agent_info"] = info
-    if not ok:
-        errors.append(f"per_agent_token_enumeration: {err}")
-        status = DrillStatus.FAIL
+        # Run each procedural check.
+        ok, err = _check_gateway_secret_generation()
+        detail["checks"]["gateway_secret_generation"] = ok
+        if not ok:
+            errors.append(f"gateway_secret_generation: {err}")
+            status = DrillStatus.FAIL
 
-    ok, err, info = _check_vendor_key_patterns()
-    detail["checks"]["vendor_key_patterns"] = ok
-    detail["vendor_patterns_info"] = info
-    if not ok:
-        errors.append(f"vendor_key_patterns: {err}")
-        status = DrillStatus.FAIL
+        ok, err = _check_bearer_token_round_trip()
+        detail["checks"]["bearer_token_round_trip"] = ok
+        if not ok:
+            errors.append(f"bearer_token_round_trip: {err}")
+            status = DrillStatus.FAIL
 
-    # SOUL.md guard — assert no secret values made it into detail.
-    # This is a self-check; if it ever fails, the bug is here.
-    serialized = str(detail)
-    for forbidden_marker in ("sk-ant-", "sk-or-", "Bearer "):
-        # The detail SHOULD only contain candidate test tokens that
-        # never had real entropy. But guard anyway — if any check
-        # accidentally serialized a generated candidate, the marker
-        # would appear. Treat as ERROR.
-        # Note: we DO mention these markers in the pattern info, but
-        # only as the pattern string, never with a generated suffix.
-        # If a generated candidate sneaks in, it's a real bug.
-        # For now, this is a placeholder — refine if false positives
-        # arise.
-        pass
+        ok, err, info = _check_per_agent_token_enumeration()
+        detail["checks"]["per_agent_token_enumeration"] = ok
+        detail["per_agent_info"] = info
+        if not ok:
+            errors.append(f"per_agent_token_enumeration: {err}")
+            status = DrillStatus.FAIL
 
-    completed_dt = datetime.now(timezone.utc)
-    result = DrillResult(
-        drill_name=SPEC.name,
-        status=status,
-        started_at=started_at,
-        completed_at=completed_dt.isoformat(),
-        duration_s=round(time.monotonic() - t0, 3),
-        dry_run=True,  # always dry-run for this drill
-        detail=detail,
-        errors=errors,
-    )
-    append_result(result)
-    emit_landmark_for(result, is_first_run=is_first_run)
-    return result
+        ok, err, info = _check_vendor_key_patterns()
+        detail["checks"]["vendor_key_patterns"] = ok
+        detail["vendor_patterns_info"] = info
+        if not ok:
+            errors.append(f"vendor_key_patterns: {err}")
+            status = DrillStatus.FAIL
+
+        # Q6.4 P1#7 — SOUL.md guard, now actually implemented.
+        # Scan the serialized detail for full-length secret-shaped
+        # substrings (marker prefix + 20+ entropy chars). The drill's
+        # own pattern strings contain marker prefixes but NEVER with
+        # appended entropy. If a generated candidate ever leaks into
+        # the audit row, this catches it.
+        guard_ok, guard_err = _soul_md_guard(detail)
+        detail["checks"]["soul_md_guard"] = guard_ok
+        if not guard_ok:
+            errors.append(f"soul_md_guard: {guard_err}")
+            status = DrillStatus.ERROR  # P0-shaped: secret leak
+
+        completed_dt = datetime.now(timezone.utc)
+        result = DrillResult(
+            drill_name=SPEC.name,
+            status=status,
+            started_at=started_at,
+            completed_at=completed_dt.isoformat(),
+            duration_s=round(time.monotonic() - t0, 3),
+            dry_run=True,  # always dry-run for this drill
+            detail=detail,
+            errors=errors,
+        )
+        append_result(result)
+        emit_landmark_for(
+            result,
+            is_first_run=is_first_run,
+            prior_status=prior_status,
+        )
+        return result
+    finally:
+        release_drill_lock(SPEC.name)
+
+
+_LEAKED_SECRET_PATTERNS = (
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"sk-or-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\bBearer\s+[A-Za-z0-9_-]{32,}"),
+)
+
+
+def _soul_md_guard(detail: dict) -> tuple[bool, str | None]:
+    """Q6.4 P1#7 — scan serialized detail dict for secret-shaped
+    substrings. Returns (ok, error). Caught content invalidates the
+    drill and emits ERROR (operator must investigate)."""
+    try:
+        import json as _json
+        serialized = _json.dumps(detail, sort_keys=True, default=str)
+    except Exception:
+        serialized = str(detail)
+    for pattern in _LEAKED_SECRET_PATTERNS:
+        match = pattern.search(serialized)
+        if match:
+            # NEVER include the matched value in the error — we're
+            # specifically trying to prevent secret values from leaking.
+            return False, (
+                f"secret-shaped substring detected in audit detail "
+                f"(pattern {pattern.pattern!r}); refusing to persist "
+                f"audit row"
+            )
+    return True, None
 
 
 register(SPEC, run)

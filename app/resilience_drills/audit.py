@@ -141,31 +141,121 @@ def days_since_last_success(drill_name: str, *, now: datetime | None = None) -> 
     return (now_dt - ts).total_seconds() / 86400.0
 
 
+# ── Per-drill in-flight lock (Q6.4 P1#3) ────────────────────────────────
+
+
+# Stale lock TTL: if a lock file is older than this, treat the
+# previous run as crashed and allow a new run. Drills typically
+# complete in < 5 min; an hour is a generous upper bound.
+_LOCK_STALE_TTL_SECONDS = 3600
+
+
+def _default_lock_path(drill_name: str) -> Path:
+    """Path for the per-drill in-flight lock file."""
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "resilience" / f".{drill_name}.lock"
+    except Exception:
+        return Path(f"/app/workspace/resilience/.{drill_name}.lock")
+
+
+def is_drill_in_flight(drill_name: str) -> bool:
+    """Return True if a recent lock file exists for this drill.
+
+    Q6.4 — defensive guard against concurrent drill execution. If the
+    idle scheduler invokes a drill while a prior run is still
+    executing (e.g. backup_restore can take 30+ seconds), the
+    second invocation should bail out rather than start a duplicate.
+
+    Stale locks (>1h old) are ignored — treats them as crash residue.
+    """
+    path = _default_lock_path(drill_name)
+    if not path.exists():
+        return False
+    try:
+        age_s = (
+            datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
+        )
+    except OSError:
+        return False
+    return age_s < _LOCK_STALE_TTL_SECONDS
+
+
+def acquire_drill_lock(drill_name: str) -> bool:
+    """Create the lock file. Returns True on acquisition, False if
+    already in-flight (callers should skip in that case).
+
+    Best-effort: filesystem errors fall through to True so the drill
+    runs anyway (better to risk duplicate than block on FS issue)."""
+    if is_drill_in_flight(drill_name):
+        return False
+    path = _default_lock_path(drill_name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({
+                "drill_name": drill_name,
+                "acquired_at": datetime.now(timezone.utc).isoformat(),
+            }),
+            encoding="utf-8",
+        )
+        return True
+    except OSError:
+        logger.debug("drill lock: acquire failed for %s", drill_name)
+        return True  # fail-open — drill runs
+
+
+def release_drill_lock(drill_name: str) -> None:
+    """Remove the lock file. Failure-isolated — drill completion is
+    audited via append_result regardless."""
+    path = _default_lock_path(drill_name)
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        logger.debug("drill lock: release failed for %s", drill_name)
+
+
 # ── Continuity ledger emission ───────────────────────────────────────────
 
 
-def emit_landmark_for(result: DrillResult, *, is_first_run: bool = False) -> bool:
+def emit_landmark_for(
+    result: DrillResult,
+    *,
+    is_first_run: bool = False,
+    prior_status: str | None = None,
+) -> bool:
     """Emit a continuity-ledger ``resilience_drill`` event for landmark
     outcomes:
 
     * ``FAIL`` or ``ERROR`` outcomes — operator needs to know
-    * First-ever run of a drill — identity-shaping event
-    * Status flips: previous run was FAIL, this one is PASS — recovery
+    * First-ever PASS for a drill — identity-shaping event
+    * Recovery: ``prior_status ∈ {fail, error}`` AND current is PASS
 
     Routine PASS-then-PASS runs are NOT ledger-worthy (they go in the
     audit log; only the audit log). Returns True on emission, False
-    when not emitted (not landmark, ledger disabled, etc.)."""
+    when not emitted (not landmark, ledger disabled, etc.).
+
+    Q6.4 (PROGRAM §44.4) — ``prior_status`` is now an EXPLICIT parameter
+    passed by the drill module BEFORE it appends the new result. The
+    original Q6.2 ship read ``prior_status`` from the audit log AFTER
+    append, which meant ``last_result_for`` returned the just-appended
+    row and recovery detection silently never fired. Caller order now:
+
+        prior = last_successful_for(SPEC.name)
+        prior_status_str = (last_any_result or {}).get("status")
+        is_first_run = prior is None
+        append_result(result)
+        emit_landmark_for(result, is_first_run=is_first_run,
+                          prior_status=prior_status_str)
+    """
     if result.status in (DrillStatus.FAIL, DrillStatus.ERROR):
         return _emit_event(result, kind_suffix="failed")
     if is_first_run and result.status == DrillStatus.PASS:
         return _emit_event(result, kind_suffix="first_pass")
-    # Check for status flip (last result was FAIL/ERROR, this one PASS).
-    if result.status == DrillStatus.PASS:
-        prior = last_result_for(result.drill_name)
-        if prior is None:
-            # No prior at all — treated as first-pass above already.
-            return False
-        prior_status = prior.get("status") or ""
+    # Q6.4 — use the explicit prior_status passed in by the caller;
+    # do NOT consult the audit log here (caller already appended).
+    if result.status == DrillStatus.PASS and prior_status:
         if prior_status in (DrillStatus.FAIL.value, DrillStatus.ERROR.value):
             return _emit_event(result, kind_suffix="recovered")
     return False

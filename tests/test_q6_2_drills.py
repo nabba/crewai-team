@@ -421,6 +421,11 @@ def test_drill_staleness_monitor_alerts_past_due(monkeypatch, tmp_path):
         "ds_q62", "app/healing/monitors/drill_staleness.py",
     )
     log = tmp_path / "drill_audit.jsonl"
+    # Q6.4 P1#5: monitor honors a 7-day boot grace based on audit
+    # file mtime. Create the file + backdate so the grace doesn't fire.
+    log.write_text("\n", encoding="utf-8")
+    import os as _os, time as _t
+    _os.utime(log, (_t.time() - 30 * 86_400, _t.time() - 30 * 86_400))
     monkeypatch.setattr(
         "app.resilience_drills.audit._default_audit_path", lambda: log,
     )

@@ -97,20 +97,28 @@ def test_briefing_gathers_drill_digest_empty_when_nothing(monkeypatch):
     briefing = _load_isolated(
         "br_q63", "app/life_companion/daily_briefing.py",
     )
-    # Force registry to be empty by clearing.
+    # Force registry to be empty by clearing — RESTORE in finally so
+    # subsequent tests still have populated registrations.
     from app.resilience_drills.protocol import get_registry
     reg = get_registry()
+    saved_specs = list(reg._specs.values())
+    saved_runners = dict(reg._runners)
     reg.clear_for_tests()
-    monkeypatch.setattr(
-        "app.resilience_drills.audit.iter_results",
-        lambda since_iso=None: iter([]),
-    )
-    monkeypatch.setattr(
-        "app.resilience_drills.audit.days_since_last_success",
-        lambda name: None,
-    )
-    lines = briefing._gather_resilience_drill_digest()
-    assert lines == []
+    try:
+        monkeypatch.setattr(
+            "app.resilience_drills.audit.iter_results",
+            lambda since_iso=None: iter([]),
+        )
+        monkeypatch.setattr(
+            "app.resilience_drills.audit.days_since_last_success",
+            lambda name: None,
+        )
+        lines = briefing._gather_resilience_drill_digest()
+        assert lines == []
+    finally:
+        # Repopulate registry so subsequent tests have the drills back.
+        for spec in saved_specs:
+            reg.register(spec, saved_runners.get(spec.name) or (lambda **kw: None))
 
 
 def test_briefing_surfaces_recent_failures(monkeypatch):
