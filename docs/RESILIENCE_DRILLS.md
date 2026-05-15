@@ -129,7 +129,8 @@ external-script report and convert it into an audit row.
 
 ## Staleness monitor
 
-`app/healing/monitors/drill_staleness.py` is the 28th healing monitor.
+`app/healing/monitors/drill_staleness.py` was added in Q6.2 as the
+27th healing monitor; Q6.5 added `backup_freshness` as the 28th.
 Daily probe. Alerts when any registered drill is past
 `cadence_days + grace_days` without a successful run.
 

@@ -7088,7 +7088,8 @@ Scheduler in `companion.loop`: auto-runs LOW/MEDIUM, NEVER auto-runs
 HIGH (operator runs external script). Pinned by
 `test_scheduler_skips_high_risk_drills`.
 
-`drill_staleness` is the 28th healing monitor — daily probe; alerts
+`drill_staleness` is the 27th healing monitor (Q6.5 added
+`backup_freshness` as the 28th) — daily probe; alerts
 when any drill past `cadence + grace`.
 
 ### 44.3 — Q6.3 Operator surfaces + DR export inclusion
