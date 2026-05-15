@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/coding-sessions', label: 'Sessions', icon: '🧪', exact: false },
   { to: '/inquiries', label: 'Inquiries', icon: '📜', exact: false },
   { to: '/skills', label: 'Skills', icon: '🪄', exact: false },
+  { to: '/workflows', label: 'Workflows', icon: '🔗', exact: false },
   { to: '/files', label: 'Files', icon: '📁', exact: false },
   { to: '/life-companion', label: 'Life Companion', icon: '🌿', exact: false },
   { to: '/settings', label: 'Settings', icon: '⚙️', exact: false },

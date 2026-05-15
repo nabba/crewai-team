@@ -32,7 +32,9 @@ from app.threads import (
     abandon_thread,
     add_blocker,
     add_subquestion,
+    add_unblock_hint,
     clear_blockers,
+    clear_unblock_hints,
     create_thread,
     get,
     link_crew_task,
@@ -167,6 +169,29 @@ def add_blocker_route(thread_id: str, body: _BlockerBody):
 def clear_route(thread_id: str):
     _require(thread_id)
     t = clear_blockers(thread_id)
+    return {"ok": True, "thread": _serialize(t)}
+
+
+# ── Q8.1 (PROGRAM §46.1) — unblock-hints sub-resource ─────────────────
+
+
+@router.post("/{thread_id}/unblock-hint")
+def add_unblock_hint_route(thread_id: str, body: _BlockerBody):
+    """Append a "what might unblock this" hypothesis to the thread.
+    Reuses ``_BlockerBody`` since the shape is identical (single
+    `text` field, non-empty)."""
+    _require(thread_id)
+    try:
+        t = add_unblock_hint(thread_id, body.text)
+    except InvalidThreadTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"ok": True, "thread": _serialize(t)}
+
+
+@router.post("/{thread_id}/clear-unblock-hints")
+def clear_unblock_hints_route(thread_id: str):
+    _require(thread_id)
+    t = clear_unblock_hints(thread_id)
     return {"ok": True, "thread": _serialize(t)}
 
 

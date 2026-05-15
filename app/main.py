@@ -2578,6 +2578,13 @@ try:
 except Exception:
     logger.debug("Threads router registration failed", exc_info=True)
 
+# ── Workflow_templates (PROGRAM §46.3, Q8.3) ───────────────────────────────
+try:
+    from app.control_plane.workflows_api import router as workflows_router
+    app.include_router(workflows_router)
+except Exception:
+    logger.debug("Workflows router registration failed", exc_info=True)
+
 # ── Proposals aggregator (capability_gap + library_radar + recipe) ─────────
 try:
     from app.control_plane.proposals_api import router as proposals_router

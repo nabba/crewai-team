@@ -81,6 +81,27 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── Q8.1 (PROGRAM §46.1) — long-horizon threads ──────────────────
+    # /thread                                       list open threads
+    # /thread start <title>                         create a new thread
+    # /thread status [id]                           show thread detail
+    # /thread note <id> <text>                      append a note
+    # /thread subq <id> <text>                      add a sub-question
+    # /thread done <id> <subq_id> [resolution]      resolve a sub-question
+    # /thread block <id> <reason>                   file a blocker
+    # /thread hint <id> <text>                      append "what might unblock"
+    # /thread unblock <id>                          clear blockers
+    # /thread resolve <id> [summary]                close as RESOLVED
+    # /thread abandon <id> <reason>                 close as ABANDONED
+    if (
+        lower.startswith("/thread")
+        or lower.startswith("thread ")
+        or lower == "thread"
+    ):
+        sub = _handle_thread_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -2168,5 +2189,251 @@ def _handle_person_command(user_input: str) -> str | None:
         if hops == 0:
             return "You ARE the target."
         return f"Path ({hops} hops): " + " → ".join(path)
+
+
+# ── Q8.1 (PROGRAM §46.1) — /thread Signal commands ─────────────────
+
+
+def _thread_help() -> str:
+    return (
+        "/thread                                — list open threads\n"
+        "/thread start <title>                   — create a new thread\n"
+        "/thread status [id]                     — show thread (last open if no id)\n"
+        "/thread list                            — same as bare /thread\n"
+        "/thread note <id> <text>                — append a note\n"
+        "/thread subq <id> <text>                — add a sub-question\n"
+        "/thread done <id> <subq_id> [res]       — resolve a sub-question\n"
+        "/thread block <id> <reason>             — file a blocker (status → BLOCKED)\n"
+        "/thread unblock <id>                    — clear all blockers + IN_PROGRESS\n"
+        "/thread hint <id> <text>                — append an unblock hypothesis\n"
+        "/thread resolve <id> [summary]          — close as RESOLVED\n"
+        "/thread abandon <id> <reason>           — close as ABANDONED\n"
+        "Full surface at /cp/threads (React) and /api/cp/threads (REST)."
+    )
+
+
+def _format_thread_brief(t) -> str:
+    """One-line summary for list views."""
+    status_icon = {
+        "open": "🟢", "in_progress": "🔵",
+        "blocked": "🟡", "resolved": "✅", "abandoned": "⚫",
+    }.get(getattr(t.status, "value", str(t.status)), "•")
+    short_id = t.id[:8]
+    n_open = len(t.open_subquestions)
+    n_blocked = len(t.blockers)
+    parts = [f"{status_icon} {short_id}  {t.title[:60]}"]
+    suf: list[str] = []
+    if n_open:
+        suf.append(f"{n_open} open")
+    if n_blocked:
+        suf.append(f"{n_blocked} blocked")
+    if suf:
+        parts.append(f"  ({', '.join(suf)})")
+    return "".join(parts)
+
+
+def _resolve_thread_arg(thread_id_or_short: str):
+    """Look up by full id OR by 8-char prefix (the short form shown
+    in list views). Returns the Thread or None."""
+    from app.threads import get as get_thread, list_all
+    if not thread_id_or_short:
+        return None
+    full = get_thread(thread_id_or_short)
+    if full is not None:
+        return full
+    short = thread_id_or_short.strip().lower()
+    if not short:
+        return None
+    for t in list_all(limit=500):
+        if t.id.startswith(short):
+            return t
+    return None
+
+
+def _handle_thread_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/thread"):
+        text = text[len("/thread"):].strip()
+    elif text.lower().startswith("thread "):
+        text = text[len("thread "):].strip()
+    elif text.lower() == "thread":
+        text = ""
+    else:
+        return None
+
+    # Empty body or "list" = list open
+    if not text or text.lower() in ("list", "help", "?"):
+        if text.lower() in ("help", "?"):
+            return _thread_help()
+        try:
+            from app.threads import list_open
+            threads = list_open(limit=10) or []
+        except Exception:
+            return "Could not read threads."
+        if not threads:
+            return "No open threads. Use /thread start <title> to file one."
+        lines = [f"📋 {len(threads)} open thread(s):"]
+        for t in threads:
+            lines.append("  " + _format_thread_brief(t))
+        lines.append("Use /thread status <id> for detail.")
+        return "\n".join(lines)
+
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if sub == "start":
+        if not arg or len(arg) < 4:
+            return "Title too short (need ≥4 chars). Try: /thread start <title>"
+        try:
+            from app.threads import create_thread
+            t = create_thread(title=arg)
+        except ValueError as exc:
+            return f"Cannot create thread: {exc}"
+        except Exception:
+            return "Could not create thread."
+        return f"✅ Filed thread {t.id[:8]}: {t.title[:80]}"
+
+    if sub == "status":
+        # Without an id, surface the most recently touched open thread.
+        if not arg:
+            try:
+                from app.threads import list_open
+                threads = list_open(limit=1) or []
+            except Exception:
+                return "Could not read threads."
+            if not threads:
+                return "No open threads."
+            t = threads[0]
+        else:
+            t = _resolve_thread_arg(arg.split()[0])
+            if t is None:
+                return f"Thread {arg!r} not found."
+        lines = [
+            f"📋 {t.title}",
+            f"   id: {t.id}",
+            f"   status: {t.status.value}",
+            f"   created: {t.created_at[:16]}  last touched: {t.last_touched_at[:16]}",
+        ]
+        if t.sub_questions:
+            lines.append(f"   sub-questions ({len(t.resolved_subquestions)}/{len(t.sub_questions)} resolved):")
+            for sq in t.sub_questions[:5]:
+                mark = "✅" if sq.resolved else "  "
+                lines.append(f"     {mark} {sq.id[:8]}  {sq.text[:60]}")
+        if t.blockers:
+            lines.append(f"   🚧 blockers ({len(t.blockers)}):")
+            for b in t.blockers[:5]:
+                lines.append(f"     • {b[:80]}")
+        if t.unblock_hints:
+            lines.append(f"   💡 unblock hints ({len(t.unblock_hints)}):")
+            for h in t.unblock_hints[:5]:
+                lines.append(f"     • {h[:80]}")
+        if t.notes:
+            lines.append(f"   📝 notes ({len(t.notes)}):")
+            for n in t.notes[-3:]:
+                lines.append(f"     • {n[:80]}")
+        return "\n".join(lines)
+
+    # Two-arg helpers — split id + body
+    if sub in ("note", "block", "hint", "abandon"):
+        parts2 = arg.split(maxsplit=1)
+        if len(parts2) < 2:
+            return f"Usage: /thread {sub} <id> <text>"
+        tid, body = parts2[0], parts2[1]
+        t = _resolve_thread_arg(tid)
+        if t is None:
+            return f"Thread {tid!r} not found."
+        try:
+            if sub == "note":
+                from app.threads import record_note
+                t2 = record_note(t.id, body)
+                return f"✅ Noted on {t2.id[:8]}."
+            if sub == "block":
+                from app.threads import mark_blocked
+                t2 = mark_blocked(t.id, blocker=body)
+                return f"🚧 Blocked {t2.id[:8]}: {body[:80]}"
+            if sub == "hint":
+                from app.threads import add_unblock_hint
+                t2 = add_unblock_hint(t.id, body)
+                return f"💡 Hint added to {t2.id[:8]}."
+            if sub == "abandon":
+                from app.threads import abandon_thread
+                t2 = abandon_thread(t.id, reason=body)
+                return f"⚫ Abandoned {t2.id[:8]}: {body[:80]}"
+        except Exception as exc:
+            return f"Could not {sub}: {exc}"
+
+    if sub == "subq":
+        parts2 = arg.split(maxsplit=1)
+        if len(parts2) < 2:
+            return "Usage: /thread subq <id> <question>"
+        tid, body = parts2[0], parts2[1]
+        t = _resolve_thread_arg(tid)
+        if t is None:
+            return f"Thread {tid!r} not found."
+        try:
+            from app.threads import add_subquestion
+            t2 = add_subquestion(t.id, body)
+        except Exception as exc:
+            return f"Could not add sub-question: {exc}"
+        sq = t2.sub_questions[-1]
+        return f"✅ Sub-question {sq.id[:8]} added to {t2.id[:8]}."
+
+    if sub == "done":
+        # /thread done <thread_id> <subq_id> [resolution]
+        tokens = arg.split(maxsplit=2)
+        if len(tokens) < 2:
+            return "Usage: /thread done <thread_id> <subq_id> [resolution]"
+        tid, sqid = tokens[0], tokens[1]
+        res = tokens[2] if len(tokens) > 2 else ""
+        t = _resolve_thread_arg(tid)
+        if t is None:
+            return f"Thread {tid!r} not found."
+        # Resolve subq by full id OR prefix
+        target_sq_id = None
+        for sq in t.sub_questions:
+            if sq.id == sqid or sq.id.startswith(sqid.lower()):
+                target_sq_id = sq.id
+                break
+        if target_sq_id is None:
+            return f"Sub-question {sqid!r} not found in {t.id[:8]}."
+        try:
+            from app.threads import resolve_subquestion
+            t2 = resolve_subquestion(t.id, target_sq_id, res)
+        except Exception as exc:
+            return f"Could not resolve sub-question: {exc}"
+        return f"✅ Resolved sub-question {target_sq_id[:8]} on {t2.id[:8]}."
+
+    if sub == "unblock":
+        if not arg:
+            return "Usage: /thread unblock <id>"
+        t = _resolve_thread_arg(arg.split()[0])
+        if t is None:
+            return f"Thread {arg!r} not found."
+        try:
+            from app.threads import clear_blockers
+            t2 = clear_blockers(t.id)
+        except Exception:
+            return "Could not clear blockers."
+        return f"✅ Unblocked {t2.id[:8]} (status → {t2.status.value})."
+
+    if sub == "resolve":
+        # /thread resolve <id> [summary]
+        tokens = arg.split(maxsplit=1)
+        if not tokens:
+            return "Usage: /thread resolve <id> [summary]"
+        tid = tokens[0]
+        summary = tokens[1] if len(tokens) > 1 else ""
+        t = _resolve_thread_arg(tid)
+        if t is None:
+            return f"Thread {tid!r} not found."
+        try:
+            from app.threads import resolve_thread
+            t2 = resolve_thread(t.id, summary=summary)
+        except Exception as exc:
+            return f"Could not resolve thread: {exc}"
+        return f"✅ Resolved {t2.id[:8]}: {t2.title[:80]}"
+
+    return _thread_help()
 
     return _person_help()

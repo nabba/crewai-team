@@ -65,6 +65,13 @@ class Thread:
     status: ThreadStatus = ThreadStatus.OPEN
     sub_questions: list[SubQuestion] = field(default_factory=list)
     blockers: list[str] = field(default_factory=list)
+    # Q8.1 (PROGRAM §46.1) — hypotheses about what would resolve the
+    # current block. Symmetric to ``blockers`` (which says what IS
+    # blocking) — ``unblock_hints`` says what MIGHT help. Read by the
+    # recovery loop via ``app.recovery.thread_consultation`` when the
+    # recovery loop is selecting a strategy for an unrelated failure
+    # and needs background context.
+    unblock_hints: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     related_crew_task_ids: list[str] = field(default_factory=list)
@@ -74,6 +81,10 @@ class Thread:
     resolved_at: str | None = None
     abandoned_at: str | None = None
     abandon_reason: str | None = None
+    # Q8.2 (PROGRAM §46.2) — populated on thread closure by
+    # ``app.threads.approaches.distill_on_closure``. Empty until
+    # closure; survives in the archive for retrospective inspection.
+    approaches_summary: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -84,10 +95,12 @@ class Thread:
             "status": self.status.value,
             "sub_questions": [sq.to_dict() for sq in self.sub_questions],
             "blockers": list(self.blockers),
+            "unblock_hints": list(self.unblock_hints),
             "notes": list(self.notes),
             "related_crew_task_ids": list(self.related_crew_task_ids),
             "related_inquiry_slugs": list(self.related_inquiry_slugs),
             "last_touched_at": self.last_touched_at,
+            "approaches_summary": self.approaches_summary,
         }
         for opt in ("resolved_at", "abandoned_at", "abandon_reason"):
             v = getattr(self, opt)
@@ -107,6 +120,9 @@ class Thread:
                 SubQuestion.from_dict(sq) for sq in data.get("sub_questions", [])
             ],
             blockers=list(data.get("blockers", [])),
+            # Q8.1 — backward-compat: pre-Q8 records have no
+            # unblock_hints / approaches_summary keys.
+            unblock_hints=list(data.get("unblock_hints", [])),
             notes=list(data.get("notes", [])),
             related_crew_task_ids=list(data.get("related_crew_task_ids", [])),
             related_inquiry_slugs=list(data.get("related_inquiry_slugs", [])),
@@ -114,6 +130,7 @@ class Thread:
             resolved_at=data.get("resolved_at"),
             abandoned_at=data.get("abandoned_at"),
             abandon_reason=data.get("abandon_reason"),
+            approaches_summary=data.get("approaches_summary", "") or "",
         )
 
     @property

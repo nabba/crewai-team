@@ -41,6 +41,7 @@ _CATEGORIES = (
     "Personal life",
     "Brainstorm",
     "Sessions",
+    "Threads",
 )
 
 
@@ -328,6 +329,42 @@ SIGNAL_COMMANDS: tuple[SignalCommand, ...] = (
     SignalCommand("/brainstorm", (), "/brainstorm <topic>",
                   "Interactive ideation: SCAMPER, Six Hats, How-Might-We, Reverse, Crazy-8s, Rapid Ideation, Starbursting.",
                   "Brainstorm"),
+
+    # ── Threads (Q8.1, PROGRAM §46.1) ────────────────────────────
+    # Long-horizon line-of-inquiry tracking that survives crew runs.
+    SignalCommand("/thread", ("thread", "threads"), "/thread",
+                  "List open threads (lines of inquiry that span crew runs).",
+                  "Threads"),
+    SignalCommand("/thread start", (), "/thread start <title>",
+                  "Create a new long-horizon thread.",
+                  "Threads"),
+    SignalCommand("/thread status", (), "/thread status [id]",
+                  "Show thread detail; defaults to the last-touched open thread.",
+                  "Threads"),
+    SignalCommand("/thread note", (), "/thread note <id> <text>",
+                  "Append a note to the thread (free-form context).",
+                  "Threads"),
+    SignalCommand("/thread subq", (), "/thread subq <id> <question>",
+                  "Add a sub-question to the thread.",
+                  "Threads"),
+    SignalCommand("/thread done", (), "/thread done <id> <subq_id> [resolution]",
+                  "Mark a sub-question resolved.",
+                  "Threads"),
+    SignalCommand("/thread block", (), "/thread block <id> <reason>",
+                  "File a blocker (thread status → BLOCKED).",
+                  "Threads"),
+    SignalCommand("/thread hint", (), "/thread hint <id> <text>",
+                  "Append a 'what might unblock this' hypothesis (recovery loop reads these).",
+                  "Threads"),
+    SignalCommand("/thread unblock", (), "/thread unblock <id>",
+                  "Clear all blockers + restore to IN_PROGRESS.",
+                  "Threads"),
+    SignalCommand("/thread resolve", (), "/thread resolve <id> [summary]",
+                  "Close as RESOLVED (triggers approaches-tried distillation).",
+                  "Threads"),
+    SignalCommand("/thread abandon", (), "/thread abandon <id> <reason>",
+                  "Close as ABANDONED (triggers approaches-tried distillation).",
+                  "Threads"),
 )
 
 

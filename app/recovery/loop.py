@@ -186,6 +186,16 @@ def maybe_recover(
             elapsed_s=time.monotonic() - t_start,
         )
 
+    # Q8.1 (PROGRAM §46.1) — surface open-thread unblock-hints to
+    # strategies. Failure-isolated; produces [] when threads module is
+    # unavailable, so existing strategies are unaffected when there
+    # are no open threads.
+    try:
+        from app.recovery.thread_consultation import collect_open_thread_hints
+        thread_hints = collect_open_thread_hints()
+    except Exception:
+        thread_hints = []
+
     ctx = {
         "commander": commander,
         "user_input": user_input,
@@ -194,6 +204,7 @@ def maybe_recover(
         "difficulty": difficulty,
         "refusal_category": signal.category,
         "original_response": response_text,
+        "thread_hints": thread_hints,
     }
 
     max_attempts = _max_attempts()

@@ -20,6 +20,8 @@ export const threadsEndpoints = {
   resolveSq: (id: string) => `${T}/${encodeURIComponent(id)}/resolve-sq`,
   blocker: (id: string) => `${T}/${encodeURIComponent(id)}/blocker`,
   clearBlockers: (id: string) => `${T}/${encodeURIComponent(id)}/clear-blockers`,
+  unblockHint: (id: string) => `${T}/${encodeURIComponent(id)}/unblock-hint`,
+  clearUnblockHints: (id: string) => `${T}/${encodeURIComponent(id)}/clear-unblock-hints`,
   note: (id: string) => `${T}/${encodeURIComponent(id)}/note`,
   transition: (id: string) => `${T}/${encodeURIComponent(id)}/transition`,
 };
@@ -107,6 +109,30 @@ export function useClearBlockersMutation() {
   return useMutation({
     mutationFn: ({ id }: { id: string }) =>
       api<ThreadResponse>(threadsEndpoints.clearBlockers(id), {
+        method: 'POST',
+      }),
+    onSuccess: (_, { id }) => invalidate(qc, id),
+  });
+}
+
+// Q8.1 — unblock-hint mutations.
+export function useAddUnblockHintMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) =>
+      api<ThreadResponse>(threadsEndpoints.unblockHint(id), {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+    onSuccess: (_, { id }) => invalidate(qc, id),
+  });
+}
+
+export function useClearUnblockHintsMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      api<ThreadResponse>(threadsEndpoints.clearUnblockHints(id), {
         method: 'POST',
       }),
     onSuccess: (_, { id }) => invalidate(qc, id),

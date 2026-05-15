@@ -7897,3 +7897,240 @@ Q7 closes the gaps the operator flagged. The system is materially
 better at proposing, reviewing, and consolidating its own evolution
 without the operator having to remember which file paths trigger
 which artifact-generation paths.
+
+## 46 2026-05-16 — Q8: Difficult-question solving (three threads)
+
+Post-§45 review of difficult-question solving surfaced three areas
+where the operator's spec called for behavior the system didn't
+fully deliver. Audit findings before kickoff:
+
+  * **4.1** Long-horizon threads — the `app/threads/` primitive
+    already shipped (models + lifecycle + REST + React + 21 tests),
+    but THREE operator-facing pieces were missing:
+    no `/thread` slash command, no "what would unblock this"
+    symmetric field, and no recovery-loop consultation.
+  * **4.2** Failure-replay learning — `lessons_learned.py` already
+    operated on rejected CRs + thumbs-down feedback + Goodhart
+    signals, but had no hook for thread-closure "approaches tried"
+    distillation.
+  * **4.3** Tool composition synthesis — genuinely greenfield. Skills
+    registry handles `task_template` → one Commander call; brainstorm
+    techniques are Python state machines; Forge synthesises new tool
+    source. No middle layer for declarative DAG composition of
+    existing tools.
+
+Operator decisions before kickoff:
+
+  1. Threads storage: keep JSON-per-record (matches change_requests,
+     architecture_requests pattern; the user-prompt "Postgres-backed"
+     was descriptive intent, not a hard requirement).
+  2. Thread-closure synthesis: cheap-tier LLM call + deterministic
+     fallback (~$0.0001 per closure via Anthropic Haiku 4.5).
+  3. Workflow execution: async + queue + status endpoint (caller
+     gets a `run_id` back immediately; polls
+     `/api/cp/workflows/runs/<id>`).
+  4. Brainstorm bridge: doc-only mention, no refactor (the
+     state-machine techniques work fine).
+
+### 46.1 — Q8.1: Threads completion
+
+**Schema additions (backward-compat):**
+
+  * `Thread.unblock_hints: list[str]` — symmetric to `blockers`
+    (what IS blocking) — says what MIGHT resolve the block. Read by
+    the recovery loop via `app.recovery.thread_consultation`.
+  * `Thread.approaches_summary: str` — populated on closure by
+    Q8.2's distiller (see §46.2).
+  * `from_dict` defaults to empty for both fields so pre-Q8 records
+    load cleanly.
+
+**Lifecycle:**
+
+  * `add_unblock_hint(thread_id, text)` — appends hint, auto-advances
+    OPEN → IN_PROGRESS.
+  * `clear_unblock_hints(thread_id)` — wipes the list without
+    changing status (blockers themselves still apply).
+
+**REST:**
+
+  * `POST /api/cp/threads/{id}/unblock-hint`
+  * `POST /api/cp/threads/{id}/clear-unblock-hints`
+
+**Signal slash command** (`/thread {start, status, list, note,
+subq, done, block, unblock, hint, resolve, abandon}`):
+
+  * Eleven `SignalCommand` rows under a new `Threads` category in
+    `command_registry.py`.
+  * `_handle_thread_command` dispatcher in `commands.py` (mirrors the
+    existing `/tensions`, `/person`, `/skill` patterns).
+  * Short-id resolution (8-char prefix matches the full UUID) so the
+    operator doesn't have to copy/paste the whole id.
+
+**Recovery-loop consultation:**
+
+  * New `app/recovery/thread_consultation.py` — `collect_open_thread_hints()`
+    returns up to 5 open-thread payloads (title, status, blockers,
+    hints) with per-string 240-char truncation.
+  * `format_for_prompt(payloads)` renders as a short markdown block.
+  * `app/recovery/loop.py:maybe_recover` builds `ctx` with a new
+    `thread_hints` field. Strategies are NOT forced to read it; they
+    can if relevant.
+  * Failure-isolated: broken threads module → empty list, recovery
+    keeps running.
+
+**React surface:**
+
+  * `useAddUnblockHintMutation` + `useClearUnblockHintsMutation` hooks
+    in `api/threads.ts`.
+  * `Thread.unblock_hints` + `Thread.approaches_summary` added to
+    the `types/threads.ts` interface.
+
+### 46.2 — Q8.2: Thread-closure approaches-tried distillation
+
+**New module `app/threads/approaches.py`:**
+
+  * `distill_on_closure(thread)` — walks notes + blockers +
+    sub-questions + unblock_hints. Builds a structured plain-text
+    body (`_build_deterministic_body`). Decides synthesis path:
+    Anthropic Haiku 4.5 call when `APPROACHES_LLM_ENABLED` is ON
+    (default) AND body is ≥60 chars; deterministic concatenation
+    otherwise. Sets `thread.approaches_summary` (capped 2000 chars).
+  * `_emit_lesson(thread, summary)` — appends a `source="thread_closure"`
+    event into the `lessons_learned` KB via the public
+    `_cluster_into_kb` helper. Singleton thread-closure clusters
+    are kept (unlike mass-CR-rejection where they're noise).
+  * `consult_before_create(title, description)` — calls
+    `lessons_learned.check_against` and returns top-3 matching past
+    closure clusters.
+
+**Lifecycle hooks:**
+
+  * `resolve_thread` and `abandon_thread` both invoke
+    `_distill_on_closure_safely` after persisting the closure
+    transition. Failure-isolated: the distiller never rolls back
+    the lifecycle change.
+  * `create_thread` calls `consult_before_create`; if any match has
+    similarity ≥ 0.6, a one-shot Signal notification surfaces the
+    top 3 lessons via the canonical `app.notify.notify` with topic
+    `thread_consult:<id>` (arbiter dedup).
+
+**Master switch**: `APPROACHES_LLM_ENABLED` env var (default `true`).
+Flipping OFF forces deterministic synthesis on every closure.
+
+### 46.3 — Q8.3: Workflow-template primitive
+
+**Greenfield package `app/workflows/`** (~700 LOC):
+
+  * `models.py` — `WorkflowTemplate` (id, name, description, nodes,
+    inputs, run_count, success_count, last_run_at) + `WorkflowNode`
+    (id, tool_name, args, depends_on, description) + `WorkflowRun`
+    (status, started_at, finished_at, node_outputs, node_statuses,
+    error, error_node) + `RunStatus` enum (queued / running /
+    succeeded / failed / cancelled) + `InvalidWorkflow` exception.
+  * `validator.py` — 7-check pipeline: non-empty id+name → unique
+    node ids → `depends_on` references siblings → no cycles
+    (Kahn's algorithm) → `${node.field}` references topologically
+    earlier nodes → `{input_name}` declared in `template.inputs`
+    → `tool_name` registered (best-effort; skipped when the
+    registry is unavailable, e.g. fresh boot).
+  * `store.py` — JSON-per-record under
+    `workspace/workflows/templates/<id>.json` (templates) +
+    `workspace/workflows/runs/<run_id>.json` (runs). Matches the
+    threads + change_requests + architecture_requests pattern.
+  * `executor.py` — topological order + reference resolution +
+    output truncation (8000 chars). Two regex passes: `${node.field}`
+    (nested attribute/dict-key access; unknown fields → empty string)
+    then `{input_name}`. Negative lookbehind on `$` prevents
+    double-matching. Failure propagation: when a node fails,
+    downstream nodes are marked `skipped` (not just left blank) so
+    the run record reflects the full impact. Tool dispatch tries the
+    registry first, then `app.tools.<tool_name>` direct callable.
+  * `queue.py` — `ThreadPoolExecutor` sized at 4 (`_MAX_CONCURRENT_RUNS`).
+    `enqueue` persists QUEUED, submits, returns run record. The
+    worker persists every status transition so a crash mid-run leaves
+    a partial record. `wait_for_run` is a sync helper for tests +
+    occasional CLI use. `cancel_run` is best-effort flag-flip.
+
+**Reference resolution:**
+
+  * `{input_name}` — replaced with `run.inputs[input_name]` at
+    execution time.
+  * `${node_id}` — replaced with the full output of `node_id`.
+  * `${node_id.field.subfield}` — nested dict/attribute access.
+    Unknown fields → empty string (not an error; design-time
+    `validate_template` catches the gross cases).
+
+**REST endpoints** (`/api/cp/workflows`):
+
+  * `GET /` — list templates.
+  * `POST /` — create + validate template; 400 on
+    `InvalidWorkflow` with the specific reason.
+  * `GET /{id}` — template detail.
+  * `DELETE /{id}` — remove template (run history NOT deleted).
+  * `POST /{id}/run` — enqueue run; returns `{run_id, status}`.
+  * `GET /runs?template_id=<id>&limit=N` — list runs, newest first.
+  * `GET /runs/{run_id}` — poll run status.
+  * `POST /runs/{run_id}/cancel` — best-effort cancel.
+
+**Agent tools** (`app/tools/workflow_tools.py`):
+
+  * `workflow_run(template_name, inputs, wait_seconds)` — enqueue +
+    optionally block. `wait_seconds=0` returns the run_id and a
+    poll URL.
+  * `workflow_list()` — discovery tool for agents.
+
+**React surface** (`/workflows`):
+
+  * `WorkflowsPage.tsx` — list templates (KPI: nodes, inputs,
+    run_count, success_rate, last_run_at) + recent-runs list with
+    status-coded badges. Per-template "Run" button opens a drawer
+    with inputs form + live run status (3s refetch).
+  * Nav entry in `Layout.tsx` next to Skills.
+  * Hooks in `api/workflows.ts`: `useWorkflowsListQuery`,
+    `useWorkflowRunsQuery`, `useWorkflowRunStatusQuery`,
+    `useStartWorkflowMutation`, `useCancelWorkflowRunMutation`.
+
+**Tests** (`tests/test_q8_3_workflows.py`):
+
+  * 6 test groups: models round-trip, validator (5 refusal paths +
+    accept), store (save/get/list/persistence + counters), executor
+    (topological order, failure propagation + downstream skipping,
+    input resolution, nested node-field resolution), queue (immediate
+    return, disk persistence, template-id filtering), source-level
+    wiring (REST mounted, all endpoints exist, agent tool exists,
+    React page mounted, API hooks exposed).
+  * 24 tests; all pass.
+
+### 46.4 — Q8 regression
+
+```
+Q8.1 + Q8.2 + Q8.3 + Q7 + legacy threads + legacy consolidation:
+  162 pass + 6 skipped (gateway-deps)
+
+No TIER_IMMUTABLE files modified.
+```
+
+### 46.5 — What Q8 deliberately did NOT do
+
+  * **No Postgres migration of threads.** The operator-prompt
+    "Postgres-backed" was descriptive intent; the existing JSON-
+    per-record store matches three other primitives in the system
+    (change_requests, architecture_requests, workflows itself).
+    A migration is a future-cycle item with its own design pass.
+  * **No brainstorm-techniques refactor.** The state-machine
+    techniques (SCAMPER, six_hats, etc.) work fine as Python
+    subclasses. Reframing them as workflow_templates would be
+    parallel infrastructure with no operator benefit today. Doc-
+    only mention here.
+  * **No DAG visual editor in React.** v1 surface is JSON via REST.
+    Hand-authoring + version control beats a half-baked WYSIWYG.
+  * **No conditional branches in workflows.** The DAG is a strict
+    fan-in/fan-out structure for v1. `if/else` nodes would need a
+    proper expression language; deferred until a concrete need.
+  * **No agent-inventory auto-registration.** `workflow_run` and
+    `workflow_list` are callable via REST + importable from the
+    tool module. The agent factory does NOT auto-add them to every
+    crew's inventory; an operator wires them per-agent when a
+    workflow is genuinely the right tool. Avoids tool-bloat in the
+    default inventory.
+

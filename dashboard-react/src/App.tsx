@@ -99,6 +99,11 @@ const ThreadsPage = lazy(() =>
     default: m.ThreadsPage,
   })),
 );
+const WorkflowsPage = lazy(() =>
+  import('./components/WorkflowsPage').then((m) => ({
+    default: m.WorkflowsPage,
+  })),
+);
 const ProposalsPage = lazy(() =>
   import('./components/ProposalsPage').then((m) => ({
     default: m.ProposalsPage,
@@ -172,6 +177,7 @@ export default function App() {
             <Route path="/inquiries" element={<LazyRoute><InquiriesPage /></LazyRoute>} />
             <Route path="/action-requests" element={<LazyRoute><ActionRequestsPage /></LazyRoute>} />
             <Route path="/threads" element={<LazyRoute><ThreadsPage /></LazyRoute>} />
+            <Route path="/workflows" element={<LazyRoute><WorkflowsPage /></LazyRoute>} />
             <Route path="/proposals" element={<LazyRoute><ProposalsPage /></LazyRoute>} />
             <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
             <Route path="/life-companion" element={<LazyRoute><LifeCompanionPage /></LazyRoute>} />
