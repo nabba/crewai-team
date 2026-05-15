@@ -281,6 +281,13 @@ async def set_runtime_settings_endpoint(request: Request):
         set_graph_suggestions_cluster_dormancy_enabled,
         set_graph_suggestions_bridge_maintenance_enabled,
         set_graph_suggestions_weak_tie_enabled,
+        # Q6 — resilience drills
+        set_resilience_drills_enabled,
+        set_drill_backup_restore_enabled,
+        set_drill_embedding_migration_enabled,
+        set_drill_secret_rotation_enabled,
+        set_drill_kill_the_gateway_enabled,
+        set_drill_staleness_monitor_enabled,
         snapshot,
     )
 
@@ -411,6 +418,35 @@ async def set_runtime_settings_endpoint(request: Request):
         if "graph_suggestions_weak_tie_enabled" in payload:
             set_graph_suggestions_weak_tie_enabled(
                 bool(payload["graph_suggestions_weak_tie_enabled"])
+            )
+
+        # Q6 (PROGRAM §44.3) — resilience drill master + per-drill toggles.
+        # kill_the_gateway is the only DISRUPTIVE drill and defaults OFF;
+        # the operator opts in via this toggle. No typed-phrase gate on
+        # the runtime setting itself — the typed phrase is required by
+        # the external script at execution time, not at toggle time.
+        # Toggle alone just makes the scheduler emit "due" notifications.
+        if "resilience_drills_enabled" in payload:
+            set_resilience_drills_enabled(bool(payload["resilience_drills_enabled"]))
+        if "drill_backup_restore_enabled" in payload:
+            set_drill_backup_restore_enabled(
+                bool(payload["drill_backup_restore_enabled"])
+            )
+        if "drill_embedding_migration_enabled" in payload:
+            set_drill_embedding_migration_enabled(
+                bool(payload["drill_embedding_migration_enabled"])
+            )
+        if "drill_secret_rotation_enabled" in payload:
+            set_drill_secret_rotation_enabled(
+                bool(payload["drill_secret_rotation_enabled"])
+            )
+        if "drill_kill_the_gateway_enabled" in payload:
+            set_drill_kill_the_gateway_enabled(
+                bool(payload["drill_kill_the_gateway_enabled"])
+            )
+        if "drill_staleness_monitor_enabled" in payload:
+            set_drill_staleness_monitor_enabled(
+                bool(payload["drill_staleness_monitor_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

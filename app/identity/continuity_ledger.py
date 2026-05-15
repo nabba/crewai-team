@@ -61,6 +61,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "substrate_migration",  # PROGRAM §40 Item 12 — Q3.1
     "person_correlation_policy",  # PROGRAM §42 — Q4.2 (Q4.2.2#1)
     "sentience_observation",  # PROGRAM §43 — Q5.4.2
+    "resilience_drill",  # PROGRAM §44 — Q6.1
 })
 
 

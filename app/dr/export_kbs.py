@@ -73,6 +73,12 @@ _LEDGER_INCLUDES: list[str] = [
     "self_heal/",       # observability artifacts
     "salience/",        # episode synth source
     "narrative/",       # daily chapters
+    # Q6.3 (PROGRAM §44.3) — resilience drill audit. The system's
+    # resilience history is part of its identity (per operator decision):
+    # restoring from backup should preserve "we ran these drills these
+    # dates" so the operator's view of the system's recovery posture
+    # carries across a bare-metal rebuild.
+    "resilience/",
 ]
 
 # Path-fragment denylist — applied AFTER the allowlist as a defense-in-depth

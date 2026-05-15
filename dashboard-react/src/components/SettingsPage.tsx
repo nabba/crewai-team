@@ -26,6 +26,7 @@ import {
   unsubscribeFromPush,
 } from '../api/pwa';
 import { PersonCorrelationCard } from './PersonCorrelationCard';
+import { ResilienceDrillsCard } from './ResilienceDrillsCard';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -67,6 +68,10 @@ export function SettingsPage() {
       <StructuredDiagnosisCard settings={settingsQ.data} />
       <SelfHealSubsystemsCard settings={settingsQ.data} />
       <PersonCorrelationCard
+        settings={settingsQ.data}
+        onSettingsChange={() => settingsQ.refetch()}
+      />
+      <ResilienceDrillsCard
         settings={settingsQ.data}
         onSettingsChange={() => settingsQ.refetch()}
       />

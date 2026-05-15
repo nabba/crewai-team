@@ -188,6 +188,19 @@ def _defaults() -> dict[str, Any]:
         # decentering filter regardless).
         "sentience_llm_hypothesis_enabled": True,
 
+        # Q6 — Resilience drills (PROGRAM §44, 2026-05-13).
+        # Quarterly exercises that verify recovery procedures work.
+        # Master + per-drill gates. kill_the_gateway is OFF by default
+        # because it is the only DISRUPTIVE drill (actually stops the
+        # gateway container). Operator opts in via the React /cp/settings
+        # toggle when ready to schedule a maintenance window.
+        "resilience_drills_enabled": True,
+        "drill_backup_restore_enabled": True,
+        "drill_embedding_migration_enabled": True,
+        "drill_secret_rotation_enabled": True,
+        "drill_kill_the_gateway_enabled": False,  # OPT-IN
+        "drill_staleness_monitor_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1142,3 +1155,58 @@ def get_sentience_llm_hypothesis_enabled() -> bool:
 
 def set_sentience_llm_hypothesis_enabled(value: bool) -> None:
     _update({"sentience_llm_hypothesis_enabled": bool(value)})
+
+
+# ── Q6 — Resilience drills (PROGRAM §44) ─────────────────────────────
+
+
+def get_resilience_drills_enabled() -> bool:
+    return bool(_ensure_initialized().get("resilience_drills_enabled", True))
+
+
+def set_resilience_drills_enabled(value: bool) -> None:
+    _update({"resilience_drills_enabled": bool(value)})
+
+
+def get_drill_backup_restore_enabled() -> bool:
+    return bool(_ensure_initialized().get("drill_backup_restore_enabled", True))
+
+
+def set_drill_backup_restore_enabled(value: bool) -> None:
+    _update({"drill_backup_restore_enabled": bool(value)})
+
+
+def get_drill_embedding_migration_enabled() -> bool:
+    return bool(_ensure_initialized().get("drill_embedding_migration_enabled", True))
+
+
+def set_drill_embedding_migration_enabled(value: bool) -> None:
+    _update({"drill_embedding_migration_enabled": bool(value)})
+
+
+def get_drill_secret_rotation_enabled() -> bool:
+    return bool(_ensure_initialized().get("drill_secret_rotation_enabled", True))
+
+
+def set_drill_secret_rotation_enabled(value: bool) -> None:
+    _update({"drill_secret_rotation_enabled": bool(value)})
+
+
+def get_drill_kill_the_gateway_enabled() -> bool:
+    """OFF by default — the only DISRUPTIVE drill. Operator must
+    explicitly enable via /cp/settings before scheduler will emit
+    'due' notifications. Even when ON, execution requires the
+    external script + typed-phrase confirmation."""
+    return bool(_ensure_initialized().get("drill_kill_the_gateway_enabled", False))
+
+
+def set_drill_kill_the_gateway_enabled(value: bool) -> None:
+    _update({"drill_kill_the_gateway_enabled": bool(value)})
+
+
+def get_drill_staleness_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("drill_staleness_monitor_enabled", True))
+
+
+def set_drill_staleness_monitor_enabled(value: bool) -> None:
+    _update({"drill_staleness_monitor_enabled": bool(value)})

@@ -527,6 +527,70 @@ def _gather_sentience_digest() -> list[str]:
     return lines
 
 
+def _gather_resilience_drill_digest() -> list[str]:
+    """Q6.3 — weekly digest of resilience-drill status.
+
+    Surfaces: count of drills past-due, count run successfully in the
+    last 7 days, top failing drill name (if any). Section disappears
+    entirely when nothing actionable.
+    """
+    try:
+        import app.resilience_drills.drills  # noqa: F401 — populate registry
+        from app.resilience_drills.audit import (
+            days_since_last_success, iter_results,
+        )
+        from app.resilience_drills.protocol import get_registry, drill_enabled
+    except Exception:
+        return []
+    registry = get_registry()
+    if not registry.list_specs():
+        return []
+    # Per-drill staleness.
+    stale: list[tuple[str, float]] = []
+    for spec in registry.list_specs():
+        if not drill_enabled(spec):
+            continue
+        days = days_since_last_success(spec.name)
+        threshold = spec.cadence_days + spec.grace_days
+        if days is None or days > threshold:
+            stale.append((spec.name, days if days is not None else float("inf")))
+    # Successful runs this week.
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    week_ago_iso = (_dt.now(_tz.utc) - _td(days=7)).isoformat()
+    ran_this_week = 0
+    failed_this_week: list[str] = []
+    for row in iter_results(since_iso=week_ago_iso):
+        status = row.get("status") or ""
+        if status == "pass":
+            ran_this_week += 1
+        elif status in ("fail", "error"):
+            failed_this_week.append(row.get("drill_name", "?"))
+    if ran_this_week == 0 and not stale and not failed_this_week:
+        return []
+    lines: list[str] = []
+    if ran_this_week:
+        lines.append(
+            f"  • {ran_this_week} drill"
+            f"{'s' if ran_this_week != 1 else ''} passed this week"
+        )
+    if failed_this_week:
+        lines.append(
+            f"  • {len(failed_this_week)} drill"
+            f"{'s' if len(failed_this_week) != 1 else ''} FAILED: "
+            f"{', '.join(sorted(set(failed_this_week))[:3])}"
+        )
+    if stale:
+        names = ", ".join(
+            f"{n} ({d:.0f}d)" if d != float("inf") else f"{n} (never)"
+            for n, d in sorted(stale)[:3]
+        )
+        lines.append(
+            f"  • {len(stale)} drill"
+            f"{'s' if len(stale) != 1 else ''} past-due: {names}"
+        )
+    return lines
+
+
 def _gather_companion_surfaced() -> list[str]:
     """Recent companion ideas surfaced to the user (last 24 h). Soft fail."""
     try:
@@ -665,6 +729,13 @@ def _compose_weekly() -> tuple[str, list[float]]:
     if sentience:
         parts.append("\n🔬 Self-observation (week):")
         parts.extend(sentience)
+    # Q6.3 — resilience drills digest. Section disappears when
+    # nothing actionable (no past-due, no recent failures, no recent
+    # successes — i.e. truly nothing happened).
+    drills = _gather_resilience_drill_digest()
+    if drills:
+        parts.append("\n🛡 Resilience drills (week):")
+        parts.extend(drills)
     # Weekly composer doesn't pull from the queue — daily covers that.
     return "\n".join(parts), []
 

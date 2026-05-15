@@ -7044,3 +7044,121 @@ perception, no sparse coding, no algorithmic recurrence). The four
 sentience modules instantiate the functional capabilities the user
 named with those indicator labels as shorthand — never the
 indicators themselves. Anti-Goodhart contract honored throughout.
+
+## 44 2026-05-13 — Q6: Resilience drills + posture decision
+
+Two roadmap items (#21 quarterly drills + #22 HA-vs-recovery posture)
+shipped as a unified package.
+
+### 44.0 — Posture decision
+
+The system commits to **good backup + fast bare-metal recovery**, not
+high-availability. **Identity is data, not uptime.** Documented in
+`docs/RESILIENCE_POSTURE.md`; encoded as constants in
+`app/resilience_drills/posture.py`. Decision is FIXED for v1;
+re-opens under one of four escape conditions. Off-host backup
+policy: **dual-target S3 + Google Drive**, weekly cadence,
+operator-managed.
+
+### 44.1 — Q6.1 Foundation
+
+New `app/resilience_drills/` package: `protocol.py` (DrillSpec /
+DrillResult / DrillRegistry / DrillRisk / DrillStatus), `audit.py`
+(JSONL audit + landmark emission to continuity ledger on FAIL /
+first-pass / recovery transitions only), `posture.py` (#22 decision
+as data + `is_ha_proposed_for_subsystem` guard).
+
+Continuity ledger: 10th event kind `resilience_drill` added. 6 new
+master switches in `runtime_settings.py`. `kill_the_gateway` switch
+defaults **OFF** — operator opt-in via /cp/settings.
+
+### 44.2 — Q6.2 Four drills + scheduler + staleness monitor
+
+* **`backup_restore`** (LOW) — wraps `app/dr/boot_drill.run_drill`
+* **`embedding_migration`** (LOW) — wraps
+  `app/memory/embedding_migration/dry_run.run_dry_run`
+* **`secret_rotation`** (LOW, DRY-RUN ONLY) — verifies rotation
+  procedure; format-check booleans only, NO secret values in audit
+* **`kill_the_gateway`** (HIGH, DISRUPTIVE) — pre-drill check in
+  gateway + external script + post-drill ingest hook;
+  `scripts/drills/kill_the_gateway.sh` requires typed-phrase
+  `"EXECUTE KILL DRILL"`; gateway cannot kill itself by design
+
+Scheduler in `companion.loop`: auto-runs LOW/MEDIUM, NEVER auto-runs
+HIGH (operator runs external script). Pinned by
+`test_scheduler_skips_high_risk_drills`.
+
+`drill_staleness` is the 28th healing monitor — daily probe; alerts
+when any drill past `cadence + grace`.
+
+### 44.3 — Q6.3 Operator surfaces + DR export inclusion
+
+4 REST endpoints under `/api/cp/drills/*` (registry, audit, run, posture).
+
+React `/cp/settings` new `ResilienceDrillsCard.tsx` with master toggle
++ 5 per-drill switches; `kill_the_gateway` has explicit "DISRUPTIVE"
+warning + "execution requires external script" disclaimer.
+
+Briefing weekly digest section "🛡 Resilience drills (week)" surfaces
+passes/failures/past-due. Disappears when nothing actionable.
+
+`workspace/resilience/` added to DR export `_LEDGER_INCLUDES` per
+operator decision: drill audit is identity-shaping, survives DR
+restore.
+
+Operator guide `docs/RESILIENCE_DRILLS.md` (~250 lines) with
+per-drill detail, scheduler behavior, REST surface, anti-Goodhart
+guards.
+
+### 44.4 — Tests + regression
+
+```
+NEW tests:
+  tests/test_q6_1_foundation.py  # 20 pass + 1 skip
+  tests/test_q6_2_drills.py      # 19 pass
+  tests/test_q6_3_surfaces.py    # 9 pass
+
+NEW backend (12 files):
+  app/resilience_drills/ — protocol/audit/posture/scheduler + 4 drills
+  app/healing/monitors/drill_staleness.py
+  scripts/drills/kill_the_gateway.sh
+
+UPDATED backend (8 files):
+  app/identity/continuity_ledger.py             # +1 event kind
+  app/runtime_settings.py                       # +6 master switches
+  app/companion/loop.py                         # +1 idle job
+  app/healing/monitors/__init__.py              # +1 monitor wired
+  app/api/config_api.py                         # +6 setter handlers
+  app/control_plane/dashboard_api.py            # +4 REST endpoints
+  app/life_companion/daily_briefing.py          # +1 digest section
+  app/dr/export_kbs.py                          # +1 ledger-include
+
+NEW React:
+  dashboard-react/src/components/ResilienceDrillsCard.tsx
+
+UPDATED React:
+  dashboard-react/src/api/queries.ts            # +6 RuntimeSettings
+  dashboard-react/src/components/SettingsPage.tsx  # mount card
+
+NEW docs:
+  docs/RESILIENCE_POSTURE.md   # #22 decision
+  docs/RESILIENCE_DRILLS.md    # operator guide
+```
+
+Q1→Q6 regression: **411 pass + 61 skip, 0 fail**. Butlin scorecard
+remains `{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}` unchanged.
+
+### 44.5 — Q5 lessons applied
+
+Three Q5.5 post-ship checklist items honored from the start:
+
+1. **"Does any code actually call this?"** — every drill is in the
+   registry, scheduled, surfaced in REST + briefing.
+2. **"Does the test exercise the real call path?"** — drill tests
+   monkeypatch underlying `boot_drill.run_drill` /
+   `dry_run.run_dry_run`, not the drill runner itself; the
+   registry → audit → emit_landmark integration runs end-to-end.
+3. **"If this feature were deleted, would anything externally
+   observable change?"** — deletion would cause `drill_staleness` to
+   alert; DR export would silently lose `resilience/` (pinned by
+   test).

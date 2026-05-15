@@ -201,6 +201,20 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
             "companion.loop: sentience experiments skipped", exc_info=True,
         )
 
+    # Q6 (PROGRAM §44.2) — Resilience drills scheduler. One job that
+    # walks the drill registry, auto-runs LOW/MEDIUM-risk drills past
+    # their cadence, emits Signal notifications for HIGH-risk drills
+    # that need operator action. Force-imports the drills package to
+    # populate the registry.
+    try:
+        import app.resilience_drills.drills  # noqa: F401  — registry registration
+        from app.resilience_drills.scheduler import run_once as _drills_run
+        jobs.append(("resilience-drills", _drills_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: resilience drills skipped", exc_info=True,
+        )
+
     # Phase C (2026-05-09) — adapter performance / paper pipeline / governance auto-propose.
     try:
         from app.training.adapter_performance import run as _ap_run

@@ -582,6 +582,13 @@ export interface RuntimeSettings {
   graph_suggestions_cluster_dormancy_enabled?: boolean;
   graph_suggestions_bridge_maintenance_enabled?: boolean;
   graph_suggestions_weak_tie_enabled?: boolean;
+  // Q6 — resilience drills (PROGRAM §44)
+  resilience_drills_enabled?: boolean;
+  drill_backup_restore_enabled?: boolean;
+  drill_embedding_migration_enabled?: boolean;
+  drill_secret_rotation_enabled?: boolean;
+  drill_kill_the_gateway_enabled?: boolean;
+  drill_staleness_monitor_enabled?: boolean;
 }
 
 export function useRuntimeSettingsQuery() {

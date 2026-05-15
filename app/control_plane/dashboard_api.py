@@ -2397,6 +2397,109 @@ def _credit_link_for(exc: Exception | str) -> str | None:
     return None
 
 
+# ── Q6 — Resilience drills (PROGRAM §44.3) ──────────────────────────
+
+
+@router.get("/drills/registry")
+def drills_registry():
+    """List registered drills + cadence + last-run timestamp.
+
+    Returns one row per drill: {name, cadence_days, grace_days, risk,
+    description, last_run_at, last_status, days_since_last_success}."""
+    try:
+        import app.resilience_drills.drills  # noqa: F401 — populate registry
+        from app.resilience_drills.protocol import get_registry, drill_enabled
+        from app.resilience_drills.audit import (
+            days_since_last_success, last_result_for,
+        )
+    except Exception as exc:
+        return {"drills": [], "error": str(exc)}
+
+    out = []
+    for spec in get_registry().list_specs():
+        last = last_result_for(spec.name)
+        out.append({
+            "name": spec.name,
+            "cadence_days": spec.cadence_days,
+            "grace_days": spec.grace_days,
+            "risk": spec.risk.value if hasattr(spec.risk, "value") else str(spec.risk),
+            "description": spec.description,
+            "requires_typed_phrase": spec.requires_typed_phrase,
+            "requires_master_switch": spec.requires_master_switch,
+            "enabled": drill_enabled(spec),
+            "last_status": (last or {}).get("status"),
+            "last_run_at": (last or {}).get("started_at"),
+            "days_since_last_success": days_since_last_success(spec.name),
+        })
+    return {"drills": out}
+
+
+@router.get("/drills/audit")
+def drills_audit(limit: int = Query(50, ge=1, le=500)):
+    """Recent drill audit rows (newest-first)."""
+    try:
+        from app.resilience_drills.audit import iter_results
+        rows = list(iter_results())
+        rows.sort(key=lambda r: r.get("started_at", ""), reverse=True)
+        return {"results": rows[:limit]}
+    except Exception as exc:
+        return {"results": [], "error": str(exc)}
+
+
+@router.post("/drills/run/{name}")
+def drills_run(name: str, body: dict | None = None):
+    """Manually invoke a drill. LOW + MEDIUM risk drills run via the
+    in-gateway runner. HIGH-risk drills (kill_the_gateway) return a
+    'next_step' pointer — operator must run the external script."""
+    try:
+        import app.resilience_drills.drills  # noqa: F401
+        from app.resilience_drills.protocol import (
+            get_registry, drill_enabled, DrillRisk,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    spec = get_registry().get(name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"unknown drill: {name}")
+    if not drill_enabled(spec):
+        raise HTTPException(
+            status_code=400,
+            detail=f"drill {name} is not enabled — check master switch",
+        )
+    runner = get_registry().runner_for(name)
+    if runner is None:
+        raise HTTPException(
+            status_code=500, detail=f"no runner for drill {name}",
+        )
+    # HIGH-risk drills only run the pre-drill check from the REST surface.
+    try:
+        result = runner(dry_run=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"drill raised: {exc}")
+    return result.to_dict()
+
+
+@router.get("/drills/posture")
+def drills_posture():
+    """Current resilience posture (the #22 decision)."""
+    try:
+        from app.resilience_drills.posture import POSTURE
+        return {
+            "ha_enabled": POSTURE.ha_enabled,
+            "rationale_short": POSTURE.rationale_short,
+            "target_recovery_minutes": POSTURE.target_recovery_minutes,
+            "off_host_targets": list(POSTURE.off_host_targets),
+            "target_backup_age_days": POSTURE.target_backup_age_days,
+            "quarterly_drills": list(POSTURE.quarterly_drills),
+            "escape_condition_consecutive_misses":
+                POSTURE.escape_condition_consecutive_misses,
+            "escape_condition_target_minutes":
+                POSTURE.escape_condition_target_minutes,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── Q5 — Targeted sentience experiments (PROGRAM §43.3) ──────────────
 
 
