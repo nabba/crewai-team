@@ -594,6 +594,9 @@ export interface RuntimeSettings {
   architecture_adoption_monitor_enabled?: boolean;
   // Q7.4 — per-coding-session ShinkaEvolve master switch (PROGRAM §45.4)
   shinka_inline_evolve_enabled?: boolean;
+  // Q9.3 — Travel monitor configuration (PROGRAM §46.6)
+  tripit_ical_url?: string;
+  aviationstack_api_key?: string;
 }
 
 export function useRuntimeSettingsQuery() {

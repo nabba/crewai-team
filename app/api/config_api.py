@@ -293,6 +293,9 @@ async def set_runtime_settings_endpoint(request: Request):
         set_architecture_adoption_monitor_enabled,
         # Q7.4 — inline ShinkaEvolve per coding session
         set_shinka_inline_evolve_enabled,
+        # Q9.3 — travel monitor configuration
+        set_tripit_ical_url,
+        set_aviationstack_api_key,
         snapshot,
     )
 
@@ -476,6 +479,19 @@ async def set_runtime_settings_endpoint(request: Request):
         if "shinka_inline_evolve_enabled" in payload:
             set_shinka_inline_evolve_enabled(
                 bool(payload["shinka_inline_evolve_enabled"])
+            )
+
+        # ─── Q9.3 — travel monitor configuration ──────────────────────
+        # tripit_ical_url: operator copies the personal TripIt iCal feed
+        # URL from their TripIt account; aviationstack_api_key is the
+        # optional Aviationstack key for live flight status. Both
+        # validated at the setter (https + hostname for TripIt; min-len
+        # for the API key).
+        if "tripit_ical_url" in payload:
+            set_tripit_ical_url(str(payload["tripit_ical_url"] or ""))
+        if "aviationstack_api_key" in payload:
+            set_aviationstack_api_key(
+                str(payload["aviationstack_api_key"] or "")
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

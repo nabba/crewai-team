@@ -141,6 +141,78 @@ def test_travel_run_skips_when_disabled(monkeypatch) -> None:
     assert r["status"] == "skipped_disabled"
 
 
+def test_travel_url_resolution_precedence(tmp_path, monkeypatch) -> None:
+    """Q9.3 follow-up: ``runtime_settings.tripit_ical_url`` wins over
+    ``TRIPIT_ICAL_URL`` env var. Same for the Aviationstack key."""
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path))
+    # Set env var (should LOSE to runtime_settings)
+    monkeypatch.setenv("TRIPIT_ICAL_URL", "https://env.tripit.com/feed.ics")
+    monkeypatch.setenv("AVIATIONSTACK_API_KEY", "envkey_envkey_envkey_envkey")
+    # Configure runtime_settings via a stub that mimics the real
+    # module's getters
+    import sys
+    from types import ModuleType
+    fake = ModuleType("app.runtime_settings_fake")
+    setattr(fake, "get_tripit_ical_url",
+            lambda: "https://settings.tripit.com/feed.ics")
+    setattr(fake, "get_aviationstack_api_key",
+            lambda: "settings_settings_settings_token")
+    sys.modules["app.runtime_settings"] = fake
+    try:
+        from app.life_companion.travel import (
+            _get_aviationstack_key, _get_tripit_url,
+        )
+        assert _get_tripit_url() == "https://settings.tripit.com/feed.ics"
+        assert _get_aviationstack_key() == "settings_settings_settings_token"
+    finally:
+        sys.modules.pop("app.runtime_settings", None)
+
+
+def test_travel_url_falls_back_to_env_when_runtime_settings_empty(
+    tmp_path, monkeypatch,
+) -> None:
+    """Empty runtime_settings → env-var fallback (back-compat)."""
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TRIPIT_ICAL_URL", "https://env.tripit.com/feed.ics")
+    monkeypatch.setenv("AVIATIONSTACK_API_KEY", "envkey_envkey_envkey")
+    import sys
+    from types import ModuleType
+    fake = ModuleType("app.runtime_settings_fake")
+    setattr(fake, "get_tripit_ical_url", lambda: "")
+    setattr(fake, "get_aviationstack_api_key", lambda: "")
+    sys.modules["app.runtime_settings"] = fake
+    try:
+        from app.life_companion.travel import (
+            _get_aviationstack_key, _get_tripit_url,
+        )
+        assert _get_tripit_url() == "https://env.tripit.com/feed.ics"
+        assert _get_aviationstack_key() == "envkey_envkey_envkey"
+    finally:
+        sys.modules.pop("app.runtime_settings", None)
+
+
+def test_travel_card_mounted_in_settings_page() -> None:
+    """Source-level wiring: TravelCard imported + mounted."""
+    page = Path("dashboard-react/src/components/SettingsPage.tsx").read_text(
+        encoding="utf-8",
+    )
+    assert "import { TravelCard }" in page
+    assert "<TravelCard" in page
+    card = Path("dashboard-react/src/components/TravelCard.tsx").read_text(
+        encoding="utf-8",
+    )
+    assert "tripit_ical_url" in card
+    assert "aviationstack_api_key" in card
+
+
+def test_config_api_handles_travel_keys() -> None:
+    src = Path("app/api/config_api.py").read_text(encoding="utf-8")
+    assert "set_tripit_ical_url" in src
+    assert "set_aviationstack_api_key" in src
+    assert '"tripit_ical_url" in payload' in src
+    assert '"aviationstack_api_key" in payload' in src
+
+
 # ─────────────────────────────────────────────────────────────────────
 #   §46.7 — Q9.4 inbox classifier + handler wiring
 # ─────────────────────────────────────────────────────────────────────

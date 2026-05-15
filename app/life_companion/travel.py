@@ -240,10 +240,43 @@ def _normalize_dt(raw: str) -> str:
         return raw
 
 
+def _get_tripit_url() -> str:
+    """Resolve the TripIt iCal feed URL.
+
+    Resolution order:
+      1. ``runtime_settings.get_tripit_ical_url()`` — operator-flippable
+         via React /cp/settings → Travel card. Persists in
+         ``workspace/runtime_settings.json``; no gateway restart needed.
+      2. ``TRIPIT_ICAL_URL`` env var — backward-compat for the original
+         shape; still works for operators on the env-var path.
+    """
+    try:
+        from app.runtime_settings import get_tripit_ical_url
+        url = (get_tripit_ical_url() or "").strip()
+        if url:
+            return url
+    except Exception:
+        pass
+    return os.environ.get("TRIPIT_ICAL_URL", "").strip()
+
+
+def _get_aviationstack_key() -> str:
+    """Resolve the Aviationstack key — runtime_settings first, env var
+    fallback (mirrors :func:`_get_tripit_url`)."""
+    try:
+        from app.runtime_settings import get_aviationstack_api_key
+        key = (get_aviationstack_api_key() or "").strip()
+        if key:
+            return key
+    except Exception:
+        pass
+    return os.environ.get("AVIATIONSTACK_API_KEY", "").strip()
+
+
 def fetch_tripit() -> list[TripSegment]:
     """Fetch + parse the TripIt iCal feed. Returns [] when no URL
     configured or fetch fails (failure-isolated)."""
-    url = os.environ.get("TRIPIT_ICAL_URL", "").strip()
+    url = _get_tripit_url()
     if not url:
         return []
     try:
@@ -270,7 +303,7 @@ def fetch_flight_status(flight_number: str) -> FlightStatus | None:
     """
     if not _flight_tracking_enabled():
         return None
-    key = os.environ.get("AVIATIONSTACK_API_KEY", "").strip()
+    key = _get_aviationstack_key()
     if not key or not flight_number:
         return None
     try:

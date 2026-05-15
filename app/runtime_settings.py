@@ -218,6 +218,18 @@ def _defaults() -> dict[str, Any]:
         # (``app.shinka_engine``) is gated separately.
         "shinka_inline_evolve_enabled": True,
 
+        # Q9.3 — Travel monitor configuration (PROGRAM §46.6).
+        # ``tripit_ical_url`` is the per-user TripIt iCal feed
+        # (Settings → Calendar Sync → "Copy to your calendar" in
+        # the TripIt account UI). Empty = TripIt source disabled.
+        # ``aviationstack_api_key`` is the optional Aviationstack
+        # API key for live flight status. Empty = no live status;
+        # the TripIt segments themselves still surface.
+        # Both fall back to the matching env vars (TRIPIT_ICAL_URL
+        # / AVIATIONSTACK_API_KEY) for backward compatibility.
+        "tripit_ical_url": "",
+        "aviationstack_api_key": "",
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1265,3 +1277,49 @@ def get_shinka_inline_evolve_enabled() -> bool:
 
 def set_shinka_inline_evolve_enabled(value: bool) -> None:
     _update({"shinka_inline_evolve_enabled": bool(value)})
+
+
+# ── Q9.3 — Travel monitor (PROGRAM §46.6) ─────────────────────────────
+
+
+def get_tripit_ical_url() -> str:
+    """Operator-supplied TripIt iCal feed URL. Returns empty when
+    not configured; the travel module degrades to env-var fallback
+    then to silent no-op."""
+    return str(_ensure_initialized().get("tripit_ical_url", "") or "")
+
+
+def set_tripit_ical_url(value: str) -> None:
+    """Persist TripIt iCal URL. Operator-set value; sane validation:
+    must be empty OR start with ``https://`` and contain ``tripit``
+    in the hostname (defensive — refuse paste of random URLs)."""
+    v = (value or "").strip()
+    if v:
+        lower = v.lower()
+        if not lower.startswith("https://"):
+            raise ValueError("tripit_ical_url must start with https://")
+        # Conservative hostname check — TripIt iCal feeds live under
+        # *.tripit.com. Operators copying from the right place will
+        # always have "tripit" in the URL.
+        if "tripit" not in lower.split("/")[2]:
+            raise ValueError(
+                "tripit_ical_url hostname must contain 'tripit'"
+            )
+    _update({"tripit_ical_url": v})
+
+
+def get_aviationstack_api_key() -> str:
+    """Aviationstack API key for live flight status. Empty when not
+    configured."""
+    return str(_ensure_initialized().get("aviationstack_api_key", "") or "")
+
+
+def set_aviationstack_api_key(value: str) -> None:
+    """Persist Aviationstack API key. Defensive validation: must be
+    empty OR a hex-ish 32-char token (Aviationstack format)."""
+    v = (value or "").strip()
+    if v and len(v) < 16:
+        raise ValueError(
+            "aviationstack_api_key looks too short to be valid"
+        )
+    _update({"aviationstack_api_key": v})
