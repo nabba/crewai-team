@@ -200,6 +200,10 @@ def _defaults() -> dict[str, Any]:
         "drill_secret_rotation_enabled": True,
         "drill_kill_the_gateway_enabled": False,  # OPT-IN
         "drill_staleness_monitor_enabled": True,
+        # Q6.5 P2#3 (PROGRAM §44.5) — daily probe of
+        # workspace/backups/dr/ mtime. Catches the "operator's backup-
+        # sync cron died" failure mode without needing cloud SDKs.
+        "backup_freshness_monitor_enabled": True,
 
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
@@ -1210,3 +1214,11 @@ def get_drill_staleness_monitor_enabled() -> bool:
 
 def set_drill_staleness_monitor_enabled(value: bool) -> None:
     _update({"drill_staleness_monitor_enabled": bool(value)})
+
+
+def get_backup_freshness_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("backup_freshness_monitor_enabled", True))
+
+
+def set_backup_freshness_monitor_enabled(value: bool) -> None:
+    _update({"backup_freshness_monitor_enabled": bool(value)})

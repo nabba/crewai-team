@@ -114,8 +114,32 @@ class DrillRegistry:
 
     def register(self, spec: DrillSpec, runner: DrillRunner) -> None:
         """Register a drill. Idempotent — re-registration updates the
-        runner reference, useful for hot-reload during tests."""
+        runner reference, useful for hot-reload during tests.
+
+        Q6.5 P2#2 — warn when a different module re-registers the
+        same name with a DIFFERENT runner object. Same-runner is the
+        hot-reload case (legitimate); different-runner suggests an
+        accidental name collision between two drill modules that
+        should be investigated."""
         with self._lock:
+            existing_runner = self._runners.get(spec.name)
+            if (
+                existing_runner is not None
+                and existing_runner is not runner
+                and getattr(existing_runner, "__module__", None)
+                    != getattr(runner, "__module__", None)
+            ):
+                # Different module + different runner → likely a name
+                # collision. Don't refuse (operator may have intent)
+                # but log loudly so it surfaces in operator review.
+                logger.warning(
+                    "DrillRegistry: drill name %r being re-registered "
+                    "from different module (was %r, now %r); silent "
+                    "overwrite may indicate accidental name collision",
+                    spec.name,
+                    getattr(existing_runner, "__module__", "<unknown>"),
+                    getattr(runner, "__module__", "<unknown>"),
+                )
             self._specs[spec.name] = spec
             self._runners[spec.name] = runner
 

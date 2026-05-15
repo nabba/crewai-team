@@ -273,13 +273,150 @@ runtime-settings master switches apply identically. For
 LIVE drill remains gated to `scripts/drills/kill_the_gateway.sh`
 outside the gateway.
 
+## Audit-log corruption recovery (Q6.5 doc#4)
+
+If `workspace/resilience/drill_audit.jsonl` becomes corrupt or is
+silently deleted, the symptoms + recovery procedure are:
+
+**Symptoms:**
+
+- After the 7-day boot grace, `drill_staleness` alerts fire for ALL
+  registered drills simultaneously (the monitor sees "no successful
+  runs ever" because audit-log iteration returns empty)
+- `/api/cp/drills/audit` returns `{"results": []}` even though drills
+  have actually run
+- React `/cp/settings` ResilienceDrillsCard shows "never run" for
+  every drill
+
+**Diagnosis:**
+
+```bash
+# 1. Verify file exists + is readable
+ls -la workspace/resilience/drill_audit.jsonl
+
+# 2. Walk each line; the first failure tells you the corruption shape
+python3 -c "
+import json
+with open('workspace/resilience/drill_audit.jsonl') as f:
+    for i, line in enumerate(f, 1):
+        line = line.strip()
+        if not line: continue
+        try: json.loads(line)
+        except json.JSONDecodeError as e:
+            print(f'line {i}: {e}; preview: {line[:80]}')
+            break
+    else:
+        print('no JSON corruption found; check file age + permissions')
+"
+```
+
+**Recovery:**
+
+The audit log is local history; the **continuity ledger** at
+`workspace/identity/continuity_ledger.jsonl` retains all
+`resilience_drill` landmark events (failures, first-passes, recoveries)
+regardless of audit-log state. So:
+
+1. Move the corrupt file aside:
+   `mv workspace/resilience/drill_audit.jsonl{,.corrupt-$(date +%s)}`
+2. The drills will re-populate the audit log on next run (auto-runs
+   continue on the scheduler's normal cadence)
+3. Landmark history from before the corruption is still in the
+   continuity ledger and surfaces in the annual reflection
+
+**What is lost:** routine pass/skip rows from before the corruption.
+**What survives:** every landmark event ever emitted (FAIL/ERROR,
+first-pass, recovery), via the continuity ledger.
+
+## How annual reflection consumes drill events (Q6.5 doc#5)
+
+The `resilience_drill` event kind (10th in `IDENTITY_EVENT_KINDS`)
+is emitted to `workspace/identity/continuity_ledger.jsonl` on:
+
+- Drill FAIL or ERROR — operator needs to know
+- First-ever PASS for a drill — identity-shaping moment
+- Recovery: previous run was FAIL/ERROR, this one is PASS
+
+The annual reflection (`app/identity/annual_reflection.py`) reads
+the ledger via `summarise_drift(window_days=365)`. The
+`by_kind: Counter` field is dynamic — it counts every event kind
+that appears, so the `resilience_drill` count surfaces automatically
+in the year-end self-reflection at `wiki/self/value_reflections/<year>.md`.
+
+The narrative typically renders this as a one-line summary:
+
+> "This year the system ran N resilience drills (X passed first-ever,
+> Y recovered after prior failures, Z still failing)."
+
+Drill-specific narrative (per-drill counts, trend per drill) is NOT
+auto-rendered — the annual reflection treats drill events at the
+event-kind level. For per-drill detail, query the audit log directly
+via `python -m app.resilience_drills audit --drill <name>` or
+`/api/cp/drills/audit`.
+
+## Q6 closure criteria (Q6.5 doc#6)
+
+After five ship cycles (Q6.1 foundation → Q6.5 polish) Q6 is
+declared CLOSED. Trajectory of audit findings:
+
+| Cycle | Findings | Severity |
+|---|---|---|
+| §44.1 (Q6.1) | — | initial foundation |
+| §44.2 (Q6.2) | — | four drills + monitor |
+| §44.3 (Q6.3) | — | operator surfaces |
+| §44.4 (Q6.4) | 10 | 1 P0 + 1 P0 test + 5 P1 + 3 P2 |
+| §44.5 (Q6.5) | 6 | 1 P1 + 3 P2 + 2 docs |
+
+The trajectory has flattened from architectural to polish/docs.
+
+**Re-open the audit cycle ONLY under one of these specific
+conditions:**
+
+1. **Live operator-visible failure**: a drill silently failed for
+   weeks and the operator only discovered it via consequence (e.g.,
+   real disaster + restore failed). Investigate why the alert
+   pipeline didn't fire.
+
+2. **Posture violation**: scorecard-pinning-style audit shows
+   `is_ha_proposed_for_subsystem` returning a violation OR the
+   posture decision constants in `app/resilience_drills/posture.py`
+   have drifted. This is the architectural-firewall test failing.
+
+3. **Recovery-time excess**: three consecutive `kill_the_gateway`
+   drills exceed 30 minutes. Triggers posture re-review per the
+   escape conditions in `docs/RESILIENCE_POSTURE.md`.
+
+4. **New drill class needed**: a 5th drill becomes worth running
+   quarterly (e.g., a future "cloud-credential-rotation drill"
+   when off-host SDKs are wired). That's its own design cycle, not
+   an audit of existing drills.
+
+5. **Concrete operator concern**: not "let's audit Q6 again" but
+   "drill X behavior surprised me yesterday, here's the specific
+   detail." That's an investigation, not a cycle.
+
+**Do NOT re-open** the audit cycle on a cadence or "let's verify Q6
+is still ok" pattern. Routine verification is covered by:
+
+- CI tests (anti-Goodhart pinning, recovery-sequence pinning)
+- The live `/api/cp/drills/posture` endpoint
+- The `drill_staleness` + `backup_freshness` healing monitors
+
+Past Q6.5, identically-prompted audit cycles produce diminishing
+returns at risk of inventing problems. The post-Q5.6 closure
+discipline applies here too.
+
 ## Audit history
 
 - 2026-05-13 — Q6.1 foundation: protocol + audit + posture + tests
 - 2026-05-13 — Q6.2 drills + scheduler + staleness monitor
 - 2026-05-13 — Q6.3 REST + React + briefing + DR export inclusion + this doc
-- 2026-05-13 — Q6.4 post-ship audit fixes: recovery-landmark order +
+- 2026-05-13 — Q6.4 post-ship audit: recovery-landmark order +
   test exercises production sequence + per-drill in-flight lock +
   `is_first_run` uses successful-history + `inspect.getsource` +
   SOUL.md guard regex + boot-grace for staleness monitor + CLI
   entry point + React state display + self-monitoring docs
+- 2026-05-13 — Q6.5 second-cycle audit: failed-drill Signal alert +
+  double-registration warning + backup_freshness monitor + audit-
+  log corruption recovery doc + annual reflection consumption doc +
+  Q6 closure criteria. **Q6 declared closed.**

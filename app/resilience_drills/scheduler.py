@@ -58,6 +58,36 @@ def _notify_drill_due(name: str, days_since: float | None, cadence_days: int) ->
         logger.debug("scheduler: drill-due notify failed", exc_info=True)
 
 
+def _notify_drill_failed(name: str, status: str, errors: list[str]) -> None:
+    """Q6.5 P1#1 — Signal notification when an auto-run drill fails.
+
+    The whole point of running drills is to catch problems EARLY. Q6.4
+    fired the continuity-ledger landmark and wrote the audit row, but
+    the operator only saw the failure via the weekly briefing (up to
+    7 days late) or by actively checking /cp/drills/audit. For a real
+    failure mode (DR tarball corrupted, etc.) that's too slow.
+
+    Topic-keyed so the notify arbiter dedupes repeated failures of
+    the same drill within 24h."""
+    try:
+        from app.notify import notify
+        # Cap error summary at 200 chars to keep the alert readable.
+        err_summary = "; ".join(errors[:3])[:200] if errors else "(no error detail)"
+        notify(
+            title=f"❌ Resilience drill failed: {name}",
+            body=(
+                f"Drill {name!r} returned status={status}. "
+                f"Errors: {err_summary}. See /cp/drills/audit for full detail."
+            ),
+            url="/cp/drills",
+            topic=f"resilience_drill_failed:{name}",
+            critical=False,
+            arbitrate=True,
+        )
+    except Exception:
+        logger.debug("scheduler: drill-failed notify failed", exc_info=True)
+
+
 def run_once() -> dict[str, Any]:
     """One scheduler pass. For each registered drill:
 
@@ -119,12 +149,28 @@ def run_once() -> dict[str, Any]:
         try:
             result = runner(dry_run=True)
             summary["auto_ran"] += 1
-            if getattr(result, "status", None) == DrillStatus.PASS:
+            result_status = getattr(result, "status", None)
+            if result_status == DrillStatus.PASS:
                 pass  # routine pass; nothing further
-            elif getattr(result, "status", None) in (DrillStatus.FAIL, DrillStatus.ERROR):
+            elif result_status in (DrillStatus.FAIL, DrillStatus.ERROR):
                 summary["errors"] += 1
+                # Q6.5 P1#1 — immediate operator notification on
+                # failure. Topic-keyed via arbiter for dedup.
+                status_str = (
+                    result_status.value if hasattr(result_status, "value")
+                    else str(result_status)
+                )
+                _notify_drill_failed(
+                    spec.name,
+                    status_str,
+                    list(getattr(result, "errors", []) or []),
+                )
         except Exception:
             logger.debug("scheduler: auto-run failed for %s", spec.name, exc_info=True)
             summary["errors"] += 1
+            # Also notify on uncaught exception (drill bug rather than
+            # drill detecting a real problem — but both are operator-
+            # actionable).
+            _notify_drill_failed(spec.name, "exception", ["scheduler caught uncaught exception"])
 
     return summary

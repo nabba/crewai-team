@@ -7369,3 +7369,191 @@ The good news: each audit cycle DOES catch the recurrence. The
 pinning test `test_recovery_landmark_exercised_via_production_sequence`
 now permanently encodes the production-sequence requirement in CI,
 so a future regression of THIS bug will fail at commit time.
+
+## 44.5 2026-05-13 — Q6.5: second-cycle audit + Q6 closure
+
+Second post-ship audit on Q6 caught 1 P1 + 3 P2 polish + 2 doc gaps
++ 1 closure-criteria doc. All shipped. **Q6 declared closed** at the
+end of this section; trajectory has flattened to polish-only.
+
+### 44.5.1 — P1#1: Scheduler emits Signal on FAIL/ERROR
+
+The Q6.4 fix to recovery-landmark emission added continuity-ledger
+events for FAIL outcomes, but the scheduler itself didn't notify
+the operator immediately. The operator only saw failures via:
+
+- Weekly briefing digest (up to 7 days late)
+- Annual reflection (months late)
+- Active query of `/cp/drills/audit`
+
+For real failure modes — DR tarball corruption, missing dependencies,
+silent migration breakage — 7 days of silence is too long. The
+whole point of running drills is to catch problems early.
+
+New `_notify_drill_failed(name, status, errors)` in `scheduler.py`:
+fires a Signal alert with title `❌ Resilience drill failed: <name>`,
+topic-keyed (`f"resilience_drill_failed:{name}"`) for arbiter dedup
+within 24h. Both auto-run FAIL/ERROR outcomes AND uncaught exceptions
+in the auto-run try-block trigger the alert.
+
+Pinned by `test_scheduler_notifies_on_drill_fail` (asserts the alert
+fires) and `test_scheduler_no_failure_notify_on_pass` (asserts
+routine PASS doesn't trigger the failure path).
+
+### 44.5.2 — P2#2: Double-registration warning
+
+`DrillRegistry.register()` previously silently overwrote when the
+same drill name was re-registered. This is correct for the hot-reload
+case (Q6.2 test pattern), but a different module accidentally using
+the same name is suspicious — it should surface.
+
+The fix detects the asymmetry: same-runner re-registration is silent
+(hot-reload); DIFFERENT module + DIFFERENT runner logs a warning at
+WARNING level. The warning names both modules so the operator can
+identify the collision in code review.
+
+### 44.5.3 — P2#3: `backup_freshness` healing monitor
+
+The posture document (`docs/RESILIENCE_POSTURE.md`) commits to dual-
+target off-host backups (S3 + Google Drive). But there was NO
+verification that the operator's sync script was actually working.
+If the cron job that pushes tarballs off-host died silently, the
+`backup_restore` drill still passed (local tarball intact), and the
+operator only discovered the gap on the first disaster.
+
+A REAL off-host integrity check would require AWS/Google SDKs +
+credentials + more attack surface (deferred to future).
+
+The LIGHT proxy — adequate for the most common failure mode — is a
+new healing monitor `app/healing/monitors/backup_freshness.py`:
+
+- Daily probe
+- Checks `workspace/backups/dr/` for any `.tar.gz`/`.tar` files
+- Alerts when the newest tarball mtime is older than
+  `2 × POSTURE.target_backup_age_days` (14 days at default settings)
+- Master switch `backup_freshness_monitor_enabled` (default ON)
+- Topic-keyed `"backup_freshness_stale"` via notify arbiter
+
+This catches "sync script crashed" without needing cloud SDKs. The
+`backup_restore` drill verifies LOCAL tarball INTEGRITY; this monitor
+verifies LOCAL tarball FRESHNESS. Both proxies for "do we have a
+recoverable backup somewhere," neither requires cloud credentials.
+
+Tests pin: alert when directory missing, alert when stale, silent
+when fresh, skipped when master OFF, ignores non-tarball files
+(e.g., manifest.json).
+
+### 44.5.4 — doc#4: Audit-log corruption recovery procedure
+
+Operator-facing recovery procedure in `docs/RESILIENCE_DRILLS.md`:
+symptoms (drill_staleness fires for all drills, REST returns empty,
+React shows "never run"), diagnosis (Python one-liner that walks
+the JSONL and reports first corruption point), recovery (move
+corrupt file aside; drills re-populate; landmark history survives
+in the continuity ledger).
+
+Critical operator note: **what is lost vs. what survives.** Audit
+log losses are routine pass/skip rows; the continuity ledger has
+every landmark event (FAIL/ERROR, first-pass, recovery).
+
+### 44.5.5 — doc#5: Annual reflection consumption documented
+
+`docs/RESILIENCE_DRILLS.md` now traces the `resilience_drill` event
+kind from emission through `summarise_drift.by_kind` (Counter — new
+kinds auto-surface) into `wiki/self/value_reflections/<year>.md`.
+Operator who reads the year-end self-reflection sees a typical line
+like:
+
+> "This year the system ran N resilience drills (X passed first-ever,
+> Y recovered after prior failures, Z still failing)."
+
+Per-drill detail is NOT auto-rendered (treated at event-kind level).
+For per-drill, operator uses `python -m app.resilience_drills audit
+--drill <name>` or `/api/cp/drills/audit`.
+
+### 44.5.6 — doc#6: Q6 closure criteria
+
+Following the Q5.6 pattern, `docs/RESILIENCE_DRILLS.md` now declares
+the FIVE specific conditions under which the audit cycle should be
+re-opened:
+
+1. **Live operator-visible failure** (drill silently failed for weeks)
+2. **Posture violation** (`is_ha_proposed_for_subsystem` returns
+   non-None or posture constants drifted)
+3. **Recovery-time excess** (3 consecutive `kill_the_gateway` drills
+   exceed 30 min)
+4. **New drill class needed** (5th drill becomes worth running)
+5. **Concrete operator concern** (specific surprise behavior, not
+   generic "audit again")
+
+Explicitly NOT a re-open trigger: "let's verify Q6 is still ok."
+That cadence pattern produces diminishing returns past Q6.5;
+routine verification is covered by CI tests + live audit endpoint
++ healing monitors.
+
+### 44.5.7 — Tests + regression
+
+```
+NEW tests:
+crewai-team/tests/test_q6_5_followup.py    # 11 pass + 1 skip
+
+UPDATED backend:
+crewai-team/app/resilience_drills/scheduler.py
+  # P1#1 — _notify_drill_failed helper + wired into auto-run path
+crewai-team/app/resilience_drills/protocol.py
+  # P2#2 — double-registration warning on different-module collision
+crewai-team/app/runtime_settings.py
+  # P2#3 — backup_freshness_monitor_enabled master switch + getter/setter
+crewai-team/app/healing/monitors/__init__.py
+  # P2#3 — new monitor registered with daily cadence
+
+NEW backend:
+crewai-team/app/healing/monitors/backup_freshness.py  # P2#3
+
+UPDATED docs:
+crewai-team/docs/RESILIENCE_DRILLS.md
+  # doc#4 + doc#5 + doc#6 + audit history update
+```
+
+Q1→Q6.5 regression: **443 pass + 62 skip, 0 fail**. Butlin scorecard
+`{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}` unchanged.
+
+### 44.5.8 — Q6 declared closed
+
+After five ship cycles (foundation → drills → surfaces → 1st audit
+follow-up → 2nd audit follow-up) Q6 reaches the same closure point
+Q5 reached at §43.6. Trajectory:
+
+| Cycle | Findings | Severity |
+|---|---|---|
+| §44.1 | — | foundation |
+| §44.2 | — | four drills + monitor |
+| §44.3 | — | operator surfaces |
+| §44.4 | 10 | architectural (P0 + P1) |
+| §44.5 | 6 | polish + docs |
+
+The trajectory matches Q5 (architectural → polish → docs). Each
+audit cycle was productive; the next cycle would produce items at
+noise level. Re-open ONLY under the five named conditions above.
+
+The Q6 stack is operationally complete for personal-use scale:
+
+- 4 quarterly drills covering the four major failure modes
+- Posture decision encoded + guarded against HA drift
+- Scheduler with auto-run for LOW/MEDIUM + opt-in HIGH
+- Continuity-ledger emission on landmark events only
+- 2 healing monitors (`drill_staleness` + `backup_freshness`)
+- 5 REST endpoints + React state-display card
+- CLI for manual operator invocation
+- Operator guide with recovery procedures + closure criteria
+- 5 tests files / 73 dedicated Q6 tests / 443 total regression tests
+
+What remains genuinely unbuilt (deferred per posture decision):
+
+- Cloud-SDK-backed off-host integrity drill
+- Sub-minute recovery (would require HA, which posture rejects)
+- Gateway-side meta-monitor (avoided by design; operator-heuristic
+  in the doc covers the meta-question)
+
+These are future-cycle items with their own decision processes,
+not Q6 polish.

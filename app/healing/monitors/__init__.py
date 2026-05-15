@@ -79,6 +79,7 @@ _DEFAULT_CADENCE_S = {
     "chromadb_hygiene": 24 * 3600,             # daily probe — internal 90-day cadence; PROGRAM §40 Item 10
     "notify_suppression_review": 6 * 3600,     # 6h probe — internal 7d cadence; PROGRAM §41 Item 17
     "drill_staleness": 24 * 3600,              # daily probe; alerts when any drill past cadence+grace; PROGRAM §44.2 Q6.2
+    "backup_freshness": 24 * 3600,             # daily probe; alerts when local DR tarball > 14d old; PROGRAM §44.5 Q6.5 P2#3
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -281,6 +282,19 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: drill_staleness import failed", exc_info=True,
+        )
+    # PROGRAM §44.5 Q6.5 P2#3 — alerts when the local DR tarball is
+    # stale (proxy for "backup-sync script died"). Catches the most
+    # common failure mode without needing cloud SDKs.
+    try:
+        from app.healing.monitors import backup_freshness
+        monitors.append((
+            "backup_freshness", backup_freshness.run,
+            _DEFAULT_CADENCE_S["backup_freshness"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: backup_freshness import failed", exc_info=True,
         )
     # Q2 §39: structured-diagnosis confidence-threshold auto-tuner.
     # The function has its own 24h gate inside; hourly cadence here
