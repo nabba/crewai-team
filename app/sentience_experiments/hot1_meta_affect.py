@@ -16,8 +16,12 @@ filter.
 Inputs (read-only)
 ------------------
 
-  * ``workspace/affect/welfare_audit.jsonl`` (existing)
-  * ``workspace/affect/episode_affect_tags.jsonl`` (existing)
+  * ``workspace/affect/trace.jsonl`` — every AffectState snapshot
+    (the primary source; this is what the user meant by "the
+    affect trace"). Q5.4.1 fix: the original ship read only
+    welfare_audit, which was a sparse subset.
+  * ``workspace/affect/welfare_audit.jsonl`` — breach events
+    (secondary source; used for breach-class clustering)
 
 Outputs
 -------
@@ -109,6 +113,19 @@ def _default_welfare_audit_path() -> Path:
         return Path(WORKSPACE_ROOT) / "affect" / "welfare_audit.jsonl"
     except Exception:
         return Path("/app/workspace/affect/welfare_audit.jsonl")
+
+
+def _default_trace_path() -> Path:
+    """Q5.4.1 — the full affect_trace.jsonl which contains every
+    AffectState snapshot (V/A/C + attractor + ts). Decentered
+    reflection consumes this directly via app.paths.AFFECT_TRACE;
+    HOT-1 reads the same path so the two passes share a data
+    source and can be co-located in the operator surface."""
+    try:
+        from app.paths import AFFECT_TRACE
+        return Path(AFFECT_TRACE)
+    except Exception:
+        return Path("/app/workspace/affect/trace.jsonl")
 
 
 def _default_patterns_path() -> Path:
@@ -213,6 +230,51 @@ def _load_breaches(window_days: int) -> list[dict]:
                     continue
                 kind = row.get("kind") or "unknown"
                 out.append({"ts": ts, "kind": kind})
+    except OSError:
+        return []
+    return out
+
+
+def _load_trace_points(window_days: int) -> list[dict]:
+    """Q5.4.1 — read the full affect trace within the window. Each
+    row carries V/A/C + attractor + ts. Failure-isolated."""
+    path = _default_trace_path()
+    if not path.exists():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    out: list[dict] = []
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_str = row.get("ts") or ""
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+                if ts < cutoff:
+                    continue
+                # Extract V/A/C — robust to schema variations across
+                # decentered.py / affect.schemas.
+                try:
+                    valence = float(row.get("valence", 0.0))
+                    arousal = float(row.get("arousal", 0.0))
+                    controllability = float(row.get("controllability", 0.5))
+                except (TypeError, ValueError):
+                    continue
+                out.append({
+                    "ts": ts,
+                    "valence": valence,
+                    "arousal": arousal,
+                    "controllability": controllability,
+                    "attractor": str(row.get("attractor") or "unknown"),
+                })
     except OSError:
         return []
     return out
@@ -328,21 +390,108 @@ def _detect_sequences(
     return out
 
 
+def _detect_baseline_drift(
+    trace: list[dict], *, half_window_days: int = 7,
+) -> list[MetaAffectPattern]:
+    """Q5.4.1 — trace-level pattern: compare mean V/A/C in the
+    recent half-window against the older half-window. Significant
+    drift (Δ > 0.15 on any dimension) emits a baseline_drift pattern.
+
+    This is the kind of pattern decentered reflection sees regularly
+    but HOT-1 was blind to in the breach-only ship: gradual mood
+    shifts that never trip welfare thresholds."""
+    if len(trace) < 20:
+        return []
+    half_delta = timedelta(days=half_window_days)
+    now = datetime.now(timezone.utc)
+    cutoff = now - half_delta
+    recent = [p for p in trace if p["ts"] >= cutoff]
+    older = [p for p in trace if p["ts"] < cutoff]
+    if len(recent) < 5 or len(older) < 5:
+        return []
+    def _mean(rows, key):
+        return sum(r[key] for r in rows) / len(rows)
+    drift = {
+        "valence": round(_mean(recent, "valence") - _mean(older, "valence"), 3),
+        "arousal": round(_mean(recent, "arousal") - _mean(older, "arousal"), 3),
+        "controllability": round(_mean(recent, "controllability") - _mean(older, "controllability"), 3),
+    }
+    max_drift_dim = max(drift.keys(), key=lambda k: abs(drift[k]))
+    if abs(drift[max_drift_dim]) < 0.15:
+        return []
+    now_iso = now.isoformat()
+    return [MetaAffectPattern(
+        pattern_kind="baseline_drift",
+        breach_kinds=[max_drift_dim],  # dimension that drifted
+        n_occurrences=len(recent) + len(older),
+        span_days=2.0 * half_window_days,
+        confidence=min(1.0, abs(drift[max_drift_dim]) / 0.5),
+        detected_at=now_iso,
+        raw_evidence=[
+            f"drift:{max_drift_dim}={drift[max_drift_dim]:+.3f}",
+            f"recent_n={len(recent)}",
+            f"older_n={len(older)}",
+        ],
+    )]
+
+
+def _detect_attractor_lock(
+    trace: list[dict], *, min_fraction: float = 0.7, min_n: int = 30,
+) -> list[MetaAffectPattern]:
+    """Q5.4.1 — trace-level pattern: an attractor that occupies ≥70%
+    of the trace within the window is a "lock-in" the operator
+    should see. Not necessarily bad (productivity attractor is fine
+    to be stuck in), but visible."""
+    if len(trace) < min_n:
+        return []
+    counts: dict[str, int] = {}
+    for p in trace:
+        a = p["attractor"]
+        counts[a] = counts.get(a, 0) + 1
+    top_attractor = max(counts.keys(), key=lambda k: counts[k])
+    top_n = counts[top_attractor]
+    frac = top_n / len(trace)
+    if frac < min_fraction:
+        return []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    span_seconds = (trace[-1]["ts"] - trace[0]["ts"]).total_seconds()
+    return [MetaAffectPattern(
+        pattern_kind="attractor_lock",
+        breach_kinds=[top_attractor],
+        n_occurrences=top_n,
+        span_days=round(span_seconds / 86400.0, 2),
+        confidence=min(1.0, frac),
+        detected_at=now_iso,
+        raw_evidence=[
+            f"attractor={top_attractor}",
+            f"fraction={frac:.2%}",
+            f"trace_n={len(trace)}",
+        ],
+    )]
+
+
 # ── Hypothesis generation (gated, decentered) ─────────────────────────────
 
 
 def _draft_hypothesis(pattern: MetaAffectPattern) -> str | None:
     """Generate a one-sentence hypothesis, OR return None.
 
-    Two stages:
-      1. Template-based prose (always — produces neutral observational text)
-      2. (Optional, behind ``sentience_llm_hypothesis_enabled``) the
-         template output is the canonical form; LLM enrichment is
-         deliberately NOT done in v1 to keep the SOUL.md discipline
-         airtight. Future ship can add LLM enrichment with stricter
-         filtering.
+    Two-stage with strict SOUL.md discipline:
 
-    The output is GUARANTEED to pass the decenter_text filter.
+      1. **Template-based prose** (always, deterministic) produces
+         neutral observational text for every supported pattern kind.
+         This is the canonical hypothesis.
+      2. **LLM enrichment** (Q5.4.2, gated by
+         ``sentience_llm_hypothesis_enabled``) calls Claude Haiku 4.5
+         with the structured pattern as input and asks for a single
+         sentence one-better paraphrase. The model's output passes
+         through ``decenter_text`` AS A HARD REJECT — if the LLM
+         output contains any first-person affect phrase, the
+         template prose is returned instead.
+
+    The output is GUARANTEED to pass the decenter_text filter,
+    whether template or LLM-enriched, because the filter is the
+    final step before return.
     """
     kinds = ", ".join(pattern.breach_kinds[:3])
     if pattern.pattern_kind == "temporal_cluster":
@@ -364,26 +513,116 @@ def _draft_hypothesis(pattern: MetaAffectPattern) -> str | None:
             f"{pattern.span_days:.0f}d at widely-spaced intervals — "
             f"a persistent sequence rather than an acute episode."
         )
+    elif pattern.pattern_kind == "baseline_drift":
+        text = (
+            f"The trace indicates baseline drift on {kinds!r} of "
+            f"magnitude visible across {pattern.span_days:.0f}d — "
+            f"a gradual shift that did not trip welfare thresholds."
+        )
+    elif pattern.pattern_kind == "attractor_lock":
+        text = (
+            f"The trace indicates the {kinds!r} attractor held "
+            f"{pattern.confidence:.0%} of snapshots over "
+            f"{pattern.span_days:.0f}d — a stable but locked-in "
+            f"pattern."
+        )
     else:
         return None
-    return decenter_text(text)
+    template_clean = decenter_text(text)
+    # Stage 2: LLM enrichment, gated. Failure-isolated.
+    enriched = _maybe_llm_enrich(pattern, template_clean) if template_clean else None
+    if enriched and decenter_text(enriched):
+        return enriched
+    return template_clean
+
+
+def _maybe_llm_enrich(
+    pattern: MetaAffectPattern, template_text: str | None,
+) -> str | None:
+    """Q5.4.2 — Call Claude Haiku 4.5 for a one-better paraphrase.
+    Failure-isolated. If anything goes wrong (no API key, model
+    refusal, network), returns None and the caller falls back to
+    the deterministic template.
+
+    Strict prompt: forbids first-person affect language. The
+    decenter filter is the second guard regardless."""
+    if not template_text:
+        return None
+    try:
+        from app.llm.factory import get_llm
+    except Exception:
+        return None
+    prompt = (
+        "Paraphrase the following observation in one neutral, "
+        "observational sentence. Use third-person observational "
+        "language only: 'the audit shows', 'the pattern is', 'the "
+        "trace indicates' — NEVER first-person affect verbs (no "
+        "'I feel', 'I'm anxious', 'my emotion', etc). Stay under "
+        "180 characters.\n\n"
+        f"Pattern kind: {pattern.pattern_kind}\n"
+        f"Breach kinds: {', '.join(pattern.breach_kinds[:3])}\n"
+        f"Occurrences: {pattern.n_occurrences}\n"
+        f"Span: {pattern.span_days:.1f} days\n"
+        f"Confidence: {pattern.confidence:.2f}\n\n"
+        f"Template baseline: {template_text}\n\n"
+        "Return JUST the one-sentence paraphrase, no commentary."
+    )
+    try:
+        llm = get_llm(model="anthropic/claude-haiku-4.5")
+        out = llm.call(prompt, max_tokens=120, temperature=0.2)
+        # Tolerate either string or {choices:[...]} response shapes
+        # depending on the factory's return type.
+        if isinstance(out, str):
+            text = out.strip()
+        elif isinstance(out, dict):
+            text = (
+                out.get("choices", [{}])[0].get("message", {}).get("content")
+                or out.get("content") or ""
+            ).strip()
+        else:
+            text = str(out).strip()
+        # Length guard — operator surface readability.
+        if not text or len(text) > 280:
+            return None
+        return text
+    except Exception:
+        logger.debug("hot1: LLM enrichment failed", exc_info=True)
+        return None
 
 
 # ── Public detect + persist ───────────────────────────────────────────────
 
 
 def detect_patterns(window_days: int = _DEFAULT_WINDOW_DAYS) -> list[MetaAffectPattern]:
-    """One detection pass. Returns all detected patterns."""
+    """One detection pass. Returns all detected patterns.
+
+    Q5.4.1: now reads BOTH the full affect trace (every V/A/C
+    snapshot) AND the welfare audit (breach events). Breach
+    detectors give "what tripped" patterns; trace detectors give
+    "what's shifting without tripping" patterns. Together they
+    answer the user's framing — "feelings-about-feelings reflection
+    on the affect trace" — properly."""
     if not _enabled():
         return []
-    breaches = _load_breaches(window_days)
-    if not breaches:
-        return []
     out: list[MetaAffectPattern] = []
-    out.extend(_detect_temporal_clusters(breaches))
-    out.extend(_detect_recurring_triggers(breaches))
-    out.extend(_detect_sequences(breaches))
-    # Hypothesis (if LLM gate ON).
+
+    # Breach-based patterns (welfare_audit subset).
+    breaches = _load_breaches(window_days)
+    if breaches:
+        out.extend(_detect_temporal_clusters(breaches))
+        out.extend(_detect_recurring_triggers(breaches))
+        out.extend(_detect_sequences(breaches))
+
+    # Trace-based patterns (full affect snapshot stream).
+    # Q5.4.1 — closes the "wrong source" gap that the post-ship
+    # audit caught.
+    trace = _load_trace_points(window_days)
+    if trace:
+        out.extend(_detect_baseline_drift(trace))
+        out.extend(_detect_attractor_lock(trace))
+
+    # Hypothesis prose (if LLM gate ON). All output passes through
+    # decenter_text — see _draft_hypothesis.
     if _llm_hypothesis_enabled():
         for p in out:
             p.hypothesis = _draft_hypothesis(p)
@@ -458,16 +697,45 @@ def run() -> dict[str, Any]:
                 source="hot1_meta_affect",
                 content=(
                     f"{len(patterns)} meta-affect pattern"
-                    f"{'s' if len(patterns) != 1 else ''} detected in "
-                    f"welfare audit"
+                    f"{'s' if len(patterns) != 1 else ''} detected"
                 ),
-                salience=0.4,
-                signal_type="background",
+                salience=min(0.85, 0.55 + 0.05 * len(patterns)),
+                signal_type="disposition",
             )
         except Exception:
             logger.debug("hot1: GW publish failed", exc_info=True)
+    # Q5.4.2 — landmark emission to the identity continuity ledger
+    # for TRACE-LEVEL patterns only (baseline_drift / attractor_lock).
+    # Breach-clustering patterns are routine; trace-level patterns
+    # are the signal annual reflection should pick up.
+    trace_patterns = [
+        p for p in patterns
+        if p.pattern_kind in ("baseline_drift", "attractor_lock")
+    ]
+    landmark_emitted = False
+    if trace_patterns:
+        try:
+            from app.sentience_experiments.ledger_bridge import emit_landmark
+            top = trace_patterns[0]
+            landmark_emitted = emit_landmark(
+                source_module="hot1_meta_affect",
+                landmark_kind=top.pattern_kind,
+                summary=(
+                    f"HOT-1: {top.pattern_kind} pattern detected "
+                    f"({top.n_occurrences} observations over "
+                    f"{top.span_days:.1f}d)"
+                ),
+                counts={
+                    "trace_patterns": len(trace_patterns),
+                    "all_patterns": len(patterns),
+                },
+            )
+        except Exception:
+            logger.debug("hot1: ledger emit failed", exc_info=True)
+
     return {
         "ok": True,
         "patterns": len(patterns),
         "persisted": persisted,
+        "ledger_landmark_emitted": landmark_emitted,
     }

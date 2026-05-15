@@ -168,7 +168,32 @@ def register_scorer(name: str, scorer: Callable[[dict], bool | None]) -> None:
     """Register a named outcome scorer. The scorer takes the forecast's
     ``scorer_args`` dict and returns True (claim came true), False
     (claim was false), or None (outcome cannot yet be determined —
-    forecast stays unresolved)."""
+    forecast stays unresolved).
+
+    Q5.4.1 — Refuses callables defined in LLM or agent modules. The
+    docstring promise of "deterministic outcome resolver, not an LLM
+    call" is now enforced at registration time. Self-judging-its-own-
+    predictions is the Goodhart pattern this guard exists to catch."""
+    # Inspect the callable's __module__ — refuse anything that lives
+    # under app.llm, app.agents, app.crews, or anthropic_*. This
+    # catches the obvious mistake; sophisticated subversion still
+    # possible but requires deliberate effort.
+    mod = (getattr(scorer, "__module__", "") or "").lower()
+    forbidden_prefixes = (
+        "app.llm",
+        "app.agents",
+        "app.crews",
+        "anthropic",
+        "openai",
+    )
+    for prefix in forbidden_prefixes:
+        if mod.startswith(prefix):
+            raise ValueError(
+                f"rpt1.register_scorer: refused scorer from module "
+                f"{mod!r}. Scorers must be deterministic outcome "
+                f"resolvers (not LLM calls). Move the scorer to a "
+                f"pure-Python module outside {prefix!r}."
+            )
     _SCORERS[name] = scorer
 
 
@@ -335,6 +360,13 @@ def reconcile_due(*, now: datetime | None = None) -> dict[str, Any]:
     for fc in forecasts:
         if fc.actual is not None:
             continue
+        # Q5.4.1 — terminal-error short-circuit: a forecast that
+        # already has score_error set should NOT be re-scored every
+        # pass forever. The original ship set score_error + resolved_at
+        # but left actual=None, so the reconciler's actual-is-None
+        # check kept selecting these rows. Now they're skipped.
+        if fc.score_error:
+            continue
         # Parse resolution_at.
         try:
             res_dt = datetime.fromisoformat(fc.resolution_at.replace("Z", "+00:00"))
@@ -489,12 +521,45 @@ def run() -> dict[str, Any]:
     Idle-job entry. No-op when master switch OFF."""
     if not _enabled():
         return {"ok": False, "skipped": True, "reason": "rpt1_disabled"}
+    # Snapshot previous state for landmark-detection.
+    prev_state = load_calibration_state()
+    prev_kinds = set((prev_state.get("reports") or {}).keys())
+
     rec = reconcile_due()
     reports = aggregate_calibration()
     persist_calibration(reports)
+
+    # Q5.4.2 — landmark emission to the identity continuity ledger
+    # when a new claim_kind crosses the min-resolutions threshold
+    # for the first time. This is the "the system gained calibration
+    # confidence on a new domain" signal annual reflection needs.
+    new_kinds = set(reports.keys()) - prev_kinds
+    landmark_emitted = False
+    if new_kinds:
+        try:
+            from app.sentience_experiments.ledger_bridge import emit_landmark
+            top_new = sorted(new_kinds)[0]
+            landmark_emitted = emit_landmark(
+                source_module="rpt1_self_calibration",
+                landmark_kind="first_calibration",
+                summary=(
+                    f"RPT-1: first calibration achieved for "
+                    f"kind={top_new!r} (n={reports[top_new].n_resolutions}, "
+                    f"Brier={reports[top_new].brier_score:.3f})"
+                ),
+                counts={
+                    "new_kinds": len(new_kinds),
+                    "total_kinds": len(reports),
+                },
+            )
+        except Exception:
+            logger.debug("rpt1: ledger emit failed", exc_info=True)
+
     return {
         "ok": True,
         "reconcile": rec,
         "kinds_with_calibration": list(reports.keys()),
         "n_kinds": len(reports),
+        "new_kinds_this_pass": sorted(new_kinds),
+        "ledger_landmark_emitted": landmark_emitted,
     }

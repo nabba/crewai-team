@@ -261,6 +261,50 @@ def _build_tool_class():
                     exc_info=True,
                 )
 
+            # Q5.4.2 (PROGRAM §43.4) — RPT-1 producer: register a
+            # forward prediction "this Tier-3 amendment will be
+            # approved" with predicted_p derived from the by-kind
+            # success rate the operator is about to see in the
+            # proposal evidence. The reconciler scores at apply or
+            # rejection. Failure-isolated. Without at least one
+            # producer wired, RPT-1's calibration ledger sits idle
+            # forever.
+            try:
+                from app.sentience_experiments.rpt1_self_calibration import (
+                    register_prediction,
+                )
+                from datetime import datetime, timedelta, timezone
+                # Use the by-kind success rate as the base prior;
+                # fall back to 0.5 when no history exists.
+                rate = 0.5
+                by_kind = history_payload.get("relevant_history_by_kind_365d") or {}
+                if isinstance(by_kind, dict):
+                    sr = by_kind.get("success_rate")
+                    if isinstance(sr, (int, float)) and sr > 0:
+                        rate = float(sr)
+                # Clamp away from 0 / 1 — perfect-confidence priors
+                # are themselves a Goodhart signal.
+                rate = max(0.1, min(0.9, rate))
+                # Resolution_at: 30 days. Most Tier-3 proposals
+                # terminate (applied or rejected) within this window.
+                resolution_at = datetime.now(timezone.utc) + timedelta(days=30)
+                register_prediction(
+                    claim_kind="tier3_approval",
+                    claim_text=(
+                        f"Tier-3 amendment {proposal.id} for "
+                        f"{target_path} will be approved"
+                    ),
+                    predicted_p=rate,
+                    resolution_at=resolution_at,
+                    scorer_ref="tier3_approval",
+                    scorer_args={"plan_id": proposal.id},
+                )
+            except Exception:
+                logger.debug(
+                    "request_tier3_amendment: RPT-1 forecast registration failed",
+                    exc_info=True,
+                )
+
             state_value = proposal.state.value
             if state_value == "staged":
                 return (

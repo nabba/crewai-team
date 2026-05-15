@@ -436,6 +436,89 @@ def _gather_open_tensions(n: int = 5) -> list[str]:
     return lines
 
 
+def _gather_sentience_digest() -> list[str]:
+    """Q5.4.2 — weekly digest of sentience-experiment observations.
+
+    Surfaces the top-1 finding from each of the four modules when
+    data exists. Empty list when nothing happened this week → the
+    section disappears entirely from the briefing (the discipline
+    that keeps every other section clean).
+
+    Each line is OPAQUE (counts, never identities) — same discipline
+    the modules themselves enforce in their GW publishes."""
+    lines: list[str] = []
+    # AE-2 — top high-density associations
+    try:
+        from app.sentience_experiments.ae2_causal_credit import list_recent
+        assocs = list_recent(n=5) or []
+        if assocs:
+            top = assocs[0]
+            n_strong = sum(
+                1 for a in assocs
+                if float(a.get("outcome_density_ratio", 0)) >= 5.0
+            )
+            if n_strong:
+                lines.append(
+                    f"  • AE-2: {n_strong} rare-event causal "
+                    f"association{'s' if n_strong != 1 else ''} "
+                    f"(top density ratio "
+                    f"{float(top.get('outcome_density_ratio', 0)):.1f}×)"
+                )
+    except Exception:
+        pass
+    # HOT-1 — trace-level patterns (baseline_drift, attractor_lock)
+    try:
+        from app.sentience_experiments.hot1_meta_affect import list_recent
+        patterns = list_recent(n=10) or []
+        trace_level = [
+            p for p in patterns
+            if p.get("pattern_kind") in ("baseline_drift", "attractor_lock")
+        ]
+        if trace_level:
+            top = trace_level[0]
+            lines.append(
+                f"  • HOT-1: {top.get('pattern_kind')} pattern "
+                f"({top.get('n_occurrences')} obs over "
+                f"{float(top.get('span_days', 0)):.1f}d)"
+            )
+    except Exception:
+        pass
+    # HOT-4 — flagged reasoning-chain steps
+    try:
+        from app.sentience_experiments.hot4_metacog_monitor import list_recent_flagged
+        flagged = list_recent_flagged(n=20) or []
+        if flagged:
+            lines.append(
+                f"  • HOT-4: {len(flagged)} unusual reasoning-chain "
+                f"step{'s' if len(flagged) != 1 else ''} flagged this week"
+            )
+    except Exception:
+        pass
+    # RPT-1 — calibration state
+    try:
+        from app.sentience_experiments.rpt1_self_calibration import (
+            load_calibration_state,
+        )
+        state = load_calibration_state() or {}
+        reports = state.get("reports") or {}
+        if reports:
+            # Lowest Brier (best calibrated) wins the highlight.
+            best_kind = min(
+                reports.keys(),
+                key=lambda k: float(reports[k].get("brier_score", 1.0)),
+            )
+            best = reports[best_kind]
+            lines.append(
+                f"  • RPT-1: {len(reports)} calibrated kind"
+                f"{'s' if len(reports) != 1 else ''}; "
+                f"best={best_kind!r} Brier="
+                f"{float(best.get('brier_score', 0)):.3f}"
+            )
+    except Exception:
+        pass
+    return lines
+
+
 def _gather_companion_surfaced() -> list[str]:
     """Recent companion ideas surfaced to the user (last 24 h). Soft fail."""
     try:
@@ -567,6 +650,13 @@ def _compose_weekly() -> tuple[str, list[float]]:
         # daily morning/evening cadences don't need this noise.
         parts.append("\n🧭 Topics you've cared about:")
         parts.extend(interests)
+    # Q5.4.2 — sentience digest. Weekly cadence is the right one:
+    # the four modules accumulate data slowly, and daily would be
+    # too noisy. Section disappears when nothing happened this week.
+    sentience = _gather_sentience_digest()
+    if sentience:
+        parts.append("\n🔬 Self-observation (week):")
+        parts.extend(sentience)
     # Weekly composer doesn't pull from the queue — daily covers that.
     return "\n".join(parts), []
 

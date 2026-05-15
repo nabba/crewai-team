@@ -377,8 +377,8 @@ def run() -> dict[str, Any]:
                     f"{'s' if len(flagged) != 1 else ''} flagged unusual "
                     f"(of {len(signals)} total)"
                 ),
-                salience=0.4,
-                signal_type="background",
+                salience=min(0.85, 0.55 + 0.02 * len(flagged)),
+                signal_type="disposition",
             )
         except Exception:
             logger.debug("hot4: GW publish failed", exc_info=True)

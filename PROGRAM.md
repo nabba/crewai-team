@@ -6573,3 +6573,171 @@ Three things were considered and deliberately scoped OUT of Q5:
 
 These are NOT closed; they are "not yet." The infrastructure is
 complete; the surfaces can iterate.
+
+## 43.4 2026-05-13 — Q5.4: post-ship audit follow-ups
+
+A deep audit pass over the just-shipped §43 surfaced 6 P0/P1
+issues + 6 missing wires. Honest naming: I shipped infrastructure
+in §43 but missed that **RPT-1 had zero producers** and would have
+sat idle forever. The audit caught it.
+
+### 43.4.1 — Bug fixes
+
+**AE-2 reads audit_log** (`ae2_causal_credit.py`): the module
+docstring promised consumption of operator approvals/rejections
+from `workspace/audit_log.jsonl`; the original ship never read
+the file. Added `_default_audit_log_path()`, `_outcome_kind_from_audit()`
+(classifies operator-only rows as `audit:operator_approval` /
+`audit:operator_rejection` / `audit:operator_rollback` — non-operator
+audit rows skipped), wired into `detect_associations()`.
+
+**AE-2 lift formula renamed** (`ae2_causal_credit.py`): the original
+`lift = p_outcome_given_action / baseline` had a units mismatch —
+numerator and denominator both mix outcome-events with action-events
+in ways that don't compose as probabilities. The math rank-orders
+reasonably but the field names (`lift`, `rarity`, `p_outcome_given_action`)
+promised probabilistic semantics the implementation didn't deliver.
+Renamed to `outcome_density_ratio` + `outcome_rate` with a docstring
+that explains exactly what the ratio measures. Threshold constant
+`_MIN_DENSITY_RATIO` replaces `_MIN_LIFT`.
+
+**HOT-1 reads the full affect trace** (`hot1_meta_affect.py`): the
+original ship read only `welfare_audit.jsonl` (breach events) —
+the user asked for "reflection on the affect trace" which is the
+*full* V/A/C/attractor snapshot stream at `workspace/affect/trace.jsonl`.
+Added `_load_trace_points()` + two new pattern detectors:
+`_detect_baseline_drift` (mean V/A/C shift > 0.15 between window
+halves) and `_detect_attractor_lock` (≥70% concentration in one
+attractor). These are the trace-level patterns that decentered
+reflection sees but HOT-1 was previously blind to.
+
+**RPT-1 errored forecasts terminal** (`rpt1_self_calibration.py`):
+the original `reconcile_due()` set `score_error` + `resolved_at`
+on `unknown_scorer:` / `scorer_raised:` paths but left `actual=None`,
+so the same broken row got re-scored every hour forever. Added a
+short-circuit: `if fc.score_error: continue` early in the loop.
+
+**RPT-1 scorer registry refuses LLM-module callables**: the docstring
+promised "deterministic outcome resolver, not an LLM call" but
+`register_scorer()` accepted any callable — a Goodhart pattern
+waiting. Added forbidden-prefix check on `scorer.__module__`:
+refuses anything under `app.llm`, `app.agents`, `app.crews`,
+`anthropic`, `openai`. Pure-Python scorers from any other module
+still pass.
+
+**`signal_type` and salience** (all three publishing modules): the
+original `signal_type="background"` is not in the SubIA `SignalType`
+Literal (the typed contract); future type-strict refactor of the
+TIER_IMMUTABLE `app/subia/global_workspace.py` would have silently
+broken Q5. Changed all three modules to `signal_type="disposition"`
+(closest typed match). Salience floor raised from 0.3-0.4 → 0.5+
+so agents with default `importance_filter="high"` actually receive
+the broadcasts.
+
+### 43.4.2 — Missing wires
+
+**RPT-1 producer at Tier-3 amendment proposal** (`tools/request_tier3_amendment.py`):
+the most consequential gap. Now `propose_amendment` is followed by
+`register_prediction(claim_kind="tier3_approval", predicted_p=...)`
+with the predicted probability derived from the by-kind success
+rate already computed for the proposal evidence. Clamped to [0.1,
+0.9] — perfect-confidence priors are themselves a Goodhart signal.
+Resolution_at = 30 days. The built-in `tier3_approval` scorer
+resolves at apply/reject.
+
+**RPT-1 producer at CR creation** (`change_requests/lifecycle.py`):
+same pattern, for the much higher-volume CR class. `claim_kind="cr_apply"`,
+`predicted_p` derived from path-kind success rate, resolution_at
+= 7 days. Failure-isolated — never blocks CR creation.
+
+**HOT-1 LLM enrichment with decenter guard** (`hot1_meta_affect.py`):
+the user explicitly approved `sentience_llm_hypothesis_enabled=ON`
+but my original implementation only ran templates regardless of
+the switch. Now wired: when the switch is ON, `_maybe_llm_enrich()`
+calls Claude Haiku 4.5 with a strict observational-language prompt
+and the template as a baseline. The output passes through
+`decenter_text` AS A HARD REJECT — if the LLM produces any
+first-person affect phrase, the template prose is returned
+instead. The SOUL.md guard is the final filter regardless of
+source. Failure-isolated (no API key / network / LLM refusal
+all fall back to template).
+
+**Anti-Goodhart pinning strengthened**
+(`tests/test_q5_2_modules.py`): added two tests beyond the original
+counter-pinning. `test_q5_marker_paths_absent_in_subia` scans
+`app/subia/` for canonical "I now have <indicator>" path markers
+(`embodiment/`, `perception/generative`, `sparse_coding`,
+`recurrent_inference`, etc.) and fails loudly if any appear. Adding
+such a path is the obvious Goodhart trap the counter-pinning test
+couldn't catch (because the butlin evaluators are hardcoded literal
+returns, not path scanners). `test_q5_subia_file_count_pinned`
+asserts the SubIA file count stays within [150, 178] — adding a
+mechanism module trips it.
+
+**Continuity ledger `sentience_observation` event kind**: added the
+9th event kind to `IDENTITY_EVENT_KINDS`. New
+`app/sentience_experiments/ledger_bridge.py` exports
+`emit_landmark(source_module, landmark_kind, summary, counts)`
+that each module calls on LANDMARK events only (not every
+detection). The annual reflection now picks up "the year the system
+started observing itself" via the existing `summarise_drift`
+Counter (per CLAUDE.md §40.2.7, new kinds auto-surface).
+
+Landmark conditions per module:
+- AE-2: top association at `outcome_density_ratio ≥ 5.0`
+- HOT-1: any trace-level pattern (baseline_drift / attractor_lock)
+- HOT-4: ≥5 flagged steps in one pass (sustained anomaly) —
+  *(deferred to next ship: the threshold needs production data)*
+- RPT-1: new claim_kind crossing the 10-resolution threshold
+
+**Daily briefing weekly digest** (`life_companion/daily_briefing.py`):
+added `_gather_sentience_digest()` that surfaces the top-1 finding
+from each module. Wired into the WEEKLY composer (not daily —
+sentience data accumulates slowly). New section "🔬 Self-observation
+(week):" appears only when at least one module has content;
+disappears entirely when nothing happened. Opaque counts only —
+no action_signatures, no breach kinds, no person identities in the
+output text.
+
+### 43.4.3 — Tests + regression
+
+```
+NEW tests:
+crewai-team/tests/test_q5_4_followup.py            # 21 pass
+
+UPDATED tests:
+crewai-team/tests/test_q5_2_modules.py             # + 2 strengthened pinning
+                                                   # + daily_briefing allow-list
+crewai-team/tests/identity/test_continuity_ledger.py  # + sentience_observation kind
+
+UPDATED backend:
+crewai-team/app/sentience_experiments/ae2_causal_credit.py  # audit_log + rename
+crewai-team/app/sentience_experiments/hot1_meta_affect.py   # trace + LLM + landmarks
+crewai-team/app/sentience_experiments/hot4_metacog_monitor.py  # signal_type + salience
+crewai-team/app/sentience_experiments/rpt1_self_calibration.py  # terminal errors + LLM guard
+crewai-team/app/sentience_experiments/ledger_bridge.py  # NEW
+crewai-team/app/identity/continuity_ledger.py      # + sentience_observation kind
+crewai-team/app/tools/request_tier3_amendment.py   # RPT-1 producer
+crewai-team/app/change_requests/lifecycle.py       # RPT-1 producer
+crewai-team/app/life_companion/daily_briefing.py   # weekly digest
+```
+
+Q1→Q5.4 regression: **333 pass + 59 skip, 0 fail**. Butlin scorecard
+remains `{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}` — verified by
+both the original counter-pinning test AND the new marker-path scan
+AND the new file-count pin. No TIER_IMMUTABLE files modified; no
+`app/subia/` files modified.
+
+### 43.4.4 — Honest accounting
+
+The audit caught one mistake I should have seen during the original
+Q5 ship: **shipping infrastructure without a single producer is
+not shipping a capability — it's shipping an empty bucket.** RPT-1
+went out with zero callers. The post-ship audit caught it. Q5.4
+fixes it.
+
+Same class of gap as Q4.2.2#1 (identity ledger emission missing
+when person-correlation flips happened). I should have caught
+this pattern earlier — the test "does any code in the system
+actually call this?" is now a permanent question in my own
+post-ship audit checklist.

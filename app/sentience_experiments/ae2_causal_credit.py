@@ -74,8 +74,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_WINDOW_DAYS = 7
 _OUTCOME_LOOKAHEAD_HOURS = 24
 _MIN_OBSERVATIONS_PER_BUCKET = 5
-_RARITY_CEILING = 0.10           # outcome probability ≤ 10% to count as "rare"
-_MIN_LIFT = 3.0                  # P(outcome | action) / baseline ≥ 3×
+_RARITY_CEILING = 0.10           # outcome_rate ≤ 10% to count as "rare"
+_MIN_DENSITY_RATIO = 3.0         # outcome_density_ratio ≥ 3× to flag
 _MAX_ASSOCIATIONS_PER_PASS = 50  # bound the operator surface
 _ASSOCIATIONS_LOG_MAX_LINES = 5_000
 
@@ -119,6 +119,19 @@ def _default_welfare_audit_path() -> Path:
         return Path("/app/workspace/affect/welfare_audit.jsonl")
 
 
+def _default_audit_log_path() -> Path:
+    """Q5.4.1 — operator approvals/rejections were promised in the
+    module docstring but the original ship didn't read them. The
+    audit_log is a high-signal outcome channel for AE-2 because
+    operator decisions are rare-enough events that lift-based
+    detection should work cleanly."""
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "audit_log.jsonl"
+    except Exception:
+        return Path("/app/workspace/audit_log.jsonl")
+
+
 def _default_associations_path() -> Path:
     try:
         from app.paths import WORKSPACE_ROOT
@@ -132,17 +145,32 @@ def _default_associations_path() -> Path:
 
 @dataclass
 class CausalAssociation:
-    """One inferred association: action signature → outcome at high lift."""
+    """One inferred association: action signature → outcome at high
+    density ratio.
+
+    Q5.4.1 — naming honest: ``outcome_density_ratio`` replaces the
+    misleading ``lift`` name. The numerator counts outcomes-per-
+    action-of-this-signature; the denominator is the overall outcome
+    rate (outcomes per action across all signatures). The ratio is
+    dimensionless and rank-orders correlations reasonably, but it
+    isn't ``P(outcome|action) / P(outcome)`` in any probabilistic
+    sense — multiple actions in a single lookahead window share
+    credit for one outcome, and multiple outcomes can be credited
+    to one action.
+
+    Use it as an observational signal that says "this action sig
+    co-occurs with this outcome MORE than the action sig is typical
+    of all actions" — and treat the absolute value with care."""
 
     action_signature: str        # e.g. "agent=coder|model=deepseek|tier=2"
     outcome_kind: str            # e.g. "welfare_breach", "error:ConnectionError"
-    rarity: float                # P(outcome) in this bucket (≤ _RARITY_CEILING)
-    lift: float                  # P(outcome | action) / P(outcome) baseline
+    outcome_rate: float          # outcome-events / total-actions in window (rarity proxy)
+    outcome_density_ratio: float # (n_co / n_action) / outcome_rate
     n_observations: int          # how many co-occurrences supported this
     n_actions: int               # total times this action signature ran in window
     first_seen: str
     last_seen: str
-    confidence: float            # 0..1 — function of n_observations and lift
+    confidence: float            # 0..1 — function of n_observations and ratio
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -196,6 +224,27 @@ def _outcome_kind_from_welfare(row: dict) -> str:
     return f"welfare:{kind}"
 
 
+def _outcome_kind_from_audit(row: dict) -> str | None:
+    """Q5.4.1 — operator approvals/rejections as outcome kinds.
+    Returns None for audit events that aren't operator decisions
+    (e.g. routine ``runtime_settings_change`` rows) so they don't
+    flood the bucket space."""
+    actor = (row.get("actor") or "").lower()
+    action = (row.get("action") or row.get("event") or "").lower()
+    decision = (row.get("decision") or row.get("result") or "").lower()
+    # Only operator-decision rows count. Use coarse buckets so we don't
+    # explode the action-signature × outcome-kind matrix.
+    if actor != "operator":
+        return None
+    if "reject" in decision or "reject" in action:
+        return "audit:operator_rejection"
+    if "approv" in decision or "approv" in action:
+        return "audit:operator_approval"
+    if "rollback" in decision or "revert" in action:
+        return "audit:operator_rollback"
+    return None
+
+
 # ── Aggregation ───────────────────────────────────────────────────────────
 
 
@@ -209,14 +258,21 @@ def _ts_parse(s: str) -> datetime | None:
 def detect_associations(
     *, window_days: int = _DEFAULT_WINDOW_DAYS,
     rarity_ceiling: float = _RARITY_CEILING,
-    min_lift: float = _MIN_LIFT,
+    min_density_ratio: float = _MIN_DENSITY_RATIO,
     min_observations: int = _MIN_OBSERVATIONS_PER_BUCKET,
 ) -> list[CausalAssociation]:
     """One detection pass. Returns CausalAssociation records that meet
-    the rarity + lift + min-observation thresholds.
+    the rarity + density-ratio + min-observation thresholds.
 
-    The implementation is intentionally simple lift-based counting,
-    not a learned model. The point is *visibility*, not optimization."""
+    Q5.4.1 — naming honest: ``min_density_ratio`` replaced the
+    earlier ``min_lift`` to avoid implying probabilistic semantics
+    the math doesn't deliver. The detection is intentionally simple
+    co-occurrence counting, not a learned model. The point is
+    *visibility*, not optimization.
+
+    Q5.4.1 — now also consumes the operator audit_log so operator
+    approvals/rejections appear as outcome events (the module
+    docstring promised this from day one)."""
     if not _enabled():
         return []
 
@@ -235,7 +291,8 @@ def detect_associations(
     if not actions:
         return []
 
-    # 2. Collect outcomes: (ts, outcome_kind)
+    # 2. Collect outcomes: (ts, outcome_kind) from THREE sources:
+    #    errors + welfare audit + operator audit_log.
     outcomes: list[tuple[datetime, str]] = []
     for row in _iter_jsonl(_default_errors_path(), since_iso=since_iso):
         ts = _ts_parse(row.get("ts", ""))
@@ -247,6 +304,15 @@ def detect_associations(
         if ts is None:
             continue
         outcomes.append((ts, _outcome_kind_from_welfare(row)))
+    # Q5.4.1 — operator audit_log outcomes.
+    for row in _iter_jsonl(_default_audit_log_path(), since_iso=since_iso):
+        ts = _ts_parse(row.get("ts", ""))
+        if ts is None:
+            continue
+        kind = _outcome_kind_from_audit(row)
+        if kind is None:
+            continue
+        outcomes.append((ts, kind))
 
     if not outcomes:
         return []
@@ -293,7 +359,10 @@ def detect_associations(
             cooc_first.setdefault(key, o_ts)
             cooc_last[key] = o_ts
 
-    # 5. Compute lift; flag rare-event high-lift associations.
+    # 5. Compute density ratio; flag rare-outcome high-density-ratio
+    # associations. Q5.4.1: ``outcome_density_ratio`` replaces the
+    # earlier misleadingly-named ``lift`` — see CausalAssociation
+    # docstring for why these aren't probabilities in the strict sense.
     associations: list[CausalAssociation] = []
     for (sig, kind), n_co in cooc.items():
         if n_co < min_observations:
@@ -301,23 +370,29 @@ def detect_associations(
         n_action = action_count.get(sig, 0)
         if n_action == 0:
             continue
-        p_outcome_given_action = n_co / n_action
-        baseline = outcome_count[kind] / total_actions if total_actions else 0.0
-        if baseline <= 0:
+        outcome_density_per_action = n_co / n_action
+        outcome_rate = (
+            outcome_count[kind] / total_actions if total_actions else 0.0
+        )
+        if outcome_rate <= 0:
             continue
-        # Rarity is the baseline probability — we want rare outcomes.
-        if baseline > rarity_ceiling:
+        # Rarity: outcome_rate must be ≤ ceiling for the association
+        # to count as "rare-event" credit assignment.
+        if outcome_rate > rarity_ceiling:
             continue
-        lift = p_outcome_given_action / baseline
-        if lift < min_lift:
+        density_ratio = outcome_density_per_action / outcome_rate
+        if density_ratio < min_density_ratio:
             continue
-        # Confidence: scales with n_observations (saturating) and lift.
-        conf = min(1.0, (math.log10(max(2, n_co))) * (lift / (lift + 5.0)))
+        # Confidence: scales with n_observations (saturating) and ratio.
+        conf = min(
+            1.0,
+            (math.log10(max(2, n_co))) * (density_ratio / (density_ratio + 5.0)),
+        )
         associations.append(CausalAssociation(
             action_signature=sig,
             outcome_kind=kind,
-            rarity=round(baseline, 4),
-            lift=round(lift, 3),
+            outcome_rate=round(outcome_rate, 4),
+            outcome_density_ratio=round(density_ratio, 3),
             n_observations=n_co,
             n_actions=n_action,
             first_seen=cooc_first[(sig, kind)].isoformat(),
@@ -325,7 +400,7 @@ def detect_associations(
             confidence=round(conf, 3),
         ))
 
-    associations.sort(key=lambda a: a.lift, reverse=True)
+    associations.sort(key=lambda a: a.outcome_density_ratio, reverse=True)
     return associations[:_MAX_ASSOCIATIONS_PER_PASS]
 
 
@@ -399,6 +474,10 @@ def run() -> dict[str, Any]:
     persisted = persist(assocs)
 
     # GW publish opaque counts only — never action_signatures or outcomes.
+    # Q5.4.1: salience floor 0.5 (was 0.3) so agents with default
+    # ``importance_filter="high"`` actually see the broadcasts;
+    # signal_type "disposition" until the SubIA SignalType Literal
+    # is amended to add a "background" tier.
     if assocs:
         try:
             from app.workspace_publish import publish_to_workspace
@@ -407,16 +486,41 @@ def run() -> dict[str, Any]:
                 content=(
                     f"{len(assocs)} rare-event causal association"
                     f"{'s' if len(assocs) != 1 else ''} detected "
-                    f"(top lift {assocs[0].lift:.1f}×)"
+                    f"(top density ratio {assocs[0].outcome_density_ratio:.1f}×)"
                 ),
-                salience=min(0.7, 0.3 + 0.05 * len(assocs)),
-                signal_type="background",
+                salience=min(0.85, 0.5 + 0.05 * len(assocs)),
+                signal_type="disposition",
             )
         except Exception:
             logger.debug("ae2: GW publish failed", exc_info=True)
+    # Q5.4.2 — emit a landmark to the identity continuity ledger when
+    # this pass detects associations at high density-ratio (the
+    # signal annual reflection will care about). Opaque counts only.
+    landmark_emitted = False
+    if assocs and assocs[0].outcome_density_ratio >= 5.0:
+        try:
+            from app.sentience_experiments.ledger_bridge import emit_landmark
+            landmark_emitted = emit_landmark(
+                source_module="ae2_causal_credit",
+                landmark_kind="high_density_association",
+                summary=(
+                    f"AE-2: {len(assocs)} rare-event causal associations "
+                    f"(top density ratio {assocs[0].outcome_density_ratio:.1f}×)"
+                ),
+                counts={
+                    "associations": len(assocs),
+                    "max_observations": assocs[0].n_observations,
+                },
+            )
+        except Exception:
+            logger.debug("ae2: ledger emit failed", exc_info=True)
+
     return {
         "ok": True,
         "associations": len(assocs),
         "persisted": persisted,
-        "top_lift": float(assocs[0].lift) if assocs else 0.0,
+        "top_density_ratio": (
+            float(assocs[0].outcome_density_ratio) if assocs else 0.0
+        ),
+        "ledger_landmark_emitted": landmark_emitted,
     }

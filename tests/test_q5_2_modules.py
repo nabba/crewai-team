@@ -93,7 +93,7 @@ def test_ae2_detects_high_lift_rare_association(ae2, monkeypatch, tmp_path):
     assert len(coder_assocs) >= 1
     a = coder_assocs[0]
     assert a.outcome_kind == "error:RareError"
-    assert a.lift >= 3.0
+    assert a.outcome_density_ratio >= 3.0
     assert a.n_observations >= 5
 
 
@@ -333,7 +333,11 @@ def test_hot4_signals_never_gate_dispatch_logic():
         "app/sentience_experiments/__init__.py",
         "app/sentience_experiments/hot4_metacog_monitor.py",
         "app/sentience_experiments/scheduler.py",
+        # READ-ONLY display surfaces — these consume list_recent_flagged
+        # to render the operator-visible weekly digest. They do NOT
+        # feed signals back into dispatch logic.
         "app/control_plane/dashboard_api.py",
+        "app/life_companion/daily_briefing.py",  # Q5.4.2 — weekly digest
     }
     # Forbidden patterns — any of these in the importer path is a hard reject.
     forbidden_substrings = (
@@ -573,6 +577,103 @@ def test_q5_does_not_change_butlin_scorecard():
     assert absent_set == targeted, (
         f"Targeted ABSENT set drifted: expected {targeted}, "
         f"got {absent_set}"
+    )
+
+
+def test_q5_marker_paths_absent_in_subia():
+    """Q5.4.2 — strengthened anti-Goodhart pinning.
+
+    The Phase-1 pinning test (above) checks the SCORECARD remains
+    unchanged. But the butlin evaluators are hardcoded literal
+    returns — they don't scan paths. That means someone could add
+    a marker mechanism file under `app/subia/` claiming the
+    capability without ever changing the scorecard.
+
+    This test pins the *path-marker* invariant: no module exists at
+    canonical "I now have <indicator>" paths under app/subia/.
+    Adding any of these paths is a deliberate decision that should
+    fail this test as a forcing function for operator review.
+
+    The marker patterns below were chosen to be the obvious places
+    a future engineer might put a "we have it now" module —
+    `perception/`, `embodiment/`, `recurrent_*`, `sparse_coding*`
+    — i.e. the canonical Butlin-paper names for each indicator's
+    necessary substrate."""
+    import os
+    repo_root = Path(__file__).resolve().parent.parent
+    subia_root = repo_root / "app" / "subia"
+    if not subia_root.exists():
+        pytest.skip("app/subia not present in this checkout")
+
+    # Marker patterns — substring or directory-name checks against
+    # paths relative to app/subia/. If ANY of these are present,
+    # the test fails loudly so the operator notices.
+    marker_patterns = {
+        # AE-2 (embodiment) markers
+        "embodiment": "AE-2",
+        "sensorimotor": "AE-2",
+        "body_loop": "AE-2",
+        # HOT-1 (generative perception) markers
+        "perception/generative": "HOT-1",
+        "top_down_perception": "HOT-1",
+        "perceptual_hierarchy": "HOT-1",
+        # HOT-4 (sparse + smooth coding) markers
+        "sparse_coding": "HOT-4",
+        "smooth_coding": "HOT-4",
+        # RPT-1 (algorithmic recurrence) markers
+        "recurrent_inference": "RPT-1",
+        "algorithmic_recurrence": "RPT-1",
+    }
+
+    found_markers: dict[str, str] = {}
+    for dirpath, dirnames, filenames in os.walk(subia_root):
+        rel = os.path.relpath(dirpath, subia_root).replace("\\", "/")
+        for name in filenames + dirnames:
+            full = f"{rel}/{name}" if rel != "." else name
+            full_lower = full.lower()
+            for marker, indicator in marker_patterns.items():
+                if marker in full_lower:
+                    found_markers[full] = indicator
+
+    assert not found_markers, (
+        f"Marker mechanism paths appeared under app/subia/ — these "
+        f"are the canonical 'I now have <indicator>' locations the "
+        f"anti-Goodhart contract refuses without explicit operator "
+        f"amendment of this test:\n"
+        + "\n".join(f"  {p} → claims {ind}" for p, ind in found_markers.items())
+    )
+
+
+def test_q5_subia_file_count_pinned():
+    """Q5.4.2 — pin the SubIA file count so adding new files under
+    app/subia/ for ANY reason triggers operator review. The integrity
+    manifest already detects content changes; this test pins the
+    cardinality.
+
+    Per CLAUDE.md the canonical count is 164 (post §32 hardening).
+    Allow a ±2 wiggle room for routine refactors that move things
+    around but don't add capability; anything bigger must amend
+    this test deliberately.
+    """
+    import os
+    repo_root = Path(__file__).resolve().parent.parent
+    subia_root = repo_root / "app" / "subia"
+    if not subia_root.exists():
+        pytest.skip("app/subia not present")
+    py_files = [
+        os.path.join(dirpath, f)
+        for dirpath, _, filenames in os.walk(subia_root)
+        for f in filenames
+        if f.endswith(".py") and "__pycache__" not in dirpath
+    ]
+    n = len(py_files)
+    # Window: 150 ≤ n ≤ 178. Wide enough to absorb routine moves;
+    # narrow enough that adding a dedicated mechanism module trips it.
+    assert 150 <= n <= 178, (
+        f"SubIA file count {n} outside expected window [150, 178] — "
+        f"either a refactor moved files (update this test deliberately) "
+        f"or a new capability mechanism appeared (review under Q5 "
+        f"anti-Goodhart contract)"
     )
 
 

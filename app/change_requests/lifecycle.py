@@ -34,7 +34,7 @@ from __future__ import annotations
 import difflib
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.change_requests import store
 from app.change_requests.models import (
@@ -210,6 +210,47 @@ def create_request(
         "change_requests: created %s by %s for path=%s",
         request_id, requestor, path,
     )
+
+    # Q5.4.2 (PROGRAM §43.4) — RPT-1 producer: register a forecast
+    # "this CR will apply (vs. reject/timeout/rollback)". Without a
+    # producer wired anywhere, the RPT-1 calibration ledger sits
+    # empty forever. CRs are the highest-volume forecast-worthy
+    # event class in the system. Failure-isolated; never blocks CR
+    # creation.
+    try:
+        from app.sentience_experiments.rpt1_self_calibration import (
+            register_prediction,
+        )
+        # Predicted_p prior: use the operator's recent approval rate
+        # on this requestor as the base. Fall back to 0.5.
+        predicted_p = 0.5
+        try:
+            from app.identity.relevant_history import relevant_history_by_kind
+            by_kind = relevant_history_by_kind(path)
+            sr = (by_kind or {}).get("success_rate")
+            if isinstance(sr, (int, float)) and sr > 0:
+                predicted_p = max(0.1, min(0.9, float(sr)))
+        except Exception:
+            pass
+        # CRs typically resolve (apply/reject/timeout) within 7 days.
+        resolution_at = datetime.now(timezone.utc) + timedelta(days=7)
+        register_prediction(
+            claim_kind="cr_apply",
+            claim_text=(
+                f"CR {request_id} on {path} (requestor={requestor}) "
+                f"will apply"
+            ),
+            predicted_p=predicted_p,
+            resolution_at=resolution_at,
+            scorer_ref="cr_apply",
+            scorer_args={"cr_id": request_id},
+        )
+    except Exception:
+        logger.debug(
+            "change_requests: RPT-1 forecast registration failed",
+            exc_info=True,
+        )
+
     return cr
 
 
