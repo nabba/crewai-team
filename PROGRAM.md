@@ -7558,3 +7558,233 @@ What remains genuinely unbuilt (deferred per posture decision):
 
 These are future-cycle items with their own decision processes,
 not Q6 polish.
+
+## 45 2026-05-15 — Q7: Self-evolution closure (architecture proposals + schema migrations + recipe consolidation)
+
+Post-§44 review of self-evolution capabilities surfaced three items
+where the operator's spec promised behavior that wasn't fully shipped.
+Q7 closes the gaps without disturbing the surrounding architecture.
+
+Operator decisions before kickoff:
+
+  1. Adoption auto-rollback: switchable in React, **default ON**.
+  2. Schema-change detection: **path-only** for v1 (no content regex,
+     no false positives from `.py` files that mention `CREATE TABLE`
+     in docstrings).
+  3. Recipe consolidation: **keep both** triggers — health-score
+     (weekly, four-term composite) AND selection-rate (quarterly,
+     <5% over 90d). Different failure modes; both worth flagging.
+
+### 45.1 — Q7.1: Architecture-request adoption tracking + auto-rollback
+
+The architecture-request primitive (`app/architecture_requests/`)
+already lands package-level proposals through a lifecycle state
+machine. The spec called for a 30-day adoption metric to detect
+proposals that *applied* but failed to gain traction — and an
+auto-rollback CR when traction stays below a threshold. Both were
+missing.
+
+**`app/architecture_requests/adoption.py`** (~400 LOC) ships the
+4-signal adoption probe:
+
+```
+score =   imports               × 0.40   (saturates at 5)
+        + idle_runs             × 0.30   (saturates at 10)
+        + outputs               × 0.20   (saturates at 5)
+        + operator_interactions × 0.10   (saturates at 3)
+```
+
+Each signal saturates by design — a runaway "imported 500 times by
+auto-generated code" doesn't dominate. `compute_score` returns a
+0..1 number; `LOW_ADOPTION_THRESHOLD = 0.2` flags the bottom band.
+
+`measure(request_id)` runs the probe only when the request is in the
+30-60d window post-APPLIED (younger → premature; older → past the
+review horizon). The four signal probes are individually
+failure-isolated (return 0 on error) so a broken ripgrep / missing
+workspace file never tanks the whole pass.
+
+**`app/healing/monitors/architecture_adoption.py`** is the 29th
+healing monitor — daily probe, dedupes via a per-request flag file,
+files a rollback CR via `change_requests.lifecycle.create_request`,
+and posts a topic-keyed Signal alert (`arch_adoption_low:<id>`). The
+monitor **never auto-applies** — the CR goes through the standard
+operator gate. This is the auto-rollback "default ON" the operator
+asked for: ON means the *proposal* is filed automatically; the
+*application* of the revert still needs human approval.
+
+Two master switches in `runtime_settings.py` (both default ON):
+
+  * `architecture_requests_enabled` — top-level kill switch for the
+    whole protocol; `lifecycle.py` raises `ProtocolDisabled` when OFF.
+  * `architecture_adoption_monitor_enabled` — independent switch for
+    just the adoption probe (operator can run proposals without
+    auto-rollback CRs).
+
+React `dashboard-react/src/components/ArchitectureRequestsCard.tsx`
+exposes both toggles under `/cp/settings`. The card lives next to
+the change-request / Tier-3 controls — same visual idiom.
+
+Tests: `tests/test_q7_1_adoption.py` — 16 pass + 6 skipped
+(gateway-deps).
+
+### 45.2 — Q7.2: Schema-aware coding-session submit
+
+The coding-session submit step fans diffs out as one CR per touched
+file. When the diff touches a file that owns the DB schema (e.g.
+`app/control_plane/db.py`, `app/budgets/db.py`), there was no
+automatic migration generation — the operator had to remember to
+write the migration by hand, or discover the gap later when the
+migration runner refused to start a fresh container.
+
+**`app/coding_session/schema_migrations.py`** (~180 LOC) ships:
+
+  * `_SCHEMA_OWNING_PATHS` — curated allow-list of path prefixes.
+    Adding an entry is a deliberate decision (false positives manifest
+    as an extra rejectable CR — not silent corruption).
+  * `detect_schema_changes(changed_paths, migrations_dir=None)` —
+    path-only detection per operator decision. Returns a
+    `SchemaChangeHint` with detected paths + inferred snake-case name
+    + next NNNN number + suggested filename. Returns None when no
+    match.
+  * `_next_migration_number(migrations_dir)` — `max(NNNN) + 1` over
+    existing `migrations/` entries; 1 when none exist. Matches the
+    existing numbered-SQL convention (no alembic infrastructure
+    introduced — would have created parallel migration systems).
+  * `_infer_migration_name(matched_paths)` — produces names like
+    `control_plane_db` for `app/control_plane/db.py`,
+    `affect_db_budgets_db` for multiple paths, and
+    `amend_migration_0042_existing` for edits to a migration file
+    itself. Capped at 80 chars.
+  * `render_migration_stub(hint, *, session_id, purpose)` — emits a
+    `BEGIN;` / `COMMIT;` SQL stub with explicit `TODO` markers and an
+    idempotency reminder. The operator completes the SQL before
+    approving.
+
+**`app/coding_session/submit.py`** gains a `_submit_one_synthesized_file`
+helper that files the migration stub as a CR with `old_content=""`
+(synthesized — there's no diff). The schema-detection hook runs
+inside `submit_session` (after `list_changed_paths`, before the
+per-file fanout) and is failure-isolated (a broken detector never
+prevents the regular per-file CRs from going through).
+
+Tests: `tests/test_q7_2_schema_migrations.py` — 19 pass. Covers
+positive cases (control-plane edit, migrations-dir edit, multi-path),
+negative cases (pure Python, tests, empty diff, `CREATE TABLE` in
+docstring), next-number computation, snake-case + amendment naming,
+stub structure + idempotency hint, and source-level wiring assertions
+that the submit pipeline actually invokes the detector.
+
+### 45.3 — Q7.3: Recipe-consolidation selection-rate trigger
+
+The recipe consolidator at `app/self_improvement/meta_agent/
+consolidation.py` had ONE retirement trigger — a four-term health
+score, weekly cadence. The operator's spec also called for a
+selection-rate trigger ("recipes selected <5% over 90 days") with a
+`superseded_by` audit-trail field. Per operator decision, **keep
+both** — the two signals catch different failure modes:
+
+  * Health-score catches QUALITY decay (low winrate, stale).
+  * Selection-rate catches RELEVANCE decay (operators don't pick this
+    recipe even when its win-rate looks fine).
+
+**`compute_selection_rate(recipe, *, window_days, now)`** has a
+three-level shape fallback against attribute variance:
+
+  1. `offered_at_history` / `selected_at_history` — preferred per-event
+     ISO timestamp lists, filtered against the 90d cutoff.
+  2. `times_offered_90d` / `times_selected_90d` — precomputed counters.
+  3. `times_offered` + `uses` — least-precise lifetime fallback.
+     Conservative — over-counts offered, so rate runs HIGH, fail-open
+     against false positives.
+
+**`_should_propose_via_selection_rate(n_offered, rate, prior, *, now)`**
+has three gates:
+
+  1. `n_offered >= 20` — sample-size guard (below this a 0% rate is
+     sampling noise, not a real signal).
+  2. `rate < 0.05`.
+  3. Cross-pass dedup at 30 days (matches health-score's window).
+
+**`run_one_pass()`** runs both triggers in a two-loop structure.
+Health-score wins precedence within a single pass via a
+`proposed_in_pass` dedup set — a recipe failing both signals gets
+exactly one row (the second would surface on next pass once the
+first is deduped). Result dict gains `n_selection_rate_evaluated` for
+operator visibility into how many recipes the trigger actually
+considered (vs. how many were below the min-N gate).
+
+**`mark_superseded_by(recipe_id, *, superseded_by, operator_actor)`**
+is the operator-approved retirement writer. Prefers
+`store.mark_recipe_superseded` if present; falls back to
+`get_recipe` + manual mutation + `save_recipe`. The recipe stays in
+the ledger (audit trail preserved) — only `is_active` flips False so
+the selector skips it.
+
+**Boot anchor**: `app/healing/__init__.py` now imports the
+consolidation module (alongside `capability_gap_analyzer`,
+`library_radar`, `proposal_bridge`, `auto_revert`,
+`governance_notifier`). The module already eager-started the daemon
+at import, but nothing in the boot chain was importing it — so the
+weekly pass never ran in production. This is exactly the gap that
+`§38` already closed for the other five observational subsystems;
+Q7.3 extends the same fix to consolidation.
+
+Tests: `tests/test_q7_3_recipe_consolidation.py` — 17 new tests
+covering shape-variant fallback, the three gates, both-triggers
+composition, `mark_superseded_by` fallback path, and source-level
+boot-anchor verification. Pre-existing
+`tests/self_improvement/test_recipe_consolidation.py` (17 health-
+score tests) unaffected by the dual-trigger change.
+
+### 45.4 — Q7 regression
+
+```
+Q7.1 + Q7.2 + Q7.3 + pre-existing health-score tests:
+  69 pass + 6 skipped (gateway-deps)
+
+No TIER_IMMUTABLE files modified.
+No regressions in adjacent subsystems (proposal_bridge / identity /
+change_requests / healing monitors all green).
+```
+
+### 45.5 — What Q7 deliberately did NOT do
+
+  * **No alembic infrastructure.** The existing migration convention is
+    plain SQL files in `migrations/` applied by
+    `app/memory/startup_migrations.py`. Adding alembic would create
+    parallel migration systems. Matched the existing convention
+    instead.
+  * **No content-regex schema detection.** Path-only per operator
+    decision. False positives from `.py` files that mention
+    `CREATE TABLE` in docstrings would manifest as noise CRs; adding
+    a path to `_SCHEMA_OWNING_PATHS` stays a deliberate decision.
+  * **No automatic recipe retirement.** Both triggers file
+    *advisory* proposals. The operator approves; `mark_superseded_by`
+    runs after approval. The recipe stays in the ledger — never
+    hard-deleted.
+  * **No automatic architecture-request rollback.** The monitor files
+    a rollback CR; the standard operator gate applies. "Auto-rollback
+    default ON" means the *proposal* is automatic; the *application*
+    of the revert still needs human approval.
+
+### 45.6 — ShinkaEvolve and capability-gap analyzer (deferred)
+
+The original review of §3.x called out two additional self-evolution
+items:
+
+  * **3.2 ShinkaEvolve wire-in** — wrapping ShinkaEvolve as a
+    coding-session backend with safety constraints. **Deferred**:
+    the operator hasn't expressed demand for evolutionary search over
+    the agent codebase, and the coding-session primitive (Phase 5.4)
+    is already the canonical agent-code-iteration surface. Re-open
+    when a concrete need surfaces.
+  * **3.3 Capability-gap learner** — analog of `pattern_learner.py`
+    for capability gaps. **Already shipped** under
+    `app/self_improvement/capability_gap_analyzer.py` (PROGRAM §32.5)
+    + integrated into the proposal bridge (§38.1). No work needed.
+
+Q7 closes the gaps the operator flagged. The system is materially
+better at proposing, reviewing, and consolidating its own evolution
+without the operator having to remember which file paths trigger
+which artifact-generation paths.
