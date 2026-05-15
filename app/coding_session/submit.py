@@ -181,6 +181,49 @@ def submit_session(
 
     results: list[SubmitResult] = []
 
+    # PROGRAM §45.2 Q7.2 — schema-aware augmentation: if the diff
+    # touches any schema-owning path, generate an extra migration
+    # stub CR alongside the per-file fanout. Path-only detection
+    # (no content-regex). The operator approves both the code CR
+    # AND the migration CR via the normal gate. Failure-isolated.
+    try:
+        from app.coding_session.schema_migrations import (
+            detect_schema_changes, render_migration_stub,
+        )
+        changed_paths_only = [p for p, _kind in changes]
+        hint = detect_schema_changes(changed_paths_only)
+        if hint is not None:
+            stub = render_migration_stub(
+                hint,
+                session_id=session_id,
+                purpose=getattr(cs, "purpose", "") or submit_reason,
+            )
+            migration_path = f"migrations/{hint.suggested_filename}"
+            try:
+                migration_result = _submit_one_synthesized_file(
+                    cs=cs,
+                    path=migration_path,
+                    content=stub,
+                    reason=(
+                        f"[Q7.2 schema-aware submit] Migration stub for "
+                        f"schema changes touching: "
+                        f"{', '.join(hint.detected_paths[:3])}. Operator "
+                        f"must fill in SQL before approving."
+                    ),
+                    port=port,
+                )
+                results.append(migration_result)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "submit: migration-stub CR failed for session %s: %s",
+                    session_id, exc, exc_info=True,
+                )
+    except Exception:
+        logger.debug(
+            "submit: schema-migration hook failed for session %s",
+            session_id, exc_info=True,
+        )
+
     # 2. Per-file: build content + reason; call port; record result
     for path, kind in changes:
         try:
@@ -225,6 +268,46 @@ def submit_session(
 
 
 # ── Per-file path ───────────────────────────────────────────────────
+
+
+def _submit_one_synthesized_file(
+    *,
+    cs: CodingSession,
+    path: str,
+    content: str,
+    reason: str,
+    port: ChangeRequestPort,
+) -> SubmitResult:
+    """Q7.2 — file a CR for a file the session DIDN'T actually create
+    (the schema-migration stub). Empty ``old_content`` (file is new),
+    synthesized ``new_content``, attribution still tied to the session
+    so audit trail is intact."""
+    cr = port.create_request(
+        requestor=cs.agent_id,
+        path=path,
+        new_content=content,
+        old_content="",  # synthesized file — no base content
+        reason=(
+            f"{cs.purpose}\n\n"
+            f"{reason}\n\n"
+            f"[synthesized by coding session {cs.id}; Q7.2 schema-aware submit]"
+        ),
+    )
+    cr_status = _status_value(cr)
+    if cr_status == "PENDING":
+        try:
+            port.send_ask(_id_value(cr))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "submit: send_ask for synthesized CR %s failed: %s",
+                _id_value(cr), exc,
+            )
+    return SubmitResult(
+        path=path,
+        change_request_id=_id_value(cr),
+        status=cr_status.lower() if cr_status else "unknown",
+        refusal_reason=None,
+    )
 
 
 def _submit_one_file(
