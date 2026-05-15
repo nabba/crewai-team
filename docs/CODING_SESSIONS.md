@@ -527,3 +527,162 @@ Three small primitives, each with a single clear job, composing into
 the full coding-agent flow. The system stays elegant because no piece
 grows ad-hoc capabilities — when the agent needs something new, we ask
 "which primitive does this belong to?" first.
+
+---
+
+## 15. Inline ShinkaEvolve (PROGRAM §45.4 — Q7.4)
+
+When a single-shot fix isn't working, the coder agent can run a
+population-based ShinkaEvolve search **inside one coding session**
+against ONE target file and ONE evaluator script.
+
+### 15.1 Surface
+
+The agent calls `coding_session_evolve_solution` with:
+
+| Argument             | Meaning                                                                                |
+|----------------------|----------------------------------------------------------------------------------------|
+| `session_id`         | Active session id (from `coding_session_start`).                                       |
+| `initial_path`       | Repo-relative path to the program to evolve. Must exist in the worktree.               |
+| `evaluate_path`      | Repo-relative path to a script that scores variants (higher = better).                 |
+| `num_generations`    | 1–20 (hard-capped at `MAX_GENERATIONS_INLINE`).                                        |
+| `num_islands`        | 1–3 (hard-capped at `MAX_ISLANDS_INLINE`).                                             |
+| `max_cost_usd`       | 0.01–5.0 (hard-capped at `MAX_COST_USD_INLINE`).                                       |
+
+Returns a JSON payload with `status`, `baseline_score`, `best_score`,
+`delta`, `generations_run`, `variants_evaluated`, `duration_seconds`,
+the unified `diff` (only when status is `improved`), and any
+`error` / `refusal_reason`.
+
+**Status vocabulary:**
+
+| Status               | Meaning                                                                                |
+|----------------------|----------------------------------------------------------------------------------------|
+| `improved`           | Best variant scored strictly higher than baseline; diff returned.                      |
+| `no_improvement`     | Runner finished but no variant beat baseline; no diff.                                 |
+| `refused`            | Pre-validation rejected the request (see §15.3).                                       |
+| `disabled`           | Master switch `shinka_inline_evolve_enabled` is OFF.                                   |
+| `shinka_unavailable` | The `shinka` package is not installed in the runtime.                                  |
+| `error`              | Runner crashed mid-flight (e.g. evaluator errors).                                     |
+
+### 15.2 Hard caps
+
+These are enforced at the bridge layer regardless of caller request:
+
+```python
+MAX_GENERATIONS_INLINE = 20
+MAX_ISLANDS_INLINE     = 3
+MAX_COST_USD_INLINE    = 5.0
+```
+
+The agent can request smaller, never larger. Cost is the LLM-proposal
+budget for ShinkaEvolve's mutator (not the evaluator's compute, which
+runs inside the same sandbox as the regular `coding_session_run`).
+
+### 15.3 Refusal vocabulary
+
+The bridge refuses the request before invoking the runner when ANY of:
+
+* The session is unknown.
+* The session is not in `ACTIVE` status.
+* The session's worktree directory doesn't exist.
+* Either path is absolute or contains `..` traversal.
+* Either path resolves outside the worktree.
+* Either path doesn't exist in the worktree.
+* The repo-relative `initial_path` is in TIER_IMMUTABLE OR under
+  `app/subia/` OR is `app/affect/goal_emitter.py` (uses
+  `app.architecture_requests.validator.is_protected_path` for the
+  shared protection vocabulary). Modifying any of those requires
+  Tier-3 amendment, not a coding-session diff.
+
+### 15.4 Master switch
+
+`shinka_inline_evolve_enabled` in `runtime_settings.py` (default ON;
+flip in `/cp/settings` → "Inline ShinkaEvolve per coding session"
+card). When OFF, the bridge returns `status="disabled"` without
+invoking validation or the runner. The bulk ShinkaEvolve subsystem
+(`app.shinka_engine`, which the `/cp/evolution` page surfaces) has
+its own master switch and is unaffected.
+
+### 15.5 What the bridge does NOT do
+
+* **It does not apply the diff.** When status is `improved`, the
+  agent must call `coding_session_write(initial_path, evolved_content)`
+  to apply the variant inside the session worktree, then
+  `coding_session_submit` to fan it out as a per-file change request.
+  Standard CR gate applies — nothing reaches the repo without
+  operator approval.
+* **It does not modify shared state.** All ShinkaEvolve intermediate
+  artifacts go under `<worktree>/.shinka_inline/<timestamp>/`. When
+  the session terminates, the worktree (including those artifacts)
+  is cleaned up.
+* **It does not survive a session boundary.** Each run is scoped to
+  ONE session — no resumption, no cross-session population transfer.
+
+### 15.6 Operator visibility
+
+Every call to the bridge — even refused, disabled, or errored ones —
+produces an audit row at:
+
+```
+workspace/coding_sessions/<session_id>/evolution_audit.jsonl
+```
+
+This file lives **outside** the worktree, so the trail survives
+session cleanup. Each row carries:
+
+* `ts`, `session_id`, `agent_id`
+* `initial_path`, `evaluate_path`
+* Requested `num_generations`, `num_islands`, `max_cost_usd`
+* Returned `status`, `baseline_score`, `best_score`, `delta`,
+  `generations_run`, `variants_evaluated`, `duration_seconds`
+* `diff_sha256` and `diff_length` — the full diff is **not** stored
+  (it's reconstructable from the post-submit CR audit log if the
+  agent submits the variant)
+* `error` / `refusal_reason` (whichever applies)
+
+The file is capped at 200 rows per session via
+`app.utils.jsonl_retention.append_with_cap`; older rows rotate out.
+
+Operators see this surface in two places:
+
+* **REST**: `GET /api/cp/coding-sessions/<id>/evolution_runs?limit=N`
+  returns `{session_id, summary, runs}` where `summary` is a roll-up
+  of `n_runs`, `by_status`, `best_delta`, `total_max_cost_usd`,
+  `total_duration_seconds`, `last_run_at`.
+* **React**: `/cp/coding-sessions` → click a session → the detail
+  drawer's "Evolution runs" section renders KPI cards + per-run
+  rows with status-coded badges (`IMPROVED` / `NO Δ` / `REFUSED` /
+  `DISABLED` / `NO SHINKA` / `ERROR`). The section hides for
+  sessions that never invoked evolution (zero noise).
+
+### 15.7 When to use inline evolve
+
+The agent should reach for `coding_session_evolve_solution` only
+when ALL of:
+
+1. A single-shot edit + test cycle has failed (typically ≥2 attempts).
+2. The target file has a clear scalar fitness function (the
+   evaluator script returns a number that's actually meaningful).
+3. The variation space is plausibly fruitful (e.g. there's a
+   parameter or branch that could plausibly improve under search).
+
+Inline evolve is the *expensive* tool — it burns up to $5 of LLM
+proposal budget per run. Most fixes should ride the regular write+run
+loop. The audit row exists precisely so the operator can spot
+overuse.
+
+### 15.8 Test surface
+
+```
+tests/coding_session/test_evolution_bridge.py — 15 tests (refusal
+  vocabulary, hard-cap clamping, improvement+diff, runner errors,
+  shinka_unavailable, duration recording)
+
+tests/coding_session/test_evolve_tool.py       — agent-tool integration
+  (gateway-deps; passes when crewai is installed)
+
+tests/test_q7_4_inline_evolve.py               — 15 tests (audit
+  persistence, master-switch OFF path, REST endpoint wiring, React
+  surface wiring, default-ON pinning)
+```
