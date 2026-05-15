@@ -108,13 +108,46 @@ def run_legacy_essay() -> None:
         logger.debug("identity scheduler: legacy_essay raised", exc_info=True)
 
 
+def run_long_term_goal_review() -> None:
+    """Idle-job tick for the Q9.6 (PROGRAM §46.9) quarterly long-term
+    goal review. Cadence-checks internally; LLM call is failure-
+    isolated; phenomenal-language linter retry applies."""
+    try:
+        from app.identity.long_term_goal_review import run as _run
+    except Exception:
+        logger.debug(
+            "identity scheduler: long_term_goal_review import failed",
+            exc_info=True,
+        )
+        return
+    try:
+        result = _run()
+        status = result.get("status") if isinstance(result, dict) else ""
+        if status not in ("skipped_recent", "skipped_disabled"):
+            logger.info(
+                "identity scheduler: long_term_goal_review status=%s "
+                "quarter=%s attempts=%s",
+                status,
+                (result.get("quarter_label") if isinstance(result, dict) else ""),
+                (result.get("attempts") if isinstance(result, dict) else 0),
+            )
+    except Exception:
+        logger.debug(
+            "identity scheduler: long_term_goal_review raised",
+            exc_info=True,
+        )
+
+
 def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
     """Idle-scheduler job tuples — appended in :func:`app.companion.loop.get_idle_jobs`.
 
-    Both jobs are LIGHT (sub-second on the typical no-op tick).
+    All jobs are LIGHT (sub-second on the typical no-op tick).
     """
     from app.idle_scheduler import JobWeight
     return [
         ("identity-annual-reflection", run_annual_reflection, JobWeight.LIGHT),
         ("identity-legacy-essay", run_legacy_essay, JobWeight.LIGHT),
+        # Q9.6 (PROGRAM §46.9) — quarterly long-term goal review.
+        ("identity-long-term-goal-review",
+         run_long_term_goal_review, JobWeight.LIGHT),
     ]

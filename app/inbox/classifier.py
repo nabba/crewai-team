@@ -36,6 +36,7 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     "text",                 # .txt / .md → companion notes
     "csv",                  # .csv → companion data
     "spreadsheet",          # .xlsx / .ods → companion data
+    "youtube_link",         # .url / single-line .txt → transcript+notes (Q9.4)
     "unknown",              # nothing matched — operator alert
 })
 
@@ -59,7 +60,37 @@ _EXTENSION_MAP: dict[str, str] = {
     "csv": "csv",
     "xlsx": "spreadsheet",
     "ods": "spreadsheet",
+    # Q9.4 — Windows Internet Shortcut files; classified as
+    # youtube_link only after content-peek confirms a youtube URL.
+    "url": "text",
+    # .webloc (macOS) — same treatment.
+    "webloc": "text",
 }
+
+
+_YOUTUBE_URL_RE = __import__("re").compile(
+    r"https?://(www\.|m\.)?(youtube\.com|youtu\.be)/",
+    __import__("re").IGNORECASE,
+)
+
+
+def _content_is_youtube_link(path: Path) -> bool:
+    """Sniff a short text-ish file for a YouTube URL.
+
+    Triggers for: .url (Windows shortcut), .webloc (macOS shortcut),
+    or .txt where the body is a single line containing a YouTube URL.
+    Caps the read at 4 KB so we don't slurp a huge file by accident.
+    """
+    try:
+        with open(path, "rb") as f:
+            blob = f.read(4096)
+    except OSError:
+        return False
+    try:
+        text = blob.decode("utf-8", errors="replace")
+    except Exception:
+        return False
+    return bool(_YOUTUBE_URL_RE.search(text))
 
 
 def _peek_magic(path: Path, n: int = 16) -> bytes:
@@ -159,6 +190,18 @@ def classify_file(path: Path) -> FileClassification:
 
     if ext in _EXTENSION_MAP:
         kind = _EXTENSION_MAP[ext]
+        # Q9.4 — Windows/macOS shortcut files (.url / .webloc) AND
+        # plain .txt files: peek the content. If it's a YouTube URL,
+        # upgrade the kind to ``youtube_link`` so the dedicated
+        # handler picks it up.
+        if ext in ("url", "webloc", "txt"):
+            if _content_is_youtube_link(path):
+                return FileClassification(
+                    kind="youtube_link",
+                    confidence="high",
+                    reason=f".{ext} content matches YouTube URL pattern",
+                )
+            # .url / .webloc without a YouTube URL is treated as text.
         if not _magic_matches(path, ext):
             return FileClassification(
                 kind="unknown",

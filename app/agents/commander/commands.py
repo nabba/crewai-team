@@ -102,6 +102,19 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── Q9.6 (PROGRAM §46.9) — long-term goal quarterly review ──────
+    # /goals                                         summary
+    # /goals review                                  trigger quarterly review now
+    # /goals list-reviews                            list past reviews
+    if (
+        lower.startswith("/goals")
+        or lower == "goals"
+        or lower.startswith("goals ")
+    ):
+        sub = _handle_goals_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Phase 5 skill registry slash commands ──────────────────────
     # /skill save <name>: <task template>           save a new skill
     # /skill save <name>                            save using last user message
@@ -2437,3 +2450,118 @@ def _handle_thread_command(user_input: str) -> str | None:
     return _thread_help()
 
     return _person_help()
+
+
+# ── Q9.6 (PROGRAM §46.9) — /goals quarterly review ────────────────
+
+
+def _goals_help() -> str:
+    return (
+        "/goals                                  — summary of current_goals "
+        "+ most recent quarterly review\n"
+        "/goals review                           — trigger a quarterly review "
+        "now (bypasses cadence guard)\n"
+        "/goals list-reviews                     — list past quarterly reviews\n"
+        "REST: GET /api/cp/goals/reviews · POST /api/cp/goals/review"
+    )
+
+
+def _handle_goals_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/goals"):
+        text = text[len("/goals"):].strip()
+    elif text.lower().startswith("goals "):
+        text = text[len("goals "):].strip()
+    elif text.lower() == "goals":
+        text = ""
+    else:
+        return None
+
+    if not text or text.lower() in ("help", "?"):
+        if text.lower() in ("help", "?"):
+            return _goals_help()
+        return _format_goals_summary()
+
+    sub = text.split(maxsplit=1)[0].lower()
+    if sub == "review":
+        try:
+            from app.identity.long_term_goal_review import run_review
+            r = run_review(force=True)
+        except Exception as exc:
+            return f"Could not run review: {exc}"
+        if r.status == "wrote_review":
+            return (
+                f"✅ Quarterly review {r.quarter_label} written "
+                f"to {r.written_to}"
+            )
+        if r.status == "skipped_disabled":
+            return (
+                "Long-term goal review is disabled (set "
+                "LONG_TERM_GOAL_REVIEW_ENABLED=true)"
+            )
+        return (
+            f"Review did not complete: status={r.status}, "
+            f"reason={r.failure_reason}, attempts={r.attempts}"
+        )
+
+    if sub in ("list", "list-reviews", "history"):
+        try:
+            from app.identity.long_term_goal_review import list_recent_reviews
+            reviews = list_recent_reviews(limit=8)
+        except Exception:
+            return "Could not list reviews."
+        if not reviews:
+            return (
+                "No quarterly reviews yet. Use /goals review to trigger one."
+            )
+        lines = [f"📋 {len(reviews)} past review(s):"]
+        for r in reviews:
+            lines.append(
+                f"  {r['quarter_label']}  ({r['mtime'][:10]})"
+            )
+        return "\n".join(lines)
+
+    return _goals_help()
+
+
+def _format_goals_summary() -> str:
+    """One-shot 'where am I' summary — current_goals + latest review."""
+    lines: list[str] = []
+    try:
+        from app.identity.long_term_goal_review import _current_goals
+        goals = _current_goals()
+    except Exception:
+        goals = []
+    if goals:
+        lines.append(f"📍 Current autonomous goals ({len(goals)}):")
+        for g in goals[:6]:
+            label = (
+                g.get("label") or g.get("title") or g.get("description")
+                or str(g)[:140]
+            )
+            lines.append(f"  • {label}")
+    else:
+        lines.append("📍 No active autonomous goals.")
+
+    try:
+        from app.identity.long_term_goal_review import list_recent_reviews
+        recent = list_recent_reviews(limit=1)
+    except Exception:
+        recent = []
+    if recent:
+        r = recent[0]
+        lines.append("")
+        lines.append(f"🗓 Last review: {r['quarter_label']} ({r['mtime'][:10]})")
+        preview = r.get("preview", "")
+        if preview:
+            # Take first non-blank, non-header line as preview
+            for ln in preview.splitlines():
+                ln = ln.strip()
+                if ln and not ln.startswith("#"):
+                    lines.append(f"   {ln[:200]}")
+                    break
+    else:
+        lines.append("")
+        lines.append("🗓 No quarterly reviews on file yet.")
+    lines.append("Use /goals review to compose a new one.")
+    return "\n".join(lines)

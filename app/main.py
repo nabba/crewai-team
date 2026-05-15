@@ -2585,6 +2585,13 @@ try:
 except Exception:
     logger.debug("Workflows router registration failed", exc_info=True)
 
+# ── Long-term goal review (PROGRAM §46.9, Q9.6) ────────────────────────────
+try:
+    from app.control_plane.goals_api import router as goals_router
+    app.include_router(goals_router)
+except Exception:
+    logger.debug("Goals router registration failed", exc_info=True)
+
 # ── Proposals aggregator (capability_gap + library_radar + recipe) ─────────
 try:
     from app.control_plane.proposals_api import router as proposals_router

@@ -8134,3 +8134,196 @@ No TIER_IMMUTABLE files modified.
     workflow is genuinely the right tool. Avoids tool-bloat in the
     default inventory.
 
+## 46.6-46.9 2026-05-16 — Q9: Companion deepening ("knows me well")
+
+Post-§46 review of the companion surface against the operator's
+"knows me well" criteria. Six items in the spec; audit findings:
+
+  * **5.1 Health / fitness / sleep** — ✅ FULLY SHIPPED at
+    ``app/health/`` (PROGRAM §34.1). No work needed.
+  * **5.2 Financial micro-tracking** — ❌ DEFERRED per operator
+    decision. No `app/finance/`, no Plaid/Nordigen integration.
+    Re-open when concrete need surfaces.
+  * **5.3 Travel** — ❌ MISSING.
+  * **5.4 Multi-modal inbox** — ⚠️ FRAMEWORK SHIPPED but 5 handlers
+    stubbed as ``_handle_unsupported``.
+  * **5.5 Action requests** — ✅ FRAMEWORK SHIPPED with email_draft
+    handler; missing calendar_invite + signal_send.
+  * **5.6 Long-term goal review** — ❌ MISSING.
+
+Operator decisions before kickoff:
+
+  1. 5.3 travel: TripIt iCal + Aviationstack flight tracking.
+  2. 5.4 inbox: ship audio + image + pdf + spreadsheet + new
+     youtube_link handlers.
+  3. 5.5: add calendar_invite + signal_send action types.
+  4. 5.6: quarterly idle job + ``/goals review`` operator trigger.
+
+### 46.6 — Q9.3: Travel module
+
+**New `app/life_companion/travel.py`** (~360 LOC):
+
+  * `parse_ical(ics_text) → list[TripSegment]` — hand-rolled minimal
+    iCal parser (no ``icalendar`` dep). Unfolds continuation lines,
+    extracts SUMMARY / LOCATION / DTSTART / DTEND / UID per VEVENT.
+  * `_detect_segment_kind` — best-effort `flight / ferry / train /
+    hotel / car / other` from SUMMARY heuristics. Includes
+    Helsinki-Tallinn ferry vendor patterns (Tallink / Viking Line /
+    Eckerö / Stena).
+  * `fetch_tripit()` — pulls the ``.ics`` from ``TRIPIT_ICAL_URL``
+    (env var). Failure-isolated; absent URL = silent no-op.
+  * `fetch_flight_status(flight_number)` — Aviationstack free-tier
+    HTTPS call. Gated by ``AVIATIONSTACK_API_KEY`` env var; absent
+    key = no live status. Caller (`run()`) caps at 3 calls/cycle
+    to spare the 100/month quota.
+  * `upcoming_trips(window_days=14)` + `imminent_flight()` +
+    `is_traveling_at(dt_iso)` public reader functions over the
+    on-disk snapshot. Never block on network.
+  * `run()` — idle-scheduler entry. 6h cadence-guard internal.
+    Persists snapshots to ``workspace/life_companion/travel/
+    {tripit_trips,flight_status}.json``.
+  * `format_for_briefing(window_days=14)` — markdown block for the
+    daily briefing.
+
+**Wired into:**
+
+  * `app/life_companion/__init__.py:get_idle_jobs()` as
+    ``life-companion-travel`` (LIGHT).
+  * `daily_briefing._gather_travel_block()` → appended to morning
+    + evening briefings (section auto-hides when no upcoming trips).
+
+**Master switches:**
+
+  * ``TRAVEL_MONITOR_ENABLED`` (default ON)
+  * ``TRIPIT_ICAL_URL`` (env; absent = TripIt source disabled)
+  * ``FLIGHT_TRACKING_ENABLED`` (default ON, additive)
+  * ``AVIATIONSTACK_API_KEY`` (env; absent = no live flight status)
+
+### 46.7 — Q9.4: Multi-modal inbox handlers
+
+**`app/inbox/classifier.py`:**
+
+  * New ``youtube_link`` kind added to ``KNOWN_KINDS``.
+  * `.url` / `.webloc` / `.txt` files with YouTube-URL content
+    promote to ``youtube_link`` via `_content_is_youtube_link` peek
+    (4 KB cap on read so we don't slurp huge files).
+
+**`app/inbox/router.py`:**
+
+  * Removed 5 ``_handle_unsupported`` stubs.
+  * Wired 5 real handlers; registry now covers every
+    ``KNOWN_KINDS`` entry except ``unknown``.
+
+**`app/inbox/handlers/` (NEW package, 5 modules):**
+
+  * `audio_transcribe.py` — MP3/M4A/WAV → `app.voice.transcribe_audio`
+    → ``workspace/notes/<stem>.transcript.md``. 200 MB file cap.
+  * `image_vision.py` — PNG/JPG/HEIC → Anthropic Haiku 4.5 vision →
+    structured markdown note. System prompt: bullet-extract only,
+    no creative writing, ``ILLEGIBLE`` for empty/unreadable. 20 MB
+    image cap.
+  * `pdf_extract.py` — PDF → Haiku 4.5 ``document`` content block →
+    strict JSON output. Routes to either ``workspace/finance/
+    expenses.jsonl`` (when ``kind=="receipt"``) or a markdown note
+    (when ``kind=="document"``). Markdown-fence-tolerant JSON parse.
+  * `spreadsheet_to_csv.py` — XLSX (openpyxl) / ODS (odfpy) → first
+    sheet → CSV in notes/. 50k-row cap.
+  * `youtube_link.py` — Extracts the URL from .url / .webloc /
+    plain-text bodies; delegates to
+    `SelfImprovementCrew.learn_from_youtube` (the same path the
+    existing ``watch <url>`` Signal command uses).
+
+### 46.8 — Q9.5: Action handlers
+
+**`app/action_requests/models.py`:**
+
+  * ``ActionType.CALENDAR_INVITE = "calendar_invite"``
+  * ``ActionType.SIGNAL_SEND = "signal_send"``
+
+**`app/action_requests/handlers/calendar_invite.py` (NEW):**
+
+  * Validates: summary non-empty + ≤300 chars; start_iso + end_iso
+    ISO 8601 with end > start; attendees pass RFC 5322 sanity;
+    description ≤8000 chars; calendar_id / location / timezone
+    optional strings; all_day boolean.
+  * Apply: `get_service("calendar")` from `app.google_workspace`;
+    inserts an event via `service.events().insert(...).execute()`;
+    sends invites (``sendUpdates="all"``) when attendees present.
+  * Render: ``📅 <summary> on <start> @ <location> — N attendee(s)``.
+
+**`app/action_requests/handlers/signal_send.py` (NEW):**
+
+  * Validates: recipient + text non-empty; text ≤8000 chars;
+    attachments must be path strings.
+  * Apply: `send_message_blocking(recipient, text, attachments)` —
+    returns the Signal timestamp on success so the apply artifact
+    can be correlated with reaction events.
+  * Render: ``💬 Signal to <recipient>: "<60-char preview>…"``.
+
+**Registry wiring:**
+
+  * Both handlers register on import of
+    `app/action_requests/handlers/__init__.py`, guarded by
+    try/except so a broken handler (e.g. google_workspace not
+    bootstrapped in the test env) doesn't take down the other.
+
+### 46.9 — Q9.6: Long-term goal quarterly review
+
+**`app/identity/long_term_goal_review.py` (NEW, ~450 LOC):**
+
+  * `gather_context(now)` reads five sources: `current_goals` from
+    `SelfState`; `grand_task` events from companion event log;
+    completed crew tasks from `control_plane.crew_tasks`; closed
+    Q8 threads from `app.threads`; identity-continuity drift
+    summary. Each source failure-isolated.
+  * `run_review(force, llm_call, max_retries)` — composer LLM call
+    (Anthropic Haiku 4.5) with phenomenal-language linter retry
+    (mirrors `annual_reflection`). Writes
+    ``wiki/self/quarterly_reviews/<year>_q<n>.md`` on success.
+  * `list_recent_reviews(limit)` — newest-first listing + previews.
+  * 85-day minimum interval (4×/year typical cadence).
+  * Quarter labelling: `_current_quarter(now)` → `(year, q, start,
+    next_start)` with q4-wraps-year correctness.
+
+**Operator surfaces:**
+
+  * `/goals` — summary of `current_goals` + last review preview.
+  * `/goals review` — bypass cadence, run now.
+  * `/goals list-reviews` — past reviews on disk.
+  * Three `SignalCommand` rows under "Self-improvement" category.
+  * REST: `GET /api/cp/goals/state` + `GET /api/cp/goals/reviews`
+    + `POST /api/cp/goals/review` mounted in `app/main.py`.
+  * Identity-scheduler tuple `identity-long-term-goal-review`
+    (LIGHT) appended to `get_idle_jobs()`.
+
+**Master switch:** `LONG_TERM_GOAL_REVIEW_ENABLED` (default ON).
+Override interval via `LONG_TERM_GOAL_REVIEW_MIN_INTERVAL_DAYS`.
+Output dir override via `LONG_TERM_GOAL_REVIEW_DIR`.
+
+### 46.10 — Q9 regression
+
+```
+Q7 + Q8 + Q9 + legacy threads + legacy consolidation:
+  191 pass + 6 skipped (gateway-deps)
+```
+
+No TIER_IMMUTABLE files modified. SubIA integrity unchanged.
+Butlin scorecard unchanged.
+
+### 46.11 — What Q9 deliberately did NOT do
+
+  * **No financial subsystem.** Operator deferred 5.2 — Nordigen
+    integration + subscription anomaly detection re-open when
+    concrete demand surfaces.
+  * **No Slack handler.** Mentioned in 5.5 but no Slack client is
+    wired today. Defer until the operator actually needs Slack.
+  * **No Plaid.** US-focused; wrong fit for Helsinki/Tallinn even
+    if 5.2 were live.
+  * **No new vendor for flight tracking beyond Aviationstack.**
+    Free tier covers personal-use cadence; FlightAware AeroAPI is
+    a future-cycle decision if the free tier proves insufficient.
+  * **No editing of `current_goals` from the review.** The review
+    is observational — it can _propose_ goal amendments in the
+    "what I'd ask the operator to revisit" section, but never
+    mutates the Tier-3-quarantined field.
+

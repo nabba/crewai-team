@@ -110,4 +110,14 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], Any]]:
         )
     except Exception:
         pass
+    # Q9.3 (PROGRAM §46.6, 2026-05-16) — travel monitor (TripIt iCal
+    # + Aviationstack flight status).
+    try:
+        from app.life_companion import travel
+        jobs.append(
+            ("life-companion-travel",
+             travel.run, JobWeight.LIGHT),
+        )
+    except Exception:
+        pass
     return jobs

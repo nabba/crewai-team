@@ -365,6 +365,17 @@ SIGNAL_COMMANDS: tuple[SignalCommand, ...] = (
     SignalCommand("/thread abandon", (), "/thread abandon <id> <reason>",
                   "Close as ABANDONED (triggers approaches-tried distillation).",
                   "Threads"),
+
+    # ── Goals (Q9.6, PROGRAM §46.9) ──────────────────────────────
+    SignalCommand("/goals", ("goals",), "/goals",
+                  "Summary: current autonomous goals + latest quarterly review.",
+                  "Self-improvement"),
+    SignalCommand("/goals review", (), "/goals review",
+                  "Trigger a long-term goal quarterly review now (bypasses 85d cadence).",
+                  "Self-improvement"),
+    SignalCommand("/goals list-reviews", (), "/goals list-reviews",
+                  "List past quarterly reviews on disk.",
+                  "Self-improvement"),
 )
 
 

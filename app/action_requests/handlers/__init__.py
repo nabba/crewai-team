@@ -37,6 +37,29 @@ def list_action_types() -> list:
 from app.action_requests.handlers import email_draft  # noqa: E402,F401
 register_handler(email_draft.EmailDraftHandler())
 
+# Q9.5 (PROGRAM §46.8, 2026-05-16) — calendar_invite + signal_send.
+# Imports are guarded so a broken handler (e.g. google_workspace not
+# bootstrapped in a test/dev env) doesn't take down email_draft.
+try:
+    from app.action_requests.handlers import calendar_invite  # noqa: E402,F401
+    register_handler(calendar_invite.CalendarInviteHandler())
+except Exception:  # noqa: BLE001
+    import logging
+    logging.getLogger(__name__).debug(
+        "action_requests: calendar_invite handler registration failed",
+        exc_info=True,
+    )
+
+try:
+    from app.action_requests.handlers import signal_send  # noqa: E402,F401
+    register_handler(signal_send.SignalSendHandler())
+except Exception:  # noqa: BLE001
+    import logging
+    logging.getLogger(__name__).debug(
+        "action_requests: signal_send handler registration failed",
+        exc_info=True,
+    )
+
 
 __all__ = [
     "ActionHandler",

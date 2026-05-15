@@ -16,7 +16,10 @@ class ActionType(str, enum.Enum):
     """Supported action types. Add new entries when handlers ship."""
 
     EMAIL_DRAFT = "email_draft"
-    # Future: CALENDAR_INVITE, SLACK_MESSAGE, DISCORD_DM, FILE_UPLOAD, ...
+    # Q9.5 (PROGRAM §46.8, 2026-05-16) — two new outbound surfaces:
+    CALENDAR_INVITE = "calendar_invite"
+    SIGNAL_SEND = "signal_send"
+    # Future: SLACK_MESSAGE, DISCORD_DM, FILE_UPLOAD, ...
 
 
 class ActionStatus(str, enum.Enum):

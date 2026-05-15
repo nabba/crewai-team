@@ -279,6 +279,24 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_travel_block() -> list[str]:
+    """Q9.3 (PROGRAM §46.6) — upcoming travel surfaced from TripIt
+    + flight-status snapshots. Returns one block of markdown lines
+    (header + per-segment) or ``[]`` when nothing in the window.
+    Soft-fail."""
+    try:
+        from app.life_companion.travel import format_for_briefing
+    except Exception:
+        return []
+    try:
+        text = format_for_briefing(window_days=14)
+    except Exception:
+        return []
+    if not text:
+        return []
+    return [text]
+
+
 def _gather_people_insights(n: int = 5) -> list[str]:
     """Q4.2 (PROGRAM §42 L1) — people showing cross-modal convergence.
     Only emits when master switch ON. Soft fail."""
@@ -674,6 +692,12 @@ def _compose_morning() -> tuple[str, list[float]]:
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)
+    travel = _gather_travel_block()
+    if travel:
+        # Q9.3 — upcoming TripIt segments + flight status. The block
+        # already carries its own header; just join below.
+        parts.append("")
+        parts.extend(travel)
     return "\n".join(parts), queued_ts
 
 
@@ -697,6 +721,10 @@ def _compose_evening() -> tuple[str, list[float]]:
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)
+    travel = _gather_travel_block()
+    if travel:
+        parts.append("")
+        parts.extend(travel)
     return "\n".join(parts), queued_ts
 
 

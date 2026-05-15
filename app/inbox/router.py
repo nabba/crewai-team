@@ -124,23 +124,105 @@ def _handle_unsupported(
     path: Path, classification: FileClassification, base: Path,
 ) -> str:
     """A handler that intentionally refuses. Used for kinds we recognise
-    but haven't wired a real handler for yet (audio/image/pdf/csv/
-    spreadsheet). The file stays in place; the operator sees an alert."""
+    but haven't wired a real handler for yet. The file stays in place;
+    the operator sees an alert."""
     raise RuntimeError(
         f"no handler for kind={classification.kind!r}; "
         f"recognised but not yet routable"
     )
 
 
+def _handle_audio(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — audio → transcript → workspace/notes/<stem>.md.
+
+    Delegates to the dedicated transcript module so the heavy
+    backends (whisper.cpp / Groq / Anthropic) stay in one place.
+    Failure-isolated relative to the broader inbox scan: this
+    handler raises on transcribe failure so the router records
+    status="failed" and leaves the file in place for retry.
+    """
+    from app.inbox.handlers import audio_transcribe
+    return audio_transcribe.run(path)
+
+
+def _handle_image(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — image → vision-extracted markdown note.
+
+    Anthropic Haiku 4.5 vision reads the image and emits a structured
+    note. Whiteboard photos → bullet structure; screenshots → text +
+    UI element labels; handwritten notes → transcribed text.
+    """
+    from app.inbox.handlers import image_vision
+    return image_vision.run(path)
+
+
+def _handle_pdf(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — PDF → receipt parse OR fallback to note.
+
+    First-pass heuristic: if the PDF is small (<300 KB) AND vision
+    detects vendor/amount/date, route to the expense ledger at
+    workspace/finance/expenses.jsonl. Otherwise treat as a generic
+    document and drop a markdown summary into workspace/notes/.
+    """
+    from app.inbox.handlers import pdf_extract
+    return pdf_extract.run(path)
+
+
+def _handle_spreadsheet(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — XLSX/ODS → CSV → notes.
+
+    Best-effort openpyxl/odfpy → first-sheet CSV → workspace/notes/.
+    Failure-isolated: a corrupt spreadsheet raises, file stays in
+    place for operator inspection.
+    """
+    from app.inbox.handlers import spreadsheet_to_csv
+    return spreadsheet_to_csv.run(path)
+
+
+def _handle_csv(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — CSV → workspace/notes/.
+
+    Pure copy; analytics tools downstream can pick it up. Mirrors
+    the _handle_text shape so the operator can re-process via the
+    existing notes pipeline.
+    """
+    return _handle_text(path, classification, base)
+
+
+def _handle_youtube_link(
+    path: Path, classification: FileClassification, base: Path,
+) -> str:
+    """Q9.4 — .url / .webloc / single-line .txt with a YouTube URL
+    → transcript + idea extract.
+
+    Delegates to the existing ``watch <url>`` skill via Commander.
+    The skill already distills the transcript into a skill entry +
+    team memory; the inbox handler is just the file-drop trigger.
+    """
+    from app.inbox.handlers import youtube_link
+    return youtube_link.run(path)
+
+
 HANDLER_REGISTRY: dict[str, Handler] = {
     "apple_health_export": _handle_apple_health,
     "text": _handle_text,
-    # Recognised but unhandled — they sit until a real handler is wired.
-    "audio": _handle_unsupported,
-    "image": _handle_unsupported,
-    "pdf": _handle_unsupported,
-    "csv": _handle_unsupported,
-    "spreadsheet": _handle_unsupported,
+    # Q9.4 (PROGRAM §46.7, 2026-05-16) — wired multi-modal handlers.
+    "audio": _handle_audio,
+    "image": _handle_image,
+    "pdf": _handle_pdf,
+    "csv": _handle_csv,
+    "spreadsheet": _handle_spreadsheet,
+    "youtube_link": _handle_youtube_link,
 }
 
 
