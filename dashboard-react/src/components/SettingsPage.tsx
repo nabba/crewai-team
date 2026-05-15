@@ -28,6 +28,7 @@ import {
 import { PersonCorrelationCard } from './PersonCorrelationCard';
 import { ResilienceDrillsCard } from './ResilienceDrillsCard';
 import { ArchitectureRequestsCard } from './ArchitectureRequestsCard';
+import { InlineEvolveCard } from './InlineEvolveCard';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -77,6 +78,10 @@ export function SettingsPage() {
         onSettingsChange={() => settingsQ.refetch()}
       />
       <ArchitectureRequestsCard
+        settings={settingsQ.data}
+        onSettingsChange={() => settingsQ.refetch()}
+      />
+      <InlineEvolveCard
         settings={settingsQ.data}
         onSettingsChange={() => settingsQ.refetch()}
       />

@@ -291,6 +291,8 @@ async def set_runtime_settings_endpoint(request: Request):
         # Q7.1 — architecture-requests
         set_architecture_requests_enabled,
         set_architecture_adoption_monitor_enabled,
+        # Q7.4 — inline ShinkaEvolve per coding session
+        set_shinka_inline_evolve_enabled,
         snapshot,
     )
 
@@ -464,6 +466,16 @@ async def set_runtime_settings_endpoint(request: Request):
         if "architecture_adoption_monitor_enabled" in payload:
             set_architecture_adoption_monitor_enabled(
                 bool(payload["architecture_adoption_monitor_enabled"])
+            )
+
+        # ─── Q7.4 — per-coding-session inline ShinkaEvolve ────────────
+        # Gates `evolution_bridge.evolve_in_session`. When OFF, the
+        # bridge returns ``status="disabled"`` instead of invoking
+        # ShinkaEvolveRunner. The bulk subsystem (app.shinka_engine) is
+        # gated separately by its own engine-stats master switch.
+        if "shinka_inline_evolve_enabled" in payload:
+            set_shinka_inline_evolve_enabled(
+                bool(payload["shinka_inline_evolve_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -14,8 +14,10 @@ import { Link } from 'react-router-dom';
 import { Skeleton } from './ui/Skeleton';
 import {
   useCodingSessionDetailQuery,
+  useCodingSessionEvolutionRunsQuery,
   useCodingSessionsListQuery,
 } from '../api/coding_sessions';
+import type { EvolutionRun } from '../api/coding_sessions';
 import type {
   CodingSession,
   CodingSessionStatus,
@@ -386,10 +388,172 @@ function CodingSessionDetailDrawer({
                   </div>
                 </section>
               )}
+
+              {/* Q7.4 — Inline ShinkaEvolve runs, if any */}
+              <EvolutionRunsSection sessionId={sessionId} />
             </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Q7.4 — Per-session ShinkaEvolve audit panel.
+//
+// Reads from GET /api/cp/coding-sessions/{id}/evolution_runs (which
+// serves the persisted JSONL at
+// workspace/coding_sessions/<id>/evolution_audit.jsonl).
+//
+// The panel disappears when the session has never invoked evolution
+// (n_runs === 0) — no noise for sessions that didn't use the feature.
+function EvolutionRunsSection({ sessionId }: { sessionId: string }) {
+  const q = useCodingSessionEvolutionRunsQuery(sessionId);
+  const data = q.data;
+  if (!data || data.summary.n_runs === 0) return null;
+
+  return (
+    <section>
+      <h3 className="text-xs font-semibold text-[#7a8599] uppercase tracking-wider mb-2">
+        Evolution runs ({data.summary.n_runs})
+      </h3>
+      <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+        <div className="bg-[#111820] border border-[#1e2738] rounded px-2.5 py-1.5">
+          <div className="text-[10px] text-[#7a8599] uppercase tracking-wider">
+            Best Δ
+          </div>
+          <div className="font-mono text-[#34d399] mt-0.5">
+            +{(data.summary.best_delta ?? 0).toFixed(3)}
+          </div>
+        </div>
+        <div className="bg-[#111820] border border-[#1e2738] rounded px-2.5 py-1.5">
+          <div className="text-[10px] text-[#7a8599] uppercase tracking-wider">
+            Budgeted
+          </div>
+          <div className="font-mono text-[#cbd5e1] mt-0.5">
+            ${(data.summary.total_max_cost_usd ?? 0).toFixed(2)}
+          </div>
+        </div>
+        <div className="bg-[#111820] border border-[#1e2738] rounded px-2.5 py-1.5">
+          <div className="text-[10px] text-[#7a8599] uppercase tracking-wider">
+            Wall time
+          </div>
+          <div className="font-mono text-[#cbd5e1] mt-0.5">
+            {(data.summary.total_duration_seconds ?? 0).toFixed(1)}s
+          </div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {data.runs.map((r, idx) => (
+          <EvolutionRunRow key={`${r.ts}-${idx}`} run={r} />
+        ))}
+      </div>
+      <div className="text-xs text-[#7a8599] mt-3">
+        Diffs are NOT auto-applied — the agent writes the chosen
+        variant via{' '}
+        <code className="font-mono text-[#fbbf24]">coding_session_write</code>{' '}
+        and submits via{' '}
+        <code className="font-mono text-[#fbbf24]">coding_session_submit</code>,
+        which fans out one change request per touched file at{' '}
+        <Link to="/changes" className="text-[#60a5fa] hover:underline">
+          /cp/changes
+        </Link>
+        .
+      </div>
+    </section>
+  );
+}
+
+const EVOLUTION_STATUS_BADGE: Record<
+  EvolutionRun['status'],
+  { bg: string; fg: string; label: string }
+> = {
+  improved: {
+    bg: 'bg-[#34d399]/15',
+    fg: 'text-[#34d399]',
+    label: 'IMPROVED',
+  },
+  no_improvement: {
+    bg: 'bg-[#7a8599]/15',
+    fg: 'text-[#7a8599]',
+    label: 'NO Δ',
+  },
+  refused: {
+    bg: 'bg-[#fbbf24]/15',
+    fg: 'text-[#fbbf24]',
+    label: 'REFUSED',
+  },
+  disabled: {
+    bg: 'bg-[#7a8599]/15',
+    fg: 'text-[#7a8599]',
+    label: 'DISABLED',
+  },
+  shinka_unavailable: {
+    bg: 'bg-[#fbbf24]/15',
+    fg: 'text-[#fbbf24]',
+    label: 'NO SHINKA',
+  },
+  error: {
+    bg: 'bg-[#f87171]/15',
+    fg: 'text-[#f87171]',
+    label: 'ERROR',
+  },
+};
+
+function EvolutionRunRow({ run }: { run: EvolutionRun }) {
+  const b = EVOLUTION_STATUS_BADGE[run.status] ?? EVOLUTION_STATUS_BADGE.error;
+  return (
+    <div className="text-xs bg-[#111820] border border-[#1e2738] rounded px-2.5 py-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium ${b.bg} ${b.fg}`}
+        >
+          {b.label}
+        </span>
+        <code className="font-mono text-[#cbd5e1] truncate flex-1">
+          {run.initial_path}
+        </code>
+        <span className="text-[#7a8599] tabular-nums">
+          {formatRelative(run.ts)}
+        </span>
+      </div>
+      {run.status === 'improved' && (
+        <div className="mt-1 text-[#7a8599] flex flex-wrap gap-x-3 gap-y-0.5">
+          <span>
+            score{' '}
+            <span className="text-[#cbd5e1] font-mono">
+              {run.baseline_score.toFixed(3)} → {run.best_score.toFixed(3)}
+            </span>
+          </span>
+          <span>
+            Δ{' '}
+            <span className="text-[#34d399] font-mono">
+              +{run.delta.toFixed(3)}
+            </span>
+          </span>
+          <span>
+            gen{' '}
+            <span className="text-[#cbd5e1] font-mono">
+              {run.generations_run}
+            </span>
+          </span>
+          <span>
+            wall{' '}
+            <span className="text-[#cbd5e1] font-mono">
+              {run.duration_seconds.toFixed(1)}s
+            </span>
+          </span>
+        </div>
+      )}
+      {run.status === 'refused' && run.refusal_reason && (
+        <div className="mt-1 text-[#fbbf24] truncate">{run.refusal_reason}</div>
+      )}
+      {run.status === 'disabled' && run.refusal_reason && (
+        <div className="mt-1 text-[#7a8599] truncate">{run.refusal_reason}</div>
+      )}
+      {run.status === 'error' && run.error && (
+        <div className="mt-1 text-[#f87171] truncate">{run.error}</div>
+      )}
     </div>
   );
 }

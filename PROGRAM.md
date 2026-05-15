@@ -7768,21 +7768,130 @@ change_requests / healing monitors all green).
     default ON" means the *proposal* is automatic; the *application*
     of the revert still needs human approval.
 
-### 45.6 — ShinkaEvolve and capability-gap analyzer (deferred)
+### 45.4 — Q7.4: Inline ShinkaEvolve operator-visibility closure
 
-The original review of §3.x called out two additional self-evolution
-items:
+Q7.4 was originally framed as a deferral (see the now-deleted §45.6
+of the first §45 ship). On a second pass through the prompt the
+deferral didn't survive — the operator's spec listed ShinkaEvolve
+wire-in as item 3.2, and the deferral framing was partly
+"I didn't have a clean integration plan" rather than a substantive
+non-decision. Q7.4 closes the gap.
 
-  * **3.2 ShinkaEvolve wire-in** — wrapping ShinkaEvolve as a
-    coding-session backend with safety constraints. **Deferred**:
-    the operator hasn't expressed demand for evolutionary search over
-    the agent codebase, and the coding-session primitive (Phase 5.4)
-    is already the canonical agent-code-iteration surface. Re-open
-    when a concrete need surfaces.
-  * **3.3 Capability-gap learner** — analog of `pattern_learner.py`
-    for capability gaps. **Already shipped** under
-    `app/self_improvement/capability_gap_analyzer.py` (PROGRAM §32.5)
-    + integrated into the proposal bridge (§38.1). No work needed.
+**What was already shipped** (pre-Q7.4 — not built here):
+
+  * `app/coding_session/evolution_bridge.py` (~370 LOC) — the
+    bridge itself, with hard caps (20 generations, 3 islands, $5 max
+    cost), TIER_IMMUTABLE + `app/subia/` + `goal_emitter.py` refusals,
+    graceful `shinka_unavailable` fallback when the package isn't
+    installed, and a unified-diff return shape.
+  * `app/tools/coding_session_tools.py:CodingSessionEvolveTool`
+    (agent tool `coding_session_evolve_solution`).
+  * `tests/coding_session/test_evolution_bridge.py` (15 tests) +
+    `tests/coding_session/test_evolve_tool.py`.
+
+What Q7.4 added — the operator-visibility layer:
+
+**Per-session evolution audit** (`app/coding_session/evolution_audit.py`,
+~180 LOC):
+
+  * `append_run(...)` writes one JSONL row per `evolve_in_session`
+    call to `workspace/coding_sessions/<id>/evolution_audit.jsonl`.
+    Rows survive worktree cleanup (the worktree's `.shinka_inline/`
+    state gets deleted; the audit doesn't).
+  * Rows store the diff's SHA-256 + length — **not** the diff itself.
+    The diff is reconstructable from the post-submit CR audit log if
+    and when the agent submits.
+  * Capped at 200 rows per session via
+    `app.utils.jsonl_retention.append_with_cap` (with fallback to
+    naive append for the unit-test path).
+  * `read_runs(session_id, limit=50)` → newest-first list.
+  * `session_summary(session_id)` → rollup (n_runs, by_status,
+    best_delta, total_max_cost_usd, total_duration_seconds,
+    last_run_at).
+  * Path-traversal guard: session ids with `/` or `..` rejected at
+    `_audit_path`.
+  * Failure-isolated: a broken FS layer returns `False` but never
+    raises — the bridge keeps running.
+
+**Bridge integration**: `evolve_in_session` now appends to the audit
+on EVERY return path — refused, disabled, error, shinka_unavailable,
+no_improvement, improved. Same call-site shape; six append-call sites
+because the function's six early returns each carry distinct fields.
+
+**Master switch** (`shinka_inline_evolve_enabled` in
+`runtime_settings.py`, default ON):
+
+  * Operator can flip in `/cp/settings` → InlineEvolveCard.
+  * When OFF, the bridge returns `status="disabled"` without
+    invoking validation or the runner. Distinct status from
+    "refused" so operators can see WHY each row exists.
+  * Failure-isolated lookup (`_inline_evolve_enabled` fails open to
+    True if the import chain breaks) — the bridge's own safety
+    layers stay the boundary; the switch is for deliberate operator
+    OFF, not a default-OFF.
+
+**REST endpoint**: `GET /api/cp/coding-sessions/<id>/evolution_runs?limit=N`
+returns `{session_id, summary, runs}`. Mounted in
+`app/control_plane/coding_sessions_api.py` alongside the existing
+read-only list + detail endpoints.
+
+**React surface** (two new pieces):
+
+  * `dashboard-react/src/components/InlineEvolveCard.tsx` — settings-
+    page toggle for the master switch.
+  * `EvolutionRunsSection` inside `CodingSessionsPage.tsx` — auto-
+    rendered on the detail drawer for any session with at least one
+    evolution run; disappears for sessions that never invoked it. KPI
+    cards (best Δ / budgeted / wall time) + per-run rows with
+    status-coded badges (IMPROVED green / NO Δ grey / REFUSED amber /
+    DISABLED grey / NO SHINKA amber / ERROR red).
+  * `useCodingSessionEvolutionRunsQuery` hook with 10s refetch.
+
+**Tests**: `tests/test_q7_4_inline_evolve.py` — 15 new tests:
+  * 6 audit-module tests (persistence outside worktree, failure
+    isolation, path-traversal refusal, newest-first reads, missing-file
+    behavior, summary aggregation).
+  * 2 bridge-integration tests (audit row written on refusal AND on
+    improvement).
+  * 2 master-switch tests (disabled path produces audit row + skips
+    runner; fail-open path returns True under broken runtime_settings).
+  * 5 source-level wiring assertions (config_api routes the new key;
+    REST endpoint exists; React card + drawer panel + types wired;
+    default-ON pinned).
+
+Full Q7 regression (Q7.1 + Q7.2 + Q7.3 + Q7.4 + pre-existing
+evolution_bridge tests + pre-existing health-score consolidation
+tests): **99 pass + 6 skipped** (gateway-deps).
+
+### 45.5 — What Q7.4 deliberately did NOT do
+
+  * **No new safety constraints on the bridge itself.** The existing
+    refusal layers (TIER_IMMUTABLE + `app/subia/` + `goal_emitter.py`)
+    were already sufficient; adding more refusals would have been
+    speculative work without a concrete failure mode to prevent.
+  * **No diff persistence in the audit.** Only the SHA-256 + length.
+    Persisting full diffs would have made the audit grow unbounded
+    on any session that ran many evolutions, and the CR audit log
+    already keeps the diff for submitted variants.
+  * **No auto-submit of the winning variant.** The diff still flows
+    out through `coding_session_write` + `coding_session_submit` →
+    standard change-request gate. Q7.2's `_submit_one_synthesized_file`
+    helper is for migration stubs (operator-completes-the-SQL); the
+    evolved variant is the AGENT's claim that the diff is correct,
+    so it goes through the regular per-file CR fanout.
+  * **No bulk-engine integration.** `app.shinka_engine` runs against
+    fixed `INITIAL_PY` / `EVALUATE_PY` constants on the self-
+    improvement cycle; that path has its own React surface
+    (`EvolutionMonitor.tsx`) and its own master switch. Q7.4 is per-
+    coding-session ONLY. The two surfaces are deliberately separate.
+
+### 45.6 — Capability-gap analyzer (already shipped)
+
+The original review of §3.x also called out **3.3 Capability-gap
+learner** — analog of `pattern_learner.py` for capability gaps.
+**Already shipped** under
+`app/self_improvement/capability_gap_analyzer.py` (PROGRAM §32.5)
++ integrated into the proposal bridge (§38.1). No work needed here.
 
 Q7 closes the gaps the operator flagged. The system is materially
 better at proposing, reviewing, and consolidating its own evolution

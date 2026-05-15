@@ -111,3 +111,46 @@ def get_coding_session(session_id: str):
             detail=f"coding session {session_id!r} not found",
         )
     return _serialize(cs)
+
+
+# ── Q7.4 — Inline ShinkaEvolve runs per session ──────────────────────
+
+
+@router.get("/{session_id}/evolution_runs")
+def get_session_evolution_runs(
+    session_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """Return the per-session ShinkaEvolve audit trail.
+
+    Newest-first list of evolution runs against this session (one row
+    per ``coding_session_evolve_solution`` call). The audit lives
+    outside the worktree at
+    ``workspace/coding_sessions/<id>/evolution_audit.jsonl`` so it
+    survives session cleanup.
+
+    Returns 404 only if the SESSION doesn't exist. Sessions that have
+    never invoked evolution return ``{"summary": {n_runs: 0,...},
+    "runs": []}``.
+    """
+    cs = cs_store.get(session_id)
+    if cs is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"coding session {session_id!r} not found",
+        )
+    try:
+        from app.coding_session.evolution_audit import (
+            read_runs, session_summary,
+        )
+    except Exception:
+        return {
+            "session_id": session_id,
+            "summary": {"n_runs": 0, "by_status": {}},
+            "runs": [],
+        }
+    return {
+        "session_id": session_id,
+        "summary": session_summary(session_id),
+        "runs": read_runs(session_id, limit=limit),
+    }

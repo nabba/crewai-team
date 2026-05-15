@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -74,7 +75,9 @@ class EvolutionResult:
 
     status: str
     # status ∈ {"improved", "no_improvement", "error",
-    #          "shinka_unavailable", "refused"}
+    #          "shinka_unavailable", "refused", "disabled"}
+    # ``disabled`` (Q7.4) means the operator turned the inline-evolve
+    # master switch OFF in runtime_settings.
     baseline_score: float = 0.0
     best_score: float = 0.0
     delta: float = 0.0
@@ -108,6 +111,12 @@ def evolve_in_session(
     The ``manager`` and ``runner_factory`` parameters are dependency-
     injection seams for tests. Production callers leave them ``None``;
     the bridge resolves the global manager and the real shinka runner.
+
+    Every call (including refused / disabled ones) appends a row to
+    the per-session evolution audit JSONL via
+    :func:`app.coding_session.evolution_audit.append_run` — that
+    audit survives worktree cleanup, so the operator can see what
+    the agent attempted even after the session terminates.
     """
     start = time.monotonic()
 
@@ -115,13 +124,47 @@ def evolve_in_session(
     num_islands = max(1, min(num_islands, MAX_ISLANDS_INLINE))
     max_cost_usd = max(0.01, min(max_cost_usd, MAX_COST_USD_INLINE))
 
+    # Master switch (Q7.4 — PROGRAM §45.4). When OFF the operator has
+    # deliberately disabled inline evolution; refuse before validating
+    # paths or invoking the runner.
+    if not _inline_evolve_enabled():
+        result = EvolutionResult(
+            status="disabled",
+            refusal_reason=(
+                "shinka_inline_evolve_enabled is OFF in runtime_settings; "
+                "the operator disabled inline coding-session evolution. "
+                "Flip the switch in /cp/settings to re-enable."
+            ),
+            duration_seconds=time.monotonic() - start,
+        )
+        _audit_run_safely(
+            session_id=session_id,
+            initial_path=initial_path,
+            evaluate_path=evaluate_path,
+            num_generations=num_generations,
+            num_islands=num_islands,
+            max_cost_usd=max_cost_usd,
+            result=result,
+        )
+        return result
+
     refusal = _validate_request(session_id, initial_path, evaluate_path, manager)
     if refusal is not None:
-        return EvolutionResult(
+        result = EvolutionResult(
             status="refused",
             refusal_reason=refusal.reason,
             duration_seconds=time.monotonic() - start,
         )
+        _audit_run_safely(
+            session_id=session_id,
+            initial_path=initial_path,
+            evaluate_path=evaluate_path,
+            num_generations=num_generations,
+            num_islands=num_islands,
+            max_cost_usd=max_cost_usd,
+            result=result,
+        )
+        return result
     session = _get_session(session_id, manager)
     assert session is not None  # _validate_request would have refused
 
@@ -151,15 +194,25 @@ def evolve_in_session(
             if "shinka" in output.error.lower() and "not" in output.error.lower()
             else "error"
         )
-        return EvolutionResult(
+        result = EvolutionResult(
             status=status,
             error=output.error,
             duration_seconds=time.monotonic() - start,
         )
+        _audit_run_safely(
+            session_id=session_id,
+            initial_path=initial_path,
+            evaluate_path=evaluate_path,
+            num_generations=num_generations,
+            num_islands=num_islands,
+            max_cost_usd=max_cost_usd,
+            result=result,
+        )
+        return result
 
     delta = output.best_score - output.baseline_score
     if delta <= 0 or output.best_program_path is None:
-        return EvolutionResult(
+        result = EvolutionResult(
             status="no_improvement",
             baseline_score=output.baseline_score,
             best_score=output.best_score,
@@ -168,9 +221,19 @@ def evolve_in_session(
             variants_evaluated=output.variants_evaluated,
             duration_seconds=time.monotonic() - start,
         )
+        _audit_run_safely(
+            session_id=session_id,
+            initial_path=initial_path,
+            evaluate_path=evaluate_path,
+            num_generations=num_generations,
+            num_islands=num_islands,
+            max_cost_usd=max_cost_usd,
+            result=result,
+        )
+        return result
 
     diff_text = _compute_diff(initial, Path(output.best_program_path), initial_path)
-    return EvolutionResult(
+    result = EvolutionResult(
         status="improved",
         baseline_score=output.baseline_score,
         best_score=output.best_score,
@@ -180,6 +243,70 @@ def evolve_in_session(
         variants_evaluated=output.variants_evaluated,
         duration_seconds=time.monotonic() - start,
     )
+    _audit_run_safely(
+        session_id=session_id,
+        initial_path=initial_path,
+        evaluate_path=evaluate_path,
+        num_generations=num_generations,
+        num_islands=num_islands,
+        max_cost_usd=max_cost_usd,
+        result=result,
+    )
+    return result
+
+
+def _inline_evolve_enabled() -> bool:
+    """Q7.4 master switch read. Fail-open (True) if runtime_settings is
+    unavailable — the bridge has its own refusal layers for safety,
+    so the switch is a deliberate operator OFF, not a default-OFF."""
+    try:
+        from app.runtime_settings import get_shinka_inline_evolve_enabled
+        return bool(get_shinka_inline_evolve_enabled())
+    except Exception:
+        return True
+
+
+def _audit_run_safely(
+    *,
+    session_id: str,
+    initial_path: str,
+    evaluate_path: str,
+    num_generations: int,
+    num_islands: int,
+    max_cost_usd: float,
+    result: EvolutionResult,
+) -> None:
+    """Append the run to the per-session evolution audit JSONL.
+
+    Failure-isolated by design — the audit is operator-visibility
+    sugar, not a correctness requirement. The bridge keeps running
+    even when the audit can't be written.
+    """
+    try:
+        from app.coding_session.evolution_audit import append_run
+        append_run(
+            session_id=session_id,
+            agent_id=_resolve_agent_id_for_audit(),
+            initial_path=initial_path,
+            evaluate_path=evaluate_path,
+            num_generations=num_generations,
+            num_islands=num_islands,
+            max_cost_usd=max_cost_usd,
+            result=result,
+        )
+    except Exception:
+        logger.debug(
+            "evolve_in_session: audit append failed", exc_info=True,
+        )
+
+
+def _resolve_agent_id_for_audit() -> str:
+    """Best-effort agent-id resolution for the audit row. The bridge
+    itself doesn't have an agent-id parameter (the existing tool layer
+    in :mod:`app.tools.coding_session_tools` does the resolution); fall
+    back to the env var the tool layer sets.
+    """
+    return os.environ.get("BOTARMY_CURRENT_AGENT_ID", "coder")
 
 
 # ── Internals ──────────────────────────────────────────────────────────

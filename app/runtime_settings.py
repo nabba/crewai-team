@@ -211,6 +211,13 @@ def _defaults() -> dict[str, Any]:
         "architecture_requests_enabled": True,
         "architecture_adoption_monitor_enabled": True,
 
+        # Q7.4 — Per-coding-session inline ShinkaEvolve (PROGRAM §45.4).
+        # Gates ``app.coding_session.evolution_bridge.evolve_in_session``.
+        # When OFF, the bridge returns ``status="disabled"`` instead of
+        # invoking ShinkaEvolveRunner. The bulk subsystem
+        # (``app.shinka_engine``) is gated separately.
+        "shinka_inline_evolve_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1247,3 +1254,14 @@ def get_architecture_adoption_monitor_enabled() -> bool:
 
 def set_architecture_adoption_monitor_enabled(value: bool) -> None:
     _update({"architecture_adoption_monitor_enabled": bool(value)})
+
+
+# ── Q7.4 — Inline ShinkaEvolve per coding session (PROGRAM §45.4) ────
+
+
+def get_shinka_inline_evolve_enabled() -> bool:
+    return bool(_ensure_initialized().get("shinka_inline_evolve_enabled", True))
+
+
+def set_shinka_inline_evolve_enabled(value: bool) -> None:
+    _update({"shinka_inline_evolve_enabled": bool(value)})
