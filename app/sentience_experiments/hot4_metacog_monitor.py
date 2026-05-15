@@ -325,9 +325,17 @@ def persist(signals: list[MetacogSignal]) -> int:
     return persisted
 
 
-def list_recent_flagged(n: int = 20) -> list[dict[str, Any]]:
+def list_recent_flagged(
+    n: int = 20, *, since_iso: str | None = None,
+) -> list[dict[str, Any]]:
     """Read recent FLAGGED signals (unusual_score above threshold)
-    for the operator surface. Skips the routine majority."""
+    for the operator surface. Skips the routine majority.
+
+    Q5.6 (PROGRAM §43.6) — ``since_iso`` filter so callers can bound
+    the result to a real time window (e.g. "this week"). Without it,
+    a quiet HOT-4 history returns N flagged rows from MONTHS ago,
+    which produces misleading prose on operator surfaces that claim
+    "this week" but show ancient data."""
     if not _enabled():
         return []
     path = _default_signals_path()
@@ -344,12 +352,46 @@ def list_recent_flagged(n: int = 20) -> list[dict[str, Any]]:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if row.get("flagged"):
-                    rows.append(row)
+                if not row.get("flagged"):
+                    continue
+                if since_iso:
+                    ts = row.get("ts") or ""
+                    if ts < since_iso:
+                        continue
+                rows.append(row)
     except OSError:
         return []
     rows.sort(key=lambda r: r.get("ts", ""), reverse=True)
     return rows[:n]
+
+
+def _has_recent_hot4_landmark(*, days: int = 7) -> bool:
+    """Q5.6 — Return True if a hot4 sentience_observation has been
+    emitted to the continuity ledger within the last ``days``.
+
+    Used to gate landmark emission so a sustained-anomaly week
+    produces ONE landmark, not seven daily duplicates. Reads the
+    canonical continuity ledger (no separate state file needed —
+    the ledger IS the source of truth for emitted landmarks).
+    Failure-isolated."""
+    try:
+        from app.identity.continuity_ledger import list_events
+    except Exception:
+        return False
+    cutoff_iso = (
+        datetime.now(timezone.utc) - timedelta(days=days)
+    ).isoformat()
+    try:
+        events = list_events(
+            since_iso=cutoff_iso, kinds={"sentience_observation"},
+        )
+    except Exception:
+        return False
+    for ev in events:
+        actor = getattr(ev, "actor", "") or ""
+        if actor == "hot4_metacog_monitor":
+            return True
+    return False
 
 
 # ── Idle entry ────────────────────────────────────────────────────────────
@@ -388,8 +430,16 @@ def run() -> dict[str, Any]:
     # is the "sustained anomaly" threshold the Q5.4.2 design memo
     # documented but never implemented; without it, annual reflection
     # is blind to one of four sentience modules. Opaque counts only.
+    #
+    # Q5.6 — 7-day per-source cooldown. A sustained-anomaly WEEK
+    # would otherwise emit 7 daily landmarks for what is conceptually
+    # one situation. Unlike AE-2 (where each emission cites a distinct
+    # action-outcome pair), HOT-4 doesn't naturally distinguish today's
+    # 5-flagged from yesterday's 5-flagged at the ledger level. The
+    # cooldown is consulted by reading the continuity ledger for
+    # recent hot4 sentience_observation events.
     landmark_emitted = False
-    if len(flagged) >= 5:
+    if len(flagged) >= 5 and not _has_recent_hot4_landmark(days=7):
         try:
             from app.sentience_experiments.ledger_bridge import emit_landmark
             landmark_emitted = emit_landmark(

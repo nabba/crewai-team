@@ -307,15 +307,20 @@ def ae2():
 
 
 def test_ae2_landmark_dedup_state_round_trip(ae2, tmp_path):
-    """Read/write of the dedup state file is symmetric."""
+    """Read/write of the dedup state file is symmetric.
+
+    Q5.6 changed the return type from set to list to preserve
+    insertion order for FIFO eviction at the cap. The dedup
+    semantics are still set-like (membership check via ``in``)
+    but the underlying representation is ordered."""
     state_path = tmp_path / "landmarks.json"
     import app.sentience_experiments.ae2_causal_credit as real_ae2
     original = real_ae2._default_landmark_state_path
     real_ae2._default_landmark_state_path = lambda: state_path
     try:
-        assert real_ae2._load_emitted_landmarks() == set()
-        real_ae2._save_emitted_landmarks({"a||x", "b||y"})
-        assert real_ae2._load_emitted_landmarks() == {"a||x", "b||y"}
+        assert real_ae2._load_emitted_landmarks() == []
+        real_ae2._save_emitted_landmarks(["a||x", "b||y"])
+        assert set(real_ae2._load_emitted_landmarks()) == {"a||x", "b||y"}
     finally:
         real_ae2._default_landmark_state_path = original
 

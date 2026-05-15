@@ -140,6 +140,15 @@ def _default_associations_path() -> Path:
         return Path("/app/workspace/sentience/ae2_associations.jsonl")
 
 
+# Q5.6 — cap on dedup state size. After ~years of operation the
+# state file could grow unbounded; this cap drops the oldest entries
+# when exceeded. At 10K entries the FIFO drop window is ~thousand
+# distinct (action_sig, outcome_kind) pairs per year of operation —
+# a wide margin against actual cardinality the system will hit.
+_LANDMARK_STATE_CAP = 10_000
+_LANDMARK_STATE_DROP_BATCH = 1_000   # drop this many when at cap
+
+
 def _default_landmark_state_path() -> Path:
     """Q5.5 — persistent dedup state for landmark emissions. Same
     association (action_signature × outcome_kind) should emit at most
@@ -153,34 +162,53 @@ def _default_landmark_state_path() -> Path:
         return Path("/app/workspace/sentience/ae2_landmarks_emitted.json")
 
 
-def _load_emitted_landmarks() -> set[str]:
-    """Read the dedup state — a set of ``"<action_sig>||<outcome_kind>"``
-    keys that have already produced a landmark. Failure-isolated."""
+def _load_emitted_landmarks() -> list[str]:
+    """Read the dedup state — a list of ``"<action_sig>||<outcome_kind>"``
+    keys that have already produced a landmark. Insertion order
+    preserved (newest at end) so the cap-eviction can drop oldest
+    entries. Failure-isolated.
+
+    Q5.6 changed the return type from set to list to preserve
+    insertion order for FIFO eviction at the cap. Callers do
+    membership checks via ``in`` which is O(n) on a list; n is
+    capped at ``_LANDMARK_STATE_CAP`` so this is fine in practice."""
     path = _default_landmark_state_path()
     if not path.exists():
-        return set()
+        return []
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, list):
-            return {str(k) for k in raw}
+            return [str(k) for k in raw]
         if isinstance(raw, dict):
-            # Allow {key: ts} shape too — only keys are needed for dedup.
-            return {str(k) for k in raw.keys()}
-        return set()
+            # Pre-Q5.6 wrote a sorted list, so we wouldn't have
+            # dict shape on disk normally — but tolerate it for
+            # forward-compat. No insertion order recoverable from
+            # a dict; treat keys as oldest-to-newest in sort order.
+            return [str(k) for k in sorted(raw.keys())]
+        return []
     except (OSError, json.JSONDecodeError):
-        return set()
+        return []
 
 
-def _save_emitted_landmarks(keys: set[str]) -> None:
-    """Atomic-write the dedup state. Failure-isolated."""
+def _save_emitted_landmarks(keys: list[str]) -> None:
+    """Atomic-write the dedup state with cap-eviction. Failure-isolated.
+
+    Q5.6 — when the state exceeds ``_LANDMARK_STATE_CAP``, drop the
+    oldest ``_LANDMARK_STATE_DROP_BATCH`` entries (FIFO). This trades
+    a small amount of "could re-emit landmark for a very-old pair"
+    against unbounded file growth. The trade is appropriate because
+    a re-emission years later is itself meaningful signal (the
+    association has re-emerged after a long absence)."""
     path = _default_landmark_state_path()
+    keys_list = list(keys)
+    if len(keys_list) > _LANDMARK_STATE_CAP:
+        keys_list = keys_list[_LANDMARK_STATE_DROP_BATCH:]
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
-        # Persist as a sorted list for deterministic content (easier
-        # to diff in operator review).
+        # Preserve insertion order so FIFO eviction works on reload.
         tmp.write_text(
-            json.dumps(sorted(keys), indent=2),
+            json.dumps(keys_list, indent=2),
             encoding="utf-8",
         )
         tmp.replace(path)
@@ -554,11 +582,12 @@ def run() -> dict[str, Any]:
     if assocs and assocs[0].outcome_density_ratio >= 5.0:
         try:
             emitted_keys = _load_emitted_landmarks()
+            emitted_set = set(emitted_keys)  # O(1) membership for the loop
             # Collect ALL high-density associations not yet seen.
             new_strong = [
                 a for a in assocs
                 if a.outcome_density_ratio >= 5.0
-                and _landmark_key(a) not in emitted_keys
+                and _landmark_key(a) not in emitted_set
             ]
             if new_strong:
                 from app.sentience_experiments.ledger_bridge import emit_landmark
@@ -577,9 +606,11 @@ def run() -> dict[str, Any]:
                     },
                 )
                 if landmark_emitted:
-                    emitted_keys.update(
-                        _landmark_key(a) for a in new_strong
-                    )
+                    # Q5.6 — preserve insertion order so the cap-eviction
+                    # in _save_emitted_landmarks (FIFO at ≥10K entries)
+                    # drops the genuinely-oldest pairs first.
+                    for a in new_strong:
+                        emitted_keys.append(_landmark_key(a))
                     _save_emitted_landmarks(emitted_keys)
         except Exception:
             logger.debug("ae2: ledger emit failed", exc_info=True)

@@ -483,10 +483,18 @@ def _gather_sentience_digest() -> list[str]:
             )
     except Exception:
         pass
-    # HOT-4 — flagged reasoning-chain steps
+    # HOT-4 — flagged reasoning-chain steps (this week only).
+    # Q5.6 (PROGRAM §43.6) — without the since_iso filter, a quiet
+    # HOT-4 history would return N flagged rows from MONTHS ago and
+    # the "this week" prose would be misleading. The other three
+    # module digests are naturally time-bounded by their data
+    # semantics; HOT-4 was the only one that needed explicit
+    # windowing.
     try:
         from app.sentience_experiments.hot4_metacog_monitor import list_recent_flagged
-        flagged = list_recent_flagged(n=20) or []
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        week_ago = (_dt.now(_tz.utc) - _td(days=7)).isoformat()
+        flagged = list_recent_flagged(n=20, since_iso=week_ago) or []
         if flagged:
             lines.append(
                 f"  • HOT-4: {len(flagged)} unusual reasoning-chain "

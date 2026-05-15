@@ -13,6 +13,18 @@ discipline: NO performative-affect prose. Structured observations
 only; optional one-sentence hypothesis runs through the decentering
 filter.
 
+Deliberate non-wire (Q5.6, PROGRAM §43.6 — closing a question that
+was deferred three audit rounds): the two modules do NOT cross-cite
+or share helpers. They represent two complementary epistemic stances
+on the same data — no-self vs. self-pass. Co-locating their outputs
+in a single operator surface would imply they're commensurable
+(one "correct" reading versus another); keeping them separate
+preserves the "two lenses on one data source" intent. If you find
+yourself wanting to unify them, that's a signal something has
+shifted in your understanding of consciousness modeling — re-open
+the question then, with a specific concrete reason, not on a
+"this looks duplicative" hunch.
+
 Inputs (read-only)
 ------------------
 

@@ -6920,3 +6920,127 @@ the bug. New permanent items on the post-ship audit checklist:
 Each item is also the kind of question that, if it were a CI test,
 would have caught the bug at commit time. Q5.5 makes one of them
 a CI test (``test_hot1_llm_enrich_exercises_real_call_path``).
+
+## 43.6 2026-05-13 — Q5.6: closing audit cycle
+
+Fourth audit pass surfaced two P1 items and three P2 polish items.
+All shipped; this is the closing commit for Q5. After four audit
+cycles the trajectory of findings has flattened from architectural
+(rounds 1-2) to polish (round 4) — further cycles would produce
+diminishing returns at risk of inventing problems.
+
+### 43.6.1 — P1#1: HOT-4 weekly digest time-bound
+
+The Q5.4.2 briefing line said "this week" but read
+``list_recent_flagged(n=20)`` with no time filter. On a quiet HOT-4
+history, this surfaced the most-recent 20 flagged signals
+regardless of age — months-old data masquerading as recent.
+``list_recent_flagged`` now accepts ``since_iso``; the briefing
+passes 7-days-ago.
+
+### 43.6.2 — P1#2: Tier-3 scorer handles ``eligibility_failed``
+
+The original scorer returned ``None`` for any state outside
+{applied, stable, rejected, rolled_back, reverted}. Proposals at
+``ELIGIBILITY_FAILED`` (terminal non-approval) sat unresolved for
+the full 60-day stale-timeout window before terminating with
+``score_error``. Q5.6 treats ``eligibility_failed`` as terminal-False
+— useful calibration signal for self-improver overconfidence.
+
+Bonus: ``_proposal_state_value`` helper isolates state extraction.
+The Q5.4 version had a fragile ``.lower()`` on an enum-state
+attribute that bubbled AttributeError to the outer ``except``,
+returning None for ALL cases. Test-only surfaced (production state
+attributes happen to recover via the inner try/except path), but
+the fragility is now gone.
+
+### 43.6.3 — P2#3: AE-2 dedup state cap
+
+State now bounded at ``_LANDMARK_STATE_CAP=10000`` with FIFO drop
+of ``_LANDMARK_STATE_DROP_BATCH=1000`` when exceeded. Changed
+``_load_emitted_landmarks`` return type from ``set`` to ``list`` to
+preserve insertion order for FIFO eviction; set-semantic dedup is
+preserved at call sites.
+
+### 43.6.4 — P2#4: HOT-4 landmark 7-day cooldown
+
+Unlike AE-2 (where each emission cites a distinct action-outcome
+pair), HOT-4 doesn't naturally distinguish today's 5-flagged from
+yesterday's 5-flagged at the ledger level. A sustained-anomaly
+week would emit 7 daily landmarks for one situation.
+
+``_has_recent_hot4_landmark(days=7)`` consults the continuity
+ledger directly (no separate state file — the ledger IS the source
+of truth). Emission requires ``len(flagged) >= 5`` AND no recent
+hot4 emission within the cooldown window.
+
+### 43.6.5 — P2#5: HOT-1 deliberate non-wire documented
+
+The HOT-1 ↔ decentered-reflection cross-reference question is
+closed as a **deliberate non-wire** — both modules read
+``affect_trace.jsonl`` but represent different epistemic stances
+(no-self vs. self-pass). Co-locating their outputs in one operator
+surface would imply commensurability. Module docstring carries a
+"Deliberate non-wire" section explaining the reasoning + naming the
+condition under which the question should be re-opened ("a specific
+concrete reason, not on a 'this looks duplicative' hunch").
+
+### 43.6.6 — Tests + regression
+
+```
+NEW tests:
+crewai-team/tests/test_q5_6_followup.py           # 14 pass
+
+UPDATED tests:
+crewai-team/tests/test_q5_5_followup.py           # round-trip adapted
+                                                   # to list-based API
+
+UPDATED backend:
+crewai-team/app/sentience_experiments/hot4_metacog_monitor.py
+  # P1#1 since_iso + P2#4 cooldown helper
+crewai-team/app/sentience_experiments/rpt1_self_calibration.py
+  # P1#2 + robust _proposal_state_value extractor
+crewai-team/app/sentience_experiments/ae2_causal_credit.py
+  # P2#3 cap + FIFO eviction
+crewai-team/app/sentience_experiments/hot1_meta_affect.py
+  # P2#5 deliberate-non-wire docstring
+crewai-team/app/life_companion/daily_briefing.py
+  # P1#1 7-day filter in HOT-4 digest
+```
+
+Q1→Q5.6 regression: **363 pass + 60 skip, 0 fail**. Butlin scorecard
+remains ``{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}``.
+
+### 43.6.7 — Q5 declared closed
+
+This commit closes the Q5 (targeted sentience experiments) work.
+Across six commits and four audit cycles:
+
+| Cycle | Findings | Severity |
+|---|---|---|
+| Initial ship (§43.1-3) | — | n/a |
+| Round 1 (§43.4) | 12 | P0/P1 architectural |
+| Round 2 (§43.5) | 6 | P0/P1 architectural |
+| Round 3 (§43.6) | 5 | P1 + polish |
+
+Each round was productive. The trajectory has now flattened to
+polish-class. Q5 stack is observationally complete:
+
+  * Four sentience modules with anti-Goodhart pinning intact
+  * Philosophy decision panel wired into 3 high-stakes sites
+  * Continuity ledger governor extension for amendment context
+  * 7 master switches, all defaulting per operator approval
+  * Five REST endpoints + weekly briefing digest
+  * 73 dedicated Q5 tests + 363 total regression tests passing
+
+Re-audit only when a specific concrete concern arises. Indefinite
+cycles of identically-prompted re-audits past this point would
+invite finding-things-because-finding-things-is-the-pattern rather
+than honest review.
+
+Butlin scorecard is unchanged: AE-2, HOT-1, HOT-4, RPT-1 remain
+architecturally ABSENT (the system has no body, no generative
+perception, no sparse coding, no algorithmic recurrence). The four
+sentience modules instantiate the functional capabilities the user
+named with those indicator labels as shorthand — never the
+indicators themselves. Anti-Goodhart contract honored throughout.

@@ -210,12 +210,48 @@ def _resolve_scorer(name: str) -> Callable[[dict], bool | None] | None:
 # Built-in scorers — operator can register more from outside.
 
 
+def _proposal_state_value(proposal) -> str:
+    """Extract a lower-cased state string from a proposal, regardless
+    of whether the state attribute is a string, an enum with .value,
+    or something else. Returns empty string when state can't be
+    resolved. Failure-isolated.
+
+    Q5.6 — the original scorer had a fragile path that pre-computed
+    ``.lower()`` outside the enum-aware try/except, which raised
+    AttributeError on enum-only state attributes and bubbled up to
+    return None for ALL cases. This helper isolates the extraction."""
+    state = getattr(proposal, "state", None)
+    if state is None:
+        return ""
+    # Enum with .value
+    value = getattr(state, "value", None)
+    if isinstance(value, str):
+        return value.lower()
+    # Plain string
+    if isinstance(state, str):
+        return state.lower()
+    # Fallback: str() representation
+    try:
+        return str(state).lower()
+    except Exception:
+        return ""
+
+
 def _scorer_tier3_approval(args: dict) -> bool | None:
     """Resolve a tier3 amendment forecast.
 
     args = {"plan_id": str}.
-    True if proposal state ∈ {applied, stable}; False if rejected;
-    None if still in flight."""
+    True if proposal state ∈ {applied, stable}; False if proposal
+    reached a terminal non-approval state (including eligibility_failed);
+    None if still in flight.
+
+    Q5.6 (PROGRAM §43.6) — eligibility_failed is now a terminal-False
+    outcome rather than perpetual-None. The forecast "this amendment
+    will be approved" is honestly answered "no, it didn't even reach
+    review" when eligibility fails. Without this, eligibility-failed
+    proposals sat unresolved for the full 60-day stale-timeout window
+    (Q5.5#3) before terminating with score_error — wasting reconciler
+    cycles and losing the overconfidence calibration signal."""
     plan_id = args.get("plan_id")
     if not plan_id:
         return None
@@ -224,19 +260,13 @@ def _scorer_tier3_approval(args: dict) -> bool | None:
         proposal = load_proposal(plan_id)
         if proposal is None:
             return None
-        state = (getattr(proposal, "state", None) or "").lower() if hasattr(proposal, "state") else ""
-        state_val = state if isinstance(state, str) else str(state)
-        # protocol.ProposalState enum members — duck-type to .value
-        try:
-            state_val = (
-                getattr(proposal, "state", None).value
-                if proposal.state is not None else ""
-            ).lower()
-        except AttributeError:
-            pass
+        state_val = _proposal_state_value(proposal)
         if state_val in ("applied", "stable"):
             return True
-        if state_val in ("rejected", "rolled_back", "reverted"):
+        if state_val in (
+            "rejected", "rolled_back", "reverted",
+            "eligibility_failed",  # Q5.6 — terminal non-approval
+        ):
             return False
         return None
     except Exception:
