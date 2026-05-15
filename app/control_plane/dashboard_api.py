@@ -2397,6 +2397,82 @@ def _credit_link_for(exc: Exception | str) -> str | None:
     return None
 
 
+# ── Q5 — Targeted sentience experiments (PROGRAM §43.3) ──────────────
+
+
+@router.get("/sentience/ae2/associations")
+def sentience_ae2_associations(limit: int = Query(20, ge=1, le=200)):
+    """Recent rare-event causal associations. Observational only."""
+    try:
+        from app.sentience_experiments.ae2_causal_credit import list_recent
+        return {"associations": list_recent(n=limit)}
+    except Exception as exc:
+        return {"associations": [], "error": str(exc)}
+
+
+@router.get("/sentience/hot1/patterns")
+def sentience_hot1_patterns(limit: int = Query(20, ge=1, le=200)):
+    """Recent meta-affect patterns. Decentered prose only."""
+    try:
+        from app.sentience_experiments.hot1_meta_affect import list_recent
+        return {"patterns": list_recent(n=limit)}
+    except Exception as exc:
+        return {"patterns": [], "error": str(exc)}
+
+
+@router.get("/sentience/hot4/flagged")
+def sentience_hot4_flagged(limit: int = Query(20, ge=1, le=200)):
+    """Recent FLAGGED reasoning-chain signals (unusual_score above
+    threshold). Routine signals are persisted but not surfaced."""
+    try:
+        from app.sentience_experiments.hot4_metacog_monitor import list_recent_flagged
+        return {"signals": list_recent_flagged(n=limit)}
+    except Exception as exc:
+        return {"signals": [], "error": str(exc)}
+
+
+@router.get("/sentience/rpt1/calibration")
+def sentience_rpt1_calibration():
+    """Per-kind calibration state (Brier + ECE + bucket curve)."""
+    try:
+        from app.sentience_experiments.rpt1_self_calibration import (
+            load_calibration_state,
+        )
+        return load_calibration_state()
+    except Exception as exc:
+        return {"reports": {}, "error": str(exc)}
+
+
+@router.get("/sentience/scorecard-pinning")
+def sentience_scorecard_pinning():
+    """The anti-Goodhart pinning summary — what the scorecard SAYS vs
+    what the targeted indicators ARE. Surfaces the load-bearing
+    commitment so operators can audit it any time."""
+    try:
+        from app.subia.probes import butlin
+        statuses: dict[str, int] = {
+            "STRONG": 0, "PARTIAL": 0, "ABSENT": 0,
+            "FAIL": 0, "NOT_ATTEMPTED": 0,
+        }
+        by_indicator: dict[str, str] = {}
+        for evaluator in butlin.ALL_INDICATORS:
+            r = evaluator()
+            sv = r.status.value if hasattr(r.status, "value") else str(r.status)
+            statuses[sv] = statuses.get(sv, 0) + 1
+            by_indicator[r.indicator] = sv
+        targeted = {"AE-2", "HOT-1", "HOT-4", "RPT-1"}
+        targeted_status = {ind: by_indicator.get(ind, "?") for ind in targeted}
+        all_targeted_absent = all(s == "ABSENT" for s in targeted_status.values())
+        return {
+            "counts": statuses,
+            "targeted_indicators": targeted_status,
+            "all_targeted_remain_absent": all_targeted_absent,
+            "anti_goodhart_intact": all_targeted_absent,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "anti_goodhart_intact": None}
+
+
 @router.get("/system-status")
 def system_status():
     """Aggregated monitoring view used by the React /cp/monitor page.

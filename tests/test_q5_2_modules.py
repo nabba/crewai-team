@@ -302,10 +302,15 @@ def test_hot4_flags_unusual_steps(hot4):
 
 
 def test_hot4_signals_never_gate_dispatch_logic():
-    """LOAD-BEARING: hot4_metacog_monitor must NOT be imported by any
-    dispatch / routing module. Signals are write-only telemetry."""
-    # We grep for `from app.sentience_experiments.hot4_metacog_monitor`
-    # outside the sentience_experiments + tests + scheduler files.
+    """LOAD-BEARING: hot4_metacog_monitor signals must NOT feed any
+    dispatch / routing / model-selection logic. Read-only display
+    endpoints are allowed (operator-visible surface); dispatch
+    consumers are not.
+
+    The test grep's for the import; the allow-list explicitly names
+    the modules permitted to read hot4 signals. Adding a new path
+    here is a soul-level decision: are you SURE this isn't a
+    dispatch loop in disguise?"""
     import subprocess
     try:
         result = subprocess.run(
@@ -317,17 +322,43 @@ def test_hot4_signals_never_gate_dispatch_logic():
     except Exception:
         pytest.skip("grep unavailable")
     hits = (result.stdout or "").strip().splitlines()
-    # Allowed importers: scheduler.py (registration); the module itself.
+    # Allowed importers:
+    #   1. The module itself (self-import is impossible but defensive).
+    #   2. The package __init__.
+    #   3. The scheduler (registration only — no signal reading).
+    #   4. The dashboard API (READ-ONLY display endpoints, surface to
+    #      operator). Importing list_recent_flagged is the intended
+    #      operator-visibility path.
     allowed = {
-        "app/sentience_experiments/scheduler.py",
         "app/sentience_experiments/__init__.py",
         "app/sentience_experiments/hot4_metacog_monitor.py",
+        "app/sentience_experiments/scheduler.py",
+        "app/control_plane/dashboard_api.py",
     }
+    # Forbidden patterns — any of these in the importer path is a hard reject.
+    forbidden_substrings = (
+        "/llm/", "/agents/", "/crews/", "/dispatch", "/routing",
+        "/subia/prediction/", "/tool_runtime/", "model_selector",
+        "cascade",
+    )
     for hit in hits:
-        # Allow paths starting with any allowed prefix
-        assert hit in allowed, (
-            f"hot4 imported by non-allowed module: {hit} — "
-            f"signals must remain write-only telemetry, not dispatch input"
+        # Allow the explicit list.
+        if hit in allowed:
+            continue
+        # Catch dispatch-like paths even if they're not in the allow-list.
+        lower = hit.lower()
+        for forbidden in forbidden_substrings:
+            assert forbidden not in lower, (
+                f"hot4 imported by dispatch/routing module: {hit} — "
+                f"signals must remain write-only telemetry"
+            )
+        # Anything else: also reject, but with a more general message.
+        # Adding a new allow-list entry is a deliberate decision.
+        raise AssertionError(
+            f"hot4 imported by non-allowed module: {hit} — if this is "
+            f"a legitimate read-only display, add it to the allow-list "
+            f"with justification; if it's a dispatch input, that's the "
+            f"Goodhart trap this test exists to catch."
         )
 
 

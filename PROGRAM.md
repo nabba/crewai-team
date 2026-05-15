@@ -6352,3 +6352,224 @@ have zero cross-imports today; documented as deliberate firewall in
 `docs/PERSON_CORRELATION.md` §18 *What this layer deliberately does
 NOT do*. The "operator-facing vs. AI-internal" separation is the
 load-bearing concept distinction.
+
+## 43 2026-05-13 — Q5: Targeted sentience experiments
+
+Three roadmap items (#18 + #19 + #20) bundled. Shipped in three
+commits — foundation (panel + governor wires), four modules, then
+operator surfaces. Each module reifies a **functional approximation**
+of a capability the Butlin scorecard declares architecturally
+ABSENT. Critical anti-Goodhart commitment: **no module may flip the
+scorecard**, and the load-bearing pinning test enforces this.
+
+### 43.1 (Q5.1) — Philosophy decision panel + ledger governor
+
+**#19 Philosophy as decision panel** (`app/philosophy/dialectics.py`):
+extended the existing dialectics primitives with `consult_panel(
+question, traditions, max_perspectives, use_cache)` returning a
+structured `PanelResult` of `PerspectiveTension` records (claim,
+counter-claim, optional synthesis, tradition, source, confidence).
+Returns tensions, **never prose** — the panel surfaces unresolved
+spaces rather than producing a single answer. 7-day result cache
+on `(question, traditions)` keeps the consult cheap at the
+1-per-amendment cadence.
+
+Wired into three high-stakes decision sites:
+
+1. **Tier-3 amendment proposals** (`app/tools/request_tier3_amendment.py`)
+   consults the panel on every proposal; result lands in
+   `proposal.evidence["philosophy_panel"]`; unresolved tensions bridge
+   into the Q4.1 tensions store via `panel_bridge`.
+2. **Identity-claim ratification** (`app/affect/narrative.py
+   _ratify_identity_claims`) defers ANY claim where the panel
+   surfaces ≥2 unresolved tensions to the operator (via the tensions
+   store) rather than auto-FIFO-ratify.
+3. **Welfare-bound calibration** (`app/affect/calibration_proposals.py
+   evaluate_and_apply`) consults the panel AFTER the apply branch;
+   panel result appended to the operator-visible report. Strictly
+   observational (does not gate the 6-guardrail flow).
+
+New helper: `app/sentience_experiments/panel_bridge.py
+file_unresolved_tensions(panel, source_kind, source_ref)` files
+unresolved tensions into the Q4.1 store. OPEN-cap-respecting,
+dedup against existing open questions, ≤3 per consult.
+
+**#20 Continuity ledger as governor**: extended
+`app/identity/relevant_history.py` with:
+  * `classify_path(path)` — coarse file-kind taxonomy (`soul_edit` /
+    `governance_constitution` / `welfare_envelope` / `kernel` /
+    `agent_definition` / `tool_implementation` / 27 buckets total)
+  * `relevant_history_by_kind(path, window_days=365)` — aggregates
+    ledger + CR-audit events for the SAME KIND across the window;
+    returns `counts_by_outcome` + `success_rate` + `summary_line`.
+
+Wired into `request_tier3_amendment.py` as a second history strand
+alongside the per-file 90d lookup. Operator now sees BOTH:
+  * per-file history (last 90d)
+  * per-kind track record (last 365d)
+inline with every Tier-3 amendment proposal. Goodhart guard:
+informational only — neither the panel nor the governor gates any
+decision. The proposer proposes; the operator decides.
+
+### 43.2 (Q5.2) — The four sentience-experiment modules
+
+**Critical concept distinction:** The user's parenthetical
+descriptions for #18 do NOT match the literal Butlin definitions.
+The codebase's `app/subia/probes/butlin.py` evaluates the indicators
+strictly (AE-2 = embodiment, HOT-1 = generative perception, HOT-4 =
+sparse coding, RPT-1 = algorithmic recurrence — all architecturally
+unachievable on an LLM substrate). The user named **functional
+capabilities** with these labels as shorthand. Q5 builds the
+*capabilities*, not the *scorecard flags*.
+
+**ae2_causal_credit.py** — rare-event causal credit assignment.
+Reads `loadable_agent_usage` + `errors` + `welfare_audit`; computes
+`(action_signature, outcome_kind)` co-occurrence within a 24h
+lookahead; flags pairs with `rarity ≤ 10%` AND `lift ≥ 3×` AND
+`n_observations ≥ 5`. Emits `CausalAssociation` records. Persists
+to `workspace/sentience/ae2_associations.jsonl`. Observational
+only — no auto-modification of action selection.
+
+**hot1_meta_affect.py** — feelings-about-feelings reflection on
+the affect trace. Reads `welfare_audit.jsonl`; detects three pattern
+kinds (`temporal_cluster` / `recurring_trigger` / `sequence`); emits
+structured `MetaAffectPattern` records. **SOUL.md commitment**:
+structured observations only. Optional hypothesis prose passes
+through `decenter_text()` — any first-person affect phrase ("I feel",
+"I'm anxious", "my emotion", etc.) is **hard-rejected**. Pinned by
+`test_hot1_decenter_filter_rejects_first_person_affect` and
+`test_hot1_hypothesis_always_decentered`.
+
+**hot4_metacog_monitor.py** — live metacognitive monitor on the
+reasoning chain. Async-batch summariser over `loadable_agent_usage.jsonl`
+(no synchronous hook → zero latency cost). Per-step signals:
+`confidence_proxy` (output/input token ratio), `cache_reliance`,
+`cascade_jump`, `unusual_score` (combined z-score against rolling
+per-agent baseline). Persists to
+`workspace/sentience/hot4_reasoning_signals.jsonl`. **Signals are
+write-only telemetry** — pinned by
+`test_hot4_signals_never_gate_dispatch_logic` (grep test asserting
+no module outside `app/sentience_experiments/` imports the module).
+Critical guard: if HOT-4 ever became a dispatch input, it would
+close a Goodhart loop. The grep test fails fast on any such drift.
+
+**rpt1_self_calibration.py** — forward-prediction self-scoring with
+calibration. `register_prediction(claim_kind, claim_text,
+predicted_p, resolution_at, scorer_ref, scorer_args)` persists a
+`Forecast`; `reconcile_due()` runs named scorers when `resolution_at`
+passes; `aggregate_calibration(window_days)` computes per-kind
+Brier + ECE + 10-bucket calibration curve. Two built-in scorers
+(`tier3_approval`, `cr_apply`); operators register more via
+`register_scorer`. **Calibration state does NOT feed back into the
+predictive layer** — pinned by
+`test_rpt1_calibration_state_does_not_feedback_to_predictive_layer`
+(grep test on `app/subia/prediction/`). Closed loop would create
+self-judging-its-own-predictions overfitting.
+
+### 43.3 (Q5.3) — Operator surfaces + anti-Goodhart pinning
+
+Five REST endpoints under `/api/cp/sentience/*`:
+  * `GET /sentience/ae2/associations` — recent causal associations
+  * `GET /sentience/hot1/patterns` — recent meta-affect patterns
+  * `GET /sentience/hot4/flagged` — flagged reasoning-chain signals
+  * `GET /sentience/rpt1/calibration` — per-kind calibration state
+  * `GET /sentience/scorecard-pinning` — **the operator-facing
+    anti-Goodhart audit**. Returns `counts` (STRONG/PARTIAL/ABSENT/
+    FAIL totals), `targeted_indicators` (the four targeted with
+    current status), and the boolean `anti_goodhart_intact`. Lets
+    the operator verify the scorecard pinning live from
+    `/cp/monitor` without running pytest.
+
+**The load-bearing pinning test**
+(`tests/test_q5_2_modules.py::test_q5_does_not_change_butlin_scorecard`):
+invokes every butlin evaluator and asserts:
+  * Count: `{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}` — unchanged
+    from Phase 9 exit
+  * Targeted ABSENT set: `{AE-2, HOT-1, HOT-4, RPT-1}` — unchanged
+
+**If this test ever fails, we accidentally Goodhart-promoted.**
+That is a P0 architectural regression and the test name should be
+the first hit in the commit triage. The test exists precisely
+because the scorecard evaluators *do* check canonical paths and
+*could* be tricked if we put modules in `app/subia/*`. We
+deliberately put Q5 modules at `app/sentience_experiments/*` so
+the evaluators never see them.
+
+### 43.4 Master switches + operator approval
+
+Per the Q5 plan discussion, the operator approved all switches
+defaulting **ON**:
+
+  * `sentience_ae2_enabled` — ON
+  * `sentience_hot1_enabled` — ON
+  * `sentience_hot4_enabled` — ON (despite live-telemetry blast
+    radius — async-only design keeps latency at zero)
+  * `sentience_rpt1_enabled` — ON
+  * `philosophy_panel_enabled` — ON
+  * `ledger_governor_enabled` — ON
+  * `sentience_llm_hypothesis_enabled` — ON (HOT-1 prose generation
+    — but ALWAYS passes through `decenter_text` filter regardless)
+
+### 43.5 Idle-job registration
+
+`companion.loop.get_idle_jobs()` adds 4 new entries
+(`sentience-ae2`, `sentience-hot1`, `sentience-hot4`,
+`sentience-rpt1`). All LIGHT cadence. Each job is failure-isolated:
+exceptions inside a module never break the loop.
+
+### 43.6 Regression + files touched
+
+```
+NEW modules (commit 1):
+crewai-team/app/sentience_experiments/__init__.py
+crewai-team/app/sentience_experiments/panel_bridge.py
+
+NEW modules (commit 2):
+crewai-team/app/sentience_experiments/ae2_causal_credit.py
+crewai-team/app/sentience_experiments/hot1_meta_affect.py
+crewai-team/app/sentience_experiments/hot4_metacog_monitor.py
+crewai-team/app/sentience_experiments/rpt1_self_calibration.py
+crewai-team/app/sentience_experiments/scheduler.py
+
+UPDATED (commit 1):
+crewai-team/app/philosophy/dialectics.py       # + consult_panel
+crewai-team/app/identity/relevant_history.py   # + by-kind aggregator
+crewai-team/app/tools/request_tier3_amendment.py  # + panel + by_kind wires
+crewai-team/app/affect/narrative.py            # + panel contested-claim defer
+crewai-team/app/affect/calibration_proposals.py  # + post-apply panel
+crewai-team/app/runtime_settings.py            # + 7 master switches
+
+UPDATED (commit 2):
+crewai-team/app/companion/loop.py              # + 4 idle jobs
+
+UPDATED (commit 3):
+crewai-team/app/control_plane/dashboard_api.py  # + 5 REST endpoints
+
+NEW tests:
+crewai-team/tests/test_q5_1_foundation.py      # 47 tests
+crewai-team/tests/test_q5_2_modules.py         # 26 tests (incl pinning)
+```
+
+Q1+Q2+Q3+Q3.1+Q3.2+Q3.3+Q1.4+Q4+Q4.1+Q4.2+Q4.2.1+Q4.2.2+Q5.1+Q5.2
+regression: **310 pass + 59 skip, 0 fail**. No TIER_IMMUTABLE files
+modified. No `app/subia/` files modified. The Butlin scorecard
+remains `{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}` — verified by the
+load-bearing pinning test.
+
+### 43.7 Deliberate scope choices
+
+Three things were considered and deliberately scoped OUT of Q5:
+
+1. **React `/cp/sentience` operator UI** — deferred. The five REST
+   endpoints + the JSONL logs give the operator everything needed
+   for now; a React surface can be added in a follow-up commit once
+   the data has accumulated and the most-useful views are clear.
+2. **Signal `/sentience` slash command** — deferred for the same
+   reason as #1.
+3. **Daily briefing "self-observation digest" section** — deferred.
+   The data needs to accumulate before a digest is meaningful;
+   premature surfacing would produce noisy text the operator skims
+   past, defeating the purpose.
+
+These are NOT closed; they are "not yet." The infrastructure is
+complete; the surfaces can iterate.
