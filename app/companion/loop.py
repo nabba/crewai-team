@@ -180,6 +180,27 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
             "companion.loop: cross_modal_patterns job skipped", exc_info=True,
         )
 
+    # Q5 (PROGRAM §43.2) — Targeted sentience experiments. Four
+    # observational idle jobs reifying functional approximations of
+    # capabilities the Butlin scorecard declares architecturally
+    # ABSENT. Each job is its own no-op when its master switch is OFF
+    # and is failure-isolated.
+    try:
+        from app.sentience_experiments.scheduler import (
+            run_ae2 as _ae2_run,
+            run_hot1 as _hot1_run,
+            run_hot4 as _hot4_run,
+            run_rpt1 as _rpt1_run,
+        )
+        jobs.append(("sentience-ae2", _ae2_run, JobWeight.LIGHT))
+        jobs.append(("sentience-hot1", _hot1_run, JobWeight.LIGHT))
+        jobs.append(("sentience-hot4", _hot4_run, JobWeight.LIGHT))
+        jobs.append(("sentience-rpt1", _rpt1_run, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: sentience experiments skipped", exc_info=True,
+        )
+
     # Phase C (2026-05-09) — adapter performance / paper pipeline / governance auto-propose.
     try:
         from app.training.adapter_performance import run as _ap_run
