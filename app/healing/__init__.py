@@ -100,6 +100,16 @@ try:
 except Exception:
     _log.warning("app.healing: governance_notifier wiring failed", exc_info=True)
 
+# PROGRAM §45.3 (Q7.3) — recipe-consolidation daemon. Eager-start at
+# import time scans the meta-agent recipe ledger weekly and proposes
+# retirement of recipes that fail EITHER the health-score (4-term
+# composite < 0.30) OR the selection-rate (<5% over 90d) trigger. Both
+# triggers compose; both are advisory (never auto-retire).
+try:
+    from app.self_improvement.meta_agent import consolidation as _recipe_consolidation  # noqa: F401
+except Exception:
+    _log.warning("app.healing: recipe_consolidation wiring failed", exc_info=True)
+
 # Boot-time stale-cooldown reset (Wave 0/1 #A7, 2026-05-09). Sweeps
 # already-expired ``skip:<jobname>`` keys from
 # workspace/memory/idle_job_state so a fresh boot doesn't carry

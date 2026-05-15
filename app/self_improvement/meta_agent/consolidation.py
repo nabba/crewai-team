@@ -3,33 +3,49 @@
 Parallels :mod:`app.training.adapter_performance` for adapter
 retirement. Where ``prune_dead_recipes`` (in this package's
 :mod:`store`) hard-deletes never-used recipes after 90 days, this
-module computes a *health score* for each recipe and proposes
-retirement of low performers — without ever hard-deleting.
+module computes *two complementary signals* for each recipe and
+proposes retirement of low performers — without ever hard-deleting.
 
 The proposal is *advisory*: it lands as a JSONL row in
 ``workspace/training/recipe_retirement_proposals.jsonl`` and a
-Signal alert. The operator approves, after which a future commit
-(or manual intervention) marks the recipe ``superseded_by``. This
-module never auto-retires; the proposal layer is the deliverable.
+Signal alert. The operator approves; :func:`mark_superseded_by`
+then writes ``superseded_by`` + ``is_active=False`` on the recipe.
+This module never auto-retires; the proposal layer is the deliverable.
 
-Health score ::
+Two parallel triggers (Q7.3 / PROGRAM §45.3):
 
-    health =   winrate            × 0.55      # success / uses
-             + selection_recency  × 0.20      # 1 / (1 + days_since_last_used / 30)
-             + age_normalized     × 0.15      # 1 / (1 + days_since_created / 60)
-             + use_count_log      × 0.10      # log10(1 + uses) / log10(100)
+  1. **Health score** — composite quality signal (the original
+     trigger, weekly cadence)::
 
-  All four terms are 0..1 (clamped). Below
-  ``RECIPE_RETIREMENT_THRESHOLD`` (default 0.30) → propose retirement.
+         health =   winrate            × 0.55      # success / uses
+                  + selection_recency  × 0.20      # 1 / (1 + days_since_last_used / 30)
+                  + age_normalized     × 0.15      # 1 / (1 + days_since_created / 60)
+                  + use_count_log      × 0.10      # log10(1 + uses) / log10(100)
 
-Dedup: per-recipe-id within ``RECIPE_RETIREMENT_DEDUP_DAYS`` (default
-30). Re-proposing the same recipe within that window is suppressed
-unless the health score has dropped further by ``DROP_DELTA``
+     All four terms are 0..1 (clamped). Below
+     ``RECIPE_RETIREMENT_THRESHOLD`` (default 0.30) → propose retirement.
+
+  2. **Selection rate** — quarterly cadence; selection rate over
+     the last 90 days. Below ``_SELECTION_RATE_THRESHOLD`` (5%)
+     and above ``_SELECTION_RATE_MIN_OFFERS`` (20 — sample-size
+     gate) → propose retirement. Catches recipes nobody picks
+     even if their internal win-rate looks fine.
+
+Both triggers compose: a recipe failing either signal is proposed.
+Within a single pass the two triggers are deduped (no recipe gets two
+rows simultaneously — health-score wins precedence in that pass and
+selection-rate would surface on the next pass).
+
+Cross-pass dedup: per-recipe-id within ``RECIPE_RETIREMENT_DEDUP_DAYS``
+(default 30). Re-proposing the same recipe within that window is
+suppressed unless the health score has dropped further by ``DROP_DELTA``
 (default 0.05).
 
-Daemon thread eager-starts; weekly cadence; master switch
-``RECIPE_CONSOLIDATION_ENABLED`` (default ``true``). Same discipline
-as healing/monitors and the inquiry scheduler.
+Daemon thread eager-starts; weekly cadence (selection-rate is checked
+on the same cadence — the *trigger* is quarterly in the sense of its
+data window, not its evaluation frequency); master switch
+``RECIPE_CONSOLIDATION_ENABLED`` (default ``true``). Same discipline as
+healing/monitors and the inquiry scheduler.
 """
 from __future__ import annotations
 
@@ -40,7 +56,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -48,7 +64,16 @@ logger = logging.getLogger(__name__)
 
 _DAEMON_THREAD_NAME = "recipe-consolidation"
 _WARMUP_S = 90
-_POLL_INTERVAL_S = 7 * 24 * 3600  # weekly
+_POLL_INTERVAL_S = 7 * 24 * 3600  # weekly (health-score trigger cadence)
+
+# Q7.3 — selection-rate trigger (PROGRAM §45.3). Spec wording: retire
+# recipes with <5% selection rate over the last 90 days. Lives
+# alongside the weekly health-score trigger; both can produce
+# retirement proposals (complementary signals — health-score catches
+# quality decay; selection-rate catches recipes nobody chooses).
+_SELECTION_RATE_WINDOW_DAYS = 90
+_SELECTION_RATE_THRESHOLD = 0.05
+_SELECTION_RATE_MIN_OFFERS = 20  # min-N gate; below this, sample is too small
 
 _DEFAULT_PROPOSALS_PATH = Path(
     "/app/workspace/training/recipe_retirement_proposals.jsonl"
@@ -253,7 +278,11 @@ def run_one_pass(
 
     healths = [compute_health(r, now=now) for r in recipes]
     proposed_rows: list[RetirementProposal] = []
+    # Track which recipes get proposed in this pass so the parallel
+    # selection-rate trigger doesn't double-propose the same recipe.
+    proposed_in_pass: set[str] = set()
 
+    # ───── Trigger 1: health-score (weekly, four-term composite) ─────
     for h in healths:
         prior = prior_state.get(h.recipe_id)
         ok, reason = _should_propose(
@@ -270,9 +299,38 @@ def run_one_pass(
             recipe_id=h.recipe_id,
             crew_name=h.crew_name,
             health=h.health,
-            reason=reason,
+            reason=f"health_score: {reason}",
             proposed_at=(now or _now()).isoformat(),
         ))
+        proposed_in_pass.add(h.recipe_id)
+
+    # ───── Trigger 2: selection-rate (quarterly, <5% over 90d) ─────
+    # Complementary to health-score: catches recipes nobody picks even
+    # if their internal win-rate looks fine. Q7.3 / PROGRAM §45.3.
+    n_selection_rate_evaluated = 0
+    for recipe, h in zip(recipes, healths):
+        if h.recipe_id in proposed_in_pass:
+            continue  # already proposed via health-score this pass
+        n_offered, n_selected, rate = compute_selection_rate(
+            recipe, now=now,
+        )
+        if n_offered < _SELECTION_RATE_MIN_OFFERS:
+            continue  # below sample-size gate
+        n_selection_rate_evaluated += 1
+        prior = prior_state.get(h.recipe_id)
+        ok, reason = _should_propose_via_selection_rate(
+            n_offered, rate, prior, now=now,
+        )
+        if not ok:
+            continue
+        proposed_rows.append(RetirementProposal(
+            recipe_id=h.recipe_id,
+            crew_name=h.crew_name,
+            health=h.health,
+            reason=f"selection_rate: {reason}",
+            proposed_at=(now or _now()).isoformat(),
+        ))
+        proposed_in_pass.add(h.recipe_id)
 
     # Append-only writes.
     if proposed_rows:
@@ -293,12 +351,163 @@ def run_one_pass(
         "n_evaluated": sum(
             1 for h in healths if h.uses >= RECIPE_MIN_USES_TO_EVALUATE
         ),
+        "n_selection_rate_evaluated": n_selection_rate_evaluated,
         "proposed": len(proposed_rows),
         "proposals": [
             {"recipe_id": p.recipe_id, "health": round(p.health, 4)}
             for p in proposed_rows
         ],
     }
+
+
+def compute_selection_rate(
+    recipe: object,
+    *,
+    window_days: int = _SELECTION_RATE_WINDOW_DAYS,
+    now: datetime | None = None,
+) -> tuple[int, int, float]:
+    """Q7.3 — compute (n_offered, n_selected, rate) over the rolling
+    window for one recipe.
+
+    Defensive against shape variance:
+      * recipe may have ``offered_at_history``/``selected_at_history``
+        (preferred — list of ISO timestamps)
+      * or fall back to ``times_offered_90d`` / ``times_selected_90d``
+        (precomputed counters)
+      * or fall back to ``uses`` / ``successes`` (least precise — uses
+        the lifetime numbers, which over-counts but is conservative
+        since we only retire when rate is LOW)
+
+    Returns (n_offered, n_selected, rate). Rate is 0.0 when offered is 0."""
+    now = now or _now()
+    cutoff = now - timedelta(days=window_days)
+
+    offered_history = getattr(recipe, "offered_at_history", None)
+    selected_history = getattr(recipe, "selected_at_history", None)
+    if isinstance(offered_history, (list, tuple)):
+        n_offered = sum(
+            1 for ts in offered_history
+            if (_parse_iso(ts) or cutoff - timedelta(days=1)) >= cutoff
+        )
+        n_selected = 0
+        if isinstance(selected_history, (list, tuple)):
+            n_selected = sum(
+                1 for ts in selected_history
+                if (_parse_iso(ts) or cutoff - timedelta(days=1)) >= cutoff
+            )
+    elif getattr(recipe, "times_offered_90d", None) is not None:
+        # ``hasattr`` is too permissive — dataclass fields with default
+        # ``None`` would satisfy it but still mean "no data here." Use
+        # explicit ``is not None`` to fall through to the lifetime path.
+        n_offered = int(getattr(recipe, "times_offered_90d", 0) or 0)
+        n_selected = int(getattr(recipe, "times_selected_90d", 0) or 0)
+    else:
+        # Least-precise fallback. Use lifetime counters.
+        # Conservative: over-counts offered → rate is higher → less
+        # likely to retire (fail-open against false positives).
+        n_offered = int(getattr(recipe, "times_offered", 0) or 0)
+        n_selected = int(getattr(recipe, "uses", 0) or 0)
+
+    rate = (n_selected / n_offered) if n_offered > 0 else 0.0
+    return n_offered, n_selected, rate
+
+
+def _should_propose_via_selection_rate(
+    n_offered: int,
+    rate: float,
+    prior: dict | None,
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
+    """Q7.3 — selection-rate trigger. Returns (should_propose, reason).
+
+    Trigger conditions:
+      * n_offered >= _SELECTION_RATE_MIN_OFFERS (sample-size gate)
+      * rate < _SELECTION_RATE_THRESHOLD
+      * not within dedup window (or rate dropped meaningfully)
+    """
+    if n_offered < _SELECTION_RATE_MIN_OFFERS:
+        return False, (
+            f"below min offers ({n_offered} < {_SELECTION_RATE_MIN_OFFERS})"
+        )
+    if rate >= _SELECTION_RATE_THRESHOLD:
+        return False, (
+            f"selection rate {rate:.3f} above threshold "
+            f"{_SELECTION_RATE_THRESHOLD:.3f}"
+        )
+    if prior is None:
+        return True, (
+            f"selection rate {rate:.3f} over {_SELECTION_RATE_WINDOW_DAYS}d "
+            f"below threshold (n_offered={n_offered})"
+        )
+    last_proposed = _parse_iso(prior.get("proposed_at"))
+    if last_proposed is None:
+        return True, "prior proposal has unparseable timestamp"
+    days_since = (_now() if now is None else now) - last_proposed
+    if days_since.total_seconds() / 86400.0 >= RECIPE_RETIREMENT_DEDUP_DAYS:
+        return True, (
+            f"prior proposal {days_since.days}d old; re-propose at "
+            f"selection rate {rate:.3f}"
+        )
+    return False, "within dedup window"
+
+
+def mark_superseded_by(
+    recipe_id: str,
+    *,
+    superseded_by: str = "retired:no_successor",
+    operator_actor: str = "operator",
+) -> bool:
+    """Q7.3 — when the operator approves a retirement proposal, mark
+    the recipe with ``superseded_by`` and ``is_active=False`` so the
+    selection logic skips it. Audit trail preserved — recipe stays
+    in the store, never deleted.
+
+    The ``superseded_by`` field can be:
+      * Another recipe-id (recipe X replaces this one)
+      * A string marker like ``"retired:operator_approved:<ts>"`` or
+        ``"retired:no_successor"`` (no replacement)
+
+    Failure-isolated. Returns True on success, False on any failure."""
+    try:
+        from app.self_improvement.meta_agent.store import mark_recipe_superseded
+    except ImportError:
+        # The store may not have this helper yet (added in Q7.3).
+        # Try the next-best: direct mutation through store.update.
+        try:
+            from app.self_improvement.meta_agent import store
+        except Exception:
+            logger.debug("mark_superseded_by: meta_agent.store unavailable")
+            return False
+        try:
+            recipe = store.get_recipe(recipe_id)
+            if recipe is None:
+                return False
+            # Defensive: only set the fields if they exist.
+            if hasattr(recipe, "superseded_by"):
+                recipe.superseded_by = superseded_by
+            if hasattr(recipe, "is_active"):
+                recipe.is_active = False
+            store.save_recipe(recipe)
+            return True
+        except Exception:
+            logger.debug(
+                "mark_superseded_by: fallback path failed for %s",
+                recipe_id, exc_info=True,
+            )
+            return False
+    try:
+        return bool(mark_recipe_superseded(
+            recipe_id,
+            superseded_by=superseded_by,
+            actor=operator_actor,
+        ))
+    except Exception:
+        logger.debug(
+            "mark_superseded_by: store call failed for %s",
+            recipe_id, exc_info=True,
+        )
+        return False
 
 
 def _driver() -> None:
