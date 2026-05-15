@@ -6741,3 +6741,182 @@ when person-correlation flips happened). I should have caught
 this pattern earlier — the test "does any code in the system
 actually call this?" is now a permanent question in my own
 post-ship audit checklist.
+
+## 43.5 2026-05-13 — Q5.5: third-cycle audit follow-ups
+
+A third audit pass over the now-three-times-shipped Q5 stack
+surfaced six findings. Honest accounting: one of them is **the
+same gap the previous audit was supposed to catch**: the LLM
+enrichment I "shipped" in Q5.4 imported a non-existent
+``app.llm.factory.get_llm`` — the call always silently fell back
+to the template, and the test passed because it mocked the wrong
+layer. The post-ship audit caught it.
+
+### 43.5.1 — Q5.5#1: HOT-1 LLM enrichment actually wired
+
+Replaced the broken import with the canonical Anthropic-SDK
+pattern from ``app/healing/structured_diagnosis.py``:
+
+```python
+from anthropic import Anthropic
+from app.config import get_anthropic_api_key
+key = get_anthropic_api_key()
+client = Anthropic(api_key=key)
+resp = client.messages.create(
+    model="claude-haiku-4-5-20251001",
+    max_tokens=120,
+    system=_LLM_SYSTEM_PROMPT,
+    messages=[{"role": "user", "content": user_msg}],
+)
+text = _extract_text_from_resp(resp)
+```
+
+New ``_extract_text_from_resp`` helper concatenates text blocks,
+tolerant of missing ``.type`` (matches the existing
+``_extract_text`` helper in structured_diagnosis.py).
+
+**Critical test added**: ``test_hot1_llm_enrich_exercises_real_call_path``
+stubs ``sys.modules["anthropic"]`` itself, so the production code
+path (``from anthropic import Anthropic`` → ``client.messages.create``
+→ ``_extract_text_from_resp``) runs end-to-end. The Q5.4 test
+mocked ``_maybe_llm_enrich`` directly, which is exactly the test
+pattern that hid the import bug. New rule on the audit checklist:
+**"does the test exercise the real call path, or does it mock the
+layer the bug would live in?"**
+
+The decenter filter remains the second guard regardless of source.
+``test_hot1_llm_enrich_rejects_first_person_via_decenter_filter``
+verifies an LLM that produces "I feel that the system is drifting"
+gets caught and falls back to template.
+
+### 43.5.2 — Q5.5#2: HOT-4 landmark emission
+
+The Q5.4 §43.4.2 design memo documented HOT-4's landmark condition
+as "≥5 flagged steps in one pass" but the original implementation
+never wired emit_landmark for HOT-4. Annual reflection was blind
+to one of the four sentience modules.
+
+Now wired: when ``len(flagged) >= 5`` in a pass,
+``emit_landmark(source_module="hot4_metacog_monitor",
+landmark_kind="sustained_reasoning_anomaly", ...)`` fires. Opaque
+counts only (no agent_ids, no model names in summary).
+
+This is the same pattern as the original Q5.4 audit finding (RPT-1
+shipped without producers). The recurrence is meaningful: shipping
+infrastructure WITH documentation describing what it should do is
+not the same as shipping the implementation.
+
+### 43.5.3 — Q5.5#3: RPT-1 stale-forecast timeout
+
+Built-in scorers return ``None`` when the underlying entity
+(Tier-3 proposal / CR) is still in-flight. The reconciler then
+left the forecast unresolved and retried every hour forever.
+A proposal the operator never decides on accumulated zombie
+forecasts indefinitely.
+
+Added a stale-grace check: when ``(now - resolution_at) >=
+_STALE_GRACE_DAYS`` (60 days) AND the scorer still returns
+``None``, the forecast is terminated with
+``score_error="stale_unresolved"``. The Q5.4.1#4 terminal-error
+short-circuit then skips it on subsequent passes. The forecast
+stays in the file for audit but never wastes scorer cycles.
+
+### 43.5.4 — Q5.5#4: AE-2 landmark dedup
+
+The Q5.4 AE-2 landmark logic emitted on every pass whenever
+``assocs[0].outcome_density_ratio >= 5.0``. A real persistent
+causal association — exactly the signal worth seeing — emitted a
+landmark on every daily pass. The continuity ledger filled up
+with redundant ``high_density_association`` events for the SAME
+``(action_sig, outcome_kind)`` pair, inflating the
+``sentience_observation`` Counter in summarise_drift. That's a
+Goodhart-shaped distortion of the very signal annual reflection
+consumes.
+
+Added a persistent dedup state file at
+``workspace/sentience/ae2_landmarks_emitted.json`` keyed on
+``"<action_signature>||<outcome_kind>"``. Each pair emits a
+landmark on FIRST detection only. Two helpers:
+``_load_emitted_landmarks()`` and ``_save_emitted_landmarks()``,
+both failure-isolated. Same pattern Q4.2.1#6 used for the
+per-briefing 24h re-emission cooldown.
+
+### 43.5.5 — Q5.5#5: predicted_p history-vs-zero distinction
+
+The Q5.4 RPT-1 producers (Tier-3 + CR) derived ``predicted_p``
+from ``by_kind.success_rate``. But ``success_rate = applied /
+(applied + rolled_back)`` collapses two semantically distinct
+states:
+
+  * **No history**: ``_empty_by_kind`` returns ``success_rate=0.0``
+  * **Proven 0% success**: e.g. 5 rolled_back / 0 applied also
+    returns ``success_rate=0.0``
+
+The original producers guarded with ``if sr > 0`` which made
+both cases default to ``predicted_p = 0.5`` — a meaningless prior
+in either case.
+
+Added ``has_resolved_history: bool`` to ``relevant_history_by_kind``
+output. True only when ``applied + rolled_back > 0``. Both
+producers now check it: when True, use ``success_rate`` (clamped
+to [0.1, 0.9]); when False, use 0.5. A kind with proven 0%
+success now correctly predicts at 0.1, distinct from a kind with
+no track record at 0.5.
+
+### 43.5.6 — Q5.5#6: ledger_bridge dead-constant cleanup
+
+``_MAX_EMISSIONS_PER_PASS = 3`` was defined in Q5.4.2 but never
+enforced. The design intent (safety net against a logic bug
+looping ``emit_landmark``) was real and worth preserving.
+
+Promoted to a **process-level** ceiling
+``_MAX_EMISSIONS_PER_PROCESS = 50`` with an in-memory counter
+keyed by ``source_module``. After 50 emissions from one source
+per process, ``emit_landmark`` returns False and logs a warning.
+Different ``source_module`` values have independent counters.
+Counter resets on process restart (natural for safety-net intent;
+durable persistence is the ledger itself). Added
+``_reset_emission_counter_for_tests`` helper for test isolation.
+
+### 43.5.7 Tests + regression
+
+```
+NEW tests:
+crewai-team/tests/test_q5_5_followup.py        # 16 pass + 1 skip
+
+UPDATED backend:
+crewai-team/app/sentience_experiments/hot1_meta_affect.py    # Q5.5#1
+crewai-team/app/sentience_experiments/hot4_metacog_monitor.py # Q5.5#2
+crewai-team/app/sentience_experiments/rpt1_self_calibration.py # Q5.5#3
+crewai-team/app/sentience_experiments/ae2_causal_credit.py   # Q5.5#4
+crewai-team/app/sentience_experiments/ledger_bridge.py       # Q5.5#6
+crewai-team/app/identity/relevant_history.py                 # Q5.5#5
+crewai-team/app/tools/request_tier3_amendment.py             # Q5.5#5
+crewai-team/app/change_requests/lifecycle.py                 # Q5.5#5
+```
+
+Q1→Q5.5 regression: **349 pass + 60 skip, 0 fail**. Butlin scorecard
+remains ``{STRONG=7, PARTIAL=3, ABSENT=4, FAIL=0}``.
+
+### 43.5.8 Lesson learned (for the third time)
+
+Same meta-pattern across three audit cycles:
+
+  * Q5 first audit: shipped infrastructure (RPT-1) without producers
+  * Q5.4 audit: shipped LLM enrichment that imported non-existent code
+  * Q5.5 audit: shipped HOT-4 documentation without emit_landmark wire
+
+Each was "completed" by the textual standard ("the code says X is
+done") but failed end-to-end ("does X actually do anything?").
+Mocking the wrong layer in tests is the test-pattern that hides
+the bug. New permanent items on the post-ship audit checklist:
+
+  1. "Does any code in the system actually call this?" (Q5 caught)
+  2. "Does the test exercise the real call path, or does it mock
+     the layer the bug would live in?" (Q5.5 caught)
+  3. "If this 'feature' were deleted, would anything externally
+     observable change?"
+
+Each item is also the kind of question that, if it were a CI test,
+would have caught the bug at commit time. Q5.5 makes one of them
+a CI test (``test_hot1_llm_enrich_exercises_real_call_path``).

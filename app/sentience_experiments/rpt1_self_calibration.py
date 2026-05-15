@@ -67,6 +67,12 @@ _PREDICTIONS_LOG_MAX_LINES = 10_000
 _CALIBRATION_WINDOW_DAYS = 30
 _MIN_RESOLUTIONS_PER_KIND = 10
 _BUCKETS = 10  # 10 calibration buckets over [0.0, 1.0]
+# Q5.5 — stale-forecast grace period. After ``resolution_at`` passes
+# AND the scorer still returns None for ``_STALE_GRACE_DAYS`` more,
+# the forecast is terminated with score_error="stale_unresolved" so
+# it doesn't sit in eternal limbo. The reconciler's terminal-error
+# short-circuit (Q5.4.1#4) then skips it on subsequent passes.
+_STALE_GRACE_DAYS = 60
 
 
 # ── Master switch ─────────────────────────────────────────────────────────
@@ -390,8 +396,20 @@ def reconcile_due(*, now: datetime | None = None) -> dict[str, Any]:
             errors += 1
             continue
         if outcome is None:
-            # Outcome not yet determinable. Leave unresolved; next pass
-            # may succeed.
+            # Q5.5 — stale-forecast timeout: a forecast that has been
+            # past resolution_at for ≥_STALE_GRACE_DAYS days AND whose
+            # scorer is still returning None means the underlying
+            # entity (proposal / CR) is permanently stuck. Terminate
+            # so it doesn't sit in eternal limbo. Reconcile-skip via
+            # Q5.4.1#4 picks it up on next pass.
+            stale_after = res_dt + timedelta(days=_STALE_GRACE_DAYS)
+            if now_dt >= stale_after:
+                fc.score_error = "stale_unresolved"
+                fc.resolved_at = now_dt.isoformat()
+                _append_forecast(fc)
+                errors += 1
+                continue
+            # Not yet stale. Leave unresolved; next pass may succeed.
             continue
         fc.actual = bool(outcome)
         fc.resolved_at = now_dt.isoformat()

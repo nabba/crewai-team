@@ -140,6 +140,58 @@ def _default_associations_path() -> Path:
         return Path("/app/workspace/sentience/ae2_associations.jsonl")
 
 
+def _default_landmark_state_path() -> Path:
+    """Q5.5 — persistent dedup state for landmark emissions. Same
+    association (action_signature × outcome_kind) should emit at most
+    one landmark to the continuity ledger across its entire lifetime;
+    otherwise annual reflection's summarise_drift inflates the
+    sentience_observation count by N passes for one real event."""
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "sentience" / "ae2_landmarks_emitted.json"
+    except Exception:
+        return Path("/app/workspace/sentience/ae2_landmarks_emitted.json")
+
+
+def _load_emitted_landmarks() -> set[str]:
+    """Read the dedup state — a set of ``"<action_sig>||<outcome_kind>"``
+    keys that have already produced a landmark. Failure-isolated."""
+    path = _default_landmark_state_path()
+    if not path.exists():
+        return set()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            return {str(k) for k in raw}
+        if isinstance(raw, dict):
+            # Allow {key: ts} shape too — only keys are needed for dedup.
+            return {str(k) for k in raw.keys()}
+        return set()
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def _save_emitted_landmarks(keys: set[str]) -> None:
+    """Atomic-write the dedup state. Failure-isolated."""
+    path = _default_landmark_state_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        # Persist as a sorted list for deterministic content (easier
+        # to diff in operator review).
+        tmp.write_text(
+            json.dumps(sorted(keys), indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+    except OSError:
+        logger.debug("ae2: landmark dedup state write failed")
+
+
+def _landmark_key(assoc: "CausalAssociation") -> str:
+    return f"{assoc.action_signature}||{assoc.outcome_kind}"
+
+
 # ── Data model ────────────────────────────────────────────────────────────
 
 
@@ -493,25 +545,42 @@ def run() -> dict[str, Any]:
             )
         except Exception:
             logger.debug("ae2: GW publish failed", exc_info=True)
-    # Q5.4.2 — emit a landmark to the identity continuity ledger when
-    # this pass detects associations at high density-ratio (the
-    # signal annual reflection will care about). Opaque counts only.
+    # Q5.4.2 + Q5.5 — emit a landmark to the identity continuity ledger
+    # for HIGH-density-ratio associations, FIRST emission only. Q5.4.2
+    # emitted on every pass for the same pair, inflating the ledger;
+    # Q5.5 dedupes against a persistent state file keyed on
+    # (action_signature, outcome_kind). Opaque counts only.
     landmark_emitted = False
     if assocs and assocs[0].outcome_density_ratio >= 5.0:
         try:
-            from app.sentience_experiments.ledger_bridge import emit_landmark
-            landmark_emitted = emit_landmark(
-                source_module="ae2_causal_credit",
-                landmark_kind="high_density_association",
-                summary=(
-                    f"AE-2: {len(assocs)} rare-event causal associations "
-                    f"(top density ratio {assocs[0].outcome_density_ratio:.1f}×)"
-                ),
-                counts={
-                    "associations": len(assocs),
-                    "max_observations": assocs[0].n_observations,
-                },
-            )
+            emitted_keys = _load_emitted_landmarks()
+            # Collect ALL high-density associations not yet seen.
+            new_strong = [
+                a for a in assocs
+                if a.outcome_density_ratio >= 5.0
+                and _landmark_key(a) not in emitted_keys
+            ]
+            if new_strong:
+                from app.sentience_experiments.ledger_bridge import emit_landmark
+                top = new_strong[0]
+                landmark_emitted = emit_landmark(
+                    source_module="ae2_causal_credit",
+                    landmark_kind="high_density_association",
+                    summary=(
+                        f"AE-2: {len(new_strong)} new rare-event causal "
+                        f"association{'s' if len(new_strong) != 1 else ''} "
+                        f"(top density ratio {top.outcome_density_ratio:.1f}×)"
+                    ),
+                    counts={
+                        "new_associations": len(new_strong),
+                        "max_observations": top.n_observations,
+                    },
+                )
+                if landmark_emitted:
+                    emitted_keys.update(
+                        _landmark_key(a) for a in new_strong
+                    )
+                    _save_emitted_landmarks(emitted_keys)
         except Exception:
             logger.debug("ae2: ledger emit failed", exc_info=True)
 

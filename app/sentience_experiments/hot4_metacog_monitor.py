@@ -383,9 +383,34 @@ def run() -> dict[str, Any]:
         except Exception:
             logger.debug("hot4: GW publish failed", exc_info=True)
 
+    # Q5.5 — landmark emission to the identity continuity ledger when
+    # ≥5 reasoning-chain steps are flagged unusual in one pass. This
+    # is the "sustained anomaly" threshold the Q5.4.2 design memo
+    # documented but never implemented; without it, annual reflection
+    # is blind to one of four sentience modules. Opaque counts only.
+    landmark_emitted = False
+    if len(flagged) >= 5:
+        try:
+            from app.sentience_experiments.ledger_bridge import emit_landmark
+            landmark_emitted = emit_landmark(
+                source_module="hot4_metacog_monitor",
+                landmark_kind="sustained_reasoning_anomaly",
+                summary=(
+                    f"HOT-4: {len(flagged)} flagged reasoning-chain "
+                    f"steps in one pass (of {len(signals)} total)"
+                ),
+                counts={
+                    "flagged": len(flagged),
+                    "total_signals": len(signals),
+                },
+            )
+        except Exception:
+            logger.debug("hot4: ledger emit failed", exc_info=True)
+
     return {
         "ok": True,
         "signals_total": len(signals),
         "signals_flagged": len(flagged),
         "persisted": persisted,
+        "ledger_landmark_emitted": landmark_emitted,
     }

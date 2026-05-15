@@ -464,6 +464,11 @@ def relevant_history_by_kind(
     rolled_back = counts.get("rolled_back", 0)
     denom = applied + rolled_back
     success_rate = round(applied / denom, 3) if denom else 0.0
+    # Q5.5 — distinguish "no history" (the prior is uniform) from
+    # "proven 0% success" (the prior is bad). Both collapse to
+    # success_rate=0.0 above; downstream consumers (RPT-1 producers
+    # at Tier-3 + CR creation) need to know which case they're in.
+    has_resolved_history = denom > 0
 
     summary_line = _build_by_kind_summary(kind, counts, window_days)
 
@@ -474,6 +479,7 @@ def relevant_history_by_kind(
         "recent_events": recent,
         "last_outcome_at": last_outcome_at,
         "success_rate": success_rate,
+        "has_resolved_history": has_resolved_history,
         "summary_line": summary_line,
     }
 
@@ -669,5 +675,6 @@ def _empty_by_kind(kind: str, window_days: int) -> dict:
         "recent_events": [],
         "last_outcome_at": None,
         "success_rate": 0.0,
+        "has_resolved_history": False,  # Q5.5 — distinguishes from proven 0%
         "summary_line": f"no prior activity for kind={kind!r} in {window_days}d",
     }

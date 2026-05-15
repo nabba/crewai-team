@@ -274,13 +274,16 @@ def _build_tool_class():
                     register_prediction,
                 )
                 from datetime import datetime, timedelta, timezone
-                # Use the by-kind success rate as the base prior;
-                # fall back to 0.5 when no history exists.
+                # Q5.5 — use ``has_resolved_history`` to distinguish
+                # the "no track record" prior (uniform 0.5) from
+                # "proven 0% success" (low prior). Previously both
+                # collapsed to success_rate=0.0 which made the
+                # forecast prior a meaningless 0.5 in either case.
                 rate = 0.5
                 by_kind = history_payload.get("relevant_history_by_kind_365d") or {}
-                if isinstance(by_kind, dict):
+                if isinstance(by_kind, dict) and by_kind.get("has_resolved_history"):
                     sr = by_kind.get("success_rate")
-                    if isinstance(sr, (int, float)) and sr > 0:
+                    if isinstance(sr, (int, float)):
                         rate = float(sr)
                 # Clamp away from 0 / 1 — perfect-confidence priors
                 # are themselves a Goodhart signal.

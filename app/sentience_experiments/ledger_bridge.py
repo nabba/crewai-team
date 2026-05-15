@@ -36,9 +36,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# Max emissions per module per pass — module-level safety on top of
-# the continuity-ledger's own append-only discipline.
-_MAX_EMISSIONS_PER_PASS = 3
+# Process-level safety: max landmark emissions per source-module per
+# process. Defends against a logic bug looping `emit_landmark` from
+# a single pass. Counted in-memory; reset on process restart, which
+# is acceptable for the safety-net intent. The continuity ledger's
+# own append-only discipline is the durable persistence layer.
+_MAX_EMISSIONS_PER_PROCESS = 50
+_emission_counter: dict[str, int] = {}
 
 
 def emit_landmark(
@@ -56,6 +60,18 @@ def emit_landmark(
     The summary text is the operator-readable line — keep it
     OPAQUE (counts, never names; aggregates, never identities)."""
     if not summary or len(summary.strip()) < 4:
+        return False
+    # Q5.5 — process-level emission rate-limit safety. If the same
+    # source_module crosses the per-process ceiling, refuse silently.
+    # This is the safety net for "logic bug looping emit_landmark"
+    # the constant was originally meant to express.
+    current = _emission_counter.get(source_module, 0)
+    if current >= _MAX_EMISSIONS_PER_PROCESS:
+        logger.warning(
+            "sentience.ledger_bridge: %s hit per-process emission "
+            "ceiling (%d); refusing further landmarks",
+            source_module, _MAX_EMISSIONS_PER_PROCESS,
+        )
         return False
     detail: dict[str, Any] = {
         "source_module": source_module,
@@ -77,6 +93,8 @@ def emit_landmark(
             summary=summary.strip()[:200],
             detail=detail,
         )
+        if ok:
+            _emission_counter[source_module] = current + 1
         return bool(ok)
     except Exception:
         logger.debug(
@@ -84,3 +102,9 @@ def emit_landmark(
             exc_info=True,
         )
         return False
+
+
+def _reset_emission_counter_for_tests() -> None:
+    """Test helper — clear the in-memory counter. Production never
+    needs this (process restart is the natural reset)."""
+    _emission_counter.clear()

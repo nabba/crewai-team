@@ -536,58 +536,83 @@ def _draft_hypothesis(pattern: MetaAffectPattern) -> str | None:
     return template_clean
 
 
+_LLM_SYSTEM_PROMPT = (
+    "You are a strict observational paraphraser. Given a structured "
+    "affect pattern observation, return ONE neutral sentence "
+    "describing what the data shows. Use third-person observational "
+    "language only: 'the audit shows', 'the pattern is', 'the trace "
+    "indicates'. NEVER use first-person affect verbs ('I feel', "
+    "'I'm anxious', 'my emotion', etc.). Stay under 200 characters. "
+    "Return ONLY the sentence — no commentary, no quotes, no JSON."
+)
+
+
 def _maybe_llm_enrich(
     pattern: MetaAffectPattern, template_text: str | None,
 ) -> str | None:
-    """Q5.4.2 — Call Claude Haiku 4.5 for a one-better paraphrase.
-    Failure-isolated. If anything goes wrong (no API key, model
-    refusal, network), returns None and the caller falls back to
-    the deterministic template.
+    """Q5.5 — Call Claude Haiku for a one-better paraphrase using the
+    canonical Anthropic-SDK pattern (mirrors structured_diagnosis.py).
 
-    Strict prompt: forbids first-person affect language. The
+    Q5.4.2 originally imported a non-existent ``app.llm.factory.get_llm``
+    — the call ALWAYS failed silently and the switch was effectively
+    a template-only toggle. Q5.5 wires the real client.
+
+    Failure-isolated. Any infrastructure problem (no API key, network,
+    SDK not installed, refusal) falls back to the template. The
     decenter filter is the second guard regardless."""
     if not template_text:
         return None
+    # Anthropic SDK + API key both required.
     try:
-        from app.llm.factory import get_llm
+        from anthropic import Anthropic
+        from app.config import get_anthropic_api_key
     except Exception:
         return None
-    prompt = (
-        "Paraphrase the following observation in one neutral, "
-        "observational sentence. Use third-person observational "
-        "language only: 'the audit shows', 'the pattern is', 'the "
-        "trace indicates' — NEVER first-person affect verbs (no "
-        "'I feel', 'I'm anxious', 'my emotion', etc). Stay under "
-        "180 characters.\n\n"
+    key = get_anthropic_api_key()
+    if not key:
+        return None
+    try:
+        client = Anthropic(api_key=key)
+    except Exception:
+        return None
+    user_msg = (
         f"Pattern kind: {pattern.pattern_kind}\n"
-        f"Breach kinds: {', '.join(pattern.breach_kinds[:3])}\n"
+        f"Breach/dimension kinds: {', '.join(pattern.breach_kinds[:3])}\n"
         f"Occurrences: {pattern.n_occurrences}\n"
         f"Span: {pattern.span_days:.1f} days\n"
         f"Confidence: {pattern.confidence:.2f}\n\n"
-        f"Template baseline: {template_text}\n\n"
-        "Return JUST the one-sentence paraphrase, no commentary."
+        f"Template baseline: {template_text}"
     )
     try:
-        llm = get_llm(model="anthropic/claude-haiku-4.5")
-        out = llm.call(prompt, max_tokens=120, temperature=0.2)
-        # Tolerate either string or {choices:[...]} response shapes
-        # depending on the factory's return type.
-        if isinstance(out, str):
-            text = out.strip()
-        elif isinstance(out, dict):
-            text = (
-                out.get("choices", [{}])[0].get("message", {}).get("content")
-                or out.get("content") or ""
-            ).strip()
-        else:
-            text = str(out).strip()
-        # Length guard — operator surface readability.
-        if not text or len(text) > 280:
-            return None
-        return text
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=120,
+            system=_LLM_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
     except Exception:
-        logger.debug("hot1: LLM enrichment failed", exc_info=True)
+        logger.debug("hot1: LLM messages.create raised", exc_info=True)
         return None
+    text = _extract_text_from_resp(resp).strip()
+    # Length guard — operator surface readability + cost discipline.
+    if not text or len(text) > 280:
+        return None
+    return text
+
+
+def _extract_text_from_resp(resp) -> str:
+    """Extract concatenated text blocks from an Anthropic response.
+    Tolerant of variations: missing ``content``, blocks without
+    ``.text``, mocks in tests with simple ``.content[0].text``."""
+    blocks = getattr(resp, "content", None) or []
+    parts: list[str] = []
+    for b in blocks:
+        block_type = getattr(b, "type", None)
+        if block_type is None or block_type == "text":
+            text_val = getattr(b, "text", None)
+            if text_val:
+                parts.append(text_val)
+    return "".join(parts)
 
 
 # ── Public detect + persist ───────────────────────────────────────────────

@@ -221,15 +221,18 @@ def create_request(
         from app.sentience_experiments.rpt1_self_calibration import (
             register_prediction,
         )
-        # Predicted_p prior: use the operator's recent approval rate
-        # on this requestor as the base. Fall back to 0.5.
+        # Q5.5 — use ``has_resolved_history`` to distinguish "no
+        # track record on this kind" (uniform 0.5 prior) from
+        # "proven 0% success" (low prior). The original collapsed
+        # both to 0.5, which was a meaningless prior in either case.
         predicted_p = 0.5
         try:
             from app.identity.relevant_history import relevant_history_by_kind
             by_kind = relevant_history_by_kind(path)
-            sr = (by_kind or {}).get("success_rate")
-            if isinstance(sr, (int, float)) and sr > 0:
-                predicted_p = max(0.1, min(0.9, float(sr)))
+            if (by_kind or {}).get("has_resolved_history"):
+                sr = by_kind.get("success_rate")
+                if isinstance(sr, (int, float)):
+                    predicted_p = max(0.1, min(0.9, float(sr)))
         except Exception:
             pass
         # CRs typically resolve (apply/reject/timeout) within 7 days.
