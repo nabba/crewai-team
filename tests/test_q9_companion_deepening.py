@@ -213,6 +213,25 @@ def test_config_api_handles_travel_keys() -> None:
     assert '"aviationstack_api_key" in payload' in src
 
 
+def test_settings_alias_endpoint_exists_and_mounted() -> None:
+    """Latent-bug closure (PROGRAM §46.12): React cards all call
+    /api/cp/settings, which previously had no handler. The alias
+    router forwards to the canonical /config/runtime_settings."""
+    alias_src = Path("app/control_plane/settings_alias_api.py").read_text(
+        encoding="utf-8",
+    )
+    assert '@router.get("/settings")' in alias_src
+    assert '@router.post("/settings")' in alias_src
+    assert "set_runtime_settings_endpoint" in alias_src
+
+    main_src = Path("app/main.py").read_text(encoding="utf-8")
+    assert (
+        "from app.control_plane.settings_alias_api import router as settings_alias_router"
+        in main_src
+    )
+    assert "app.include_router(settings_alias_router)" in main_src
+
+
 # ─────────────────────────────────────────────────────────────────────
 #   §46.7 — Q9.4 inbox classifier + handler wiring
 # ─────────────────────────────────────────────────────────────────────

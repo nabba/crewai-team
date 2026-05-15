@@ -2592,6 +2592,18 @@ try:
 except Exception:
     logger.debug("Goals router registration failed", exc_info=True)
 
+# ── /api/cp/settings alias (PROGRAM §46.12) ─────────────────────────────────
+# Latent-bug closure: every React settings card was calling
+# /api/cp/settings, which had no server-side handler. Add a thin alias
+# router that forwards to the canonical /config/runtime_settings
+# setter so existing React code starts working and new cards (Travel,
+# etc.) inherit the same path.
+try:
+    from app.control_plane.settings_alias_api import router as settings_alias_router
+    app.include_router(settings_alias_router)
+except Exception:
+    logger.debug("Settings alias router registration failed", exc_info=True)
+
 # ── Proposals aggregator (capability_gap + library_radar + recipe) ─────────
 try:
     from app.control_plane.proposals_api import router as proposals_router
