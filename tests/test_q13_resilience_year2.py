@@ -98,15 +98,65 @@ def test_migration_drill_shell_script_exists() -> None:
     p = REPO_ROOT / "deploy" / "scripts" / "migration-drill.sh"
     assert p.is_file()
     src = p.read_text()
-    # Must walk migrations and apply pending, and run startup_migrations
-    assert "migrations/0" in src
+    # Must invoke the production startup migrations code path.
     assert "startup_migrations" in src
-    assert "_schema_migrations" in src
-    # Must emit the manifest the monitor reads
+    # Must restore Postgres before exercising the schema.
+    assert "psql" in src
+    # Must run schema-smoke queries that exercise tables today's code
+    # expects to find (the actual concern: "today's code can't read a
+    # 6-month-old backup"). At least one probe under control_plane.* must
+    # be in the script — the smoke loop is the load-bearing signal.
+    assert "control_plane." in src
+    # Must emit the manifest the monitor reads.
     assert "migration_drill_manifest.json" in src
-    # Must update last_drill_at + last_drill_ok
+    # Must update last_drill_at + last_drill_ok.
     assert "last_drill_at" in src
     assert "last_drill_ok" in src
+    # Must NOT walk migrations/*.sql and fabricate a tracking table —
+    # that design was retired (see header comment in the drill script).
+    assert "_schema_migrations" not in src, (
+        "Drill must not reintroduce the fabricated control_plane._schema_migrations "
+        "tracking table. See migration-drill.sh header for rationale."
+    )
+    # Must load the isolation overlay (incident 2026-05-16). Without it
+    # the drill's postgres mounts the same host path as the live stack
+    # and corrupts the live database.
+    assert "docker-compose.migration-drill.yml" in src, (
+        "Drill must load the isolation overlay. See header for the "
+        "2026-05-16 corruption incident."
+    )
+    # Must include a pre-flight check that refuses to run against a
+    # live stack — belt-and-suspenders with the overlay.
+    assert "crewai-team-postgres-1" in src, (
+        "Drill must check for the live postgres container before "
+        "starting its own. See header for the 2026-05-16 incident."
+    )
+
+
+def test_migration_drill_isolation_overlay_present() -> None:
+    """The overlay must exist and remap postgres to an ephemeral
+    volume (the load-bearing fix for the 2026-05-16 corruption)."""
+    p = REPO_ROOT / "docker-compose.migration-drill.yml"
+    assert p.is_file(), (
+        "docker-compose.migration-drill.yml must exist alongside "
+        "docker-compose.yml — the drill script references it explicitly."
+    )
+    src = p.read_text()
+    # Must remap postgres data dir to something OTHER than the live
+    # bind mount (./workspace/mem0_pgdata).
+    assert "mem0_pgdata" not in src, (
+        "Overlay must not reference the live bind mount path."
+    )
+    assert "drill_pgdata" in src, (
+        "Overlay must define a drill-specific volume name."
+    )
+    # Must use compose's !override (not !reset) so the parent volumes
+    # list is replaced, not erased. !reset leaves the service with no
+    # data dir at all and breaks initdb.
+    assert "!override" in src, (
+        "Overlay must use !override on volumes (not !reset — that "
+        "erases the list instead of replacing it)."
+    )
 
 
 def test_migration_drill_shell_script_executable() -> None:

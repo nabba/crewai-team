@@ -1,0 +1,35 @@
+# Overlay applied by deploy/scripts/migration-drill.sh.
+#
+# Without this overlay the drill's compose project would mount the same
+# host paths as the live stack (the live postgres data directory under
+# ./workspace for postgres, ./workspace and ./wiki read-write for the
+# gateway sidecar). The `-p <project>` flag changes container/network
+# names but does NOT change bind-mount paths — they're read literally
+# from docker-compose.yml.
+# Running the drill against a live stack therefore caused catalog
+# corruption on the live database (incident 2026-05-16, see PR #109).
+#
+# This overlay remaps:
+#   * postgres data dir → ephemeral named volume `drill_pgdata`
+#     (cleaned automatically by `down -v` in the drill's teardown).
+#   * gateway workspace/wiki/secrets mounts → read-only, so the
+#     `apply_all` sidecar cannot pollute live state even if a future
+#     gateway boot path tries to write before reaching the SQL step.
+#
+# `!reset` (Compose v2.24+) replaces the parent service's `volumes`
+# list outright rather than appending to it (default merge behaviour
+# would leave both mounts active on the same target — undefined).
+
+services:
+  postgres:
+    volumes: !override
+      - drill_pgdata:/var/lib/postgresql/data
+
+  gateway:
+    volumes: !override
+      - ./workspace:/app/workspace:ro
+      - ./wiki:/app/wiki:ro
+      - ./secrets:/app/secrets:ro
+
+volumes:
+  drill_pgdata:
