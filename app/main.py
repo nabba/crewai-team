@@ -2695,6 +2695,14 @@ try:
 except Exception:
     logger.debug("Vacation Mode API not available", exc_info=True)
 
+# ── Self-Improvement Velocity API (PROGRAM §51 Q16 Theme 4) ─────────────────
+try:
+    from app.api.self_improvement_api import router as self_improvement_router
+    app.include_router(self_improvement_router)
+    logger.info("Self-Improvement Velocity API mounted at /api/cp/self-improvement/")
+except Exception:
+    logger.debug("Self-Improvement Velocity API not available", exc_info=True)
+
 # ── Brainstorm API (multi-agent + solo Q/A sessions) ─────────────────────────
 try:
     from app.brainstorm.api import router as brainstorm_router

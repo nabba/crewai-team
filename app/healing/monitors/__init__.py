@@ -91,6 +91,8 @@ _DEFAULT_CADENCE_S = {
     "host_substrate_health": 24 * 3600,        # daily probe; internal weekly trend; PROGRAM §51 Q16 Theme 1
     "oauth_token_freshness": 24 * 3600,        # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 2
     "operator_anomaly": 24 * 3600,             # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 3
+    "wiki_staleness": 24 * 3600,               # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 5
+    "claude_md_compaction": 24 * 3600,         # daily probe; internal annual cadence; PROGRAM §51 Q16 Theme 5
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -469,6 +471,38 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: operator_anomaly import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 5 — wiki staleness digest. Daily probe,
+    # internal weekly cadence. Walks ``wiki/`` for markdown files
+    # past 365-day mtime; surfaces 10 stalest in a Signal digest
+    # per cycle, with per-file 90-day dedup. Excludes auto-archive
+    # dirs (legacy / value_reflections / quarterly_reviews /
+    # governance / archive).
+    try:
+        from app.healing.monitors import wiki_staleness
+        monitors.append((
+            "wiki_staleness", wiki_staleness.run,
+            _DEFAULT_CADENCE_S["wiki_staleness"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: wiki_staleness import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 5 — CLAUDE.md compaction proposer.
+    # Daily probe; internal annual cadence via _already_proposed_
+    # this_year guard. Composes a structural-only KEEP/ARCHIVE split
+    # into workspace/self_improvement/claude_md_compaction/<year>/
+    # for operator review. Never auto-applies (CLAUDE.md often sits
+    # outside the git repo).
+    try:
+        from app.self_improvement import claude_md_compaction
+        monitors.append((
+            "claude_md_compaction", claude_md_compaction.run_once,
+            _DEFAULT_CADENCE_S["claude_md_compaction"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: claude_md_compaction import failed", exc_info=True,
         )
 
     if not monitors:

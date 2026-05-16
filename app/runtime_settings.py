@@ -300,6 +300,25 @@ def _defaults() -> dict[str, Any]:
         # rows.
         "operator_anomaly_monitor_enabled": True,
 
+        # Theme 4 — self-improvement velocity (PROGRAM §51 Q16).
+        # Observational rollup of CRs by source/quarter, architecture-
+        # adoption histogram, recipe selection rates, lessons-learned
+        # growth, Forge graduations. Read-only — never mutates state.
+        "self_improvement_velocity_enabled": True,
+
+        # Theme 5 — knowledge management at decade-scale (PROGRAM §51).
+        #   * wiki_staleness_monitor_enabled — 38th healing monitor.
+        #     Daily probe, weekly internal cadence. Surfaces wiki
+        #     pages past the 365-day mtime threshold in a Signal
+        #     digest. Per-file 90-day dedup.
+        #   * claude_md_compaction_enabled — annual idle composer.
+        #     Generates a compaction proposal (recent-N-months KEEP +
+        #     pre-cutoff ARCHIVE) into workspace/self_improvement/
+        #     claude_md_compaction/<year>/ for operator review. Never
+        #     auto-applies (CLAUDE.md often sits outside the git repo).
+        "wiki_staleness_monitor_enabled": True,
+        "claude_md_compaction_enabled": True,
+
         # Theme 3 (defense piece): VACATION MODE. Master switch.
         # When ON, the vacation-mode sweep daemon scans PENDING CRs
         # every 5 min; for those matching the OPERATOR-STAGED
@@ -1602,6 +1621,36 @@ def get_operator_anomaly_monitor_enabled() -> bool:
 
 def set_operator_anomaly_monitor_enabled(value: bool) -> None:
     _update({"operator_anomaly_monitor_enabled": bool(value)})
+
+
+def get_self_improvement_velocity_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("self_improvement_velocity_enabled", True)
+    )
+
+
+def set_self_improvement_velocity_enabled(value: bool) -> None:
+    _update({"self_improvement_velocity_enabled": bool(value)})
+
+
+def get_wiki_staleness_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("wiki_staleness_monitor_enabled", True)
+    )
+
+
+def set_wiki_staleness_monitor_enabled(value: bool) -> None:
+    _update({"wiki_staleness_monitor_enabled": bool(value)})
+
+
+def get_claude_md_compaction_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("claude_md_compaction_enabled", True)
+    )
+
+
+def set_claude_md_compaction_enabled(value: bool) -> None:
+    _update({"claude_md_compaction_enabled": bool(value)})
 
 
 def get_vacation_mode_enabled() -> bool:
