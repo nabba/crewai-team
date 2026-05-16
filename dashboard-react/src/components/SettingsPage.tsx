@@ -31,6 +31,7 @@ import { AnalogyIndexCard } from './AnalogyIndexCard';
 import { ArchitectureRequestsCard } from './ArchitectureRequestsCard';
 import { InlineEvolveCard } from './InlineEvolveCard';
 import { TravelCard } from './TravelCard';
+import { BrowseIngestionCard } from './BrowseIngestionCard';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -95,6 +96,7 @@ export function SettingsPage() {
         settings={settingsQ.data}
         onSettingsChange={() => settingsQ.refetch()}
       />
+      <BrowseIngestionCard />
       <WebPushCard />
     </div>
   );

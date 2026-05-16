@@ -205,6 +205,50 @@ def _feedback_events_text(lookback_days: int) -> Iterable[tuple[str, float]]:
             yield (comment, age_days)
 
 
+def _browse_topics_text(lookback_days: int) -> Iterable[tuple[str, float]]:
+    """Yield browse-topic clusters from the daily LLM batch.
+
+    PROGRAM §50 Q15.2. Reads per-day topic JSON written by
+    :mod:`app.browse.topic_extraction`. Each topic label is yielded
+    ``title_count`` times so frequency-weighting is proportional to
+    how much time the user spent on that theme.
+
+    Returns silently when the browse subsystem is disabled or no daily
+    topic files exist yet — the operator may have opted in less than
+    24h ago, before the first LLM batch ran.
+    """
+    try:
+        from app.browse import store
+        from app.browse.topic_extraction import topics_for_day
+    except Exception:
+        return
+    if not store.enabled():
+        return
+    now = time.time()
+    cur_day = datetime.fromtimestamp(now, tz=timezone.utc).date()
+    for i in range(lookback_days):
+        from datetime import timedelta as _td
+        day = cur_day - _td(days=i)
+        try:
+            result = topics_for_day(day)
+        except Exception:
+            continue
+        if result is None or not result.topics:
+            continue
+        age_days = float(i)
+        for t in result.topics:
+            label = (t.label or "").strip()
+            if not label:
+                continue
+            # Yield ``title_count`` times so the unigram/bigram score
+            # weighting reflects how heavily this topic was browsed.
+            # Cap at 10 per topic per day to keep one runaway cluster
+            # from saturating the score.
+            n = max(1, min(int(t.title_count or 1), 10))
+            for _ in range(n):
+                yield (label, age_days)
+
+
 def _affect_topics_text(lookback_days: int) -> Iterable[tuple[str, float]]:
     """Yield topic tags from the affect trace."""
     tags_path = Path("/app/workspace/affect/episode_affect_tags.jsonl")
@@ -300,6 +344,11 @@ def compile_interest_profile(lookback_days: int = _LOOKBACK_DAYS) -> dict[str, A
         "events": _calendar_titles_text(lookback_days),
         "feedback": _feedback_events_text(lookback_days),
         "affect": _affect_topics_text(lookback_days),
+        # PROGRAM §50 Q15.2 — browse becomes the 6th stream. Yields
+        # LLM-clustered topic labels from the per-day batch in
+        # app.browse.topic_extraction. Cross-modal patterns auto-
+        # picks it up via the sources dict (no separate wiring).
+        "browse": _browse_topics_text(lookback_days),
     }
     raw_scores = _score_terms(streams)
 

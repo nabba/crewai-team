@@ -264,5 +264,13 @@ def test_known_event_kinds_set() -> None:
         "person_correlation_policy",    # PROGRAM §42 — Q4.2 (Q4.2.2#1)
         "sentience_observation",        # PROGRAM §43 — Q5.4.2
         "resilience_drill",             # PROGRAM §44 — Q6.1
+        "sentience_probe_proposal",     # PROGRAM §47 — Q12.4
+        "schema_migration_drill",       # PROGRAM §48 — Q13.1
+        "tz_drift",                     # PROGRAM §48 — Q13.3
+        "identity_drift_acceleration",  # PROGRAM §49 — Q14.1
+        "feedback_loop_drift",          # PROGRAM §49 — Q14.2
+        "embedding_model_swap",         # PROGRAM §49 — Q14.4
+        "interest_ossification",        # PROGRAM §49 — Q14.5
+        "browse_ingestion_policy",      # PROGRAM §50 — Q15.1
     }
     assert cl.IDENTITY_EVENT_KINDS == frozenset(expected)

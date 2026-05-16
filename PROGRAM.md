@@ -9456,3 +9456,251 @@ Q7→Q14 regression: **307 pass + 6 skipped (gateway-deps), 0 fail.**
     (re-baseline via CLI) or escalate. The monitor never silently
     accepts drift.
 
+
+## 50 2026-05-16 — Q15: Browser-history ingestion (Phase A + B + B+)
+
+Sixth interest-signal modality, joining email, calendar, conversations,
+tickets, health, and inbox. Reads Safari + Chromium-family (Chrome,
+Arc, Brave, Edge) + Firefox history at idle, drops blocklisted domains
+at the reader's edge, clusters titles into themes via a daily LLM
+batch (Anthropic Haiku 4.5), and surfaces results in the daily briefing,
+the interest model, and three operator surfaces (REST + React + Signal).
+
+Operator decisions before kickoff (via ``AskUserQuestion``):
+
+  1. Deployment model: **host-native collector daemon** — `python -m
+     app.browse.host_collector` runs as a launchd LaunchAgent on
+     macOS, reads `~/Library/...` directly, writes events to the
+     gateway's bind-mounted workspace dir. (The alternative —
+     bind-mounting Library paths into the gateway container plus
+     granting Docker Desktop FDA — was deemed too brittle.)
+  2. All four browsers (Safari, Chrome, Arc, Firefox) in scope.
+  3. Topic extraction: title-based with cheap LLM batched daily
+     (the explicit "titles leave the host" decision, gated behind
+     its own second-layer switch).
+
+### 50.1 — Q15.1: Phase A — readers + canonicalisation + blocklist + store
+
+New ``app/browse/`` package (~1000 LOC) mirroring the
+``app/health/`` and ``app/inbox/`` shape:
+
+  * ``models.py`` — ``BrowseEvent`` (visit_ts, domain, path, title,
+    browser, profile, visit_duration_ms, transition) and
+    ``ReaderResult`` dataclasses.
+  * ``url_canon.py`` — **structural** query/fragment strip. The pin
+    test ``test_canonicalize_strips_query_string`` makes the privacy
+    contract observable: no downstream code path can persist a
+    search term or session token regardless of bugs accumulating
+    later. Also rejects non-http(s) schemes (`chrome://`, `file://`,
+    `javascript:`, `data:`) and lowercases hosts + strips `www.`.
+  * ``blocklist.py`` — 30+ seeded entries (Nordic banking,
+    Finnish + Estonian health portals, auth endpoints, US patient
+    portals) plus operator-editable
+    ``workspace/browse/blocklist.txt``. Suffix-with-dot-boundary
+    match (``example.com`` blocks ``foo.example.com`` but NOT
+    ``notexample.com``). mtime-cached.
+  * ``store.py`` — per-day JSONL at
+    ``workspace/browse/events/<YYYY-MM-DD>.jsonl``; cursor state at
+    ``workspace/browse/state.json``; ``forget_all`` / ``forget_day``
+    / ``forget_domain`` paths, each emitting
+    ``browse_ingestion_policy`` to the identity continuity ledger.
+  * ``readers/chromium.py`` — Chrome, Arc, Brave, Edge (shared
+    schema; Chrome's microsecond-since-1601 epoch). Multi-profile
+    discovery via glob (``Default``, ``Profile 1``, …). Per-profile
+    cursor key ``<browser>:<profile>``.
+  * ``readers/safari.py`` — ``~/Library/Safari/History.db``;
+    Mac CFAbsoluteTime (seconds-since-2001). Single profile.
+  * ``readers/firefox.py`` — ``places.sqlite`` under
+    ``~/Library/Application Support/Firefox/Profiles/<random>.<profile>/``;
+    Unix-epoch microseconds (cleanest of the three).
+  * ``aggregator.py`` — orchestrator; per-reader failure isolation
+    (broken Firefox doesn't block Safari or Chrome); cursor advance
+    only on clean reads.
+  * ``idle_job.py`` — LIGHT cadence-guarded (30-min internal gate
+    via marker file).
+  * ``host_collector.py`` — entry point for the host-native daemon
+    with ``--once`` / ``--watch`` modes; pins ``WORKSPACE_ROOT`` at
+    the gateway's bind-mounted directory.
+
+All readers open SQLite read-only with ``mode=ro&immutable=1`` URI
+flags so they don't block on WAL when the browser is running.
+
+### 50.2 — Q15.2: Phase B — LLM topic extraction + interest_model wiring
+
+``topic_extraction.py`` runs once per day inside the gateway
+(LIGHT idle, 23h cadence gate). Reads yesterday's events.jsonl,
+deduplicates titles + accumulates visit counts, redacts email-
+shaped and phone-shaped tokens via ``_redact_pii``, builds a single
+batched prompt (≤250 rows × ~$0.0005/day), calls Anthropic Haiku 4.5
+with strict-JSON instructions for index-based topic clustering.
+
+Output: per-day JSON at ``workspace/browse/topics/<YYYY-MM-DD>.json``
+with ``{label, title_count, sample_titles}`` rows. Idempotent — if
+the file already exists, returns cached.
+
+Two structural privacy guards backing the "titles leave the host"
+decision:
+
+  * **Blocklisted titles can't reach the prompt** because their
+    source events never reached disk in Phase A (the blocklist runs
+    at the reader's edge). Pinned by
+    ``test_blocklisted_titles_never_in_llm_batch``.
+  * **Raw URLs never reach the prompt body** — only
+    ``(idx, count, domain, title)`` tab-separated rows. Domains
+    are present (operator-decided) for disambiguation ("Home" on
+    GitHub vs Wikipedia); paths + queries + fragments NEVER appear.
+    Pinned by ``test_raw_urls_never_in_llm_batch``.
+
+Second-layer master switch ``BROWSE_LLM_TOPICS_ENABLED`` defaults ON
+when ``BROWSE_INGESTION_ENABLED`` is on. The operator can flip just
+this one off to keep on-host event collection running with zero text
+reaching Anthropic.
+
+Interest-model wiring: new ``_browse_topics_text(lookback_days)``
+collector in ``app/companion/interest_model.py``. Reads the per-day
+topic files for the lookback window; yields each label
+``min(title_count, 10)`` times so unigram/bigram score weighting
+reflects visit volume but no single runaway topic can saturate the
+score. Registered as the 6th stream in ``compile_interest_profile``
+under key ``browse``. Cross-modal patterns auto-detects via the
+existing ``sources`` dict — no separate wiring needed.
+
+### 50.3 — Q15.3: Phase B+ — operator surfaces
+
+**REST** ``/api/cp/browse/*`` (6 endpoints in
+``app/control_plane/browse_api.py``):
+
+```
+GET  /state         enabled + 7-day stats
+GET  /recent        last N days of events (limited)
+GET  /categories    aggregated topic clusters
+GET  /blocklist     seeded + operator entries
+POST /mute          add domain to operator file
+POST /forget        scope: all | domain | day
+```
+
+All Bearer-auth gated (same ``require_gateway_auth`` as the rest
+of the control plane).
+
+**React** ``BrowseIngestionCard.tsx`` mounted in ``SettingsPage``.
+Shows enabled/disabled status (master switch is env-only), 7-day
+stats, top topic clusters, blocklist details, mute input, typed-
+phrase ``FORGET BROWSE HISTORY`` confirmation for the nuclear
+option. Uses ``/api/cp/browse/*`` directly (not ``RuntimeSettings``
+— the master switch is env-only).
+
+**Signal** ``/browse`` slash command in
+``app/agents/commander/commands.py``:
+
+```
+/browse                          window stats
+/browse categories               top topic clusters (7d)
+/browse domains                  top domains (7d)
+/browse mute <domain>            add to operator blocklist
+/browse forget <domain>          clear history for one domain
+/browse forget-day <YYYY-MM-DD>  clear one day's events
+/browse forget-all               clear EVERYTHING (preserves blocklist)
+```
+
+**Daily briefing**: new ``_gather_browse_themes(n, window_days)``
+helper + ``🌐 Browsing themes (7d)`` section in the morning and
+weekly composers. Filters out the LLM's catch-all ``miscellaneous``
+bucket. Auto-hides when the master switch is off or no topic files
+exist yet.
+
+### 50.4 — Q15.4: Deployment — host-native split
+
+Critical mid-build discovery: the gateway runs in Docker and the
+container only mounts ``./workspace``, ``./wiki``, ``./secrets``.
+The browse readers point at ``~/Library/Safari/`` etc. — paths the
+container has zero access to.
+
+Resolution via ``AskUserQuestion``: split the subsystem by file
+boundary.
+
+  * Host collector runs as a launchd LaunchAgent
+    (``scripts/browse_host_collector.plist``), reads
+    ``~/Library/...`` directly, writes events into
+    ``./workspace/browse/events/``, which is volume-mounted into
+    the gateway.
+  * Gateway runs the LLM topic batch (has Anthropic SDK + API key),
+    interest_model wiring, REST endpoints, Signal command, React
+    surface. Gateway-side reader idle job harmlessly no-ops inside
+    the container (no DBs at expected paths).
+
+Install/start/restart/stop/uninstall via
+``scripts/install_browse_collector.sh``. The plist points at the
+homebrew Python 3.13 the project already uses; logs land at
+``workspace/browse/.host_collector.log``.
+
+Full Disk Access is the one mandatory manual step (System Settings
+→ Privacy & Security → Full Disk Access → add the python3.13 binary).
+Without FDA: Safari read fails with ``unable to open database file``;
+Chrome/Arc/Firefox readers find no DBs and silently no-op.
+
+### 50.5 — Q15.5: Identity continuity
+
+New 18th event kind ``browse_ingestion_policy`` in
+``app/identity/continuity_ledger.py``. Emitted on:
+
+  * Master-switch flip (handled at startup if the switch differs
+    from the persisted state — observational, not pinned today).
+  * ``forget_all`` / ``forget_day`` / ``forget_domain`` from
+    ``store.py``.
+  * ``mute_domain`` from ``blocklist.py``.
+
+``summarise_drift`` in the continuity ledger picks up the new kind
+automatically via its dynamic Counter, so the annual reflection's
+``wiki/self/value_reflections/<year>.md`` surfaces "this is the year
+we started tracking browse" without code changes.
+
+### 50.6 — Q15 regression
+
+86 new browse tests + 2 skipped (gateway-deps: ``fastapi`` for
+``test_browse_api.py``, ``crewai`` for ``test_signal_command.py``).
+Full identity + companion + browse regression: 190 pass + 2 skipped.
+The 2 pre-existing failures (``test_get_idle_jobs_returns_two_jobs``
+stale at 3 since Q9.6; ``test_no_pg_no_events`` for missing
+``pydantic_settings`` on the dev host) are unrelated.
+
+Privacy pins (load-bearing — DO NOT REMOVE):
+
+  * ``test_canonicalize_strips_query_string`` — paths only, no query.
+  * ``test_canonicalize_strips_fragment`` — no ``#`` either.
+  * ``test_raw_urls_never_in_llm_batch`` — domains only in prompt.
+  * ``test_blocklisted_titles_never_in_llm_batch`` — transitive
+    upstream gate.
+  * ``test_titles_with_pii_are_redacted_in_prompt`` — email/phone
+    stripped before LLM.
+  * ``test_collector_silent_when_disabled`` — interest_model
+    yields nothing.
+  * ``test_section_empty_when_disabled`` — briefing section
+    auto-hides.
+  * ``test_disabled_short_circuit`` — daily LLM tick no-ops.
+
+### 50.7 — What Q15 deliberately did NOT do
+
+  * **No browser extension.** Real-time + dwell-time tracking
+    would need a per-browser extension. Deferred — title-based
+    clustering may turn out coarse enough that the extension cost
+    is worth it; we'll see after Q15 has run for a while.
+  * **No cross-device sync.** iCloud History is not read; each
+    Mac runs its own collector. The split-brain risk is low for
+    single-laptop operators.
+  * **No automatic FDA grant.** macOS sandboxing makes this
+    impossible from code. The install script prints the exact
+    Python path and instructions; the operator does it once.
+  * **No auto-toggle when masterswitch flips.** The env-only master
+    switch is by design — toggling browse on/off is a deliberate
+    decision the operator makes once, not something the React card
+    should let them flip in a moment of distraction.
+  * **No dwell-time threshold for Goodhart.** The original plan
+    proposed "visits ≥ 3 within 7d OR re-visited on ≥ 2 distinct
+    days" to filter clickbait. Deferred — the LLM topic clustering
+    already discards singletons via the ``miscellaneous`` bucket;
+    if click-bait noise surfaces in practice, we add the
+    threshold then.
+  * **No path-based topic extraction.** Paths stay local; the LLM
+    sees domain + title only. The privacy contract takes precedence
+    over the small signal gain from richer URL structure.
+

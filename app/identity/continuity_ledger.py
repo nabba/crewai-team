@@ -44,6 +44,9 @@ Seventeen event kinds, all append-only::
     interest_ossification     PROGRAM §49 — Q14.5 (year-2+ #10.5)
                               landmark: interest-model top-30 list is
                               concentrated, diffuse, or ossified
+    browse_ingestion_policy   PROGRAM §50 — Q15.1 browse-ingestion policy
+                              event: master-switch flip, blocklist edit,
+                              forget_all / forget_domain / forget_day
 
 Storage: ``workspace/identity/continuity_ledger.jsonl``. One
 ``IdentityEvent`` per line. Append-only — never delete, never
@@ -96,6 +99,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "feedback_loop_drift",  # PROGRAM §49 — Q14.2 (year-2+ #10.2)
     "embedding_model_swap",  # PROGRAM §49 — Q14.4 (year-2+ #10.4)
     "interest_ossification",  # PROGRAM §49 — Q14.5 (year-2+ #10.5)
+    "browse_ingestion_policy",  # PROGRAM §50 — Q15.1 browse ingestion
 })
 
 

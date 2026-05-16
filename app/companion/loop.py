@@ -274,4 +274,12 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.extend(_inbox_get_idle_jobs())
     except Exception:
         logger.debug("companion.loop: inbox jobs skipped", exc_info=True)
+
+    # Browser-history ingestion (PROGRAM §50 — Q15.1; default-OFF
+    # behind BROWSE_INGESTION_ENABLED).
+    try:
+        from app.browse import get_idle_jobs as _browse_get_idle_jobs
+        jobs.extend(_browse_get_idle_jobs())
+    except Exception:
+        logger.debug("companion.loop: browse jobs skipped", exc_info=True)
     return jobs

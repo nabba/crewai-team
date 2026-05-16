@@ -234,6 +234,49 @@ def _gather_top_interests(n: int = 5) -> list[str]:
     return out
 
 
+def _gather_browse_themes(n: int = 5, *, window_days: int = 7) -> list[str]:
+    """Top-N browse-topic clusters from the daily LLM batch.
+
+    PROGRAM §50 Q15.3. Reads the per-day topic JSON written by
+    :mod:`app.browse.topic_extraction` and surfaces the top-N labels
+    by aggregated visit count across ``window_days``. Auto-hides when
+    browse ingestion is disabled or no topic files exist yet.
+
+    Only topic LABELS reach this section — never URLs, never raw
+    titles. The labels are LLM output, so they're already redacted of
+    URL fragments by construction (the LLM was prompted with titles +
+    domains, not paths).
+    """
+    try:
+        from app.browse import store
+        from app.browse.topic_extraction import topics_for_day
+    except Exception:
+        return []
+    if not store.enabled():
+        return []
+    from collections import Counter
+    from datetime import datetime, timedelta, timezone
+    cur = datetime.now(timezone.utc).date()
+    agg: Counter[str] = Counter()
+    days_with_data = 0
+    for i in range(window_days):
+        day = cur - timedelta(days=i)
+        try:
+            result = topics_for_day(day)
+        except Exception:
+            continue
+        if result is None or not result.topics:
+            continue
+        days_with_data += 1
+        for t in result.topics:
+            if t.label and t.label.lower() != "miscellaneous":
+                agg[t.label] += int(t.title_count or 0)
+    if not agg:
+        return []
+    out = [f"  • {label} ({count})" for label, count in agg.most_common(n)]
+    return out
+
+
 def _gather_health_summary() -> list[str]:
     """One-line health bullets for the daily briefing. Soft-fail.
 
@@ -822,6 +865,13 @@ def _compose_morning() -> tuple[str, list[float]]:
         # no news rows clear the relevance bar.
         parts.append("\n📰 News (relevant):")
         parts.extend(news)
+    browse = _gather_browse_themes(n=5, window_days=7)
+    if browse:
+        # PROGRAM §50 Q15.3 — top browse-topic clusters from the daily
+        # LLM batch. Auto-hides when browse ingestion is off or no
+        # topic files have been generated yet.
+        parts.append("\n🌐 Browsing themes (7d):")
+        parts.extend(browse)
     return "\n".join(parts), queued_ts
 
 
@@ -869,6 +919,10 @@ def _compose_weekly() -> tuple[str, list[float]]:
     if health:
         parts.append("\n❤️  Health (7d):")
         parts.extend(health)
+    browse = _gather_browse_themes(n=7, window_days=7)
+    if browse:
+        parts.append("\n🌐 Browsing themes (7d):")
+        parts.extend(browse)
     if interests:
         # Phase F #6: only surface interests in the weekly digest —
         # daily morning/evening cadences don't need this noise.

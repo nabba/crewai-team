@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.andrus.botarmy.browse-collector</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/andrus/BotArmy/crewai-team/.venv/bin/python</string>
+    <string>-m</string>
+    <string>app.browse.host_collector</string>
+    <string>--workspace</string>
+    <string>/Users/andrus/BotArmy/crewai-team/workspace</string>
+    <string>--watch</string>
+    <string>--interval</string>
+    <string>1800</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BROWSE_INGESTION_ENABLED</key>
+    <string>true</string>
+    <key>PYTHONPATH</key>
+    <string>/Users/andrus/BotArmy/crewai-team</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/andrus/BotArmy/crewai-team</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- KeepAlive with a 30s throttle: relaunch on crash, but cap to
+       one start every 30s so a flapping crash doesn't burn CPU. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- Logs land inside the workspace so the gateway can surface
+       them later if needed. The .host_collector.log filename starts
+       with a dot so it's hidden in the React /cp/files panel. -->
+  <key>StandardOutPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/browse/.host_collector.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/browse/.host_collector.log</string>
+</dict>
+</plist>

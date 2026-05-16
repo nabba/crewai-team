@@ -2578,6 +2578,13 @@ try:
 except Exception:
     logger.debug("Threads router registration failed", exc_info=True)
 
+# ── Browser-history ingestion (PROGRAM §50 — Q15) ─────────────────────────
+try:
+    from app.control_plane.browse_api import router as browse_router
+    app.include_router(browse_router)
+except Exception:
+    logger.debug("Browse router registration failed", exc_info=True)
+
 # ── Workflow_templates (PROGRAM §46.3, Q8.3) ───────────────────────────────
 try:
     from app.control_plane.workflows_api import router as workflows_router

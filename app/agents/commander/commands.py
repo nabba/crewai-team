@@ -81,6 +81,23 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         if sub is not None:
             return sub
 
+    # ── PROGRAM §50 (Q15) — browse ingestion ──────────────────────────
+    # /browse                                       window stats
+    # /browse categories                            top topic clusters
+    # /browse domains                               top domains
+    # /browse mute <domain>                         add to blocklist
+    # /browse forget <domain>                       clear history per domain
+    # /browse forget-day <YYYY-MM-DD>               clear one day
+    # /browse forget-all                            clear all
+    if (
+        lower.startswith("/browse")
+        or lower.startswith("browse ")
+        or lower == "browse"
+    ):
+        sub = _handle_browse_command(user_input)
+        if sub is not None:
+            return sub
+
     # ── Q8.1 (PROGRAM §46.1) — long-horizon threads ──────────────────
     # /thread                                       list open threads
     # /thread start <title>                         create a new thread
@@ -2202,6 +2219,118 @@ def _handle_person_command(user_input: str) -> str | None:
         if hops == 0:
             return "You ARE the target."
         return f"Path ({hops} hops): " + " → ".join(path)
+
+
+# ── PROGRAM §50 (Q15) — /browse Signal commands ────────────────────
+
+
+def _browse_help() -> str:
+    return (
+        "/browse                          — recent-window stats\n"
+        "/browse categories               — top topic clusters (7d)\n"
+        "/browse domains                  — top domains (7d)\n"
+        "/browse mute <domain>            — add to operator blocklist\n"
+        "/browse forget <domain>          — clear history for one domain\n"
+        "/browse forget-day <YYYY-MM-DD>  — clear one day's events\n"
+        "/browse forget-all               — clear EVERYTHING (preserves blocklist)\n"
+        "Set BROWSE_INGESTION_ENABLED=true in gateway env to enable."
+    )
+
+
+def _handle_browse_command(user_input: str) -> str | None:
+    text = user_input.strip()
+    if text.lower().startswith("/browse"):
+        text = text[len("/browse"):].strip()
+    elif text.lower().startswith("browse "):
+        text = text[len("browse "):].strip()
+    else:
+        return None
+
+    try:
+        from app.browse import blocklist, store
+    except Exception:
+        return "Could not import browse module."
+
+    if not text or text.lower() in ("help", "?"):
+        if text.lower() in ("help", "?"):
+            return _browse_help()
+        # bare /browse — show recent stats
+        if not store.enabled():
+            return (
+                "Browse ingestion is OFF. Set "
+                "BROWSE_INGESTION_ENABLED=true in the gateway env."
+            )
+        stats = store.event_counts(days=7)
+        if stats["total"] == 0:
+            return "Browse ingestion is on but no events recorded yet."
+        lines = [f"🌐 Browse (7d): {stats['total']} events"]
+        for browser, n in sorted(
+            stats["by_browser"].items(), key=lambda kv: kv[1], reverse=True,
+        ):
+            lines.append(f"  • {browser}: {n}")
+        return "\n".join(lines)
+
+    parts = text.split(maxsplit=1)
+    sub = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if sub == "categories":
+        try:
+            from app.browse.topic_extraction import topics_for_day
+        except Exception:
+            return "Could not load topic extraction."
+        from collections import Counter
+        from datetime import datetime, timedelta, timezone
+        cur = datetime.now(timezone.utc).date()
+        agg: Counter = Counter()
+        for i in range(7):
+            day = cur - timedelta(days=i)
+            r = topics_for_day(day)
+            if r is None:
+                continue
+            for t in r.topics:
+                if t.label and t.label != "miscellaneous":
+                    agg[t.label] += int(t.title_count or 0)
+        if not agg:
+            return "No topic clusters yet (LLM batch runs daily — give it a day)."
+        lines = ["🌐 Top themes (7d):"]
+        for label, n in agg.most_common(10):
+            lines.append(f"  • {label} × {n}")
+        return "\n".join(lines)
+
+    if sub == "domains":
+        stats = store.event_counts(days=7)
+        if not stats["by_domain_top"]:
+            return "No browse events yet."
+        lines = ["🌐 Top domains (7d):"]
+        for row in stats["by_domain_top"][:10]:
+            lines.append(f"  • {row['domain']} × {row['count']}")
+        return "\n".join(lines)
+
+    if sub == "mute" and arg:
+        added = blocklist.mute_domain(arg)
+        return (
+            f"✅ Muted {arg.lower().strip()}"
+            if added else f"Already in blocklist: {arg}"
+        )
+
+    if sub == "forget" and arg:
+        n = store.forget_domain(arg)
+        return f"✅ Cleared {n} event(s) for {arg}" if n else f"No events for {arg}"
+
+    if sub == "forget-day" and arg:
+        from datetime import date as _date
+        try:
+            d = _date.fromisoformat(arg)
+        except ValueError:
+            return "Use YYYY-MM-DD format."
+        return f"✅ Cleared {arg}" if store.forget_day(d) else f"No data for {arg}"
+
+    if sub == "forget-all":
+        n = store.forget_all()
+        return f"✅ Removed {n} file(s). Blocklist preserved."
+
+    return _browse_help()
 
 
 # ── Q8.1 (PROGRAM §46.1) — /thread Signal commands ─────────────────
