@@ -101,6 +101,11 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "interest_ossification",  # PROGRAM §49 — Q14.5 (year-2+ #10.5)
     "browse_ingestion_policy",  # PROGRAM §50 — Q15.1 browse ingestion
     "vacation_window",  # PROGRAM §51 — Q16 Theme 3 vacation mode
+    "q17_landmark",  # PROGRAM §52 — Q17 multi-year resilience landmarks
+                     # (warm-spare failover, local-only drill, bit-rot,
+                     # operator-transition phase, agreement-rate drift,
+                     # KB contradiction, synthesis-pass concept-blend,
+                     # cross-conversation recall)
 })
 
 

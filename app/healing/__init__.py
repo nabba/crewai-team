@@ -141,6 +141,18 @@ try:
 except Exception:
     _log.warning("app.healing: vacation_mode wiring failed", exc_info=True)
 
+# PROGRAM §52 Q17 — multi-year resilience anchors.
+
+try:
+    from app.creativity import synthesis_pass as _synthesis_pass  # noqa: F401
+except Exception:
+    _log.warning("app.healing: synthesis_pass wiring failed", exc_info=True)
+
+try:
+    from app.resilience_drills.drills import local_only as _local_only_drill  # noqa: F401
+except Exception:
+    _log.warning("app.healing: local_only drill wiring failed", exc_info=True)
+
 __all__ = [
     "diagnose_and_fix",
     "log_error",
