@@ -319,7 +319,13 @@ def _scan_for_orphan_segments(sqlites: list[Path]) -> list[dict]:
 
 
 def _alert_orphan_segments(findings: list[dict]) -> None:
-    """Single consolidated alert for all KBs with orphans."""
+    """Single consolidated advisory for all KBs with orphans.
+
+    Routes through ``app.healing.destructive_advisory`` so the snapshot
+    is taken BEFORE the alert is emitted, and the alert text includes
+    the operator-runnable schema verification step + the explicit undo
+    command. See destructive_advisory.py header for the discipline
+    lessons from the 2026-05-16 incident."""
     total_orphans = sum(f["orphan_count"] for f in findings)
     total_bytes = sum(f["orphan_bytes"] for f in findings)
     if total_orphans == 0:
@@ -327,6 +333,190 @@ def _alert_orphan_segments(findings: list[dict]) -> None:
     # Suppress noise: only alert if orphan disk usage is meaningful.
     if total_bytes < 10 * 1024 * 1024:    # <10 MB → ignore
         return
+
+    # Build the full target list. The findings dict already truncates
+    # to 10 UUIDs per KB; for the advisory we want all of them so the
+    # snapshot + apply command cover every orphan. Re-scan if we'd
+    # otherwise be working from truncated data.
+    workspace = _workspace_root()
+    targets: list[Path] = []
+    for f in findings:
+        kb_dir = workspace / f["kb"]
+        # The 'orphan_uuids' in findings is truncated. Rescan to get
+        # the full list — required for the snapshot + apply to be
+        # complete. Cheap (one SQLite read + one dir listing per KB).
+        full_orphans = _rescan_orphans_for_kb(kb_dir)
+        for u in full_orphans:
+            p = kb_dir / u
+            if p.is_dir():
+                targets.append(p)
+
+    if not targets:
+        logger.debug(
+            "chromadb_hygiene: orphan advisory aborted — no live target dirs",
+        )
+        return
+
+    try:
+        from app.healing.destructive_advisory import (
+            DestructiveAdvisory,
+            emit as emit_advisory,
+            snapshot_paths,
+        )
+    except Exception:
+        logger.exception(
+            "chromadb_hygiene: destructive_advisory module unavailable; "
+            "falling back to plain Signal alert with snapshot instructions."
+        )
+        _fallback_orphan_alert(findings, total_orphans, total_bytes)
+        return
+
+    snap = snapshot_paths(
+        targets,
+        dest_dir=workspace / ".snapshots",
+        label="chromadb_orphans",
+    )
+    if snap is None:
+        # Snapshot failed — DO NOT advise destructive action.
+        logger.warning(
+            "chromadb_hygiene: orphan snapshot failed; aborting advisory "
+            "to preserve safety boundary"
+        )
+        try:
+            send_signal_alert(
+                f"⚠️ ChromaDB orphan segments detected ({total_orphans}, "
+                f"{total_bytes / 1024 / 1024:.1f} MB) but pre-action "
+                f"snapshot failed. Manual investigation only — do NOT "
+                f"delete dirs without your own snapshot first. See "
+                f"workspace logs for the snapshot failure trace.",
+                tag="chromadb_hygiene_orphans_snapshot_failed",
+            )
+        except Exception:
+            logger.debug(
+                "chromadb_hygiene: snapshot-failure alert also failed",
+                exc_info=True,
+            )
+        return
+
+    # Build operator-runnable commands. Targets are written to a sidecar
+    # .targets file (one path per line) so the apply command stays short
+    # even when many KBs have orphans.
+    targets_file = snap.with_suffix(".targets")
+    try:
+        targets_file.write_text(
+            "\n".join(str(t) for t in targets) + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.exception(
+            "chromadb_hygiene: failed to write targets sidecar at %s",
+            targets_file,
+        )
+        return
+
+    per_kb = ", ".join(
+        f"{f['kb']}: {f['orphan_count']} / "
+        f"{f['orphan_bytes'] / 1024 / 1024:.1f} MB"
+        for f in findings
+    )
+    summary = (
+        f"ChromaDB orphan segments — {total_orphans} dirs, "
+        f"{total_bytes / 1024 / 1024:.1f} MB ({per_kb})"
+    )
+
+    # `verify_command` exercises the SAME query the monitor uses, so
+    # the operator can independently confirm the classification before
+    # acting. The monitor's bug on 2026-05-16 was caught only AFTER
+    # action — here the operator can catch it BEFORE.
+    sample_kb = findings[0]["kb"]
+    verify_command = (
+        f"python3 -c \"import sqlite3,pathlib; "
+        f"p=pathlib.Path('workspace/{sample_kb}'); "
+        f"c=sqlite3.connect(str(p/'chroma.sqlite3')); "
+        f"segs={{s for (s,) in c.execute('SELECT id FROM segments')}}; "
+        f"dirs={{d.name for d in p.iterdir() if d.is_dir() and len(d.name)==36}}; "
+        f"print('orphans (dirs not in segments):', sorted(dirs - segs)[:5])\""
+    )
+
+    apply_command = (
+        f"docker compose stop chromadb && "
+        f"xargs -a {targets_file} rm -rf -- && "
+        f"docker compose start chromadb"
+    )
+
+    undo_command = (
+        f"docker compose stop chromadb && "
+        f"tar -xzf {snap} && "
+        f"docker compose start chromadb"
+    )
+
+    try:
+        adv = DestructiveAdvisory(
+            monitor_name="chromadb_hygiene",
+            summary=summary,
+            targets=targets,
+            snapshot_path=snap,
+            apply_command=apply_command,
+            undo_command=undo_command,
+            verify_command=verify_command,
+            schema_assumption=(
+                "Orphan = on-disk UUID dir not present in `segments.id` "
+                "of chroma.sqlite3 (NOT `collections.id` — see "
+                "2026-05-16 incident; chromadb names dirs after segment IDs, "
+                "not collection IDs)."
+            ),
+        )
+        emit_advisory(adv, tag="chromadb_hygiene_orphans")
+    except ValueError:
+        # The advisory refused to construct — a discipline violation.
+        # Log loudly so the next maintainer sees what went wrong.
+        logger.exception(
+            "chromadb_hygiene: destructive advisory refused construction"
+        )
+    except Exception:
+        logger.exception(
+            "chromadb_hygiene: orphan advisory emission failed"
+        )
+
+
+def _rescan_orphans_for_kb(kb_dir: Path) -> list[str]:
+    """Re-derive the full orphan UUID list for one KB. Used at advisory
+    construction time because the findings dict truncates to 10. Cheap:
+    one SQLite read + one dir listing."""
+    db = kb_dir / "chroma.sqlite3"
+    if not db.is_file():
+        return []
+    try:
+        conn = sqlite3.connect(str(db), timeout=10.0)
+        try:
+            known = {sid for (sid,) in conn.execute("SELECT id FROM segments")}
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return []
+    disk = set()
+    try:
+        for sub in kb_dir.iterdir():
+            n = sub.name
+            if not sub.is_dir():
+                continue
+            if (
+                len(n) == 36
+                and n[8] == "-" and n[13] == "-"
+                and n[18] == "-" and n[23] == "-"
+            ):
+                disk.add(n)
+    except OSError:
+        return []
+    return sorted(disk - known)
+
+
+def _fallback_orphan_alert(
+    findings: list[dict], total_orphans: int, total_bytes: int,
+) -> None:
+    """Plain-Signal fallback when destructive_advisory is unavailable.
+    Preserves the schema-correct guidance from the 2026-05-16 fix even
+    if the discipline helper module fails to import."""
     per_kb = ", ".join(
         f"{f['kb']}: {f['orphan_count']} orphans / "
         f"{f['orphan_bytes'] / 1024 / 1024:.1f} MB"
@@ -337,9 +527,9 @@ def _alert_orphan_segments(findings: list[dict]) -> None:
             f"🗂 ChromaDB orphan segments detected — "
             f"{total_orphans} orphans, "
             f"{total_bytes / 1024 / 1024:.1f} MB total. {per_kb}. "
-            f"Orphans are UUID-named dirs with no row in `segments`. "
-            f"Reclaim path: stop chromadb, snapshot the orphan dirs, "
-            f"`rm -rf` them, restart. "
+            f"Orphans are UUID-named dirs with no row in `segments` "
+            f"(NOT `collections`). Reclaim path: stop chromadb, "
+            f"snapshot the orphan dirs, `rm -rf` them, restart. "
             f"`chromadb_rebuild` is the wrong tool for this — it "
             f"compacts LIVE collections, not orphans.",
             tag="chromadb_hygiene_orphans",

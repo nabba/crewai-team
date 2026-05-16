@@ -102,22 +102,43 @@ def run_chromadb() -> None:
 
         # Find the oldest records by metadata.timestamp if available.
         # ChromaDB doesn't have direct "delete oldest" so we fetch all
-        # ids + sort by timestamp metadata. Fail-soft if metadata
-        # missing or schema unexpected.
+        # ids + sort by timestamp metadata. Discipline (post-2026-05-16):
+        # records WITHOUT a parseable timestamp are EXCLUDED, not
+        # treated as "oldest via zero-fallback" — see _oldest_ids.
         try:
-            ids_to_delete = _oldest_ids(col, excess)
+            ids_to_delete, ts_stats = _oldest_ids(col, excess)
         except Exception:
             logger.debug(
                 "retention[chromadb]: oldest_ids failed for %s", name,
                 exc_info=True,
             )
             continue
+
+        # If most records lack timestamps, retention can't safely
+        # enforce the cap. Surface this so the operator can decide
+        # (raise the cap, fix the writer, or accept the accumulation).
+        if ts_stats["total"] > 0 and ts_stats["without_ts"] > ts_stats["with_ts"]:
+            logger.warning(
+                "retention[chromadb]: %s has %d records without timestamp "
+                "metadata vs %d with — cap cannot be safely enforced; "
+                "writer should populate `timestamp` / `ts` / `created_at`",
+                name, ts_stats["without_ts"], ts_stats["with_ts"],
+            )
+
         if not ids_to_delete:
+            summary["collections"].append({
+                "name": name, "count": count, "cap": cap,
+                "deleted": 0, "ts_stats": ts_stats,
+                "reason": "no_candidates_with_timestamp"
+                    if ts_stats["without_ts"] > 0 else "below_cap_after_filter",
+            })
             continue
+
         if _dry_run():
             summary["collections"].append({
                 "name": name, "count": count, "cap": cap,
                 "would_delete": len(ids_to_delete), "dry_run": True,
+                "ts_stats": ts_stats,
             })
             continue
         try:
@@ -126,6 +147,7 @@ def run_chromadb() -> None:
             summary["collections"].append({
                 "name": name, "count": count, "cap": cap,
                 "deleted": len(ids_to_delete),
+                "ts_stats": ts_stats,
             })
         except Exception:
             logger.debug(
@@ -140,40 +162,78 @@ def run_chromadb() -> None:
     write_state_json(_CHROMA_STATE_FILE, state)
 
 
-def _oldest_ids(collection, n: int) -> list[str]:
-    """Return up to ``n`` IDs sorted oldest-first by metadata.timestamp.
+def _oldest_ids(
+    collection, n: int,
+) -> tuple[list[str], dict]:
+    """Return up to ``n`` IDs sorted oldest-first by metadata.timestamp,
+    PLUS a stats dict describing what was filtered.
 
     ChromaDB API: ``collection.get(include=["metadatas"])`` returns all
     records (cap on large collections; here we accept the O(N) cost
     because retention runs weekly).
+
+    Discipline (post-2026-05-16): records lacking a parseable timestamp
+    metadata are EXCLUDED from deletion candidates, not classified as
+    "oldest" via a silent zero-fallback. The earlier behaviour treated
+    timestamp-less records as preferentially deletable, which is the
+    same shape as the chromadb_hygiene incident (silent classification
+    fallback → automatic destructive action). If most records lack
+    timestamps, retention does nothing this pass and the audit row
+    surfaces it.
     """
+    stats = {"total": 0, "with_ts": 0, "without_ts": 0, "selected": 0}
     try:
         rows = collection.get(include=["metadatas"])
     except Exception:
-        return []
+        return [], stats
     ids = rows.get("ids") or []
     metas = rows.get("metadatas") or []
+    stats["total"] = len(ids)
     if not ids:
-        return []
-    # Pair (id, ts) using metadata.timestamp if present, else 0 (oldest).
-    pairs = []
+        return [], stats
+
+    pairs: list[tuple[str, float]] = []
     for i, m in zip(ids, metas):
-        ts = 0.0
-        if isinstance(m, dict):
-            v = m.get("timestamp") or m.get("ts") or m.get("created_at")
-            if isinstance(v, (int, float)):
-                ts = float(v)
-            elif isinstance(v, str):
-                try:
-                    from datetime import datetime
-                    ts = datetime.fromisoformat(
-                        v.replace("Z", "+00:00")
-                    ).timestamp()
-                except Exception:
-                    ts = 0.0
+        ts = _parse_ts_from_metadata(m)
+        if ts is None:
+            stats["without_ts"] += 1
+            continue
+        stats["with_ts"] += 1
         pairs.append((i, ts))
+
     pairs.sort(key=lambda p: p[1])  # oldest first
-    return [p[0] for p in pairs[:n]]
+    selected = [p[0] for p in pairs[:n]]
+    stats["selected"] = len(selected)
+    return selected, stats
+
+
+def _parse_ts_from_metadata(m) -> float | None:
+    """Extract a parseable timestamp from a chromadb metadata dict.
+
+    Returns ``None`` if no recognised timestamp field is present or if
+    the value can't be parsed. The None-vs-zero distinction is
+    load-bearing: callers MUST NOT treat absent-timestamp records as
+    "oldest" — see ``_oldest_ids`` docstring."""
+    if not isinstance(m, dict):
+        return None
+    v = m.get("timestamp")
+    if v is None:
+        v = m.get("ts")
+    if v is None:
+        v = m.get("created_at")
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        try:
+            from datetime import datetime
+            return datetime.fromisoformat(
+                v.replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            return None
+    return None
 
 
 # ════════════════════════════════════════════════════════════════════════
