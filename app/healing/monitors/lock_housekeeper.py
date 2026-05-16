@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import fnmatch
 import logging
 import os
 import time
@@ -49,13 +50,28 @@ logger = logging.getLogger(__name__)
 
 _STATE_FILE = "lock_housekeeper.json"
 
-# Directories where lock files legitimately live. Add to this list as
-# new lock-using subsystems ship. Order doesn't matter — we walk all.
-_WATCHED_DIRS: tuple[Path, ...] = (
-    Path("/app/workspace/locks"),
-    Path("/app/workspace/dreams"),
-    Path("/app/workspace"),  # for .workspace.lock from workspace_versioning
+# Per-directory basename patterns. A file is eligible for cleanup only
+# if its basename matches one of the patterns declared for the
+# directory it lives in. Defends against the failure mode where a
+# future subsystem writes a non-lock state file with `.lock` suffix
+# (or any file with that suffix lands in a watched dir by accident)
+# and gets auto-deleted on the next pass.
+#
+# Each entry is `dir → tuple of fnmatch patterns`. To onboard a new
+# lock-using subsystem: add its directory + the basename glob it
+# uses. Anything inside a watched dir that doesn't match its
+# directory's patterns gets ALERTED (so the operator knows a stray
+# .lock file is lying around) but NEVER auto-deleted.
+_LOCK_RULES: tuple[tuple[Path, tuple[str, ...]], ...] = (
+    # wiki_tools writes one .lock per wiki page slug.
+    (Path("/app/workspace/locks"), ("*.lock",)),
+    # wiki_index_reconciler writes a single named lock here.
+    (Path("/app/workspace/dreams"), (".wiki_index_reconciler.lock",)),
+    # workspace_versioning writes one lock at the workspace root.
+    (Path("/app/workspace"), (".workspace.lock",)),
 )
+# Backward-compat alias: existing callers read _WATCHED_DIRS.
+_WATCHED_DIRS: tuple[Path, ...] = tuple(d for d, _ in _LOCK_RULES)
 
 # Minimum age before we'll consider a lock file orphaned. Defends
 # against deleting a file someone is in the middle of acquiring.
@@ -69,21 +85,39 @@ _PILE_UP_THRESHOLD = 50
 _ALERT_COOLDOWN_S = 24 * 3600
 
 
-def _candidate_files() -> Iterable[Path]:
-    """Yield ``.lock`` files in the watched directories. Non-recursive
-    by default — every dir on this list is shallow.
+def _basename_matches_rules(name: str, patterns: tuple[str, ...]) -> bool:
+    """Return True iff ``name`` matches any of the fnmatch patterns
+    declared for the file's containing directory."""
+    for pat in patterns:
+        if fnmatch.fnmatch(name, pat):
+            return True
+    return False
+
+
+def _candidate_files() -> Iterable[tuple[Path, bool]]:
+    """Yield ``(path, matches_rule)`` pairs for ``.lock``-shaped files
+    in the watched directories. Non-recursive — every dir on this
+    list is shallow.
+
+    ``matches_rule`` is True iff the basename fits the directory's
+    declared pattern set (see ``_LOCK_RULES``). Files where it's False
+    are reported to the operator but NEVER auto-deleted. This is the
+    post-2026-05-16 discipline — anything not in the declared
+    pattern set is "unknown shape, leave alone."
     """
-    for d in _WATCHED_DIRS:
+    for d, patterns in _LOCK_RULES:
         if not d.exists() or not d.is_dir():
             continue
         try:
             for p in d.iterdir():
                 if not p.is_file():
                     continue
-                if not (p.name.endswith(".lock") or p.name.startswith(".")
-                        and p.name.endswith(".lock")):
+                # Filename has to LOOK like a lock for us to take any
+                # interest at all. The matches_rule check determines
+                # whether we'll delete or just report.
+                if not p.name.endswith(".lock"):
                     continue
-                yield p
+                yield p, _basename_matches_rules(p.name, patterns)
         except Exception:
             logger.debug("lock_housekeeper: cannot list %s", d, exc_info=True)
 
@@ -142,8 +176,17 @@ def run() -> None:
     deleted_paths: list[str] = []
     skipped_held: int = 0
     skipped_too_young: int = 0
+    skipped_unknown_shape: int = 0
+    unknown_paths: list[str] = []
 
-    for path in candidates:
+    for path, matches_rule in candidates:
+        # Files NOT matching their containing dir's rule never get
+        # auto-deleted, even if uncontested + old. They surface in
+        # the audit + Signal alert so the operator can investigate.
+        if not matches_rule:
+            skipped_unknown_shape += 1
+            unknown_paths.append(str(path))
+            continue
         try:
             mtime = path.stat().st_mtime
         except FileNotFoundError:
@@ -171,7 +214,31 @@ def run() -> None:
         deleted=len(deleted_paths),
         skipped_held=skipped_held,
         skipped_too_young=skipped_too_young,
+        skipped_unknown_shape=skipped_unknown_shape,
     )
+
+    # Alert on unknown-shape files (post-2026-05-16 discipline): if
+    # any .lock-shaped file lives in a watched dir but doesn't match
+    # the declared pattern set, surface it. Either the rule set needs
+    # extending or someone wrote a non-lock state file with a
+    # misleading suffix.
+    if unknown_paths:
+        state = read_state_json(_STATE_FILE, {"last_unknown_alert_at": 0.0})
+        if (now - float(state.get("last_unknown_alert_at", 0))) >= _ALERT_COOLDOWN_S:
+            state["last_unknown_alert_at"] = now
+            write_state_json(_STATE_FILE, state)
+            preview = ", ".join(f"`{p}`" for p in unknown_paths[:5])
+            if len(unknown_paths) > 5:
+                preview += f", … (+{len(unknown_paths) - 5} more)"
+            send_signal_alert(
+                f"🔒 Self-heal: {len(unknown_paths)} `.lock`-shaped "
+                f"file(s) found in watched dirs but NOT matching any "
+                f"declared rule. NOT auto-deleted — investigate.\n\n"
+                f"Examples: {preview}\n\n"
+                f"If these are legitimate locks, extend `_LOCK_RULES` "
+                f"in app/healing/monitors/lock_housekeeper.py.",
+                tag="lock_housekeeper_unknown_shape",
+            )
     if deleted_paths:
         logger.info(
             "lock_housekeeper: removed %d orphan lock files",
@@ -179,19 +246,23 @@ def run() -> None:
         )
 
     # ── Pile-up alert ──────────────────────────────────────────────
-    if len(candidates) >= _PILE_UP_THRESHOLD:
+    # Count only rule-matching candidates — unknown-shape files have
+    # their own alert above and shouldn't dilute the leak signal.
+    n_matching = sum(1 for _, matches in candidates if matches)
+    if n_matching >= _PILE_UP_THRESHOLD:
         state = read_state_json(_STATE_FILE, {"last_alert_at": 0.0})
         if (now - float(state.get("last_alert_at", 0))) >= _ALERT_COOLDOWN_S:
             state["last_alert_at"] = now
             state["last_pile_up_size"] = len(candidates)
             write_state_json(_STATE_FILE, state)
             send_signal_alert(
-                f"🔒 Self-heal: {len(candidates)} lock files piled up across "
+                f"🔒 Self-heal: {n_matching} lock files piled up across "
                 f"watched directories — strong signal of a code path leaking "
                 f"fcntl locks.\n\n"
                 f"  • deleted this pass: {len(deleted_paths)}\n"
                 f"  • currently held: {skipped_held}\n"
-                f"  • too young to clean: {skipped_too_young}\n\n"
+                f"  • too young to clean: {skipped_too_young}\n"
+                f"  • unknown shape (NOT auto-deleted): {skipped_unknown_shape}\n\n"
                 f"Watched dirs: "
                 + ", ".join(f"`{d}`" for d in _WATCHED_DIRS)
                 + "\n\n"
