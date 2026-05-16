@@ -9032,26 +9032,42 @@ The shell script (operator-runnable separately, quarterly cadence):
 
   1. Spins up scratch Postgres in a separate compose project
      (`andrusai-migration-drill`).
-  2. Restores the freshest DR tarball from
-     `workspace/backups/dr/*.tar.gz`.
-  3. Walks `migrations/0*_*.sql` in numeric order. Creates
-     `control_plane._schema_migrations` if missing (idempotent on
-     re-runs). Applies each migration not yet recorded, using
-     `psql --set ON_ERROR_STOP=1`. Tracks applied/skipped/failed
-     counts.
-  4. Runs `app.memory.startup_migrations.apply_all` against the
-     drill DB (inlined pgvector HNSW indexes).
-  5. Runs schema-smoke `SELECT count(*) FROM control_plane.<table>`
-     against tables created by migrations 030-035
+  2. Restores the freshest postgres-OK backup set located via
+     `workspace/backups/manifest.json` (matches sibling drills'
+     manifest-driven discovery; postgres-only filter since this
+     drill never touches Neo4j or ChromaDB).
+  3. Runs `app.memory.startup_migrations.apply_all` — the SAME code
+     production runs at boot — against the restored DB. `apply_all`
+     is idempotent (every operation uses `IF NOT EXISTS`) so it's
+     safe against a fully-restored schema, and if it ever grows
+     beyond pgvector HNSW indexes the drill picks up the new
+     behaviour for free.
+  4. Runs schema-smoke `SELECT count(*) FROM control_plane.<table>`
+     against tables today's code expects to find
      (`epistemic_peer_reviews`, `epistemic_overrides`,
      `error_anomalies`, plus the older `audit_log`, `crew_tasks`,
-     `tickets` baselines). Catches "today's code referenced a
-     table that migrations 030-035 created but the snapshot's
-     schema doesn't have" — the user's exact §2.2 concern.
-  6. Updates `workspace/backups/migration_drill_manifest.json` with
-     `last_drill_at`, `last_drill_ok`, per-migration counts,
-     smoke-probe row counts.
-  7. Always tears down on exit (signal trap).
+     `tickets` baselines). A backup taken AFTER a migration was
+     applied in production contains the resulting schema, so the
+     smoke passes. A backup taken BEFORE a never-shipped-in-
+     production migration won't have the new tables, so the smoke
+     query for that table FAILS — which is exactly the operator-
+     visible signal the drill is supposed to produce.
+  5. Updates `workspace/backups/migration_drill_manifest.json` with
+     `last_drill_at`, `last_drill_ok`, `startup_migrations_ok`,
+     `smoke_ok`, and per-probe row counts.
+  6. Always tears down on exit (signal trap).
+
+**Design note (2026-05-16).** The earlier version of this script walked
+`migrations/0*_*.sql` and tracked applied ones in a fabricated
+`control_plane._schema_migrations` table. That table is **not** a
+production artifact — no production code reads or writes it (verified:
+`grep -rn "_schema_migrations" app/ migrations/` returns zero hits) —
+so the tracking was always empty and every drill re-applied every
+migration end-to-end. Several migrations (002, 003, 016, 019) are not
+idempotent on a fully-migrated schema, so those re-applications failed
+and the drill permanently recorded `last_drill_ok=false`. The redesign
+drills the production code path (`startup_migrations.apply_all` + smoke
+queries) instead — which is the honest test of the stated concern.
 
 The Python monitor (`migration_drill`):
 

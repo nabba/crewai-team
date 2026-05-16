@@ -98,15 +98,26 @@ def test_migration_drill_shell_script_exists() -> None:
     p = REPO_ROOT / "deploy" / "scripts" / "migration-drill.sh"
     assert p.is_file()
     src = p.read_text()
-    # Must walk migrations and apply pending, and run startup_migrations
-    assert "migrations/0" in src
+    # Must invoke the production startup migrations code path.
     assert "startup_migrations" in src
-    assert "_schema_migrations" in src
-    # Must emit the manifest the monitor reads
+    # Must restore Postgres before exercising the schema.
+    assert "psql" in src
+    # Must run schema-smoke queries that exercise tables today's code
+    # expects to find (the actual concern: "today's code can't read a
+    # 6-month-old backup"). At least one probe under control_plane.* must
+    # be in the script — the smoke loop is the load-bearing signal.
+    assert "control_plane." in src
+    # Must emit the manifest the monitor reads.
     assert "migration_drill_manifest.json" in src
-    # Must update last_drill_at + last_drill_ok
+    # Must update last_drill_at + last_drill_ok.
     assert "last_drill_at" in src
     assert "last_drill_ok" in src
+    # Must NOT walk migrations/*.sql and fabricate a tracking table —
+    # that design was retired (see header comment in the drill script).
+    assert "_schema_migrations" not in src, (
+        "Drill must not reintroduce the fabricated control_plane._schema_migrations "
+        "tracking table. See migration-drill.sh header for rationale."
+    )
 
 
 def test_migration_drill_shell_script_executable() -> None:

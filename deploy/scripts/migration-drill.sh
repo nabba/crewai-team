@@ -4,13 +4,32 @@
 # Distinct from siblings:
 #   - restore-drill.sh         restores into CURRENT versions, smokes
 #   - version-upgrade-drill.sh restores into NEWER versions of PG/Neo/Chroma
-#   - THIS                     restores into CURRENT versions, then APPLIES
-#                              every pending migrations/*.sql, then runs
-#                              startup_migrations.apply_all, then runs
-#                              schema-smoke queries that newer migrations
-#                              created. Catches "today's code can't read
-#                              a 6-month-old backup" — the user's exact
-#                              §2.2 concern.
+#   - THIS                     restores into CURRENT versions, runs
+#                              app.memory.startup_migrations.apply_all
+#                              (the SAME code production runs at boot),
+#                              then runs schema-smoke queries that today's
+#                              code would issue. Catches "today's code
+#                              can't read a 6-month-old backup" — the
+#                              user's exact §2.2 concern.
+#
+# Design note (2026-05-16): the earlier version of this script walked
+# migrations/0*_*.sql and tracked applied ones in a fabricated table
+# under the control_plane schema. That tracking table was NOT a
+# production artifact — no production code reads or writes it — so the
+# tracking was always empty and every drill re-applied every migration
+# end-to-end. Several migrations (002, 003, 016, 019) are not idempotent
+# on a fully-migrated schema, so those re-applications failed and the
+# drill permanently recorded last_drill_ok=false.
+#
+# The honest test is what production actually does:
+#   1. Restore the backup.
+#   2. Run startup_migrations.apply_all (the production code path).
+#   3. Run the smoke queries today's code would issue.
+# A backup taken AFTER a migration was applied in production contains
+# the resulting schema, so the smoke queries pass. A backup taken
+# BEFORE a never-shipped-in-production migration won't have the new
+# tables, so the smoke query for that table FAILS — which is exactly
+# the operator-visible signal the drill is supposed to produce.
 #
 # Run quarterly from cron / launchd. Updates a separate manifest at
 # workspace/backups/migration_drill_manifest.json so the
@@ -60,30 +79,44 @@ trap cleanup EXIT INT TERM
 echo ">> Migration drill ${TS}" | tee "$DRILL_LOG"
 echo ">> Log file: $DRILL_LOG"
 
-# --- Find the freshest backup -------------------------------------------
-BACKUP_BASE="${REPO_ROOT}/workspace/backups/dr"
-if [[ ! -d "$BACKUP_BASE" ]]; then
-    echo "ERROR: no DR backup directory at $BACKUP_BASE" | tee -a "$DRILL_LOG" >&2
+# --- Locate the freshest postgres-OK backup set -------------------------
+# This drill only restores Postgres + exercises today's code against it.
+# Neo4j / ChromaDB are not touched, so we filter on r.postgres.ok rather
+# than r.all_ok (sibling restore-drill / version-upgrade-drill which
+# restore all three correctly require all_ok).
+echo ">> Locating freshest postgres-ok backup set" | tee -a "$DRILL_LOG"
+SET_TS="$(python3 - <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+manifest = Path("workspace/backups/manifest.json")
+if not manifest.exists():
+    sys.exit(0)
+try:
+    data = json.loads(manifest.read_text())
+except Exception:
+    sys.exit(1)
+for r in reversed(data.get("runs", [])):
+    pg = r.get("postgres") or {}
+    if pg.get("ok") and pg.get("path"):
+        stamp = pg["path"].rsplit("postgres-", 1)[-1].rsplit(".sql.gz", 1)[0]
+        print(stamp)
+        sys.exit(0)
+PYEOF
+)"
+
+if [[ -z "$SET_TS" ]]; then
+    echo "ERROR: no postgres-ok backup set in manifest — run deploy/scripts/backup.sh first" | tee -a "$DRILL_LOG" >&2
     exit 3
 fi
-LATEST_TARBALL="$(ls -t "$BACKUP_BASE"/*.tar.gz 2>/dev/null | head -1 || true)"
-if [[ -z "$LATEST_TARBALL" ]]; then
-    echo "ERROR: no .tar.gz under $BACKUP_BASE" | tee -a "$DRILL_LOG" >&2
+
+PG_ARCHIVE="${REPO_ROOT}/workspace/backups/postgres/postgres-${SET_TS}.sql.gz"
+if [[ ! -f "$PG_ARCHIVE" ]]; then
+    echo "ERROR: postgres archive missing: $PG_ARCHIVE" | tee -a "$DRILL_LOG" >&2
     exit 3
 fi
-SET_TS="$(basename "$LATEST_TARBALL" .tar.gz)"
 echo ">> Restoring set: $SET_TS" | tee -a "$DRILL_LOG"
-
-# Extract into a workdir.
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/migration-drill-XXXXXX")"
-trap 'rm -rf "$WORK_DIR"; cleanup' EXIT INT TERM
-tar -xzf "$LATEST_TARBALL" -C "$WORK_DIR" 2>>"$DRILL_LOG"
-
-PG_ARCHIVE="$(find "$WORK_DIR" -name "postgres*.sql.gz" | head -1)"
-if [[ -z "$PG_ARCHIVE" ]]; then
-    echo "ERROR: no postgres dump in $LATEST_TARBALL" | tee -a "$DRILL_LOG" >&2
-    exit 3
-fi
 
 # --- Spin up scratch Postgres (CURRENT version) -------------------------
 echo ">> Starting scratch Postgres (current version)" | tee -a "$DRILL_LOG"
@@ -102,66 +135,43 @@ gunzip -c "$PG_ARCHIVE" | docker exec -i \
     psql --username "$PG_USER" --dbname "$PG_DB" \
     --set ON_ERROR_STOP=1 2>>"$DRILL_LOG"
 
-# --- Apply pending migrations -------------------------------------------
-echo ">> Walking migrations/*.sql and applying pending" | tee -a "$DRILL_LOG"
-
-# Track which migrations have been applied. Match the codebase pattern
-# from conversation_store.py:128 (a _schema_version table) so the same
-# convention applies whether the snapshot recorded it or not. Idempotent:
-# already-applied migrations have CREATE TABLE IF NOT EXISTS guards.
-docker exec -e PGPASSWORD="$PG_PASS" "$PG_CT" psql \
-    --username "$PG_USER" --dbname "$PG_DB" --set ON_ERROR_STOP=1 \
-    -c "CREATE SCHEMA IF NOT EXISTS control_plane;" 2>>"$DRILL_LOG"
-docker exec -e PGPASSWORD="$PG_PASS" "$PG_CT" psql \
-    --username "$PG_USER" --dbname "$PG_DB" --set ON_ERROR_STOP=1 \
-    -c "CREATE TABLE IF NOT EXISTS control_plane._schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT now());" 2>>"$DRILL_LOG"
-
-MIGRATIONS_APPLIED=0
-MIGRATIONS_SKIPPED=0
-MIGRATIONS_FAILED=0
-for sql_file in "$REPO_ROOT"/migrations/0*_*.sql; do
-    [[ ! -f "$sql_file" ]] && continue
-    name="$(basename "$sql_file" .sql)"
-    # Skip if already applied (the snapshot may have recorded it).
-    applied="$(docker exec -e PGPASSWORD="$PG_PASS" "$PG_CT" psql \
-        --username "$PG_USER" --dbname "$PG_DB" --set ON_ERROR_STOP=1 \
-        -At -c "SELECT 1 FROM control_plane._schema_migrations WHERE name='$name';" \
-        2>/dev/null || echo "")"
-    if [[ "$applied" == "1" ]]; then
-        MIGRATIONS_SKIPPED=$((MIGRATIONS_SKIPPED + 1))
-        continue
-    fi
-    echo "  applying $name..." | tee -a "$DRILL_LOG"
-    if cat "$sql_file" | docker exec -i -e PGPASSWORD="$PG_PASS" "$PG_CT" psql \
-            --username "$PG_USER" --dbname "$PG_DB" --set ON_ERROR_STOP=1 \
-            >>"$DRILL_LOG" 2>&1; then
-        docker exec -e PGPASSWORD="$PG_PASS" "$PG_CT" psql \
-            --username "$PG_USER" --dbname "$PG_DB" --set ON_ERROR_STOP=1 \
-            -c "INSERT INTO control_plane._schema_migrations(name) VALUES ('$name') ON CONFLICT DO NOTHING;" \
-            2>>"$DRILL_LOG"
-        MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
-    else
-        echo "  ✗ FAILED: $name (see log)" | tee -a "$DRILL_LOG"
-        MIGRATIONS_FAILED=$((MIGRATIONS_FAILED + 1))
-    fi
-done
-echo ">> Migrations: applied=$MIGRATIONS_APPLIED skipped=$MIGRATIONS_SKIPPED failed=$MIGRATIONS_FAILED" | tee -a "$DRILL_LOG"
-
-# --- Apply startup migrations (inlined pgvector indexes etc.) -----------
-echo ">> Running startup_migrations.apply_all against drill DB" | tee -a "$DRILL_LOG"
+# --- Run production startup migrations against the restored DB ----------
+# This is the production code path. apply_all is idempotent (every
+# operation uses IF NOT EXISTS) so it's safe to invoke against a
+# fully-restored schema. If apply_all evolves to apply more than
+# pgvector HNSW indexes, this drill picks up the new behaviour for
+# free — that's the point: drill what production does.
+#
+# Run from a sidecar gateway container on the drill stack's internal
+# compose network. The drill's postgres is NOT published to the host
+# (publishing 5432:5432 would conflict with the live stack), so a
+# host-side python3 can't reach it. Reaching `postgres:5432` from inside
+# the drill's network mirrors how apply_all runs on real gateway boot.
+# --no-deps keeps us from pulling chromadb/neo4j up; --entrypoint python
+# bypasses /entrypoint.sh's uvicorn launch.
+echo ">> Running startup_migrations.apply_all against drill DB (sidecar)" | tee -a "$DRILL_LOG"
 STARTUP_OK=true
-if ! MEM0_POSTGRES_URL="postgresql://${PG_USER}:${PG_PASS}@localhost:$(docker port "$PG_CT" 5432 | head -1 | cut -d: -f2)/${PG_DB}" \
-        python3 -c "from app.memory.startup_migrations import apply_all; apply_all()" \
+if ! $COMPOSE -p "$DRILL_PROJECT" run --rm --no-deps \
+        -e MEM0_POSTGRES_HOST=postgres \
+        -e MEM0_POSTGRES_PORT=5432 \
+        -e MEM0_POSTGRES_USER="$PG_USER" \
+        -e MEM0_POSTGRES_PASSWORD="$PG_PASS" \
+        -e MEM0_POSTGRES_DB="$PG_DB" \
+        -e SKIP_STARTUP_MIGRATIONS=0 \
+        --entrypoint python \
+        gateway -c "from app.memory.startup_migrations import apply_all; apply_all()" \
         >>"$DRILL_LOG" 2>&1; then
     STARTUP_OK=false
     echo "  ✗ startup_migrations.apply_all failed (see log)" | tee -a "$DRILL_LOG"
 fi
 
 # --- Schema-smoke queries ------------------------------------------------
-# Probe tables created by recent migrations (030+) to confirm
-# today's code would find them. Each query returns 0 rows on a
-# fresh schema — what matters is that the table EXISTS without error.
-echo ">> Schema-smoke queries against migrated DB" | tee -a "$DRILL_LOG"
+# Probe tables today's code expects to find. Each query returns 0 rows
+# on a fresh schema — what matters is that the table EXISTS without
+# error. If the backup is from a time before a migration was applied
+# in production AND that table is now expected, the SELECT errors out
+# and last_drill_ok=false — which is the alert operators need.
+echo ">> Schema-smoke queries against restored DB" | tee -a "$DRILL_LOG"
 SMOKE_OK=true
 SMOKE_PROBES=""
 for probe in \
@@ -186,31 +196,23 @@ done
 
 # --- Manifest update ------------------------------------------------------
 COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
-ALL_OK=$([[ "$MIGRATIONS_FAILED" == "0" ]] && \
-    [[ "$STARTUP_OK" == "true" ]] && \
+ALL_OK=$([[ "$STARTUP_OK" == "true" ]] && \
     [[ "$SMOKE_OK" == "true" ]] && \
     echo true || echo false)
 
 python3 - "$MANIFEST_PATH" "$COMPLETED_AT" "$SET_TS" "$ALL_OK" \
-    "$MIGRATIONS_APPLIED" "$MIGRATIONS_SKIPPED" "$MIGRATIONS_FAILED" \
     "$STARTUP_OK" "$SMOKE_OK" "$SMOKE_PROBES" "$DRILL_LOG" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
 (manifest_path, completed_at, set_ts, all_ok,
- mig_applied, mig_skipped, mig_failed, startup_ok,
- smoke_ok, smoke_probes, log_path) = sys.argv[1:12]
+ startup_ok, smoke_ok, smoke_probes, log_path) = sys.argv[1:9]
 
 new_entry = {
     "ts": completed_at,
     "drilled_set_ts": set_ts,
     "all_ok": all_ok == "true",
-    "migrations": {
-        "applied": int(mig_applied),
-        "skipped": int(mig_skipped),
-        "failed": int(mig_failed),
-    },
     "startup_migrations_ok": startup_ok == "true",
     "smoke_ok": smoke_ok == "true",
     "smoke_probes": dict(
@@ -239,7 +241,7 @@ tmp.replace(p)
 PYEOF
 
 if [[ "$ALL_OK" == "true" ]]; then
-    echo "MIGRATION DRILL OK ($SET_TS, applied=$MIGRATIONS_APPLIED)" | tee -a "$DRILL_LOG"
+    echo "MIGRATION DRILL OK ($SET_TS)" | tee -a "$DRILL_LOG"
     exit 0
 else
     echo "MIGRATION DRILL FAILED ($SET_TS) — see $DRILL_LOG" | tee -a "$DRILL_LOG"

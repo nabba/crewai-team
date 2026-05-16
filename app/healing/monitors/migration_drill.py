@@ -10,12 +10,14 @@ Distinct from siblings:
   * :mod:`app.healing.monitors.version_upgrade_drill` — backup
     restores against NEWER versions of PG/Neo4j/Chroma. Catches
     "does pg_upgrade work on real data?"
-  * **THIS** — backup restores against current versions then
-    applies any ``migrations/*.sql`` past the snapshot's version,
-    then runs ``startup_migrations.apply_all``, then runs a tiny
-    end-to-end smoke (one Commander.handle dispatch against a
-    fixture). Catches "does TODAY's code read a 6-month-old
-    backup?" — the user's exact §2.2 concern.
+  * **THIS** — backup restores against current versions, then runs
+    ``app.memory.startup_migrations.apply_all`` (the same code
+    production runs at boot), then runs schema-smoke ``SELECT count(*)``
+    queries against the tables today's code expects to find. Catches
+    "does TODAY's code read a 6-month-old backup?" — the user's exact
+    §2.2 concern. A backup taken before a never-shipped-in-production
+    migration won't have the new tables, so the smoke fails and the
+    monitor alerts — which is exactly the operator-visible signal.
 
 All three drills are needed because they break for different
 reasons. This monitor watches the schema-migration drill's
@@ -195,9 +197,10 @@ def run(
             "migration_drill:never_run",
             "🛑 Schema-migration drill: no manifest found at "
             "`workspace/backups/migration_drill_manifest.json`. The "
-            "*backups+migrations+smoke* path has never been tested — "
-            "today's code might fail to read a 6-month-old backup "
-            "(the migrations 030-035 added new tables). Run "
+            "*backup+startup_migrations+smoke* path has never been "
+            "exercised — today's code might fail to read a 6-month-old "
+            "backup if a since-shipped migration added tables today's "
+            "code now expects. Run "
             "`bash deploy/scripts/migration-drill.sh` and add it to "
             "cron (quarterly).",
         )
