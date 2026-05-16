@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.andrus.botarmy.host-substrate-metrics</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/andrus/BotArmy/crewai-team/scripts/host_substrate_metrics.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>WORKSPACE_ROOT</key>
+    <string>/Users/andrus/BotArmy/crewai-team/workspace</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/andrus/BotArmy/crewai-team</string>
+
+  <!-- Weekly at 03:00 on Sunday. The in-container monitor probes
+       daily but its internal cadence gate is also weekly, so weekly
+       host-side emission is exactly enough. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>0</integer>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/healing/.host_metrics.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/healing/.host_metrics.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

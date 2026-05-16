@@ -177,6 +177,11 @@ def _anomaly_pause_active(now: float) -> bool:
     ``new_sender`` event since the current engagement began AND the
     ``_PAUSE_AFTER_NEW_SENDER_S`` window has not expired.
 
+    Q16.1 Item 7: reads ``operator_anomaly.last_critical_alert_at``
+    rather than touching the monitor's private state-file schema.
+    Cross-module consumers must use the public function so the
+    state-file format can evolve without breaking vacation_mode.
+
     Failure-isolated: returns False on any error (vacation mode does
     NOT pause-by-default if the check itself breaks; the loud Signal
     alerts on each auto-apply compensate)."""
@@ -185,17 +190,12 @@ def _anomaly_pause_active(now: float) -> bool:
         if not state.engaged or state.engagement is None:
             return False
         engagement_start = state.engagement.engaged_at
-        anomaly_state_path = (
-            _workspace() / "healing" / "operator_anomaly_state.json"
+        from app.healing.monitors.operator_anomaly import (
+            last_critical_alert_at,
         )
-        if not anomaly_state_path.exists():
+        new_sender_at = last_critical_alert_at("new_sender")
+        if new_sender_at is None:
             return False
-        with open(anomaly_state_path, "r", encoding="utf-8") as f:
-            anomaly_state = json.load(f)
-        last_alerts = anomaly_state.get("last_alert_at", {})
-        if not isinstance(last_alerts, dict):
-            return False
-        new_sender_at = float(last_alerts.get("new_sender", 0))
         if new_sender_at <= engagement_start:
             return False
         # Pause iff inside the 24h window after the new_sender alert.

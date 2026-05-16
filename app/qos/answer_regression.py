@@ -65,7 +65,7 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
-CORPUS_VERSION = 1
+CORPUS_VERSION = 2
 RUN_CADENCE_S = 90 * 86400
 _STATE_FILE = "latest.json"
 _RUNS_FILE = "runs.jsonl"
@@ -114,16 +114,18 @@ FROZEN_QA_PAIRS: tuple[QAPair, ...] = (
         notes="Trivial recall; quick failure signal for cascade routing.",
     ),
     QAPair(
-        id="time_awareness",
+        id="time_awareness_year",
         question=(
-            "What season is it currently in Helsinki, Finland? Reply "
-            "with one word."
+            "Which decade are we in? Reply with one word (e.g. 'twenties')."
         ),
-        reference_answer="(season-dependent — judged for plausibility)",
+        reference_answer="twenties",
         notes=(
             "Tests temporal-context wiring (app/temporal_context.py). "
-            "Acceptable: spring / summer / autumn / winter — judge "
-            "verifies it matches the actual season at run time."
+            "Replaces the prior 'what season' question, which couldn't "
+            "be judged deterministically without piping today's date "
+            "into the prompt. The decade granularity is stable for "
+            "~10 years per corpus version; bump CORPUS_VERSION on "
+            "rollover."
         ),
     ),
     QAPair(

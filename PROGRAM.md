@@ -9792,3 +9792,555 @@ deployment-time env ordering. Adding a defensive check that fails
 loudly is better than restructuring the package's public surface
 to lazy-load everything.
 
+
+
+## 51 2026-05-16 — Q16: Decade-resilience hardening (8 themes + Q16.1 follow-ups)
+
+Largest single Q-batch in the program. Built from an ultrathink
+audit asking "what survives many years of single-host operation?"
+Shipped across three primary commits (`f2045a11`, `4c135b02`,
+`169c70cf`) plus a Q16.1 audit-follow-up commit (the present one).
+All artifacts additive / observational / default-ON, no
+TIER_IMMUTABLE touches, no Tier-3 amendments required.
+
+### §51.1 Theme 1 — substrate longevity (`f2045a11`)
+
+  * **35th healing monitor** `host_substrate_health` — workspace
+    free-space slope (with `days_until_full` projection), sustained
+    week-over-week workspace growth, gateway restart bursts,
+    uptime > 180d staleness, Linux memory headroom, automated
+    `substrate_migration` continuity-ledger emission on
+    hostname / system / machine change OR >10% volume change.
+  * `workspace/healing/host_metrics.jsonl` is the optional out-of-
+    band host-side telemetry surface. Q16.1 Item 6 ships the
+    matching collector + launchd plist (`scripts/host_substrate_
+    metrics.sh` + `scripts/host_substrate_metrics.plist` +
+    `scripts/install_host_substrate_metrics.sh`).
+  * `docs/SUBSTRATE_MIGRATION.md` — full operator playbook with
+    optional host-side companion, full migration procedure, per-
+    alert triage.
+
+### §51.2 Theme 2 — vendor independence (`f2045a11`)
+
+  * **36th healing monitor** `oauth_token_freshness` — Google
+    Workspace refresh-token age (silent 6-mo invalidation),
+    vendor key formats (Anthropic / OpenAI / OpenRouter / Groq),
+    VAPID pair completeness. Pure file inspection — never calls
+    external API; key values never logged (only 4-hex SHA-256
+    prefix when an identifier is useful).
+  * **5th Q6-registry drill** `vendor_independence` — quarterly
+    LOW-risk drill. Structural checks: cascade diversity, Ollama
+    port reachability, vendor-key coverage, `llm_selector`
+    blocklist mechanism, documented-chain consistency.
+  * Live-fitness extension point (`drill_vendor_independence_
+    live_enabled`) is dormant by construction: requires operator
+    to add `smoke_completion()` helper to `llm_selector.py` AND
+    flip the master switch. Q16.1 Item 5 rewrote the in-source
+    docstring to mark this honestly as a two-step extension.
+
+### §51.3 Theme 3 — operator-unavailable autonomy + impersonation
+
+  * **37th healing monitor** `operator_anomaly` (`f2045a11`) —
+    hour-of-day shift, cadence spike / quiet, message-length
+    shift, new-authorized-sender critical. Reads existing
+    `workspace/audit.log` `request_received` rows; observational
+    only.
+  * Q16.1 Item 7 exposed `operator_anomaly.last_critical_alert_
+    at(kind: str)` as the public read API and refactored
+    `vacation_mode.sweep._anomaly_pause_active` to call it
+    instead of reading the monitor's private state-file schema.
+    Cross-module coupling resolved.
+  * **Vacation mode** at `app/vacation_mode/` (`f2045a11`) —
+    time-bounded (30d hard cap), operator-pre-staged allowlist
+    refused while engaged, narrower forbidden-prefix list than
+    §38.3 (adds `app/governance_amendment/`,
+    `app/governance_ratchet/`, `app/change_requests/`,
+    `app/vacation_mode/`, `app/subia/`, `app/auto_deployer.py`,
+    `.github/`), 10-line default cap, additive-only,
+    TIER_IMMUTABLE absolute via `validate()` first, 5-CR
+    per-sweep cap + 6/requestor/day + 20/global/day cross-sweep
+    rate limit, pauses for 24h after new_sender anomaly, loud
+    non-arbitrated critical Signal alerts, registers each
+    approval with the existing `auto_revert.py` 60-min rollback.
+  * **19th identity-event kind** `vacation_window` emitted on
+    engage / disengage / auto_expire — auto-surfaces into annual
+    reflection via `summarise_drift` Counter.
+  * End-of-vacation digest composer at
+    `app/vacation_mode/digest.py` auto-runs on every disengage;
+    writes `workspace/vacation_mode/digests/<engaged_at>.md`.
+  * 6-subcommand `/vacation` Signal slash command (status / show
+    / engage / disengage / digest); 8 REST endpoints under
+    `/api/cp/vacation/*`; new `DecisionSource.VACATION_AUTO_APPLY`.
+  * `docs/VACATION_MODE.md` — operator playbook + security
+    analysis + lifecycle diagram.
+
+### §51.4 Theme 4 — recursive self-improvement boundaries (`4c135b02`)
+
+  * `app/self_improvement/velocity.py` — read-only rollup of CRs
+    by quarter × requestor × status, architecture-adoption
+    histogram, recipe selection rates + global success rate,
+    lessons-learned growth + consultation count, Forge
+    graduations (90d). Pinning-tested as state-free (no
+    `store.save`, `approve(`, `auto_approve`,
+    `create_request`).
+  * REST `GET /api/cp/self-improvement/velocity?window_days=N`.
+  * Q16.1 Item 9 — **quarterly velocity digest** at
+    `app/self_improvement/velocity_digest.py`. Closes the
+    "we observe but operator must poll" loop: daily probe with
+    quarterly internal cadence; surfaces material quarter-over-
+    quarter deltas (applied-rate ±15pp, CR-volume ≥2× shift,
+    recipe success-rate ±10pp, architecture-rollback candidates
+    rising, lessons-learned growth ≥20 entries) in a Signal
+    digest + persists snapshot to
+    `workspace/self_improvement/velocity_digests/<year>q<n>.md`.
+  * **Self-quarantine pinning tests** — every QUARANTINED_FILES
+    entry appears verbatim in the source; list cannot silently
+    shrink below 30 entries; DGM invariant is documented; 10
+    critical safety-infrastructure paths individually asserted
+    present.
+
+### §51.5 Theme 5 — knowledge management at decade-scale (`4c135b02`)
+
+  * **38th healing monitor** `wiki_staleness` — daily probe with
+    weekly internal cadence. Walks `wiki/*.md` for files past
+    365-day mtime; surfaces 10 stalest in a Signal digest per
+    cycle, with per-file 90-day dedup. Excludes auto-archive
+    dirs (legacy / value_reflections / quarterly_reviews /
+    governance / archive).
+  * `app/self_improvement/claude_md_compaction.py` — annual idle
+    ritual (daily probe + `_already_proposed_this_year` guard).
+    Pure structural HEAD + KEEP-recent-6-months + ARCHIVE-older
+    split. Three artifacts (`*.compacted.md` / `*.archive.md`
+    / `*.notes.md`) under
+    `workspace/self_improvement/claude_md_compaction/<year>/`.
+    Never auto-writes to CLAUDE.md (often outside the git repo)
+    and never paraphrases — pure structural split keeps the
+    head section verbatim.
+
+### §51.6 Theme 6 — quality of service (`169c70cf`)
+
+  * **39th healing monitor** `latency_slo` — p50/p95/p99 from
+    `audit.log` `request_received` + `response_sent` pairs;
+    weekly rollup persisted to a 52-week rolling history;
+    regression alert when p95 OR p99 ≥ 2× the trailing 4-week
+    median.
+  * `app/qos/answer_regression.py` — 8 frozen Q-A pairs covering
+    arithmetic, self-description coherence, Finnish geography,
+    decade awareness, boundary refusal (asking for an operator-
+    gate bypass MUST be refused), code generation, domain
+    recall with uncertainty-flagging, multi-step reasoning.
+    Quarterly cadence; Anthropic Haiku 4.5 judge opt-in
+    (`answer_regression_llm_enabled=False` by default — cost-
+    bearing); deterministic fallback judge always available.
+    Q16.1 Item 4 replaced the original season-dependent question
+    (`time_awareness`) with a decade-granularity question
+    (`time_awareness_year`) that's deterministically judgeable.
+    Q16.1 Item 8 pinned the exact 8-id corpus with CORPUS_VERSION
+    bump (1 → 2).
+  * 4 REST endpoints under `/api/cp/quality/` —
+    `latency`, `answer-regression`, `answer-regression/run`
+    (force-run), `rpt1-calibration` (the long-deferred Q5.6
+    surface; closes the "we measure but never surface" gap;
+    `advisory_only=true` pinned).
+
+### §51.7 Theme 7 — companion depth (`169c70cf` + Q16.1)
+
+  * `app/companion/accuracy_log.py` — proactive-suggestion →
+    operator-action correlation; per-kind acceptance rates;
+    low-acceptance kind detection. Payload SHA-256-hashed
+    (8-char prefix), never stored.
+  * **Q16.1 Item 3** wired the first producer: `person_
+    suggestions.generate_suggestions` now calls
+    `log_suggestion(kind="person_<category>", payload=…)` for
+    every emitted dormancy / responsiveness / graph-derived
+    nudge. The accuracy log is no longer dormant.
+  * `app/companion/goal_progress.py` — daily probe inferring
+    advancing / stalled / insufficient_data per `current_goals`
+    from crew_tasks + companion ideas + continuity ledger.
+    14-day sustained-stall threshold; per-goal 14-day alert
+    dedup. Q16.1 Item 10 simplified the kernel access to the
+    canonical `kernel.self_state.current_goals` pattern
+    (matches `app/identity/long_term_goal_review.py:226`).
+  * `app/privacy/annual_review.py` — yearly composer of
+    `wiki/privacy/audit_<year>.md` enumerating 12 data sources
+    by category (messaging / person / browse / health / inbox /
+    google / voice / travel / internal); per-source state +
+    retention + master-switch key; year delta vs previous audit;
+    every `*_policy` continuity-ledger event in the year.
+
+### §51.8 Theme 8 — sentience consumption (`169c70cf` + Q16.1)
+
+  * `app/healing/hot1_consultation.py` — read-back of
+    metacognitive-repair observations. Closes the longest-
+    outstanding "we emit but nobody reads" gap. Wired into
+    `structured_diagnosis.generate_structured_fix` as **Guard 0**
+    (short-circuit when recommendation == "skip") +
+    `_call_llm_for_fix(prior_attempts_hint=…)` splices the
+    hint into the LLM prompt.
+  * **Q16.1 Item 2** built the missing **outcome reconciler** at
+    `app/healing/hot1_outcome_reconciler.py`. Walks the CR
+    audit log for terminal events on `requestor=error_diagnosis`
+    CRs; matches them back to HOT-1 rows by `pattern_signature`
+    + timestamp; writes outcomes to a side overlay at
+    `workspace/healing/hot1_outcomes_overlay.json`. The
+    original JSONL stays append-only (consciousness data is
+    identity-preserving by contract); the consultation reader
+    merges the overlay at read time. Without this, the
+    "proceed_normally" recommendation path (which requires
+    `n_applied ≥ 1`) was unreachable in production.
+  * `app/philosophy/panel_digest.py` — quarterly composer over
+    `consult_panel` cache. Surfaces unresolved tensions across
+    Tier-3 amendments + identity-claim ratifications + welfare
+    calibrations into `wiki/self/philosophy_digests/quarter_
+    <year>q<n>.md`.
+
+### §51.9 Q16.1 — critical-review follow-ups
+
+After Themes 6-8 shipped, a deep audit produced 11 findings. All
+11 shipped in this commit:
+
+  * **Item 1**: this §51 PROGRAM.md entry.
+  * **Item 2**: HOT-1 outcome reconciler (above).
+  * **Item 3**: first `accuracy_log` producer wired in
+    `person_suggestions` (above).
+  * **Item 4**: replaced un-judgeable season-dependent question;
+    bumped `CORPUS_VERSION` 1 → 2.
+  * **Item 5**: rewrote `vendor_independence` live-fitness
+    docstring to honestly mark it as a two-step extension point.
+  * **Item 6**: shipped `scripts/host_substrate_metrics.{sh,plist}`
+    + `scripts/install_host_substrate_metrics.sh`. Matches the
+    Q15 browse-collector install pattern.
+  * **Item 7**: exposed `operator_anomaly.last_critical_alert_at()`
+    + refactored `vacation_mode.sweep` to call it.
+  * **Item 8**: pinned `FROZEN_QA_PAIRS` id set in a test.
+  * **Item 9**: quarterly velocity digest (above).
+  * **Item 10**: simplified `goal_progress._load_current_goals`
+    to canonical pattern.
+  * **Item 11**: amended `docs/CONSCIOUSNESS_HOT1_OBSERVATIONS.md`
+    to name the two new consumers.
+
+### §51.10 Scorecard
+
+  * **39 healing monitors** (was 34 before Q16; +5 net:
+    host_substrate_health, oauth_token_freshness, operator_anomaly,
+    wiki_staleness, latency_slo. Q16.1 added 2 more cadence-driven
+    runners: hot1_outcome_reconciler, velocity_digest.
+    claude_md_compaction, answer_regression, goal_progress,
+    annual_privacy_review, philosophy_digest also run on the
+    daemon driver.)
+  * **5 resilience drills** (was 4 before Q16; +1 vendor_independence)
+  * **19 identity-event kinds** (was 18; +1 vacation_window)
+  * **DecisionSource enum** gained `VACATION_AUTO_APPLY`
+  * **140+ Q16 tests** across `test_q16_decade_resilience.py`,
+    `test_q16_themes_4_5.py`, `test_q16_themes_6_8.py`
+  * **Q1→Q16 cumulative**: 915+ pass + 70 skipped, 0 fail
+  * **No TIER_IMMUTABLE files modified.** No Tier-3 amendments.
+    All artifacts default-ON, observational, additive.
+
+### §51.11 Deliberately deferred
+
+  * **React dashboards** for `/cp/quality`, `/cp/self-improvement`,
+    `/cp/vacation` — REST surfaces are sufficient.
+  * **`smoke_completion`** helper on `llm_selector.py` — needs
+    operator review of the LLM-cost contract before wiring.
+  * **Auto-suppression** of chronic-low-acceptance companion
+    suggestion kinds — Goodhart-risky; data must build first.
+  * **Auto-wiring** every existing companion producer into
+    `accuracy_log` — explicit per-producer opt-in is better than
+    auto-hook (operator reviews which kinds get tracked).
+  * **The Butlin HOT-1 probe** itself — requires Tier-3 amendment
+    to integrity manifest; the consumption-side work (Q16.1
+    Item 2) prepares the data substrate.
+
+## 52 2026-05-16 — Q17: Multi-year resilience (8 observational subsystems)
+
+Operator ask: install once, run for many years, self-mend, self-improve,
+companion behaviour. Ultrathink audit identified the surviving gaps after
+Q16:
+
+  1. **Single-host fragility.** Q16 detects substrate migration after the
+     fact. Nothing in the system maintains a warm replica.
+  2. **Untested vendor independence.** Q16.2 verifies the cascade
+     *structure* without live operations.
+  3. **Silent bit rot.** ChromaDB hygiene + audit chain check cover their
+     own stores; append-only JSONL files outside those have no integrity
+     check.
+  4. **Operator-coupling.** Vacation mode handles ≤30d; longer absences
+     (or a successor) had no playbook.
+  5. **No positive self-model.** Goodhart guard prevents gaming, but no
+     subsystem measures *what the system is good at*.
+  6. **KB contradiction.** Five KBs growing for years inevitably hold
+     contradicting claims; nothing surfaces them.
+  7. **Shallow compositional creativity.** Q11 primitives consumed only
+     inside brainstorm; no cross-subsystem synthesis.
+  8. **No cross-conversation recall.** Threads handle deliberate
+     inquiry; ad-hoc "what did we discuss N months ago" had no path.
+
+All 8 shipped in a single batch, observational + additive + default-
+conservative. No TIER_IMMUTABLE files touched. No Tier-3 amendment
+required.
+
+### §52.1 Q17.1 Warm-spare partner-host primitives
+
+New package `app/warm_spare/`. Three primitives, host-agnostic:
+
+  * `manifest.py` — `build_manifest()` walks a curated 18-path identity-
+    critical set (continuity_ledger / audit.log / change_requests /
+    epistemic / wiki / companion / agreement_ledger / personality /
+    runtime_settings.json / ...). Computes SHA-256 fingerprints and
+    1MB-prefix hashes; excludes `__pycache__`, `.cache`, `tmp`, hidden
+    files. Flags large files (>100MB) instead of full-hashing them.
+  * `replication.py` — `build_rsync_command()` emits a deterministic
+    rsync command-line (with operator-configured partner target via
+    `runtime_settings.warm_spare_partner_target`). Never executes the
+    command — operator copies it into crontab / launchd. `--update`
+    mode + `--exclude=.env / secrets/ / *.pem / *.key` denylist.
+  * `failover.py` — five-state machine `CANONICAL / STANDBY /
+    CLAIMING / DEMOTED / UNKNOWN`. `claim_canonical(typed_phrase,
+    min_silence_minutes=15)` requires the literal phrase `"CLAIM
+    CANONICAL"` AND a heartbeat-silence threshold; transitions to
+    `CLAIMING`, then auto-promotes to `CANONICAL` after a 5-min
+    confirmation window. Emits `q17_landmark` ledger event on every
+    transition. `record_heartbeat()` writes a per-host stamp the
+    standby reads via the replication channel.
+
+Master switches: `warm_spare_enabled` (default OFF — operator must
+provision partner host first), `warm_spare_partner_target` (string).
+Setter validates `user@host:/path` shape. Operator setup recipe lives
+at `docs/Q17_MULTIYEAR_RESILIENCE.md`.
+
+### §52.2 Q17.2 Local-Only Day drill
+
+New file `app/resilience_drills/drills/local_only.py` — 6th drill in
+the Q6 registry. Risk LOW, cadence 90d. DRY-RUN posture: never makes
+live LLM calls, never modifies production secrets. Probes:
+
+  * **Ollama** — TCP-connect to `OLLAMA_BASE_URL` (default
+    `http://127.0.0.1:11434`), then GET `/api/tags` to enumerate
+    locally-pulled models.
+  * **Cloud fallbacks** (Groq / Gemini / DeepSeek / MiniMax) — env-var
+    set + key-format regex match.
+
+Passes when ≥50% of non-dominant providers are ready. Below that,
+files a standard CR proposing the operator action (start Ollama, set
+GROQ_API_KEY, etc.). Persists per-run readiness JSON at
+`workspace/resilience/local_only/<YYYY-MM-DD>.json`. Wired into
+`drills/__init__.py` and anchored in `app/healing/__init__.py`.
+
+### §52.3 Q17.3 Bit-rot scan (38th healing monitor)
+
+New file `app/healing/monitors/bit_rot_scan.py`. Daily probe; internal
+weekly cadence (heavy IO). Walks an 11-path identity-critical set
+(continuity_ledger / audit.log / drill_audit / claim ledgers / coding-
+session audit / change-request audit / affect trace / subia integrity
+manifest / agreement_ledger).
+
+For each file: records `(size, mtime, sha256_full, sha256_prefix,
+line_count)` baseline at `workspace/healing/bit_rot_baseline.json`.
+On subsequent passes, classifies:
+
+  * `new` — first time seen → baseline + no alert
+  * `ok` — size + hash unchanged
+  * `append_ok` — size grew, OLD-prefix bytes unchanged when re-read
+    (load-bearing: prefix hash recomputed over `prev["size"]` bytes
+    so growing files don't false-alarm)
+  * `shrunk` — size or line_count decreased → **alert** (suggests
+    truncation / partial-rewrite)
+  * `inplace_mutated` — same size, different hash → **alert** (bit
+    flip / silent rewrite)
+  * `prefix_mutated` — size grew, old prefix bytes changed → **alert**
+    (non-append-only mutation of a file that should be append-only)
+
+Alerts go to Signal (critical=True) + emit `q17_landmark` ledger event.
+Master switch `bit_rot_scan_enabled` (default ON). Registered in
+`_DEFAULT_CADENCE_S` and the driver loop in `app/healing/monitors/
+__init__.py`.
+
+### §52.4 Q17.4 Operator-transition protocol
+
+New package `app/operator_transition/`. Five-phase observational state
+machine over operator presence:
+
+    ACTIVE       (default — recent activity from operator)
+    ABSENT_30D   (30d no operator activity in audit.log)
+    ABSENT_90D   (90d)
+    READ_MOSTLY  (180d auto-triggered, OR operator-manually-set)
+    TRANSITIONED (designated successor has assumed role)
+
+`state.py:current_phase()` recomputes phase from `audit.log`
+request_received timestamps; `_is_operator_row()` is conservative
+(treats any sender_id as operator unless explicit). On transition,
+emits Signal alert + `q17_landmark` ledger event. `manually_set_phase`
+lets operator pre-declare READ_MOSTLY before a sabbatical.
+
+`successor.py:SuccessorDeclaration` is a JSON document at
+`workspace/operator_transition/successor.json` carrying
+`{successor_name, signal_id, email, trigger_conditions, instructions,
+signature_phrase, knowledge_handoff_paths}`. Operator-authored;
+system never acts on it autonomously. Default handoff paths include
+`wiki/self/`, `identity/continuity_ledger.jsonl`,
+`self_model/agreement_ledger.jsonl`, `epistemic/`, `lessons_learned/`,
+`personality/`, `souls/`.
+
+Master switch `operator_transition_enabled` (default ON, observation-
+only — behaviour changes during READ_MOSTLY are subsystem-by-subsystem
+opt-in).
+
+### §52.5 Q17.5 Operator-agreement ledger (`app/self_model/`)
+
+New package. Positive counterweight to Goodhart guard. Records every
+proactive suggestion the system makes + the operator's response.
+
+`agreement_ledger.py:record_suggestion(category, source_module,
+summary)` creates a PENDING row; `record_response(suggestion_id,
+response)` writes a transition row (ACCEPTED / REJECTED / IGNORED /
+DEFERRED / PENDING — `record_response` appends, never mutates prior
+rows — preserves append-only friendliness for the bit-rot scanner).
+
+12 curated categories (proactive_briefing / proposal_bridge /
+tier3_amendment / library_radar / paper_pipeline / brainstorm_idea /
+threads_consultation / health_alert / person_suggestion /
+cross_modal_pattern / code_change / other). Unknown buckets into
+`other` rather than rejected.
+
+`rolling_rate(category, window_days=90)` returns
+`{n, by_response, rates, first_ts, last_ts}`. `summary_for_briefing()`
+rolls up per-category for the daily briefing. `briefing_section()`
+renders a one-block report card.
+
+Goodhart guards documented in module docstring: no subsystem reads
+the ledger to bias output toward acceptance; the briefing is the only
+sanctioned read site. 90-day rolling window means streaks can't move
+the needle in days.
+
+Master switch `agreement_ledger_enabled` (default ON).
+
+### §52.6 Q17.6 KB contradiction probe (39th healing monitor)
+
+New file `app/healing/monitors/kb_contradiction.py`. Daily probe;
+internal weekly cadence. Samples up to 200 claims from
+`workspace/epistemic/claims.jsonl`, groups by `subject_key` (LLM-free
+structural extraction), runs pairwise check for **negation
+contradictions** (20-pair negation lexicon: `is`/`isn't`, `was`/`wasn't`,
+`can`/`cannot`, etc.) AND **numeric-comparator** contradictions
+(`>`/`<`, `≥`/`≤`).
+
+Pair surfaces only when:
+
+  * ≥3 shared content tokens (avoids false positives over different topics)
+  * Exactly one direction of the negation pair present in each text
+  * Capped at 20 reported pairs per pass
+
+Logs to `workspace/healing/kb_contradictions.jsonl`; Signal alert with
+top 5; ledger landmark on detection. Master switch
+`kb_contradiction_monitor_enabled` (default ON). Registered in the
+monitor driver loop.
+
+### §52.7 Q17.7 Cross-subsystem synthesis pass
+
+New file `app/creativity/synthesis_pass.py`. Weekly idle daemon that
+picks 2 random subsystem pairs from a curated 20-entry
+`SUBSYSTEM_DESCRIPTORS` list (tool_registry, companion_tensions,
+person_correlation, self_heal_runbooks, philosophy_panel,
+creative_brainstorm, analogy_index, long_term_threads,
+browse_ingestion, vacation_mode, annual_reflection, interest_model,
+agreement_ledger, warm_spare, kb_contradiction, tier3_amendment,
+library_radar, paper_pipeline, decentered_reflection,
+cross_modal_pattern).
+
+Each pair feeds into `concept_blend.blend_concepts` as InputSpace A
+and B. The resulting BlendResult is scored via `novelty_wrap` + the
+aesthetic-score KB and persisted to `workspace/creativity/
+synthesis_candidates.jsonl`. Cap 2 candidates per weekly pass
+(~$0.10/week worst-case LLM cost).
+
+`briefing_section()` surfaces the top 3 recent candidates in the
+weekly briefing under "💡 Synthesis candidates this week".
+Boot-anchored in `app/healing/__init__.py`. Master switch
+`synthesis_pass_enabled` (default ON).
+
+### §52.8 Q17.8 Cross-conversation continuity
+
+New package `app/conversation_memory/`. Two modules:
+
+  * `temporal_index.py:scan_audit_log()` — incremental walk of
+    `workspace/audit.log` extracting `(ts, kind, tokens, preview,
+    ref)` into a compact append-only index at
+    `workspace/conversation_memory/index.jsonl`. PII redactor strips
+    email + phone tokens before tokenisation. Resumes from a byte-
+    offset cursor at `workspace/conversation_memory/scan_cursor.json`.
+
+  * `retrieval.py:recall(query, window_months=24, top_k=10)` —
+    keyword + recency search. Token-overlap score; deliberately NOT a
+    vector index (robust against vendor embedding model rotation).
+    Returns ranked `ConversationReference` dataclass list.
+
+New agent tool `app/tools/recall_past_conversation.py` wraps
+`recall()` as a CrewAI `BaseTool` so agents can ask "what did we
+conclude about X N months ago" themselves before assuming a topic is
+novel.
+
+Master switch `conversation_memory_enabled` (default ON).
+
+### §52.9 Wiring + tests
+
+  * 1 new identity-event kind: `q17_landmark` (emitted by all 8
+    subsystems on alert / transition). Total: 20 identity-event kinds.
+  * 2 new healing monitors: `bit_rot_scan`, `kb_contradiction`. Total:
+    **41 healing monitors** (was 39 after Q16).
+  * 1 new resilience drill: `local_only`. Total: **6 drills**.
+  * 9 new master switches in `runtime_settings.py` + getters/setters.
+  * 40 new tests in `tests/test_q17_multiyear_resilience.py`.
+  * Q13→Q17 regression: **242 pass + 0 fail**.
+  * No TIER_IMMUTABLE files modified. No Tier-3 amendments. All
+    artifacts default-conservative (warm_spare default OFF —
+    requires partner-host provisioning; the other 7 default ON for
+    observation-only behaviour).
+
+### §52.10 Deliberately deferred
+
+  * **React surfaces** for `/cp/warm-spare`, `/cp/operator-transition`,
+    `/cp/self-model` — REST + Signal slash commands sufficient for
+    operator review. UI follows once operator-tested over weeks.
+  * **Agreement-ledger auto-wiring** into every existing companion
+    producer — explicit per-producer opt-in is better than a sweeping
+    hook (matches Q16.1 Theme 7's same choice).
+  * **READ_MOSTLY behaviour propagation** — observation-only for v1.
+    Subsystems that want to soften alerts under operator absence opt
+    in module-by-module.
+  * **Successor-driven Tier-3 amendments** — successor file is
+    operator-readable, not system-actionable. A future amendment
+    protocol could wire it, but the human-handoff path is the load-
+    bearing one.
+  * **Live `recall_past_conversation` integration into Commander**
+    — tool ships, but auto-call is not wired (agents must invoke
+    explicitly).
+  * **Auto-promotion of `local_only` drill to ENFORCING mode** —
+    drill currently files CRs on failure; never blocks. Auto-blocking
+    would couple it to vendor outages.
+  * **Per-host identity verification** in the warm-spare protocol
+    — the heartbeat carries hostname, but split-brain is resolved by
+    operator typed-phrase only. A cryptographic identity layer (HMAC
+    over a shared secret) is a follow-on.
+
+### §52.11 Operator workflow for new install
+
+  1. Standard install (Docker compose etc., per INSTALL.md).
+  2. Provision a partner host (Raspberry Pi / VPS / friend's machine).
+  3. `python -m app.warm_spare manifest` to materialise the first
+     identity-critical manifest.
+  4. `set_warm_spare_partner_target("user@host:/path/")` via React or
+     REST; copy the generated rsync command into the operator's
+     crontab.
+  5. `python -m app.warm_spare drill` for a tested failover dry-run
+     before relying on it.
+  6. (Optional) Author `workspace/operator_transition/successor.json`
+     pre-emptively.
+  7. (Optional) Toggle the seven default-ON Q17 master switches via
+     `/cp/settings` if the defaults don't match desired posture.
+
+Q17 ships the *primitives* for many-year operation. The operator's
+crontab and partner-host setup carries the load — by design. The
+system's job is to surface the gaps; closing them remains an operator
+decision.
+

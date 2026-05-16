@@ -351,6 +351,16 @@ def _defaults() -> dict[str, Any]:
         #   * philosophy_digest_enabled — quarterly digest composer
         #     over consult_panel cache.
         "hot1_consultation_enabled": True,
+        # Q16.1 Item 2 — outcome reconciler. Walks CR audit for
+        # terminal events on requestor=error_diagnosis CRs; matches
+        # them back to HOT-1 observations by pattern_signature; writes
+        # outcomes to a side overlay so the original log stays
+        # append-only. Without this, hot1_consultation can never see
+        # n_applied > 0 in production.
+        "hot1_outcome_reconciler_enabled": True,
+        # Q16.1 Item 9 — quarterly velocity digest closes the
+        # "we observe but operator must poll" loop on Theme 4.
+        "velocity_digest_enabled": True,
         "philosophy_digest_enabled": True,
 
         # Theme 3 (defense piece): VACATION MODE. Master switch.
@@ -399,6 +409,29 @@ def _defaults() -> dict[str, Any]:
         # Default ON per operator decision; flippable from React
         # /cp/settings → Analogy index card.
         "analogy_index_populator_enabled": True,
+
+        # ── Q17 — multi-year resilience (PROGRAM §52) ───────────────
+        # Eight observational subsystems, all default ON unless noted.
+        #   Q17.1 warm-spare partner-host replication primitives
+        #   Q17.2 local-only quarterly drill
+        #   Q17.3 bit-rot scan
+        #   Q17.4 operator-transition protocol
+        #   Q17.5 operator-agreement ledger (self-model)
+        #   Q17.6 KB contradiction probe
+        #   Q17.7 cross-subsystem synthesis pass
+        #   Q17.8 cross-conversation continuity
+        # warm_spare defaults OFF — requires operator to provision a
+        # partner host first; the rsync target must be reachable before
+        # enabling.
+        "warm_spare_enabled": False,
+        "warm_spare_partner_target": "",
+        "drill_local_only_enabled": True,
+        "bit_rot_scan_enabled": True,
+        "operator_transition_enabled": True,
+        "agreement_ledger_enabled": True,
+        "kb_contradiction_monitor_enabled": True,
+        "synthesis_pass_enabled": True,
+        "conversation_memory_enabled": True,
 
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
@@ -1746,6 +1779,24 @@ def set_hot1_consultation_enabled(value: bool) -> None:
     _update({"hot1_consultation_enabled": bool(value)})
 
 
+def get_hot1_outcome_reconciler_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("hot1_outcome_reconciler_enabled", True)
+    )
+
+
+def set_hot1_outcome_reconciler_enabled(value: bool) -> None:
+    _update({"hot1_outcome_reconciler_enabled": bool(value)})
+
+
+def get_velocity_digest_enabled() -> bool:
+    return bool(_ensure_initialized().get("velocity_digest_enabled", True))
+
+
+def set_velocity_digest_enabled(value: bool) -> None:
+    _update({"velocity_digest_enabled": bool(value)})
+
+
 def get_philosophy_digest_enabled() -> bool:
     return bool(_ensure_initialized().get("philosophy_digest_enabled", True))
 
@@ -1776,3 +1827,81 @@ def set_vacation_mode_state(value: dict) -> None:
     if not isinstance(value, dict):
         raise ValueError("vacation_mode_state must be a dict")
     _update({"vacation_mode_state": dict(value)})
+
+
+# ── Q17 — multi-year resilience getters/setters (PROGRAM §52) ────────────
+
+
+def get_warm_spare_enabled() -> bool:
+    return bool(_ensure_initialized().get("warm_spare_enabled", False))
+
+
+def set_warm_spare_enabled(value: bool) -> None:
+    _update({"warm_spare_enabled": bool(value)})
+
+
+def get_warm_spare_partner_target() -> str:
+    return str(_ensure_initialized().get("warm_spare_partner_target", "") or "")
+
+
+def set_warm_spare_partner_target(value: str) -> None:
+    v = (value or "").strip()
+    if v and ":" not in v:
+        raise ValueError("partner target must be in 'user@host:/path' form")
+    _update({"warm_spare_partner_target": v})
+
+
+def get_drill_local_only_enabled() -> bool:
+    return bool(_ensure_initialized().get("drill_local_only_enabled", True))
+
+
+def set_drill_local_only_enabled(value: bool) -> None:
+    _update({"drill_local_only_enabled": bool(value)})
+
+
+def get_bit_rot_scan_enabled() -> bool:
+    return bool(_ensure_initialized().get("bit_rot_scan_enabled", True))
+
+
+def set_bit_rot_scan_enabled(value: bool) -> None:
+    _update({"bit_rot_scan_enabled": bool(value)})
+
+
+def get_operator_transition_enabled() -> bool:
+    return bool(_ensure_initialized().get("operator_transition_enabled", True))
+
+
+def set_operator_transition_enabled(value: bool) -> None:
+    _update({"operator_transition_enabled": bool(value)})
+
+
+def get_agreement_ledger_enabled() -> bool:
+    return bool(_ensure_initialized().get("agreement_ledger_enabled", True))
+
+
+def set_agreement_ledger_enabled(value: bool) -> None:
+    _update({"agreement_ledger_enabled": bool(value)})
+
+
+def get_kb_contradiction_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("kb_contradiction_monitor_enabled", True))
+
+
+def set_kb_contradiction_monitor_enabled(value: bool) -> None:
+    _update({"kb_contradiction_monitor_enabled": bool(value)})
+
+
+def get_synthesis_pass_enabled() -> bool:
+    return bool(_ensure_initialized().get("synthesis_pass_enabled", True))
+
+
+def set_synthesis_pass_enabled(value: bool) -> None:
+    _update({"synthesis_pass_enabled": bool(value)})
+
+
+def get_conversation_memory_enabled() -> bool:
+    return bool(_ensure_initialized().get("conversation_memory_enabled", True))
+
+
+def set_conversation_memory_enabled(value: bool) -> None:
+    _update({"conversation_memory_enabled": bool(value)})

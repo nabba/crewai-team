@@ -284,6 +284,27 @@ def generate_suggestions() -> list[dict[str, Any]]:
     # Log emitted suggestions for operator review.
     if capped:
         _log_emitted(capped)
+        # Q16.1 Item 3 (PROGRAM §51): record each emission in the
+        # companion accuracy log so the operator can later see
+        # acceptance-rate-by-suggestion-kind. Payload is hashed —
+        # never stored. Failure-isolated.
+        try:
+            from app.companion.accuracy_log import log_suggestion
+            for s in capped:
+                log_suggestion(
+                    kind=f"person_{s.get('category', 'unknown')}",
+                    payload={
+                        "person_id": s.get("person_id"),
+                        "category": s.get("category"),
+                    },
+                    topic="person_suggestions",
+                    surface="briefing",
+                )
+        except Exception:
+            logger.debug(
+                "person_suggestions: accuracy_log emission failed",
+                exc_info=True,
+            )
 
     return capped
 

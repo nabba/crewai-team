@@ -116,6 +116,33 @@ def _audit_log_path() -> Path:
     return _workspace() / "audit.log"
 
 
+# ── Public read API (Q16.1 Item 7 — decoupling cross-module readers)
+
+
+def last_critical_alert_at(kind: str) -> Optional[float]:
+    """Return the epoch-second timestamp of the most recent alert for
+    ``kind`` (e.g. ``"new_sender"``, ``"hour_shift"``, ``"cadence_quiet"``).
+    Returns None when no alert has fired.
+
+    Replaces direct reads of ``operator_anomaly_state.json`` from
+    other modules. Cross-module consumers (e.g. ``vacation_mode``)
+    should call this rather than reading the state file directly —
+    the state-file schema is private and may change without notice.
+
+    Failure-isolated: returns None on any I/O / parse error."""
+    try:
+        state = _read_state()
+    except Exception:
+        return None
+    last_alerts = state.get("last_alert_at", {})
+    if not isinstance(last_alerts, dict):
+        return None
+    value = last_alerts.get(kind)
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return float(value)
+
+
 def _read_state() -> dict[str, Any]:
     p = _state_path()
     if not p.exists():
