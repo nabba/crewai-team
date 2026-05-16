@@ -100,6 +100,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "embedding_model_swap",  # PROGRAM §49 — Q14.4 (year-2+ #10.4)
     "interest_ossification",  # PROGRAM §49 — Q14.5 (year-2+ #10.5)
     "browse_ingestion_policy",  # PROGRAM §50 — Q15.1 browse ingestion
+    "vacation_window",  # PROGRAM §51 — Q16 Theme 3 vacation mode
 })
 
 

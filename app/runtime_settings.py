@@ -261,6 +261,73 @@ def _defaults() -> dict[str, Any]:
         "lock_contention_monitor_enabled": True,
         "influence_graph_monitor_enabled": True,
 
+        # ── Q16 — decade-resilience hardening (PROGRAM §51) ───────
+        # Theme 1: substrate longevity. 35th healing monitor —
+        # workspace free-space trend with days-until-full projection,
+        # sustained week-over-week workspace growth, gateway restart
+        # bursts, uptime > 180 d staleness, Linux memory headroom.
+        # Reads-only; surfaces optional ``workspace/healing/
+        # host_metrics.jsonl`` written by an out-of-band host-side
+        # companion (parallels Q15's two-process split).
+        "host_substrate_health_monitor_enabled": True,
+        # Theme 2: vendor-independence depth. 36th healing monitor +
+        # 5th resilience drill.
+        #   * oauth_token_freshness — watches Google Workspace refresh
+        #     token (silent 6-mo invalidation), vendor key formats
+        #     (Anthropic / OpenAI / OpenRouter / Groq), VAPID keypair
+        #     completeness. Pure file inspection — never calls an
+        #     external API.
+        #   * drill_vendor_independence — quarterly LOW-risk drill;
+        #     verifies the LLM cascade routes past dominant providers
+        #     (Anthropic + OpenRouter) without an outage. Structural
+        #     checks only — never issues live LLM calls.
+        "oauth_token_freshness_monitor_enabled": True,
+        "drill_vendor_independence_enabled": True,
+        # Opt-in extension to vendor_independence (PROGRAM §51 Q16
+        # Theme 2 follow-on). When ON, the drill issues 3 cheap LLM
+        # smoke calls (~$0.10/quarter) through the cascade with
+        # dominant providers excluded; FAILs if <2/3 yield a non-
+        # empty short reply. Default OFF — the structural drill
+        # alone is the always-on path; live fitness adds an actual
+        # quality probe at small recurring cost.
+        "drill_vendor_independence_live_enabled": False,
+        # Theme 3 (partial — vacation mode deferred to a separate
+        # security-reviewed change): 37th healing monitor that watches
+        # the OPERATOR's pattern (hour-of-day shift, cadence
+        # spikes/quiet, message-length shift, new-authorized-sender
+        # surfacing). Observational only; never blocks or refuses an
+        # action. Reads ``workspace/audit.log`` ``request_received``
+        # rows.
+        "operator_anomaly_monitor_enabled": True,
+
+        # Theme 3 (defense piece): VACATION MODE. Master switch.
+        # When ON, the vacation-mode sweep daemon scans PENDING CRs
+        # every 5 min; for those matching the OPERATOR-STAGED
+        # allowlist (in ``vacation_mode_state``), it auto-approves
+        # via the existing lifecycle.approve(...) pathway with
+        # ``DecisionSource.VACATION_AUTO_APPLY``. Vacation mode itself
+        # is INACTIVE until the operator explicitly engages via
+        # ``app.vacation_mode.engage(...)``; this flag is the kill-
+        # switch above engagement (operator can disable the whole
+        # system without losing the staged allowlist).
+        #
+        # Default ON for the kill-switch. Engagement is DEFAULT OFF
+        # (the state below). Pre-staging the allowlist is operator-
+        # driven.
+        "vacation_mode_enabled": True,
+        # The full vacation state blob. Schema documented in
+        # ``app/vacation_mode/state.py:VacationState.to_dict``.
+        # Starts empty (no allowlist, not engaged).
+        "vacation_mode_state": {
+            "staged_allowlist": {
+                "requestor_allowlist": [],
+                "path_prefix_allowlist": [],
+                "max_diff_lines": 10,
+            },
+            "engaged": False,
+            "engagement": None,
+        },
+
         # Q9.3 — Travel monitor configuration (PROGRAM §46.6).
         # ``tripit_ical_url`` is the per-user TripIt iCal feed
         # (Settings → Calendar Sync → "Copy to your calendar" in
@@ -1476,3 +1543,86 @@ def get_influence_graph_monitor_enabled() -> bool:
 
 def set_influence_graph_monitor_enabled(value: bool) -> None:
     _update({"influence_graph_monitor_enabled": bool(value)})
+
+
+# ── Q16 — decade-resilience hardening (PROGRAM §51) ────────────────────
+
+
+def get_host_substrate_health_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get(
+            "host_substrate_health_monitor_enabled", True,
+        )
+    )
+
+
+def set_host_substrate_health_monitor_enabled(value: bool) -> None:
+    _update({"host_substrate_health_monitor_enabled": bool(value)})
+
+
+def get_oauth_token_freshness_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get(
+            "oauth_token_freshness_monitor_enabled", True,
+        )
+    )
+
+
+def set_oauth_token_freshness_monitor_enabled(value: bool) -> None:
+    _update({"oauth_token_freshness_monitor_enabled": bool(value)})
+
+
+def get_drill_vendor_independence_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("drill_vendor_independence_enabled", True)
+    )
+
+
+def set_drill_vendor_independence_enabled(value: bool) -> None:
+    _update({"drill_vendor_independence_enabled": bool(value)})
+
+
+def get_drill_vendor_independence_live_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get(
+            "drill_vendor_independence_live_enabled", False,
+        )
+    )
+
+
+def set_drill_vendor_independence_live_enabled(value: bool) -> None:
+    _update({"drill_vendor_independence_live_enabled": bool(value)})
+
+
+def get_operator_anomaly_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("operator_anomaly_monitor_enabled", True)
+    )
+
+
+def set_operator_anomaly_monitor_enabled(value: bool) -> None:
+    _update({"operator_anomaly_monitor_enabled": bool(value)})
+
+
+def get_vacation_mode_enabled() -> bool:
+    return bool(_ensure_initialized().get("vacation_mode_enabled", True))
+
+
+def set_vacation_mode_enabled(value: bool) -> None:
+    _update({"vacation_mode_enabled": bool(value)})
+
+
+def get_vacation_mode_state() -> dict:
+    """Read the vacation-mode state blob. Schema documented in
+    ``app/vacation_mode/state.py:VacationState.to_dict``."""
+    return dict(_ensure_initialized().get("vacation_mode_state", {}) or {})
+
+
+def set_vacation_mode_state(value: dict) -> None:
+    """Persist the full state blob. Vacation-mode internals use this
+    via the ``_update``/``_ensure_initialized`` shape; operators should
+    call ``app.vacation_mode.engage`` / ``stage_allowlist`` / etc.
+    rather than this setter directly."""
+    if not isinstance(value, dict):
+        raise ValueError("vacation_mode_state must be a dict")
+    _update({"vacation_mode_state": dict(value)})

@@ -88,6 +88,9 @@ _DEFAULT_CADENCE_S = {
     "embedding_drift": 24 * 3600,              # daily probe; internal weekly cadence; PROGRAM §49 Q14.4
     "interest_ossification": 24 * 3600,        # daily probe; internal weekly cadence; PROGRAM §49 Q14.5
     "lock_contention": 24 * 3600,              # daily probe; internal weekly cadence; PROGRAM §49 Q14.6
+    "host_substrate_health": 24 * 3600,        # daily probe; internal weekly trend; PROGRAM §51 Q16 Theme 1
+    "oauth_token_freshness": 24 * 3600,        # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 2
+    "operator_anomaly": 24 * 3600,             # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 3
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -419,6 +422,53 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: lock_contention import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 1 — host-substrate health probe.
+    # Daily probe, internal weekly trend computation. Watches the
+    # host itself: free-space trend (days-until-full projection),
+    # workspace bytes growth, gateway restart bursts, uptime
+    # staleness, Linux memory headroom. Reads-only; surfaces an
+    # optional out-of-band host-side telemetry file.
+    try:
+        from app.healing.monitors import host_substrate_health
+        monitors.append((
+            "host_substrate_health", host_substrate_health.run,
+            _DEFAULT_CADENCE_S["host_substrate_health"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: host_substrate_health import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 2 — vendor-credential freshness probe.
+    # Daily probe, internal weekly cadence. Pure file inspection:
+    # Google Workspace refresh token age, vendor API key format
+    # patterns (Anthropic / OpenAI / OpenRouter / Groq), VAPID
+    # keypair completeness. Never issues an external API call.
+    try:
+        from app.healing.monitors import oauth_token_freshness
+        monitors.append((
+            "oauth_token_freshness", oauth_token_freshness.run,
+            _DEFAULT_CADENCE_S["oauth_token_freshness"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: oauth_token_freshness import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 3 (partial) — operator-pattern anomaly
+    # detector. Reads workspace/audit.log request_received rows
+    # (timestamps + lengths only, no message content); surfaces
+    # hour-of-day shifts, cadence spikes/quiet, message-length
+    # shifts, new-authorized-sender events. Observational only —
+    # never blocks or refuses any action.
+    try:
+        from app.healing.monitors import operator_anomaly
+        monitors.append((
+            "operator_anomaly", operator_anomaly.run,
+            _DEFAULT_CADENCE_S["operator_anomaly"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: operator_anomaly import failed", exc_info=True,
         )
 
     if not monitors:

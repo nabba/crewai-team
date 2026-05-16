@@ -2687,6 +2687,14 @@ try:
 except Exception:
     logger.debug("Workspace Companion API not available", exc_info=True)
 
+# ── Vacation Mode API (PROGRAM §51 Q16 Theme 3) ─────────────────────────────
+try:
+    from app.api.vacation_api import router as vacation_router
+    app.include_router(vacation_router)
+    logger.info("Vacation Mode API mounted at /api/cp/vacation/")
+except Exception:
+    logger.debug("Vacation Mode API not available", exc_info=True)
+
 # ── Brainstorm API (multi-agent + solo Q/A sessions) ─────────────────────────
 try:
     from app.brainstorm.api import router as brainstorm_router

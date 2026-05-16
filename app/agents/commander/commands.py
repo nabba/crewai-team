@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from pathlib import Path
 from app.config import get_settings
 from app.llm_factory import is_using_local
@@ -116,6 +117,22 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         or lower == "thread"
     ):
         sub = _handle_thread_command(user_input)
+        if sub is not None:
+            return sub
+
+    # ── Q16 Theme 3 (PROGRAM §51) — vacation mode ──────────────────
+    # /vacation                               status (engaged / staged / time left)
+    # /vacation status                        same as above
+    # /vacation show                          show staged or frozen allowlist
+    # /vacation engage <hours> <reason>       engage for N hours
+    # /vacation disengage                     disengage (triggers digest)
+    # /vacation digest [N]                    read most recent (or N-th) digest
+    if (
+        lower.startswith("/vacation")
+        or lower.startswith("vacation ")
+        or lower == "vacation"
+    ):
+        sub = _handle_vacation_command(user_input, sender=sender)
         if sub is not None:
             return sub
 
@@ -2592,6 +2609,167 @@ def _goals_help() -> str:
         "now (bypasses cadence guard)\n"
         "/goals list-reviews                     — list past quarterly reviews\n"
         "REST: GET /api/cp/goals/reviews · POST /api/cp/goals/review"
+    )
+
+
+def _handle_vacation_command(
+    user_input: str, *, sender: str = "operator",
+) -> str | None:
+    """Dispatcher for ``/vacation`` slash commands.
+
+    Subcommands (lowercased):
+      * (empty) / ``status`` → status
+      * ``show``             → staged or frozen allowlist
+      * ``engage <h> <r>``   → engage for N hours with reason
+      * ``disengage``        → disengage (composes digest)
+      * ``digest [N]``       → show recent digest (newest = 0)
+    """
+    text = user_input.strip()
+    if text.lower().startswith("/vacation"):
+        text = text[len("/vacation"):].strip()
+    elif text.lower().startswith("vacation "):
+        text = text[len("vacation "):].strip()
+    elif text.lower() == "vacation":
+        text = ""
+    else:
+        return None
+
+    try:
+        from app import vacation_mode as vm
+    except Exception:
+        return "Vacation mode module not available."
+
+    parts = text.split(maxsplit=1)
+    sub = (parts[0].lower() if parts else "")
+    arg = parts[1].strip() if len(parts) > 1 else ""
+
+    # ─ status ─
+    if sub in ("", "status"):
+        state = vm.current_state()
+        if not state.engaged or state.engagement is None:
+            staged = state.staged_allowlist
+            if staged.is_empty():
+                return (
+                    "🟢 Vacation mode: not engaged.\n"
+                    "Staged allowlist: empty.\n"
+                    "Stage one via Python REPL or REST before engaging."
+                )
+            return (
+                "🟢 Vacation mode: not engaged.\n"
+                f"Staged: {len(staged.requestor_allowlist)} requestor(s), "
+                f"{len(staged.path_prefix_allowlist)} path prefix(es), "
+                f"max diff = {staged.max_diff_lines} line(s).\n"
+                "Use /vacation engage <hours> <reason> to engage."
+            )
+        eng = state.engagement
+        remaining_s = max(0.0, eng.until_ts - time.time())
+        remaining_h = remaining_s / 3600
+        return (
+            f"⏸️ Vacation mode: ENGAGED by `{eng.engaged_by}`.\n"
+            f"Until: {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(eng.until_ts))}\n"
+            f"Remaining: {remaining_h:.1f} h\n"
+            f"Reason: {eng.reason or '(none)'}\n"
+            f"Frozen allowlist: {len(eng.frozen_allowlist.requestor_allowlist)} requestor(s), "
+            f"{len(eng.frozen_allowlist.path_prefix_allowlist)} path prefix(es), "
+            f"max diff = {eng.frozen_allowlist.max_diff_lines} line(s).\n"
+            "Disengage via /vacation disengage."
+        )
+
+    # ─ show allowlist ─
+    if sub == "show":
+        al = vm.current_allowlist()
+        lines = ["Vacation allowlist (current view):"]
+        if vm.is_active():
+            lines[0] = "Vacation allowlist (FROZEN — engaged):"
+        lines.append(
+            f"  requestors ({len(al.requestor_allowlist)}): "
+            f"{', '.join(al.requestor_allowlist) or '(none)'}"
+        )
+        lines.append(
+            f"  paths ({len(al.path_prefix_allowlist)}): "
+            f"{', '.join(al.path_prefix_allowlist) or '(none)'}"
+        )
+        lines.append(f"  max diff lines: {al.max_diff_lines}")
+        return "\n".join(lines)
+
+    # ─ engage ─
+    if sub == "engage":
+        if not arg:
+            return "Usage: /vacation engage <hours> <reason>"
+        engage_parts = arg.split(maxsplit=1)
+        try:
+            hours = float(engage_parts[0])
+        except (ValueError, IndexError):
+            return "Usage: /vacation engage <hours> <reason> (hours must be a number)"
+        reason = engage_parts[1].strip() if len(engage_parts) > 1 else ""
+        if hours <= 0 or hours > 24 * vm.MAX_DURATION_DAYS:
+            return (
+                f"Hours must be in (0, {24 * vm.MAX_DURATION_DAYS}]; "
+                f"got {hours}."
+            )
+        try:
+            engagement = vm.engage(
+                until_ts=time.time() + hours * 3600,
+                engaged_by=sender or "operator",
+                reason=reason,
+            )
+        except vm.VacationModeError as exc:
+            return f"Cannot engage: {exc}"
+        except Exception:
+            return "Could not engage (unexpected error)."
+        return (
+            f"⏸️ Engaged. Until "
+            f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(engagement.until_ts))} "
+            f"({hours:.1f}h). Reason: {engagement.reason or '(none)'}.\n"
+            "Sweep daemon will check PENDING CRs every 5 min."
+        )
+
+    # ─ disengage ─
+    if sub == "disengage":
+        if not vm.is_active():
+            return "Already disengaged."
+        try:
+            vm.disengage(disengaged_by=sender or "operator")
+        except Exception:
+            return "Could not disengage."
+        digests = vm.list_digests()
+        if digests:
+            return (
+                "🟢 Disengaged. End-of-vacation digest written to "
+                f"`{digests[-1].name}`.\n"
+                "Use /vacation digest to read it."
+            )
+        return "🟢 Disengaged."
+
+    # ─ digest ─
+    if sub == "digest":
+        try:
+            idx = int(arg) if arg else 0
+        except ValueError:
+            return "Usage: /vacation digest [N] (N must be a number; 0 = newest)"
+        digests = vm.list_digests()
+        if not digests:
+            return "No vacation digests on disk yet."
+        # Newest = highest index in chronological order; allow N=0 = newest.
+        reverse_idx = len(digests) - 1 - idx
+        if reverse_idx < 0 or reverse_idx >= len(digests):
+            return f"Digest index {idx} out of range (have {len(digests)})."
+        body = vm.read_digest(digests[reverse_idx])
+        if not body:
+            return f"Could not read {digests[reverse_idx].name}."
+        # Truncate to a Signal-reasonable length.
+        if len(body) > 3500:
+            body = body[:3500] + "\n\n…(truncated; read full digest at /cp/vacation/digests)"
+        return body
+
+    return (
+        "Unknown /vacation subcommand. Try one of:\n"
+        "  /vacation                  — status\n"
+        "  /vacation status           — same\n"
+        "  /vacation show             — current allowlist\n"
+        "  /vacation engage <h> <r>   — engage for N hours\n"
+        "  /vacation disengage        — disengage now\n"
+        "  /vacation digest [N]       — read recent digest"
     )
 
 
