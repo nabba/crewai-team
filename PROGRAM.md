@@ -8327,3 +8327,178 @@ Butlin scorecard unchanged.
     "what I'd ask the operator to revisit" section, but never
     mutates the Tier-3-quarantined field.
 
+## 46.13-46.15 2026-05-16 — Q10: Tech radar → adoption loop
+
+Post-§46 audit of the tech-radar surface against the operator's
+"closing the loop to adoption, not just discovery" criteria:
+
+  * **6.1 Trial-canary-adopt for libraries** — ⚠️ partially shipped.
+    `library_radar.proposer` discovered + filed markdown proposals
+    with coding_session_spec scaffolds, but the module's own
+    docstring said "trial + canary is a follow-on layer — not in
+    this commit." Operators had to manually copy-paste the YAML
+    spec to the coder agent.
+  * **6.2 Code-from-paper** — ❌ the `experiment` field was prose
+    only; no executable scaffold + no codeable flag.
+  * **6.3 Conferences + standards** — ❌ paper_pipeline used arXiv
+    only; tech_radar_crew used 7 generic web queries. No
+    OpenReview / PEPs / W3C / HF coverage.
+
+Operator decisions before kickoff:
+
+  1. 6.1 mechanism: inline LIGHT idle job (more solid v1 than
+     workflow_template orchestration).
+  2. 6.1 scope: smoke test only (catches dead packages + version
+     conflicts + import errors — the bulk of adoption blockers).
+  3. 6.2 trigger: emit scaffold only when LLM marks experiment
+     ``codeable=true``. Theoretical / hardware / large-scale
+     papers stay prose-only.
+  4. 6.3 sources: arXiv + OpenReview NeurIPS/ICML/ICLR + PEPs +
+     W3C + Hugging Face papers (all four new sources shipped).
+
+### 46.13 — Q10.1: Library trial-canary-adopt
+
+**`app/library_radar/trial_state.py` (NEW)** — append-only JSONL
+ledger at ``workspace/library_radar/trial_state.jsonl``. Schema
+captures (signature, slug, package_name, candidates, status,
+last_run_at, session_id, pytest_exit, trial_error, adoption_cr_id,
+ts). Status set: ``pending → running → passed → adoption_cr_filed``
+with ``failed`` and ``adoption_cr_rejected`` terminal branches.
+
+  * `mark_pending` is idempotent — re-marking the same signature
+    is a no-op.
+  * `list_pending` returns ``pending`` and ``running`` rows; the
+    runner's per-pass cap (3) drains the backlog over multiple
+    cycles.
+  * `read_latest` compacts the append-only JSONL into dict-of-
+    latest-by-signature for query.
+
+**`app/library_radar/trial_runner.py` (NEW)** — the actual runner:
+
+  1. Pull next pending row (per-pass cap `_MAX_TRIALS_PER_PASS=3`).
+  2. Look up matching ``proposal_bridge`` ProposalState to fetch
+     the coding_session_spec (smoke-test file path + pytest
+     command + candidate package).
+  3. Start a coding-session via `runtime.get_manager()`.
+  4. Write the smoke test from `render_smoke_test(package, slug)`
+     — a generated test that imports the package and asserts ≥1
+     public attribute. **Generated, not LLM-supplied**, so we
+     don't ship hallucinated API calls.
+  5. Run `pip install <pkg>` in the sandbox (refused/failed →
+     trial fails gracefully).
+  6. Run `pytest <smoke_path> -q` in the sandbox.
+  7. On exit 0: file an **adoption CR** for the `requirements.txt`
+     edit via `change_requests.lifecycle.create_request`. Standard
+     operator gate. Mark `adoption_cr_filed`.
+  8. On non-zero or refused: mark `failed` with short reason.
+  9. Always discard the session in `finally`.
+
+**`app/library_radar/proposer.py`** — added a `trial_state.mark_pending`
+call inside the `was_new` branch (only new discoveries enter the
+trial queue; dedup'd ones don't). The proposer's `_driver()` loop
+calls `trial_runner.run()` each cycle (failure-isolated).
+
+Master switch: `LIBRARY_TRIAL_RUNNER_ENABLED` (default ON).
+Cadence-checked internally (24h between full passes).
+
+### 46.14 — Q10.2: Paper code-from-paper scaffold
+
+**`app/episteme/paper_pipeline.py`** — extended the LLM JSON output
+schema:
+
+  * `codeable: bool` — TRUE iff the experiment is a single Python
+    script (<30 min work, clear inputs + pass/fail criterion, no
+    novel-architecture dependency). Theoretical/hardware/large-
+    scale → FALSE. Defaults FALSE on uncertainty.
+  * `scaffold: {driver_purpose, acceptance, duration_min}` — only
+    when `codeable=true`. The LLM specifies what the driver
+    should do, post-run acceptance assertions, and a
+    pessimistic time estimate (clamped to [5, 240] min).
+
+`_build_coding_session_spec` now **returns None** when
+`codeable=false`, so non-codeable papers don't carry a fake spec.
+When `codeable=true` it honors the LLM's scaffold (driver_purpose
+→ file purpose; acceptance → spec acceptance); falls back to a
+deterministic generic shape when scaffold is missing.
+
+The JSONL ledger row at `workspace/proposed_experiments.jsonl`
+gains `codeable` + `scaffold` + `source` fields.
+
+**Daily briefing** (`app/life_companion/daily_briefing.py`) gains
+a `_gather_codeable_papers(n=3)` helper that walks the JSONL
+newest-first, filters by `codeable=true`, and surfaces top-N in
+the morning briefing under "💻 Queued codeable paper ideas".
+Soft fail — never blocks the briefing.
+
+### 46.15 — Q10.3: Multi-source feeds
+
+**`app/episteme/feed_sources.py` (NEW)** — four new adapters:
+
+  * **`fetch_openreview(venues, lookback_days, max_items_per_venue)`** —
+    queries `api.openreview.net/notes?content.venue=...` for
+    NeurIPS / ICML / ICLR. Per-venue cap keeps the total bounded.
+    `_openreview_field` handles both v1 (plain string) and v2
+    (`{"value": ...}`) content shapes.
+  * **`fetch_python_peps(lookback_days=90, max_items=10)`** —
+    `peps.python.org/peps.rss`. 90-day lookback covers the
+    actively-discussed window. Master switch
+    `PAPER_PIPELINE_PEPS_ENABLED`.
+  * **`fetch_w3c_tr(lookback_days=30, max_items=8)`** —
+    `www.w3.org/News/atom.xml`. Captures TR drafts + standards
+    updates relevant to dashboard / PWA / WebPush. Master switch
+    `PAPER_PIPELINE_W3C_ENABLED`.
+  * **`fetch_huggingface_papers(lookback_days=14, max_items=10)`** —
+    `huggingface.co/papers/atom`. Editorially-curated daily picks.
+    Some arXiv overlap; the curation is the signal. Master switch
+    `PAPER_PIPELINE_HF_ENABLED`.
+
+Every public wrapper is wrapped in try/except so a single broken
+source can't take down the others. `_generic_feed_records` does
+the heavy lifting (HTTP GET + feed_parser + lookback filter +
+shape normalization).
+
+**`fetch_extra_sources()`** is the one-call surface that the
+pipeline calls; dedupes across sources by id. Each fetcher
+runs in a try/except so partial failures yield partial results.
+
+`paper_pipeline.run()` now extends `papers` with `fetch_extra_sources()`
+output **before** the dedup + summarize loop, so the existing
+arXiv → LLM → JSONL → digest pipeline handles all sources
+uniformly. Result dict gains `fetched_arxiv` and `fetched_extra`
+counters for operator visibility.
+
+The JSONL row's `source` field distinguishes arxiv / openreview_*
+/ python_peps / w3c_tr / huggingface_papers — downstream
+consumers can filter.
+
+### 46.16 — Q10 regression
+
+```
+Q7 + Q8 + Q9 + Q10 + legacy threads + legacy consolidation:
+  221 pass + 6 skipped (gateway-deps)
+```
+
+No TIER_IMMUTABLE files modified.
+
+### 46.17 — What Q10 deliberately did NOT do
+
+  * **No LLM-supplied smoke-test body.** The trial_runner generates
+    the test from a template (`render_smoke_test`); the LLM at no
+    point writes Python that the sandbox will execute. Hallucinated
+    API calls are a higher-cost failure than rejecting a dead
+    package; smoke tests stay deterministic.
+  * **No micro-benchmark slot per library.** Smoke test only for
+    v1. Adding per-library benchmark specs would require operator
+    or LLM configuration per package; deferred until a concrete
+    library proves the smoke test insufficient.
+  * **No auto-apply for the adoption CR.** Even when the smoke
+    test passes, the adoption CR is `STANDARD` risk class — the
+    operator gate still applies.
+  * **No "queued ideas" execution.** The daily briefing surfaces
+    codeable paper ideas, but never auto-starts a coding session
+    on them. The operator manually decides which to try.
+  * **No tech_radar_crew changes.** The 7 generic web-search
+    queries stay; Q10.3 adds parallel feed sources without
+    modifying the existing crew. Future cycle can replace the
+    crew's generic queries with topic-specific feed queries.
+

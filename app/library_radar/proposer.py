@@ -310,6 +310,22 @@ def run_one_pass(
                 "library_radar: staged %s (category=%s, status=%s)",
                 sig, discovery.category, state.status.value,
             )
+            # Q10.1 (PROGRAM §46.13) — mark for the trial runner.
+            # The trial_state ledger is the producer-side surface; the
+            # idle-job trial_runner walks pending rows and actually
+            # runs the smoke test. Failure-isolated.
+            try:
+                from app.library_radar import trial_state
+                trial_state.mark_pending(
+                    signature=sig,
+                    slug=slug,
+                    candidates=list(discovery.candidate_packages),
+                )
+            except Exception:
+                logger.debug(
+                    "library_radar: trial_state.mark_pending failed for %s",
+                    sig, exc_info=True,
+                )
         else:
             skipped += 1
 
@@ -363,6 +379,26 @@ def _driver() -> None:
                 )
         except Exception:
             logger.debug("library_radar: pass raised", exc_info=True)
+        # Q10.1 (PROGRAM §46.13) — run the smoke-trial cycle on the
+        # same cadence. Failure-isolated: a broken trial_runner never
+        # affects the proposer loop.
+        try:
+            from app.library_radar import trial_runner
+            trial_result = trial_runner.run()
+            status = trial_result.get("status", "")
+            if status == "ran":
+                logger.info(
+                    "library_radar.trial: passed=%d failed=%d "
+                    "adoption_cr_filed=%d deferred=%d",
+                    trial_result.get("passed", 0),
+                    trial_result.get("failed", 0),
+                    trial_result.get("adoption_cr_filed", 0),
+                    trial_result.get("deferred", 0),
+                )
+        except Exception:
+            logger.debug(
+                "library_radar.trial: pass raised", exc_info=True,
+            )
         if _stop_event.wait(_POLL_INTERVAL_S):
             return
 

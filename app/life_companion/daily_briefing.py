@@ -279,6 +279,54 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_codeable_papers(*, n: int = 3) -> list[str]:
+    """Q10.2 (PROGRAM §46.14) — queued codeable paper-experiment
+    ideas. Reads ``workspace/proposed_experiments.jsonl`` and picks
+    the top-N most-recent rows with ``codeable=true``. Empty list
+    when the ledger is missing or no codeable rows are present.
+
+    Soft fail — never blocks the briefing.
+    """
+    from pathlib import Path as _P
+    ledger = _P("/app/workspace/proposed_experiments.jsonl")
+    if not ledger.exists():
+        return []
+    try:
+        import json as _json
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict] = []
+    # Walk newest-first (file is append-only).
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        if not isinstance(r, dict):
+            continue
+        if not r.get("codeable"):
+            continue
+        rows.append(r)
+        if len(rows) >= n:
+            break
+    if not rows:
+        return []
+    out: list[str] = []
+    for r in rows:
+        title = (r.get("title") or "Untitled")[:80]
+        rel = float(r.get("relevance") or 0.0)
+        out.append(f"  📜 {title}  (rel {rel:.2f})")
+        scaffold = r.get("scaffold") or {}
+        purpose = (scaffold.get("driver_purpose") or "")[:140]
+        if purpose:
+            out.append(f"     → {purpose}")
+    return out
+
+
 def _gather_travel_block() -> list[str]:
     """Q9.3 (PROGRAM §46.6) — upcoming travel surfaced from TripIt
     + flight-status snapshots. Returns one block of markdown lines
@@ -698,6 +746,13 @@ def _compose_morning() -> tuple[str, list[float]]:
         # already carries its own header; just join below.
         parts.append("")
         parts.extend(travel)
+    codeable = _gather_codeable_papers(n=3)
+    if codeable:
+        # Q10.2 (PROGRAM §46.14) — paper-experiment queued ideas.
+        # Only surfaces papers the LLM marked codeable; non-codeable
+        # papers stay in the regular weekly digest.
+        parts.append("\n💻 Queued codeable paper ideas:")
+        parts.extend(codeable)
     return "\n".join(parts), queued_ts
 
 

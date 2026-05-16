@@ -238,6 +238,26 @@ with these keys:
                 an autonomous agent system. 1.0 = directly applicable,
                 0.0 = unrelated.
 
+  codeable:     Boolean. TRUE iff the experiment can be implemented
+                as a single Python script (<30 minutes of work,
+                clear inputs + clear pass/fail criterion, no
+                novel-architecture dependency). Theoretical papers,
+                hardware experiments, large-scale training runs →
+                FALSE. Default to FALSE if uncertain.
+
+  scaffold:     ONLY when codeable=true. Object with keys:
+                  driver_purpose:  one-line spec of what the
+                                    Python driver should do, written
+                                    so a coder agent could implement
+                                    it without re-reading the paper
+                  acceptance:       array of 1-3 verifiable post-run
+                                    assertions (e.g. "results.jsonl
+                                    has ≥N rows", "mean accuracy
+                                    > baseline + 0.05")
+                  duration_min:     int — pessimistic time estimate
+                                    (5..60)
+                Omit ``scaffold`` entirely when codeable=false.
+
 Output ONLY the JSON object, no preface, no markdown fence."""
 
 
@@ -438,24 +458,59 @@ def _stage_paper_proposal(paper: dict, llm_out: dict) -> None:
         logger.debug("paper_pipeline: stage failed for %s", sig, exc_info=True)
 
 
-def _build_coding_session_spec(paper: dict, llm_out: dict, sig: str) -> dict:
-    """Q2 §39: scaffold for running a paper's experiment proposal.
+def _build_coding_session_spec(paper: dict, llm_out: dict, sig: str) -> dict | None:
+    """Q10.2 (PROGRAM §46.14): scaffold for running a paper's
+    experiment proposal — produced ONLY when the LLM marked the
+    paper as ``codeable``.
 
-    The LLM already produced a one-paragraph experiment description
-    in ``llm_out['experiment']`` — we wrap that into a coding-session
-    spec that targets a per-paper experiment script + JSONL output.
+    Theoretical / hardware-bound / large-scale papers yield no
+    spec — the proposal still lands as prose for the operator to
+    read, but the daily-briefing 'queued codeable ideas' section
+    won't surface them.
+
+    When ``codeable=true`` AND the LLM produced a ``scaffold``
+    object, we honor it (driver_purpose, acceptance, duration);
+    otherwise we fall back to the generic shape so a missing
+    ``scaffold`` field on a codeable=true paper still yields a
+    workable spec.
     """
-    experiment = (llm_out.get("experiment") or "").strip()[:200]
+    if not bool(llm_out.get("codeable", False)):
+        return None
     title = (paper.get("title") or "Untitled")[:80]
+    experiment = (llm_out.get("experiment") or "").strip()[:200]
+    scaffold = llm_out.get("scaffold") or {}
+    if not isinstance(scaffold, dict):
+        scaffold = {}
+    driver_purpose = (
+        (scaffold.get("driver_purpose") or "").strip()[:400]
+        or f"experiment driver — implements: {experiment or 'see proposal'}"
+    )
+    duration = scaffold.get("duration_min")
+    try:
+        duration_min = max(5, min(int(duration), 240)) if duration else 60
+    except (TypeError, ValueError):
+        duration_min = 60
+    raw_acceptance = scaffold.get("acceptance") or []
+    if isinstance(raw_acceptance, list) and raw_acceptance:
+        acceptance: list[str] = [
+            str(a).strip()[:200]
+            for a in raw_acceptance[:5]
+            if str(a).strip()
+        ]
+    else:
+        acceptance = [
+            f"python workspace/experiments/{sig}/run.py --seed 42",
+            f"verify workspace/experiments/{sig}/results.jsonl is non-empty",
+            "compare against baseline noted in the paper proposal",
+        ]
     return {
         "intent": f"Try paper experiment: {title}",
+        "codeable": True,
         "files": [
             {
                 "path": f"workspace/experiments/{sig}/run.py",
                 "action": "create",
-                "purpose": (
-                    f"experiment driver — implements: {experiment or 'see proposal'}"
-                ),
+                "purpose": driver_purpose,
                 "size_estimate": "~80 LOC",
             },
             {
@@ -465,12 +520,8 @@ def _build_coding_session_spec(paper: dict, llm_out: dict, sig: str) -> dict:
                 "size_estimate": "(generated)",
             },
         ],
-        "acceptance": [
-            f"python workspace/experiments/{sig}/run.py --seed 42",
-            f"verify workspace/experiments/{sig}/results.jsonl is non-empty",
-            "compare against baseline noted in the paper proposal",
-        ],
-        "expected_duration_min": 60,
+        "acceptance": acceptance,
+        "expected_duration_min": duration_min,
     }
 
 
@@ -488,6 +539,11 @@ def _append_proposal(paper: dict, llm_out: dict) -> None:
     row = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "arxiv_id": paper["id"],
+        # Q10.3 (PROGRAM §46.15) — distinguish source. Existing
+        # consumers reading the JSONL still get arxiv_id; new
+        # consumers (daily briefing's queued-codeable section, the
+        # React paper-list view) can filter by source.
+        "source": paper.get("source", "arxiv"),
         "title": paper["title"],
         "published": paper["published"],
         "categories": paper["categories"],
@@ -495,6 +551,17 @@ def _append_proposal(paper: dict, llm_out: dict) -> None:
         "implications": llm_out.get("implications", []),
         "experiment": llm_out.get("experiment", ""),
         "relevance": float(llm_out.get("relevance", 0.0) or 0.0),
+        # Q10.2 (PROGRAM §46.14) — operator-visible "is this codeable?"
+        # flag + the LLM's optional scaffold object. The daily briefing
+        # surfaces top codeable ideas; non-codeable papers still land
+        # in the digest but without a "queued idea" promotion.
+        "codeable": bool(llm_out.get("codeable", False)),
+        "scaffold": (
+            llm_out.get("scaffold")
+            if bool(llm_out.get("codeable", False))
+            and isinstance(llm_out.get("scaffold"), dict)
+            else None
+        ),
     }
     try:
         from app.utils.jsonl_retention import append_with_cap
@@ -540,7 +607,31 @@ def run() -> dict[str, Any]:
     query = _build_arxiv_query(terms, _DEFAULT_CATEGORIES)
     xml = _fetch_arxiv_atom(query, max_results=_MAX_PAPERS_PER_PASS * 2)
     papers = _parse_atom(xml, lookback_days=_LOOKBACK_DAYS)
+    # Tag arXiv rows with a source for downstream visibility.
+    for p in papers:
+        p.setdefault("source", "arxiv")
+
+    # Q10.3 (PROGRAM §46.15) — multi-source feeds.
+    # Pulls from OpenReview (NeurIPS/ICML/ICLR) + Python PEPs + W3C +
+    # Hugging Face papers daily. Each source is failure-isolated; a
+    # broken fetch from one source never blocks the others. Dedup
+    # across sources happens via the existing _load_seen() ledger
+    # below, keyed by the source-prefixed id.
+    try:
+        from app.episteme.feed_sources import fetch_extra_sources
+        extras = fetch_extra_sources(
+            lookback_days=_LOOKBACK_DAYS,
+            max_per_source=max(3, _MAX_PAPERS_PER_PASS // 2),
+        )
+    except Exception:
+        logger.debug(
+            "paper_pipeline: extra-source fetch failed", exc_info=True,
+        )
+        extras = []
+    papers.extend(extras)
     summary["fetched"] = len(papers)
+    summary["fetched_arxiv"] = len(papers) - len(extras)
+    summary["fetched_extra"] = len(extras)
 
     seen = _load_seen()
     proposals: list[tuple[dict, dict, float]] = []

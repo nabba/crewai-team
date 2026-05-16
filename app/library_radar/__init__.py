@@ -20,11 +20,20 @@ to adopt, and (when adopting) files a change-request for the
 ``requirements.txt`` edit through the standard human-gated review
 path.
 
-Trial + canary (sandboxed install + benchmark + auto-score) is a
-follow-on layer on top of this primitive — not in this commit.
+Trial + canary (sandboxed install + benchmark + auto-score) — Q10.1
+(PROGRAM §46.13) — is now layered on top via :mod:`trial_runner` +
+:mod:`trial_state`. The proposer marks new discoveries as pending in
+the trial-state ledger; the trial_runner walks those rows on the
+same daemon cadence, runs the smoke import test inside a
+coding-session sandbox, and on pass files an *adoption CR* for the
+``requirements.txt`` edit through the standard operator gate.
 
-Master switch: ``LIBRARY_RADAR_ENABLED`` (default ``true``). Daemon
-thread eager-starts at import time, mirrors :mod:`app.healing.monitors`.
+Master switches:
+  * ``LIBRARY_RADAR_ENABLED`` (default ``true``) — discovery loop
+  * ``LIBRARY_TRIAL_RUNNER_ENABLED`` (default ``true``) — trial runner
+
+Daemon thread eager-starts at import time, mirrors
+:mod:`app.healing.monitors`.
 """
 
 from app.library_radar.proposer import (
@@ -33,10 +42,16 @@ from app.library_radar.proposer import (
     start,
     stop,
 )
+# Q10.1 (PROGRAM §46.13) — trial runner + state surfaces. Side-effect
+# imports so the modules are reachable via attribute access from
+# tests, REST handlers, and the proposer's daemon loop.
+from app.library_radar import trial_runner, trial_state  # noqa: F401
 
 __all__ = [
     "Discovery",
     "run_one_pass",
     "start",
     "stop",
+    "trial_runner",
+    "trial_state",
 ]
