@@ -113,7 +113,7 @@ dashboard-react/src/
 
 Each technique is a state machine: a fixed list of steps, each with a
 prompt template that interpolates `{topic}`. The facilitator walks them
-sequentially. The seven currently implemented:
+sequentially. The eight currently implemented:
 
 | Name             | Steps | Description                                          |
 |------------------|-------|------------------------------------------------------|
@@ -124,11 +124,15 @@ sequentially. The seven currently implemented:
 | `crazy_8s`       | 10    | 8 ideas in 8 quick rounds (Design Sprint)            |
 | `rapid_ideation` | 7     | Three quantity-bursts (obvious / constraint-flipped / different lens), then cluster + select |
 | `starbursting`   | 8     | Generate questions (not answers) along Who/What/When/Where/Why/How |
+| `concept-blend`  | 4     | Fauconnier-Turner 4-space blend: two input spaces → generic structure → projection → emergent properties (added Q11.2, 2026-05-16) |
 
 Adding a new technique is a single file plus a registry entry in
 `techniques/__init__.py`. The base class `LinearTechnique` handles all
 state-machine plumbing; concrete techniques only declare a list of `Step`
-objects.
+objects. The `concept-blend` technique demonstrates the override path: it
+subclasses `LinearTechnique` but overrides `next_prompt` for its
+`generate_blend` step to splice an LLM-computed blend result into the
+prompt at render time (see §15).
 
 ---
 
@@ -446,3 +450,130 @@ Run all 120 tests:
   agent's seed" or "give me one more round of react before moving on" —
   every step is one round of seed + one round of react. A `/brainstorm
   more` or "react again" UX pattern would be a small extension.
+
+---
+
+## 15. Q11 — Creative-synthesis wiring (PROGRAM §46.18–§46.24)
+
+Three creativity primitives (`analogy_index`, `concept_blend`,
+`novelty_wrap`) shipped at PROGRAM §32.3 but were orphaned — built
+and tested, never consumed. Q11 wires them into the brainstorm
+subsystem. The new aesthetic-score module ships alongside them and
+the `idea_evolution` standalone module rounds out the set.
+
+### 15.1 Cross-domain analogues on session start (Q11.1)
+
+On `facilitator.start(...)` the topic is fed into
+`creativity.analogy_index.query_analogies(topic, top_k=3,
+min_similarity=0.15)`. Matches land on `BrainstormSession.analogues`
+(serialised: `{signature, description, examples[domain/title/summary],
+similarity}`). The field is backward-compat through `from_dict`
+(pre-Q11 sessions deserialise to `analogues=[]`).
+
+When team-mode seed/react rounds run, the facilitator's
+`_inject_analogues_into_prompt(prompt, analogues)` prepends a
+**"Cross-domain analogues (inspiration, not constraint)"** block
+before the step prompt. The four creative-crew agents see the
+patterns without being told to USE them — they're surfacing, not
+prescription. Empty analogues → prompt unchanged (idempotent).
+
+The analogues also flow into the final report via `_enriched_summary`:
+the Writer prompt sees `summary["analogues"]` alongside the per-step
+ideas, so it can credit cross-domain inspiration when an idea
+obviously drew on one.
+
+The index is populated by the HEAVY weekly
+`app/creativity/analogy_populator.py` idle job (master switch
+`analogy_index_populator_enabled` in `runtime_settings`, flippable
+from `/cp/settings → Analogy index card`). See
+`docs/CREATIVITY_SYSTEM.md` §Q11 for populator details.
+
+### 15.2 Concept-blend technique (Q11.2)
+
+The eighth technique (`name="concept-blend"`) is structurally
+distinct from the other seven: it overrides `LinearTechnique.
+next_prompt` for its third step (`generate_blend`) to:
+
+  1. Look up the two prior responses (`input_a` + `input_b`).
+  2. Call `creativity.concept_blend.blend_concepts(input_a, input_b)`
+     — Fauconnier-Turner 4-space blend via the LLM.
+  3. Splice the BlendResult's generic structure, blend description,
+     selected projections, emergent structure, and follow-on
+     questions into the prompt under a `## Generated blend` header.
+
+The operator sees the blend at render time; the team agents see it
+too if seed/react rounds are running. Step 4 (`select_projections`)
+then asks the operator to pick 1-2 emergent properties to develop.
+
+Failure-isolated: if `blend_concepts` raises or returns
+`parse_failed=true`, the prompt carries a brief degraded notice
+("_blend operator failed_") and the technique walks on. The
+technique state machine doesn't get stuck on a broken LLM call.
+
+### 15.3 Novelty verdict in the final report (Q11.4)
+
+`report._enriched_summary` walks the agent seed + agent react
+response lists and runs each idea text through
+`creativity.novelty_wrap.assess_brainstorm_idea`. Each idea gets an
+`annotation` dict with:
+
+  * `novelty.verdict` ∈ `{novel, recombination, restated,
+    rejected_before}`.
+  * `novelty.primary_decision` / `primary_distance` /
+    `primary_collection` — KB-novelty diagnostic.
+  * `novelty.rejected_lesson_id` / `rejected_score` — populated only
+    when the lessons-learned KB has a match above threshold.
+  * `aesthetic_score` (see §15.4).
+
+The Writer prompt's **Annotation legend** instructs the LLM to:
+
+  * Flag RESTATED ideas (already covered by KBs) in the top-ideas
+    section — don't drop them silently.
+  * Flag REJECTED_BEFORE ideas (matches a past rejected proposal) —
+    a HARD signal not to surface unless there's new context.
+  * Use the aesthetic score as a SOFT tiebreaker, never a hard filter.
+
+This is **tag-only** by operator decision: over-filtering kills
+creativity. The verdicts surface; the Writer (and the operator
+reading the final report) decide what to do.
+
+### 15.4 Aesthetic score in the final report (Q11.5)
+
+The same `_annotate_text` helper calls
+`creativity.aesthetic_score.score(text, top_k=3)`, which:
+
+  1. Queries `app.aesthetics.vectorstore.get_store().query(text, n=3)`.
+  2. Computes `mean(top_k_similarity) × mean(top_k_quality_score)`.
+  3. Returns `[0..1]` — or `None` when the aesthetics KB is empty or
+     unavailable.
+
+`None` is the sentinel for "no signal" — the report renders 'n/a'
+rather than zero, which would look like a negative judgement.
+Quality scores stored as 0..10 (curator convention) are normalised
+to 0..1 inline.
+
+### 15.5 Idea evolution as a sibling module (Q11.3)
+
+`app/brainstorm/idea_evolution.py` ships the ShinkaEvolve **algorithm
+pattern** (population + LLM mutation + LLM judge + diversity archive
++ budget guard) without depending on the `shinka` package — the
+package is built for code; ideas are text strings, the loop is
+identical. The module is callable from Python and tested with
+deterministic injected hooks; the operator-facing
+`/brainstorm evolve <topic>` slash command is deferred to a follow-up
+once the cost characteristics under the live LLM prove out.
+
+Hard caps:
+
+```
+MAX_BUDGET_USD    = 2.0
+MAX_GENERATIONS   = 20
+MAX_POPULATION    = 12
+MAX_ARCHIVE       = 24
+```
+
+Per-call cost constants (judge $0.0005, mutate $0.001) over-estimate
+deliberately so the budget guard fires before runaway spend.
+`_diverse_pick` uses greedy max-pairwise-distance over hash-trick
+embeddings to preserve diversity in both the survivor selection AND
+the archive.

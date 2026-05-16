@@ -616,12 +616,152 @@ PROGRAM.md §32.3 covers the ship.
 
 ---
 
+## Q11 — Wire-in pass (PROGRAM §46.18–§46.24, 2026-05-16)
+
+Post-§32.3 audit found that the three creativity primitives above
+had landed but were **never consumed** — `grep -rln
+"analogy_index|concept_blend|novelty_wrap"` returned matches only
+inside `app/creativity/` itself. Q11 wires them into the brainstorm
+subsystem + adds the missing populator + adds the aesthetic-score
+shim + ships an `idea_evolution` standalone module.
+
+### Q11.1 — Analogy populator + brainstorm consumer
+
+**`app/creativity/analogy_populator.py` (NEW, ~280 LOC)** —
+the missing producer for the analogy index.
+
+  * Walks `wiki/*.md` (filesystem) + the episteme ChromaDB store
+    (`list_texts()`) for unprocessed source texts (SHA-256 keyed).
+  * For each, Anthropic Haiku 4.5 extracts:
+    `{structure_signature, structure_description, domain_examples[]}`
+    where ≥2 examples must be from different domains, none from
+    the source's home domain.
+  * Refusal path: LLM emits `{"refused": true, "reason": "..."}`
+    for too-narrow sources (config files, date lists, personal
+    notes); <2 examples = also refused.
+  * Cap `_MAX_NEW_PER_PASS=5` per pass → ~$0.25/week worst-case
+    spend.
+  * State at `workspace/creativity/analogy_populator_state.json`
+    tracks processed-source SHA-256 + `last_run_at`; re-runs are
+    idempotent.
+  * Failure-isolated per source — a broken LLM call marks the
+    source processed (so we don't loop on it) and continues.
+
+**Runtime configuration**:
+
+  * Setting `analogy_index_populator_enabled` in
+    `runtime_settings.py` (default ON, per operator decision).
+  * React `AnalogyIndexCard.tsx` in `/cp/settings` exposes the
+    toggle without a gateway restart.
+  * Idle scheduler registers `analogy-populator` as
+    `JobWeight.HEAVY`, runs at the standard HEAVY 7-day cadence.
+
+**Brainstorm consumer** (in `app/brainstorm/facilitator.py`):
+
+  * `start()` queries `analogy_index.query_analogies(topic,
+    top_k=3, min_similarity=0.15)` and stores matches on
+    `BrainstormSession.analogues` (backward-compat through
+    `from_dict`).
+  * `_inject_analogues_into_prompt(prompt, analogues)` prepends a
+    "Cross-domain analogues (inspiration, not constraint)" block
+    before the step prompt for the multi-agent seed/react rounds.
+
+### Q11.2 — Concept-blend as 8th brainstorm technique
+
+`app/brainstorm/techniques/concept_blend.py` registers a new
+technique that subclasses `LinearTechnique` with 4 steps but
+**overrides `next_prompt`** for step 3 to invoke
+`concept_blend.blend_concepts(input_a, input_b)` and splice the
+BlendResult into the prompt at render time. See `docs/BRAINSTORM.md`
+§15.2.
+
+### Q11.3 — Idea evolution standalone module
+
+**`app/brainstorm/idea_evolution.py` (NEW, ~480 LOC)** — ships the
+ShinkaEvolve algorithm pattern (population + LLM mutation + LLM
+judge + diversity archive + budget guard) without depending on
+the `shinka` package (which is built for code).
+
+  * `IdeaMember` + `IdeaEvolutionResult` dataclasses.
+  * `evolve_ideas(task, seed_ideas, constraints, generations,
+    population_size, archive_size, budget_usd, mutator_fn,
+    judge_fn, rng)` — full surface.
+  * Per-generation: score every member, pick top-K + diversity
+    outliers via `_diverse_pick` (greedy max pairwise distance
+    using hash-trick cosine), LLM-mutate survivors, score
+    children, update the diversity-preserving archive, stop on
+    budget / cap.
+  * Hard caps: `MAX_BUDGET_USD=2.0`, `MAX_GENERATIONS=20`,
+    `MAX_POPULATION=12`, `MAX_ARCHIVE=24`.
+  * Per-call cost constants (judge $0.0005, mutate $0.001) over-
+    estimate so the budget guard fires before runaway spend.
+  * Default Anthropic Haiku 4.5 mutator + judge; tests inject
+    deterministic seams.
+  * Master switch: `IDEA_EVOLUTION_ENABLED` (default ON, env-var
+    only for now — no React toggle yet).
+
+**Future**: `/brainstorm evolve <topic>` slash command piping
+top-N evolved ideas into a new brainstorm session as additional
+seeds. Deferred until live-LLM cost characteristics prove out.
+
+### Q11.4 — Novelty in the brainstorm report
+
+`app/brainstorm/report.py:_annotate_text` calls
+`novelty_wrap.assess_brainstorm_idea` on every agent + user idea;
+the 4-way verdict (NOVEL / RECOMBINATION / RESTATED /
+REJECTED_BEFORE) attaches to each response's `annotation` dict.
+
+The Writer prompt's **Annotation legend** instructs the LLM to
+flag — never silently drop — RESTATED and REJECTED_BEFORE ideas.
+**Tag-only by operator decision** (over-filtering kills
+creativity).
+
+### Q11.5 — Aesthetic score
+
+**`app/creativity/aesthetic_score.py` (NEW)** wraps
+`app.aesthetics.vectorstore` with:
+
+```
+score(text, top_k=3) -> Optional[float]
+score_many(texts) -> list[Optional[float]]
+```
+
+The score is `mean(top_k_similarity) × mean(top_k_quality_score)`,
+both bounded to `[0..1]`. Curated quality stored as 0..10 is
+normalised inline. `None` is the "no signal" sentinel —
+callers render 'n/a' instead of zero.
+
+Failure-isolated: any exception → `None`. Wired into
+`report._annotate_text` alongside the novelty check.
+
+### Q11 files
+
+```
+app/creativity/analogy_populator.py        Q11.1 producer (~280 LOC)
+app/creativity/aesthetic_score.py          Q11.5 score shim
+app/brainstorm/idea_evolution.py           Q11.3 standalone (~480 LOC)
+app/brainstorm/techniques/concept_blend.py Q11.2 8th technique
+app/brainstorm/facilitator.py              Q11.1 consumer wire-in
+app/brainstorm/session.py                  Q11.1 analogues field
+app/brainstorm/report.py                   Q11.4 + Q11.5 annotation
+dashboard-react/.../AnalogyIndexCard.tsx   Q11.1 React toggle
+
+tests/test_q11_creative_synthesis.py       30 tests
+```
+
+PROGRAM.md §46.18-§46.24 covers the ship in detail.
+
+---
+
 ## See also
 
 - `docs/ARCHITECTURE.md` — overall system architecture
+- `docs/BRAINSTORM.md` — brainstorm subsystem (§15 covers Q11 wiring)
 - `app/crews/creative_crew.py` — the active-pipeline orchestrator
-- `app/creativity/` — passive primitives (analogy / blend / novelty)
+- `app/creativity/` — passive primitives (analogy / blend / novelty / aesthetic_score / populator)
+- `app/brainstorm/idea_evolution.py` — population-based idea search
 - `app/llm_sampling.py` — sampling parameter details
 - `app/personality/creativity_scoring.py` — Torrance scoring details
 - `tests/test_creativity.py` — active-pipeline tests
 - `tests/creativity/` — passive primitives tests
+- `tests/test_q11_creative_synthesis.py` — Q11 wire-in tests
