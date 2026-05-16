@@ -51,6 +51,15 @@ _RUN_CADENCE_S = 90 * 24 * 3600     # quarterly
 _BIG_FREE_THRESHOLD_BYTES = 50 * 1024 * 1024   # alert at >50 MB recovered
 _PER_FILE_TIMEOUT_S = 120.0         # bail out a single VACUUM if it stalls
 
+# Discipline (post-2026-05-16): per-file consecutive-failure tracking
+# so a chronically-locked chroma.sqlite3 surfaces as an alert instead
+# of silently never reclaiming. ChromaDB is the writer; if VACUUM
+# perpetually loses the lock race it means either (a) the cadence-
+# probe window happens to coincide with sustained write activity, or
+# (b) some part of chromadb is holding the connection longer than
+# the 30s timeout. Either way the operator should know.
+_FAILURE_ALERT_THRESHOLD = 4   # alert after this many consecutive misses
+
 # We scan WORKSPACE_ROOT for ``chroma.sqlite3`` so the monitor follows
 # wherever the operator pointed `WORKSPACE_DIR`. Includes every KB that
 # uses chromadb (memory, philosophy, episteme, knowledge, experiential,
@@ -160,12 +169,58 @@ def run() -> None:
         if info.get("ok"):
             freed_total += int(info.get("freed_bytes", 0))
 
+    # Discipline (post-2026-05-16): track per-file consecutive failures
+    # so a chronically-locked chroma.sqlite3 produces an alert instead
+    # of silently never reclaiming. State shape:
+    #   state["consecutive_failures"]: {<path>: int}
+    consecutive = state.get("consecutive_failures") or {}
+    if not isinstance(consecutive, dict):
+        consecutive = {}
+    newly_alerted: list[str] = []
+    for info in per_file:
+        path = info["path"]
+        if info.get("ok"):
+            # Reset on success — alert window is per-streak, not lifetime.
+            if consecutive.pop(path, 0) >= _FAILURE_ALERT_THRESHOLD:
+                # Recovery transition: log but don't alert (operator
+                # already saw the failure alert).
+                logger.info(
+                    "chromadb_hygiene: VACUUM recovered for %s after "
+                    "previous consecutive failures",
+                    path,
+                )
+            continue
+        prev = int(consecutive.get(path, 0))
+        consecutive[path] = prev + 1
+        # Alert ONCE when crossing the threshold (state remembers we
+        # alerted so subsequent failures don't spam Signal).
+        if consecutive[path] == _FAILURE_ALERT_THRESHOLD:
+            newly_alerted.append(path)
+    state["consecutive_failures"] = consecutive
+
     audit_event(
         "chromadb_hygiene_pass",
         files=len(per_file),
         freed_bytes_total=freed_total,
         per_file=per_file,
+        consecutive_failure_files=list(consecutive),
     )
+
+    for path in newly_alerted:
+        # One-shot alert per locked file when the consecutive streak
+        # crosses the threshold. Operator gets a clear pointer to the
+        # offending file. State tracking prevents re-alerting until the
+        # streak resets via a successful VACUUM.
+        send_signal_alert(
+            f"⚠️ Self-heal: VACUUM on `{path}` has failed "
+            f"{_FAILURE_ALERT_THRESHOLD} consecutive quarterly passes. "
+            f"The SQLite freelist isn't being reclaimed there. Likely "
+            f"causes: sustained chromadb write activity during the "
+            f"VACUUM probe window, or a process holding the connection "
+            f"open >30s. Investigate the kb dir; consider stopping "
+            f"chromadb briefly to let the next pass succeed.",
+            tag=f"chromadb_hygiene_chronic_failure:{path}",
+        )
 
     if freed_total >= _BIG_FREE_THRESHOLD_BYTES:
         # One alert summarising all the files; never a fan-out per file.
