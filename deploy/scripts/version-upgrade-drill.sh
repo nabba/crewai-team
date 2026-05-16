@@ -37,12 +37,24 @@ if [[ ! -f docker-compose.yml ]]; then
     exit 2
 fi
 
+# --- Isolation overlay (required) ----------------------------------------
+# Without this overlay the drill stack mounts the same host paths as
+# the live stack (./workspace/mem0_pgdata, ./workspace/mem0_neo4j,
+# ./workspace/memory) and corrupts the live databases when both run
+# at once. See header comment in the overlay file for the full story.
+DRILL_OVERLAY="docker-compose.drill-isolation.yml"
+if [[ ! -f "$DRILL_OVERLAY" ]]; then
+    echo "ERROR: drill overlay missing: $DRILL_OVERLAY" >&2
+    echo "       Without it the drill would corrupt the live databases." >&2
+    exit 2
+fi
+
 # --- Compose detection ---------------------------------------------------
 if command -v docker >/dev/null 2>&1; then
     if docker compose version >/dev/null 2>&1; then
-        COMPOSE="docker compose"
+        COMPOSE="docker compose -f docker-compose.yml -f $DRILL_OVERLAY"
     elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE="docker-compose"
+        COMPOSE="docker-compose -f docker-compose.yml -f $DRILL_OVERLAY"
     else
         echo "ERROR: docker compose not found" >&2
         exit 2
@@ -51,6 +63,26 @@ else
     echo "ERROR: docker not found" >&2
     exit 2
 fi
+
+# --- Pre-flight: refuse if any live container exists ---------------------
+# Belt-and-suspenders with the overlay. If a future operator removes or
+# breaks the overlay, the bind-mount race is back; refuse to start if
+# any of the three live containers exists in any state so the same
+# 2026-05-16 corruption incident can't recur.
+for live in crewai-team-postgres-1 crewai-team-neo4j-1 crewai-team-chromadb-1; do
+    if docker inspect "$live" >/dev/null 2>&1; then
+        live_state="$(docker inspect "$live" \
+            --format '{{.State.Status}}' 2>/dev/null || echo unknown)"
+        echo "ERROR: live container $live exists, state=$live_state." >&2
+        echo "       The drill stack and live stack share docker-compose.yml;" >&2
+        echo "       running both concurrently has caused live-database" >&2
+        echo "       corruption in the past." >&2
+        echo "       Bring the live stack down first:" >&2
+        echo "         docker compose down" >&2
+        echo "       Then re-run this script." >&2
+        exit 4
+    fi
+done
 
 # --- Target versions -----------------------------------------------------
 POSTGRES_TARGET_TAG="${POSTGRES_TARGET_TAG:-pgvector/pgvector:0.8.0-pg17}"

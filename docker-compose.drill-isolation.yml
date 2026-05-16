@@ -1,0 +1,55 @@
+# Overlay applied by deploy/scripts/restore-drill.sh and
+# deploy/scripts/version-upgrade-drill.sh.
+#
+# Both drill scripts use `docker compose -p <project>` with this same
+# docker-compose.yml. The `-p` flag renames containers and networks but
+# reads bind-mount paths literally, so without this overlay the drill
+# stacks would mount the live host directories:
+#
+#   * postgres → ./workspace/mem0_pgdata
+#   * neo4j    → ./workspace/mem0_neo4j
+#   * chromadb → ./workspace/memory
+#
+# Running the drills against a live stack therefore caused live-database
+# corruption (incident 2026-05-16 with the sibling migration-drill —
+# pg_attribute entries were destroyed; ~70 min of writes lost). The
+# migration-drill ships its own narrower overlay
+# (`docker-compose.migration-drill.yml`); this one is the broader
+# overlay for the two drills that touch postgres + neo4j + chromadb.
+#
+# This overlay remaps:
+#   * postgres data dir → ephemeral named volume `drill_pgdata`
+#   * neo4j data dir    → ephemeral named volume `drill_neo4j`
+#   * chromadb data dir → ephemeral named volume `drill_chroma`
+#     (note: matches the bare name `chroma` that restore-drill.sh
+#     already assumes when it tars files into
+#     `${DRILL_PROJECT}_chroma` — without this overlay that volume
+#     was created on-demand by `docker run`, but the live bind mount
+#     still won the race when compose brought chromadb back up.)
+#
+# All three named volumes are cleaned automatically by `down -v` in
+# the drill's teardown, so re-running the drill always starts from
+# zero state.
+#
+# `!override` (Compose v2.24+) replaces the parent service's `volumes`
+# list rather than appending — without it the drill would mount BOTH
+# the live bind and the new named volume on the same target, which is
+# undefined behaviour.
+
+services:
+  postgres:
+    volumes: !override
+      - drill_pgdata:/var/lib/postgresql/data
+
+  neo4j:
+    volumes: !override
+      - drill_neo4j:/data
+
+  chromadb:
+    volumes: !override
+      - drill_chroma:/chroma/chroma
+
+volumes:
+  drill_pgdata:
+  drill_neo4j:
+  drill_chroma:
