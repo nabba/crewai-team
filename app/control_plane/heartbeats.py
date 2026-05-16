@@ -5,6 +5,19 @@ Extends the existing idle_scheduler with:
 - Event-driven wakes (ticket assigned → wake assigned agent)
 - Autonomous mode: agents process their ticket queues on heartbeat
 - Heartbeat logging to PostgreSQL for audit
+
+PR 2 (2026-05-16) — passive vs active split. Until now, ``run_heartbeat``
+unconditionally pulled assigned tickets and dispatched them through
+Commander on every cycle. The ``autonomous_mode`` setting (config.py,
+default False) was defined but never read — agents processed tickets
+autonomously regardless of the flag. ``run_heartbeat`` now dispatches:
+  * ``settings.autonomous_mode = True``  → ``run_active_heartbeat`` (full
+    pull-and-dispatch cycle, identical to prior behavior)
+  * ``settings.autonomous_mode = False`` → ``run_passive_heartbeat``
+    (telemetry-only beat; schedule + dashboard stay fresh, no
+    ticket processing)
+The flag is read at call time so an operator can flip it without a
+gateway restart.
 """
 import logging
 import threading
@@ -79,8 +92,71 @@ class HeartbeatScheduler:
         except Exception:
             logger.debug("heartbeat: failed to log beat", exc_info=True)
 
+    def _autonomous_mode_enabled(self) -> bool:
+        """Read the ``autonomous_mode`` flag at call time.
+
+        Reading per-call (not cached) means an operator can flip the
+        setting via ``/cp/settings`` or by editing config + restarting
+        with the new value picked up on the next heartbeat. Failures
+        fall closed (passive) — if settings can't load, we don't
+        autonomously process tickets.
+        """
+        try:
+            from app.config import get_settings
+            return bool(get_settings().autonomous_mode)
+        except Exception:
+            logger.debug(
+                "heartbeat: settings unavailable, falling closed to passive",
+                exc_info=True,
+            )
+            return False
+
     def run_heartbeat(self, agent_role: str, project_id: str = None) -> dict:
-        """Single heartbeat cycle for an agent.
+        """Single heartbeat cycle. Routes to passive or active.
+
+        Always records a telemetry beat so the schedule + dashboard
+        stay fresh. Only processes assigned tickets when
+        ``settings.autonomous_mode`` is True. Without autonomous_mode
+        the operator drives ticket execution explicitly.
+        """
+        if self._autonomous_mode_enabled():
+            return self.run_active_heartbeat(agent_role, project_id)
+        return self.run_passive_heartbeat(agent_role, project_id)
+
+    def run_passive_heartbeat(
+        self, agent_role: str, project_id: str = None,
+    ) -> dict:
+        """Telemetry-only heartbeat. Records the beat, skips ticket processing.
+
+        Used when ``autonomous_mode`` is disabled. The agent does not
+        autonomously act on its ticket queue; the operator drives
+        execution. Wake events queued via ``trigger_wake`` are
+        deliberately NOT consumed here — they remain pending so that
+        when autonomous_mode is enabled the agent picks them up at the
+        next active beat.
+
+        Returns:
+            dict with ``status="passive"``, ``tickets_processed=0``,
+            and ``reason`` explaining why the active path was skipped.
+        """
+        # Cheap one-line breadcrumb so operators can confirm the gate
+        # is engaged from the gateway logs without grepping for
+        # "autonomous_mode disabled" in DB heartbeat rows.
+        logger.debug(
+            "heartbeat: %s passive (autonomous_mode disabled)", agent_role,
+        )
+        self.record_beat(agent_role, project_id, "passive")
+        return {
+            "agent": agent_role,
+            "tickets_processed": 0,
+            "status": "passive",
+            "reason": "autonomous_mode disabled",
+        }
+
+    def run_active_heartbeat(
+        self, agent_role: str, project_id: str = None,
+    ) -> dict:
+        """Active heartbeat — pulls ticket queue and processes one.
 
         1. Check assigned tickets (todo, in_progress)
         2. Check budget availability

@@ -104,7 +104,8 @@ class TestAuditTrail(unittest.TestCase):
         from app.control_plane.audit import AuditTrail
         self.audit = AuditTrail()
 
-    @patch("app.control_plane.audit.execute")
+    # PR 3 (2026-05-16): AuditTrail.log now calls execute_required.
+    @patch("app.control_plane.audit.execute_required")
     def test_log_inserts_row(self, mock_exec):
         self.audit.log(actor="user", action="test.action", project_id="p1",
                        resource_type="ticket", resource_id="t1",
@@ -117,7 +118,7 @@ class TestAuditTrail(unittest.TestCase):
         assert params[1] == "user"    # actor
         assert params[2] == "test.action"
 
-    @patch("app.control_plane.audit.execute")
+    @patch("app.control_plane.audit.execute_required")
     def test_log_never_raises(self, mock_exec):
         """Audit log is fire-and-forget — errors must not propagate."""
         mock_exec.side_effect = RuntimeError("db down")
@@ -157,9 +158,16 @@ class TestTicketManager(unittest.TestCase):
         self.tm = TicketManager()
         self.tm._audit = MagicMock()
 
+    # PR 3 (2026-05-16): TicketManager INSERT/UPDATE writes converted
+    # to execute_required / execute_one_required so silent DB failures
+    # can no longer masquerade as empty result sets. Tests below patch
+    # both the new ``*_required`` symbol AND the old ``execute_one``
+    # used by the dedup-read in create_from_signal.
+    @patch("app.control_plane.tickets.execute_one_required")
     @patch("app.control_plane.tickets.execute_one")
-    def test_create_from_signal(self, mock_exec_one):
-        mock_exec_one.return_value = {
+    def test_create_from_signal(self, mock_dedup, mock_insert):
+        mock_dedup.return_value = None  # no existing duplicate
+        mock_insert.return_value = {
             "id": "abc-123", "title": "Test task", "status": "todo",
             "created_at": "2026-04-16",
         }
@@ -173,22 +181,26 @@ class TestTicketManager(unittest.TestCase):
         audit_kwargs = self.tm._audit.log.call_args[1]
         assert audit_kwargs["action"] == "ticket.created"
 
+    @patch("app.control_plane.tickets.execute_one_required")
     @patch("app.control_plane.tickets.execute_one")
-    def test_create_from_signal_truncates_title(self, mock_exec_one):
+    def test_create_from_signal_truncates_title(self, mock_dedup, mock_insert):
         """Title is truncated to 200 chars."""
-        mock_exec_one.return_value = {"id": "x", "title": "t", "status": "todo", "created_at": ""}
+        mock_dedup.return_value = None
+        mock_insert.return_value = {"id": "x", "title": "t", "status": "todo", "created_at": ""}
         long_message = "A" * 500
         self.tm.create_from_signal(long_message, "u", "p1")
-        params = mock_exec_one.call_args[0][1]
+        # Either the dedup-read or the INSERT carries the truncated title;
+        # the INSERT is the canonical write so we read its params.
+        params = mock_insert.call_args[0][1]
         assert len(params[1]) <= 200  # title param
 
-    @patch("app.control_plane.tickets.execute_one")
-    def test_create_manual(self, mock_exec_one):
-        mock_exec_one.return_value = {"id": "m1", "title": "Manual", "status": "todo", "created_at": ""}
+    @patch("app.control_plane.tickets.execute_one_required")
+    def test_create_manual(self, mock_insert):
+        mock_insert.return_value = {"id": "m1", "title": "Manual", "status": "todo", "created_at": ""}
         result = self.tm.create_manual("Manual ticket", "p1", priority=3)
         assert result["id"] == "m1"
 
-    @patch("app.control_plane.tickets.execute")
+    @patch("app.control_plane.tickets.execute_required")
     def test_assign_to_crew(self, mock_exec):
         self.tm.assign_to_crew("t1", "research_crew", "researcher")
         sql = mock_exec.call_args[0][0]
@@ -196,14 +208,18 @@ class TestTicketManager(unittest.TestCase):
         assert "status = 'in_progress'" in sql
         self.tm._audit.log.assert_called_once()
 
-    @patch("app.control_plane.tickets.execute")
-    def test_complete(self, mock_exec):
+    @patch("app.control_plane.tickets.execute_required")
+    @patch("app.control_plane.tickets.execute_one")
+    def test_complete(self, mock_pid_lookup, mock_exec):
+        # complete() does a project_id lookup via execute_one (read,
+        # not required) before the UPDATE via execute_required.
+        mock_pid_lookup.return_value = {"project_id": "p1"}
         self.tm.complete("t1", "All done", cost_usd=0.05, tokens=500)
         sql = mock_exec.call_args[0][0]
         assert "status = 'done'" in sql
         self.tm._audit.log.assert_called_once()
 
-    @patch("app.control_plane.tickets.execute")
+    @patch("app.control_plane.tickets.execute_required")
     def test_fail(self, mock_exec):
         self.tm.fail("t1", "Something broke")
         sql = mock_exec.call_args[0][0]
@@ -366,7 +382,7 @@ class TestGovernanceGate(unittest.TestCase):
         assert self.gate.needs_approval("learning") is False
         assert self.gate.needs_approval("ticket execution") is False
 
-    @patch("app.control_plane.governance.execute_one")
+    @patch("app.control_plane.governance.execute_one_required")
     def test_request_approval(self, mock_one):
         mock_one.return_value = {
             "id": "gov-1", "request_type": "code_change",
@@ -380,7 +396,7 @@ class TestGovernanceGate(unittest.TestCase):
         assert result["status"] == "pending"
         self.gate._audit.log.assert_called_once()
 
-    @patch("app.control_plane.governance.execute_one")
+    @patch("app.control_plane.governance.execute_one_required")
     def test_approve(self, mock_one):
         mock_one.return_value = {"id": "gov-1", "request_type": "code_change", "title": "Deploy"}
         assert self.gate.approve("gov-1", reviewer="admin") is True
@@ -388,12 +404,12 @@ class TestGovernanceGate(unittest.TestCase):
         assert "status = 'approved'" in sql
         self.gate._audit.log.assert_called_once()
 
-    @patch("app.control_plane.governance.execute_one")
+    @patch("app.control_plane.governance.execute_one_required")
     def test_approve_already_resolved(self, mock_one):
         mock_one.return_value = None  # no matching pending row
         assert self.gate.approve("gov-1") is False
 
-    @patch("app.control_plane.governance.execute_one")
+    @patch("app.control_plane.governance.execute_one_required")
     def test_reject(self, mock_one):
         mock_one.return_value = {"id": "gov-1", "request_type": "code_change", "title": "Deploy"}
         assert self.gate.reject("gov-1", reason="not ready") is True
@@ -655,15 +671,15 @@ class TestHeartbeatScheduler(unittest.TestCase):
         self.hb.record_beat("commander")  # should not raise
 
     @patch("app.control_plane.heartbeats.execute")
-    def test_run_heartbeat_idle(self, mock_exec):
-        """No tickets and no wakes → idle heartbeat."""
+    def test_run_active_heartbeat_idle(self, mock_exec):
+        """No tickets and no wakes → idle heartbeat (active path)."""
         mock_exec.return_value = []
-        result = self.hb.run_heartbeat("researcher", "p1")
+        result = self.hb.run_active_heartbeat("researcher", "p1")
         assert result["status"] == "idle"
         assert result["tickets_processed"] == 0
 
     @patch("app.control_plane.heartbeats.execute")
-    def test_run_heartbeat_with_todo_ticket(self, mock_exec):
+    def test_run_active_heartbeat_with_todo_ticket(self, mock_exec):
         """A todo ticket should be picked up and processed."""
         mock_exec.return_value = [
             {"id": "t1", "title": "Research AI safety", "status": "todo", "difficulty": 4},
@@ -677,7 +693,7 @@ class TestHeartbeatScheduler(unittest.TestCase):
         with patch("app.control_plane.tickets.get_tickets", return_value=mock_tm), \
              patch("app.control_plane.budgets.get_budget_enforcer", return_value=mock_be), \
              patch.dict("sys.modules", {"app.agents.commander.orchestrator": MagicMock(Commander=mock_commander_cls)}):
-            result = self.hb.run_heartbeat("researcher", "p1")
+            result = self.hb.run_active_heartbeat("researcher", "p1")
 
         assert result["status"] == "active"
         assert result["tickets_processed"] == 1
@@ -685,7 +701,7 @@ class TestHeartbeatScheduler(unittest.TestCase):
         mock_tm.complete.assert_called_once()
 
     @patch("app.control_plane.heartbeats.execute")
-    def test_run_heartbeat_budget_exceeded(self, mock_exec):
+    def test_run_active_heartbeat_budget_exceeded(self, mock_exec):
         """Should stop processing when budget is exceeded."""
         mock_exec.return_value = [
             {"id": "t1", "title": "Task", "status": "todo", "difficulty": 3},
@@ -695,12 +711,12 @@ class TestHeartbeatScheduler(unittest.TestCase):
 
         with patch("app.control_plane.budgets.get_budget_enforcer", return_value=mock_be), \
              patch("app.control_plane.tickets.get_tickets", return_value=MagicMock()):
-            result = self.hb.run_heartbeat("coder", "p1")
+            result = self.hb.run_active_heartbeat("coder", "p1")
 
         assert result["status"] == "budget_exceeded"
 
     @patch("app.control_plane.heartbeats.execute")
-    def test_run_heartbeat_ticket_failure(self, mock_exec):
+    def test_run_active_heartbeat_ticket_failure(self, mock_exec):
         """Failed ticket execution marks ticket as failed."""
         mock_exec.return_value = [
             {"id": "t1", "title": "Hard task", "status": "todo", "difficulty": 8},
@@ -714,7 +730,7 @@ class TestHeartbeatScheduler(unittest.TestCase):
         with patch("app.control_plane.tickets.get_tickets", return_value=mock_tm), \
              patch("app.control_plane.budgets.get_budget_enforcer", return_value=mock_be), \
              patch.dict("sys.modules", {"app.agents.commander.orchestrator": MagicMock(Commander=mock_commander_cls)}):
-            result = self.hb.run_heartbeat("coder", "p1")
+            result = self.hb.run_active_heartbeat("coder", "p1")
 
         mock_tm.fail.assert_called_once()
         assert "crew crashed" in mock_tm.fail.call_args[0][1]
@@ -946,10 +962,22 @@ class TestTicketLifecycle(unittest.TestCase):
         self.tm._audit = MagicMock()
         self._exec_calls = []
 
+    # PR 3 (2026-05-16): both lifecycle tests now patch the four
+    # symbols that the converted code actually uses:
+    #   * execute_one         — dedup-read in create_from_signal and
+    #                            project_id lookup in complete (optional)
+    #   * execute_one_required — INSERT in create_from_signal (required)
+    #   * execute_required     — UPDATE in assign_to_crew / complete /
+    #                            fail / close (required)
+    #   * execute              — INSERT in add_comment (still optional;
+    #                            comments are observational)
     @patch("app.control_plane.tickets.execute")
+    @patch("app.control_plane.tickets.execute_required")
+    @patch("app.control_plane.tickets.execute_one_required")
     @patch("app.control_plane.tickets.execute_one")
-    def test_full_lifecycle(self, mock_one, mock_exec):
-        mock_one.return_value = {
+    def test_full_lifecycle(self, mock_one, mock_one_req, mock_req, mock_exec):
+        mock_one.return_value = None  # no dedup match
+        mock_one_req.return_value = {
             "id": "t-lifecycle", "title": "Integration test",
             "status": "todo", "created_at": "2026-04-16",
         }
@@ -960,31 +988,36 @@ class TestTicketLifecycle(unittest.TestCase):
 
         # Assign
         self.tm.assign_to_crew("t-lifecycle", "research_crew", "researcher")
-        assign_sql = mock_exec.call_args[0][0]
+        assign_sql = mock_req.call_args[0][0]
         assert "in_progress" in assign_sql
 
         # Comment
         self.tm.add_comment("t-lifecycle", "researcher", "Found 5 sources")
 
-        # Complete
+        # Complete — overrides project_id lookup to None to skip audit project_id
+        mock_one.return_value = None
         self.tm.complete("t-lifecycle", "Done: 5 sources analyzed", cost_usd=0.03, tokens=2000)
-        complete_sql = mock_exec.call_args[0][0]
+        complete_sql = mock_req.call_args[0][0]
         assert "done" in complete_sql
 
         # Audit trail should have 3 entries: create, assign, complete
         assert self.tm._audit.log.call_count == 3
 
-    @patch("app.control_plane.tickets.execute")
+    @patch("app.control_plane.tickets.execute_required")
+    @patch("app.control_plane.tickets.execute_one_required")
     @patch("app.control_plane.tickets.execute_one")
-    def test_failure_lifecycle(self, mock_one, mock_exec):
-        mock_one.return_value = {"id": "t-fail", "title": "Failing task",
-                                 "status": "todo", "created_at": ""}
+    def test_failure_lifecycle(self, mock_one, mock_one_req, mock_req):
+        mock_one.return_value = None  # no dedup match
+        mock_one_req.return_value = {
+            "id": "t-fail", "title": "Failing task",
+            "status": "todo", "created_at": "",
+        }
 
         ticket = self.tm.create_from_signal("Failing task", "user", "p1")
         self.tm.assign_to_crew("t-fail", "coding_crew", "coder")
         self.tm.fail("t-fail", "LLM timeout after 3 retries")
 
-        fail_sql = mock_exec.call_args[0][0]
+        fail_sql = mock_req.call_args[0][0]
         assert "failed" in fail_sql
         # Audit: create + assign + fail = 3
         assert self.tm._audit.log.call_count == 3

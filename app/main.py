@@ -1028,18 +1028,10 @@ try:
 except Exception:
     logger.warning("metrics: registration failed", exc_info=True)
 
-# ── CORS — allow control plane dashboard (port 3100) to call API (port 8765) ──
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3100", "http://127.0.0.1:3100",
-                   "http://100.85.195.121:3100",
-                   "http://plgs-macbook-pro---andrus:3100",
-                   "http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is configured in app/middleware.py (single source of truth as of
+# 2026-05-16). The duplicate block that used to live here has been
+# removed; add new origins via the ``CORS_EXTRA_ORIGINS`` env var or by
+# editing ``_dashboard_origins`` in middleware.py.
 
 # Mount philosophy API routes
 from app.philosophy.api import philosophy_router

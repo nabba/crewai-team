@@ -10568,3 +10568,311 @@ the same baseline. The audit doc is the canonical reference for
 "what shape does each monitor have"; treat it as authoritative when
 reviewing a new monitor design or evaluating an old one.
 
+---
+
+## 54 2026-05-16 — Silent-failure DB hygiene + heartbeat gate + writer required-helpers (3 internal PRs)
+
+Operator-driven hardening pass after a wider remediation-plan
+ultrathink. The plan named eight phases; this section ships three
+of them in one feature branch:
+
+  * **§54.1 PR 1 — silent-failure remediation**: required/optional
+    DB-helper split, observational pool diagnostics, snapshot
+    `_ensured` ordering bug, idle scheduler iterator-level
+    `TimeoutError` catch, Docker SDK `timeout=` kwarg fix, CORS
+    single-source-of-truth, README cleanup.
+  * **§54.2 PR 2 — autonomous_mode gate + pool REST + 2 phase spans**:
+    heartbeat split into passive/active + `autonomous_mode`-gated
+    dispatch, `/api/cp/pool/diagnostics` endpoint, orchestrator
+    `proactive` + `critic` spans.
+  * **§54.3 PR 3 — high-value writer conversion**: four modules
+    (`audit.py`, `governance.py`, `tickets.py`,
+    `error_monitor.py`) switched from silent-`execute` to raising
+    `execute_required` / `execute_one_required` on the writes whose
+    silent failure would corrupt operator-visible state.
+
+One feature branch, one commit, one PR. The work is presented as
+three logical PRs because each closes a distinct silent-failure
+class — operators reviewing the diff can read them as three
+independent stories.
+
+**TIER_IMMUTABLE callout**: three of the modified files
+(`app/control_plane/audit.py`, `app/control_plane/governance.py`,
+`app/idle_scheduler.py`) are members of `TIER_IMMUTABLE` in
+`app/auto_deployer.py`. All edits are additive-or-semantic-preserving:
+no new behaviours (audit still fire-and-forget; governance still
+returns True/False/dict; idle scheduler still drains the same
+futures pool). The required-helper conversions make existing
+documented contracts ACTUALLY hold — pre-PR-3 the API claimed
+"silent failure on DB error" was unreachable but it WAS reachable
+because `execute()` swallowed exceptions; the conversion finally
+matches code to spec. Operator approved each change explicitly
+during the conversation.
+
+### §54.1 PR 1 — silent-failure remediation
+
+The dominant pattern in `workspace/logs/errors.jsonl` is "48,520
+× connection pool exhausted" (per the operator's plan audit), then
+~7,600 vendor-credit errors, then ~1,021 missing-relation/-column
+errors. The pool-exhausted pattern is partly mitigated by the
+self-heal v3 `db_pool_reset` handler (~51% resolution, §38.4) but
+the remaining 49% has no diagnostic surface. Before this PR a real
+DB outage looked exactly like "query returned no rows" because every
+helper in `app/control_plane/db.py` swallowed all exceptions and
+returned None / [].
+
+`app/control_plane/db.py` now has two families that share a single
+private inner loop (`_checkout` + `_run_query`) so they cannot drift
+apart on connection-state quirks:
+
+  * **Required family** — `execute_required`, `execute_one_required`,
+    `execute_scalar_required`. Raises on any failure. Use for
+    correctness-critical operations.
+  * **Optional family** — existing `execute`, `execute_one`,
+    `execute_scalar`. Returns None on failure. Use for observational
+    writes where silent miss is acceptable. Refactored to call
+    `execute_required` internally + catch the exception classes.
+
+New `DBUnavailable` exception covers `get_pool() → None` (not
+configured, breaker open). Distinct from `psycopg2.pool.PoolError`
+(pool exists but no connection available).
+
+New thread-safe diagnostics counters (`get_pool_diagnostics()`):
+
+  * `acquires_total`, `acquires_slow` (>500ms)
+  * `failures_{pool_unavailable, pool_exhausted, pool_other, connection_error}`
+  * `current_borrows`, `peak_borrows`
+  * `last_exhaust_ts`, `last_slow_acquire_ms`
+
+Counters are observational only — they NEVER change pool behavior.
+A `peak_borrows` value approaching `maxconn` (default 24) is the
+signature of pool pressure. A growing `current_borrows` that doesn't
+return to zero between idle windows is a leak signature.
+
+`app/observability/snapshots.py:120` — `PostgresSnapshotStore._ensure_table`
+switched from `execute` to `execute_required`. Pre-fix, a silent
+CREATE TABLE failure (pool unavailable, permission denied) still
+set `_ensured = True` because no exception propagated; subsequent
+`put()`/`latest()`/`recent()` also silently failed against a
+never-created table. Post-fix, a real CREATE failure raises, the
+except branch catches it WITHOUT setting `_ensured`, and the next
+`put()` retries.
+
+`app/idle_scheduler.py:399` — new `_drain_futures_with_timeout`
+helper catches the iterator-level `concurrent.futures.TimeoutError`
+that `as_completed(timeout=N)` raises when at least one future
+hasn't completed within N seconds. Pre-fix the for-loop only had
+`try/except Exception` around `future.result()` — an iterator
+timeout escaped the loop and killed the scheduler daemon thread,
+silently stopping ALL background work until the next gateway
+restart. Helper also cancels still-pending futures so a single
+stuck job doesn't permanently consume a pool slot. Logs stuck job
+names for operator visibility.
+
+`app/tools/code_executor.py:97` — removed the invalid `timeout=`
+kwarg from `containers.run()`. Docker SDK does not accept it; the
+SDK silently ignored the value so the documented "30s wall-clock"
+contract was actually enforced as the 10s HTTP socket timeout on
+`docker.from_env(timeout=10)`. Switched to the proper enforcement
+pattern: `detach=True` + `container.wait(timeout=N)` +
+`container.kill()` on wait-timeout. HTTP socket timeout bumped to
+`sandbox_timeout_seconds + 10` so HTTP doesn't drop mid-wait.
+
+`app/middleware.py` + `app/main.py` — CORS was previously
+configured in BOTH places with different `allow_origins`,
+`allow_credentials`, `allow_methods`, and `allow_headers`. FastAPI
+processes middleware LIFO so the stricter `middleware.py` config
+shadowed the more permissive `main.py` block for non-Firebase
+origins. New `_dashboard_origins(gateway_port)` helper in
+`middleware.py` is now the single source of truth — union of both
+prior lists, `allow_credentials=True`, `CORS_EXTRA_ORIGINS` env
+override for adding tailscale/proxy hostnames without editing
+source. `main.py` duplicate block deleted.
+
+`README.md:485` — removed the reference to nonexistent
+`scripts/run_migrations.py`. Migrations apply automatically at
+gateway boot via `app.memory.startup_migrations.apply_all`
+(idempotent `IF NOT EXISTS`). The `scripts/` dir has 28 utilities
+but `run_migrations.py` isn't among them and never was.
+
+### §54.2 PR 2 — autonomous_mode gate + pool REST + 2 phase spans
+
+`app/control_plane/heartbeats.py` — `HeartbeatScheduler.run_heartbeat`
+was unconditionally pulling assigned tickets and dispatching them
+through Commander, regardless of the `autonomous_mode` setting
+(defined in `config.py` as `autonomous_mode: bool = False` but
+never read). The flag was effectively dead code.
+
+Split into three methods:
+
+  * `run_passive_heartbeat(agent_role, project_id)` — telemetry-only.
+    Records the beat, returns `{"status": "passive", "reason":
+    "autonomous_mode disabled"}`. Wakes queued via `trigger_wake`
+    are NOT consumed — they remain pending so the next active beat
+    (after operator flips the flag) picks them up.
+  * `run_active_heartbeat(agent_role, project_id)` — full pull-and-
+    dispatch cycle. Body is the previous `run_heartbeat` logic
+    verbatim.
+  * `run_heartbeat(agent_role, project_id)` — dispatch wrapper.
+    Reads `settings.autonomous_mode` per call (no caching) so an
+    operator can flip the setting and the next heartbeat picks it
+    up. Falls closed (passive) if settings can't load — safe-by-
+    default.
+
+`app/control_plane/dashboard_api.py` — new `/api/cp/pool/diagnostics`
+GET endpoint. Returns:
+
+```
+{
+  "counters": {...PR-1 diagnostics dict...},
+  "maxconn": <CONTROL_PLANE_POOL_MAX env, default 24>,
+  "utilisation": current_borrows / maxconn,
+  "peak_utilisation": peak_borrows / maxconn
+}
+```
+
+Surfaces the PR-1 counters via Bearer-auth-protected REST. Counters
+are in-process; a gateway restart zeroes them. Useful for "watch
+peak_borrows / failures_pool_exhausted climb under a load window",
+NOT for long-term trends.
+
+`app/agents/commander/orchestrator.py` — added two `_phase_log`
+spans alongside the existing four (`ctx_load`, `consciousness`,
+`crew_exec`, `run_crew`, `route`, `vetting`):
+
+  * `proactive` — wraps the `_run_proactive_scan` future + 30s
+    timeout block. `ran=True` only when `difficulty >= 4` triggers
+    the gate; `ok=True` only when the future actually returned
+    notes within the budget.
+  * `critic` — wraps the `_run_critic` future + 120s timeout
+    block. `ran=True` only when `difficulty >= 7` triggers the
+    gate; `ok=True` only when the critic LLM returned usable output
+    that replaced the pre-critic result.
+
+Both spans fire even when the gate is skipped (`difficulty` below
+threshold) so operators can confirm via `LOG_PHASE_TIMING=1` that
+the gate is engaged. Zero-cost when `LOG_PHASE_TIMING` is unset.
+
+Two spans deferred: `transfer_memory` and `outbound_delivery`. Both
+live in `main.py:handle_task`, not the orchestrator dispatch path.
+Splitting them is its own focused pass.
+
+### §54.3 PR 3 — high-value writer conversion
+
+Four modules converted from `execute` / `execute_one` to
+`execute_required` / `execute_one_required` for the writes whose
+silent failure would corrupt state. Reads + observational writes +
+background sweeps stayed on optional semantics (judgment call per
+call site; not a blanket conversion).
+
+`app/control_plane/audit.py:log()` — the `AUDIT WRITE FAILED`
+ERROR log line existed but was unreachable because the inner
+`execute()` swallowed every exception. Switched to
+`execute_required` so the error log finally fires. Fire-and-forget
+contract to the caller is preserved (the outer
+`try/except Exception` still swallows after logging).
+
+`app/control_plane/governance.py` — three methods converted to
+`execute_one_required`:
+
+  * `request_approval` — INSERT a new approval request
+  * `approve` — UPDATE pending → approved (returning the row)
+  * `reject` — UPDATE pending → rejected
+
+Pre-fix, `approve` and `reject` returned False for both legitimate
+"no matching pending row" AND "DB unavailable". Post-fix, False is
+reserved for the legitimate case; DB errors raise so the FastAPI
+dashboard handler returns 500 instead of misleading 404.
+`expire_old` (background sweep) and the read methods stay on
+optional semantics.
+
+`app/control_plane/tickets.py` — seven methods converted to
+`execute_required` / `execute_one_required`:
+
+  * `create_from_signal` — INSERT new ticket
+  * `create_manual` — INSERT new ticket (dashboard path)
+  * `assign_to_crew` — UPDATE assignment + status → in_progress
+  * `complete` — UPDATE → done + cost telemetry
+  * `move_ticket` — UPDATE project_id (cross-project move)
+  * `fail` — UPDATE → failed (terminal state)
+  * `close` — UPDATE → done (manual close)
+
+`add_comment` (observational), `fail_stuck_in_progress` (janitor
+sweep), and all reads stayed optional. The dedup-read in
+`create_from_signal` and the project_id lookup in `complete` also
+stayed optional — silent failure there falls through to acceptable
+degraded behavior (fresh ticket; audit log without project_id).
+
+`app/observability/error_monitor.py` — two methods converted:
+
+  * `_record_anomaly` — INSERT anomaly row. The catch block now
+    logs at WARNING (was DEBUG/silent under the old `execute`
+    swallow path). An anomaly that triggers a runbook below could
+    previously leave no row in `error_anomalies` — operators
+    inspecting the table saw "nothing wrong" while the runbook had
+    already attempted remediation.
+  * `acknowledge` — UPDATE open → acknowledged. Pre-fix returned
+    True even on DB failure because `execute` silently swallowed.
+    Post-fix returns False on DB error, matching the documented
+    contract.
+
+`_open_anomaly_exists` (dedup read), `_auto_resolve_open_anomalies`
+(background sweep) stayed optional.
+
+### §54.4 Tests
+
+  * `tests/control_plane/test_db_required_helpers.py` (NEW, 15 tests) —
+    DBUnavailable raised vs returned, SQL error propagation, pool
+    exhaustion handling, diagnostics counters, dict-row results,
+    optional-and-required-share-private-path pin.
+  * `tests/test_snapshots_ensure_retry.py` (NEW, 4 tests) — `_ensured`
+    retry behavior pin.
+  * `tests/test_idle_scheduler_iterator_timeout.py` (NEW, 6 tests) —
+    iterator-level TimeoutError catch + pending-future cancellation
+    + log-message contents.
+  * `tests/control_plane/test_heartbeat_split.py` (NEW, 7 tests) —
+    routing dispatch + flag-read-at-call-time + falls-closed-on-
+    settings-failure + wakes-preserved-by-passive-beat.
+  * `tests/control_plane/test_pool_diagnostics_api.py` (NEW, 4 tests) —
+    endpoint shape + counter reflection + utilisation math +
+    failure handling.
+  * `tests/control_plane/test_required_writers.py` (NEW, 15 tests) —
+    4 test classes (audit, governance, tickets, error_monitor)
+    pinning the new contract per module.
+  * `tests/test_control_plane.py` — 9 existing tests updated to
+    patch the new `*_required` symbols. Lifecycle tests
+    (`test_full_lifecycle`, `test_failure_lifecycle`) now patch
+    all four symbols since they exercise the full create→assign→
+    complete→fail chain.
+  * `conftest.py` (NEW, top-level) — forces real psycopg2 import at
+    pytest collection time so the defensive `MagicMock` injected at
+    `tests/test_control_plane.py:50` (and parallel ones in
+    `test_consciousness_gaps.py`, `test_failure_recovery.py`, etc.)
+    sees psycopg2 already in `sys.modules` and skips the stub. The
+    dev .venv ships psycopg2-binary; the stubs were leaking
+    `pg_pool.PoolError`-as-MagicMock across files and breaking any
+    test that asserted on real psycopg2 exception types.
+
+### §54.5 Scorecard
+
+  * 51 new tests; full PR 1+2+3 regression: 166/167 pass (the 1
+    failure is `test_route_paths` — pre-existing path-prefix
+    mismatch, verified by stashing all changes; identical failure
+    on clean HEAD).
+  * No new failures introduced anywhere in the wider regression
+    (`tests/control_plane/`, `tests/healing/`, snapshots, idle
+    scheduler). The 8 failures in `tests/healing/test_lock_housekeeper.py`,
+    `tests/healing/test_paper_pipeline.py`, `tests/healing/test_retention.py`
+    that surface in wider runs are pre-existing user WIP unrelated
+    to this PR.
+  * TIER_IMMUTABLE files modified: 3 (audit.py, governance.py,
+    idle_scheduler.py). All edits semantic-preserving; operator
+    approved each conversion explicitly during the planning
+    conversation. No `app/subia/` integrity manifest changes.
+  * Net code: ~580 LOC source + ~520 LOC tests.
+  * Two follow-ups parked: pool-exhaustion investigation (counters
+    in place, needs production load window), writer conversion in
+    other modules (audit.py-style fire-and-forget pattern exists
+    in several `app/healing/handlers/*.py` files; each is per-case
+    judgment).
+

@@ -2546,6 +2546,58 @@ def sentience_rpt1_calibration():
         return {"reports": {}, "error": str(exc)}
 
 
+@router.get("/pool/diagnostics")
+def pool_diagnostics():
+    """Read-only pool diagnostics for the control_plane Postgres pool.
+
+    Returns the thread-safe counter snapshot from
+    ``app.control_plane.db.get_pool_diagnostics()`` plus the
+    configured pool capacity so the dashboard can show
+    "current_borrows / maxconn" at a glance.
+
+    Counters track total acquires, slow acquires (> 0.5s), current and
+    peak concurrent borrows, and per-failure-kind counts
+    (pool_unavailable / pool_exhausted / pool_other / connection_error).
+    These were added in PR 1 (2026-05-16) to investigate the dominant
+    "connection pool exhausted" pattern in errors.jsonl without changing
+    pool behavior.
+
+    NB: counters are in-process. A gateway restart zeroes them. Use
+    this endpoint together with a load window (e.g. poll for 15 min
+    and watch peak_borrows / failures_pool_exhausted climb) to
+    diagnose pressure, NOT for long-term aggregate trends.
+    """
+    import os
+
+    try:
+        from app.control_plane.db import get_pool_diagnostics
+        diag = get_pool_diagnostics()
+    except Exception as exc:
+        return {"error": str(exc), "counters": None}
+
+    # Surface the configured pool ceiling alongside the live counters
+    # so the dashboard can show utilisation as a ratio without making a
+    # second call. Mirrors the same env logic used by _create_pool_with_retry.
+    try:
+        maxconn = int(os.environ.get("CONTROL_PLANE_POOL_MAX", "24"))
+    except (TypeError, ValueError):
+        maxconn = 24
+
+    utilisation = (
+        diag["current_borrows"] / maxconn if maxconn else 0.0
+    )
+    peak_utilisation = (
+        diag["peak_borrows"] / maxconn if maxconn else 0.0
+    )
+
+    return {
+        "counters": diag,
+        "maxconn": maxconn,
+        "utilisation": round(utilisation, 3),
+        "peak_utilisation": round(peak_utilisation, 3),
+    }
+
+
 @router.get("/sentience/scorecard-pinning")
 def sentience_scorecard_pinning():
     """The anti-Goodhart pinning summary — what the scorecard SAYS vs

@@ -396,6 +396,47 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _currently_running_job = None
 
 
+def _drain_futures_with_timeout(
+    futures: dict, timeout_s: float,
+) -> None:
+    """Drain a futures dict, swallowing per-future errors AND iterator timeout.
+
+    PR 1 fix (2026-05-16): the previous inline code wrapped only
+    ``future.result()`` in ``try/except Exception``. ``as_completed``
+    itself raises ``concurrent.futures.TimeoutError`` at the *generator*
+    level when at least one future still hasn't completed within
+    ``timeout_s`` seconds — that exception escaped the for-loop and
+    killed the idle-scheduler daemon thread, so one stuck job would
+    silently stop ALL background work until the gateway restarted.
+
+    On iterator timeout we cancel still-pending futures so a single
+    stuck job doesn't permanently consume a slot in the calling pool.
+
+    Args:
+        futures: dict mapping ``Future`` → human-readable job name
+        timeout_s: total seconds to wait for the slowest future
+    """
+    import concurrent.futures as _cf
+    from concurrent.futures import as_completed
+    try:
+        for future in as_completed(futures, timeout=timeout_s):
+            try:
+                future.result()
+            except Exception:
+                pass
+    except _cf.TimeoutError:
+        stuck = [futures[f] for f in futures if not f.done()]
+        logger.warning(
+            "idle_scheduler: light-job phase timed out with %d "
+            "futures still pending (%s) — cancelling",
+            len(stuck),
+            ", ".join(stuck[:5]) + ("…" if len(stuck) > 5 else ""),
+        )
+        for f in futures:
+            if not f.done():
+                f.cancel()
+
+
 def _run_idle_loop(jobs) -> None:
     """Main idle loop — dual-queue architecture with parallel lightweight execution.
 
@@ -455,13 +496,10 @@ def _run_idle_loop(jobs) -> None:
                 if _stop_event.is_set() or not is_idle():
                     break
                 futures[light_pool.submit(_run_single_job, name, fn, TIME_CAPS[JobWeight.LIGHT])] = name
-            # Wait for all lightweight jobs (bounded by their time caps)
-            from concurrent.futures import as_completed
-            for future in as_completed(futures, timeout=TIME_CAPS[JobWeight.LIGHT] + 10):
-                try:
-                    future.result()
-                except Exception:
-                    pass
+            # Wait for all lightweight jobs (bounded by their time caps).
+            _drain_futures_with_timeout(
+                futures, TIME_CAPS[JobWeight.LIGHT] + 10,
+            )
 
         if _stop_event.is_set() or not is_idle():
             continue

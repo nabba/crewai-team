@@ -3284,12 +3284,17 @@ class Commander:
             # Run proactive scan under its own budget — never let it block the
             # main thread for more than ~30s.  It's a best-effort enhancer.
             _proactive_notes = ""
+            _proactive_t0 = time.monotonic()
+            _proactive_ran = False
+            _proactive_ok = False
             if difficulty >= 4:
+                _proactive_ran = True
                 _proactive_future = _ctx_pool.submit(
                     _run_proactive_scan, _synthesis_result, crew_name, user_input,
                 )
                 try:
                     _proactive_notes = _proactive_future.result(timeout=30)
+                    _proactive_ok = True
                 except Exception as _proactive_exc:
                     logger.warning(
                         f"proactive_scan timed out / failed "
@@ -3297,6 +3302,13 @@ class Commander:
                         f"continuing without proactive notes"
                     )
                     _proactive_notes = ""
+            # PR 2 (2026-05-16): emit a phase span even when proactive is
+            # skipped (difficulty < 4) so operators can confirm the gate.
+            _phase_log(
+                "proactive", _proactive_t0,
+                crew=crew_name, difficulty=difficulty,
+                ran=_proactive_ran, ok=_proactive_ok,
+            )
 
             # Vetting hard ceiling: 90s.  Vetting LLM internally has its own
             # _VET_LLM_TIMEOUT_S guard, but the future-level timeout here is
@@ -3543,7 +3555,11 @@ class Commander:
             # Bounded under a hard wall-clock budget so a hung critic LLM
             # can't stall delivery (same root cause as the 2026-04-25 vetting
             # outage).  On timeout/failure: keep the pre-critic result.
+            _critic_t0 = time.monotonic()
+            _critic_ran = False
+            _critic_ok = False
             if difficulty >= 7:
+                _critic_ran = True
                 _pre_critic_result = final_result
 
                 def _run_critic():
@@ -3559,6 +3575,7 @@ class Commander:
                     _critic_out = _critic_future.result(timeout=120)
                     if _critic_out and len(str(_critic_out).strip()) >= 10:
                         final_result = _critic_out
+                        _critic_ok = True
                     else:
                         logger.warning(
                             "Critic returned empty output; keeping pre-critic result"
@@ -3570,6 +3587,15 @@ class Commander:
                         f"keeping pre-critic result"
                     )
                     final_result = _pre_critic_result
+            # PR 2 (2026-05-16): emit a phase span even when the critic
+            # gate is skipped (difficulty < 7) so operators can confirm
+            # the gate. ``ok`` is True only when critic returned usable
+            # output that replaced the pre-critic result.
+            _phase_log(
+                "critic", _critic_t0,
+                crew=crew_name, difficulty=difficulty,
+                ran=_critic_ran, ok=_critic_ok,
+            )
 
             # ── Capability Recovery Loop (2026-04-28) ──────────────
             # Last-mile defense: if the final answer looks like a
