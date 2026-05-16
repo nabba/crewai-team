@@ -280,10 +280,40 @@ the subsystem and still clear past history (or vice versa).
 | Symptom | Cause | Fix |
 |---|---|---|
 | `open failed: unable to open database file` (only Safari) | Python lacks FDA | Grant FDA → restart agent |
+| `OSError: [Errno 30] Read-only file system: '/app'` in the log | `WORKSPACE_ROOT` env var wasn't set before `python -m app.browse.host_collector` ran. `app.paths` reads it at module-import time, so the runtime fallback in `_setup_workspace` is too late under `-m`. | Set `WORKSPACE_ROOT=/Users/.../crewai-team/workspace` in the launchd plist's `EnvironmentVariables` (or export it before invoking from a shell). The defensive check in `host_collector.py` will refuse to proceed with a clear diagnosis from this point on. |
 | Agent shows `last_exit_code` other than 0 | Python path stale (e.g. homebrew Python upgrade) | Re-edit `scripts/browse_host_collector.plist` with the new path → `install` |
+| First-pass event count maxes at ~5000 then stops mid-history | Per-pass `LIMIT 5000` in each reader — intentional to bound a single pass. Cursor advances; the next 30-min pass picks up where it left off. | No action needed. Three to four passes are enough to back-fill a year of history on a busy account. |
 | No `🌐 Browsing themes` in briefing | Master switch off, OR no topic files yet (LLM batch runs once per day) | Wait a day; check `workspace/browse/topics/` |
 | All four readers produce 0 events | No browsers installed at expected paths; check `~/Library/Application Support/` | Most users only have Safari + Chrome — that's normal |
 | `chrome` reader silently produces 0 events | Chrome's `Default/History` file doesn't exist (browser installed but unused) | Expected; the readers no-op when DBs are missing |
+
+## Why `WORKSPACE_ROOT` must be set in the env, not just `--workspace`
+
+`python -m app.browse.host_collector` triggers Python's package-import
+machinery on `app.browse` BEFORE `host_collector.main()` runs.
+`app/browse/__init__.py` imports `app.browse.idle_job → app.browse.store
+→ app.paths`, and `app.paths` evaluates `WORKSPACE_ROOT` from the env
+at module-import time:
+
+```python
+# app/paths.py
+WORKSPACE_ROOT: Path = Path(
+    os.environ.get("WORKSPACE_ROOT", "/app/workspace"),
+)
+```
+
+So if `WORKSPACE_ROOT` isn't already set when Python starts, the
+package binds `WORKSPACE_ROOT = /app/workspace` (the container path)
+into `app.paths` permanently for the process lifetime, and the
+runtime `os.environ["WORKSPACE_ROOT"] = ...` in `_setup_workspace`
+can't undo that. Events then try to land under `/app/workspace/...`
+on macOS — which is the read-only system root — and the host
+collector crashes with `OSError: [Errno 30]`.
+
+The launchd plist sets it correctly in `EnvironmentVariables`. The
+defensive check in `_setup_workspace` cross-checks `app.paths.WORKSPACE_ROOT`
+against the `--workspace` argument and refuses to proceed with a
+specific diagnosis if they mismatch.
 
 ## What this is NOT
 

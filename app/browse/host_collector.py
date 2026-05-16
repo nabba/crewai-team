@@ -27,15 +27,29 @@ The split is clean by file boundary:
 Usage
 -----
 
+  WORKSPACE_ROOT=/Users/andrus/BotArmy/crewai-team/workspace \\
+  BROWSE_INGESTION_ENABLED=true \\
   python -m app.browse.host_collector \\
       --workspace /Users/andrus/BotArmy/crewai-team/workspace --once
 
-  python -m app.browse.host_collector \\
-      --workspace /Users/andrus/BotArmy/crewai-team/workspace --watch
-
-``--watch`` loops at ``--interval`` seconds (default 1800 = 30 min,
-matching the gateway-side cadence). Honors
+``--watch`` instead of ``--once`` loops at ``--interval`` seconds
+(default 1800 = 30 min, matching the gateway-side cadence). Honors
 ``BROWSE_INGESTION_ENABLED`` — when off, logs once and exits 0.
+
+WORKSPACE_ROOT requirement
+--------------------------
+
+The ``WORKSPACE_ROOT`` env var **must** be set BEFORE Python evaluates
+``-m app.browse.host_collector``. Reason: importing ``app.browse``
+chains through ``app.browse.idle_job → app.browse.store →
+app.paths``, and ``app.paths`` reads ``WORKSPACE_ROOT`` at module-
+import time. The ``--workspace`` flag is preserved for explicit
+intent and is checked against the env var, but it cannot retroactively
+re-route imports that already happened.
+
+The launchd plist at ``scripts/browse_host_collector.plist`` sets it
+correctly. If you're running this manually from a shell, export it
+first.
 """
 from __future__ import annotations
 
@@ -51,19 +65,36 @@ logger = logging.getLogger("browse.host_collector")
 
 
 def _setup_workspace(path: Path) -> None:
-    """Pin ``WORKSPACE_ROOT`` at the volume-mounted directory so
-    :mod:`app.browse.store` writes events the gateway will see.
+    """Validate the workspace path and verify the env var matches it.
 
-    The store also honors ``BROWSE_BASE_DIR`` for finer-grained
-    overrides, but pinning ``WORKSPACE_ROOT`` is the right default
-    here — the gateway's continuity ledger, audit logs, and every
-    other module that takes a base path from workspace gets the
-    same resolution.
+    The actual ``WORKSPACE_ROOT`` env var must already be set when
+    ``-m app.browse.host_collector`` starts, because ``app.paths``
+    reads it at module-import time and the package init chain
+    triggers that import before ``main()`` runs. We can still set it
+    here as a fallback for tooling that re-exec's into another
+    Python process — but if it wasn't set going in, the in-process
+    ``app.paths.WORKSPACE_ROOT`` is already wrong and we can't fix
+    it retroactively. Fail loudly with an actionable message.
     """
     path = path.expanduser().resolve()
     if not path.exists():
         raise SystemExit(f"workspace path does not exist: {path}")
-    os.environ["WORKSPACE_ROOT"] = str(path)
+    os.environ.setdefault("WORKSPACE_ROOT", str(path))
+
+    # Late-binding check: if app.paths has already been imported with
+    # a different WORKSPACE_ROOT (the bug we hit on first deploy),
+    # bail out with a precise diagnosis. Don't try to write events
+    # into the wrong place.
+    from app import paths as _paths  # already imported via the chain
+    if _paths.WORKSPACE_ROOT.resolve() != path:
+        raise SystemExit(
+            "WORKSPACE_ROOT mismatch: "
+            f"app.paths sees {_paths.WORKSPACE_ROOT.resolve()}, "
+            f"--workspace says {path}. Export WORKSPACE_ROOT="
+            f"{path} BEFORE invoking `python -m app.browse.host_collector`. "
+            "See module docstring for why `-m` makes the runtime set "
+            "too late."
+        )
 
 
 def _one_pass() -> int:

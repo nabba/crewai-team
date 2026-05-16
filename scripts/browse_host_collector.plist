@@ -23,6 +23,13 @@
     <string>true</string>
     <key>PYTHONPATH</key>
     <string>/Users/andrus/BotArmy/crewai-team</string>
+    <!-- WORKSPACE_ROOT must be set BEFORE -m evaluates because
+         `app/browse/__init__.py` eagerly imports `app.paths`, which
+         reads WORKSPACE_ROOT at module-import time. Setting it via
+         host_collector's _setup_workspace() helper is too late under
+         `python -m`. -->
+    <key>WORKSPACE_ROOT</key>
+    <string>/Users/andrus/BotArmy/crewai-team/workspace</string>
   </dict>
 
   <key>WorkingDirectory</key>

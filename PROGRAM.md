@@ -9704,3 +9704,46 @@ Privacy pins (load-bearing — DO NOT REMOVE):
     sees domain + title only. The privacy contract takes precedence
     over the small signal gain from richer URL structure.
 
+### 50.8 — Q15.6 post-ship: WORKSPACE_ROOT must be set before `-m`
+
+First on-host deploy after FDA grant produced
+``OSError: [Errno 30] Read-only file system: '/app'``. The host
+collector tried to ``mkdir /app/workspace/browse/events`` — the
+container path — instead of the macOS host path.
+
+**Root cause:** ``python -m app.browse.host_collector`` evaluates
+``app.browse.__init__`` BEFORE ``main()`` runs. The init chains
+through ``idle_job → store → app.paths``, and ``app.paths`` reads
+``WORKSPACE_ROOT`` from the environment at module-import time
+(``Path(os.environ.get("WORKSPACE_ROOT", "/app/workspace"))``). The
+host_collector's ``_setup_workspace()`` runs LATER and tries to set
+the env var, but the in-process binding in ``app.paths`` is already
+locked to ``/app/workspace``.
+
+**Fix:** ``scripts/browse_host_collector.plist`` now pins
+``WORKSPACE_ROOT`` in the launchd ``EnvironmentVariables`` block so
+the env var is set before Python starts. The host_collector's
+``_setup_workspace()`` gained a defensive check that imports
+``app.paths`` (already cached in ``sys.modules`` by then) and
+compares ``WORKSPACE_ROOT`` against the ``--workspace`` argument;
+mismatch raises ``SystemExit`` with a specific, actionable message
+naming both paths and explaining the ``-m`` ordering constraint.
+
+**Verified end-to-end after the fix:**
+  * 1st pass: 4734 events, 265 blocklisted, 0 errors (cursor at
+    LIMIT-5000-boundary 2026-05-07T12:51Z).
+  * 2nd pass: 2301 more events, 53 blocklisted, 0 errors
+    (cursor at newest visit 2026-05-16T10:17Z).
+  * Total: 7035 / 7356 visits persisted (318 blocklist drops, 3
+    cursor-boundary skips).
+  * Gateway ``GET /api/cp/browse/state?window_days=7`` returns
+    1304 events with top domains ``google.com``, ``docs.google.com``,
+    ``fjallraven.com``, ``tripit.com``, ``login.tailscale.com``.
+
+**Not changed:** ``app/browse/__init__.py``'s eager imports. The
+chain is useful (``from app.browse import get_idle_jobs`` works at
+top level without lazy wrappers); the bug was purely in the
+deployment-time env ordering. Adding a defensive check that fails
+loudly is better than restructuring the package's public surface
+to lazy-load everything.
+
