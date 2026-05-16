@@ -235,6 +235,32 @@ def _defaults() -> dict[str, Any]:
         "dependency_radar_enabled": True,
         "tz_drift_monitor_enabled": True,
 
+        # Q14 — year-2+ risk-register (PROGRAM §49). Six new master
+        # switches, all default ON:
+        #   * identity_drift_digest_enabled — monthly rolling drift
+        #     surface; alerts when 30d amendment count exceeds 2× the
+        #     annualised average (§10.1).
+        #   * feedback_loop_drift_monitor_enabled — weekly Gini
+        #     probe over meta-agent recipe selection; alerts when
+        #     selection concentration trends monotonically up over
+        #     4+ weeks (§10.2).
+        #   * embedding_drift_monitor_enabled — weekly re-embed of
+        #     20 anchor queries; alerts on cosine drop below 0.95
+        #     (catches silent vendor embedding-model rotation; §10.4).
+        #   * interest_ossification_monitor_enabled — weekly entropy
+        #     + Jaccard probe over interest_model top-30; alerts on
+        #     concentrated / diffuse / ossified states (§10.5).
+        #   * lock_contention_monitor_enabled — weekly p99 latency
+        #     probe over slow-write JSONL (§10.6).
+        #   * influence_graph_monitor_enabled — meta-switch that
+        #     gates the curated topology + cycle report (§10.2).
+        "identity_drift_digest_enabled": True,
+        "feedback_loop_drift_monitor_enabled": True,
+        "embedding_drift_monitor_enabled": True,
+        "interest_ossification_monitor_enabled": True,
+        "lock_contention_monitor_enabled": True,
+        "influence_graph_monitor_enabled": True,
+
         # Q9.3 — Travel monitor configuration (PROGRAM §46.6).
         # ``tripit_ical_url`` is the per-user TripIt iCal feed
         # (Settings → Calendar Sync → "Copy to your calendar" in
@@ -1389,3 +1415,64 @@ def get_tz_drift_monitor_enabled() -> bool:
 
 def set_tz_drift_monitor_enabled(value: bool) -> None:
     _update({"tz_drift_monitor_enabled": bool(value)})
+
+
+# ── Q14 — year-2+ risk-register (PROGRAM §49) ─────────────────────────
+
+
+def get_identity_drift_digest_enabled() -> bool:
+    return bool(_ensure_initialized().get("identity_drift_digest_enabled", True))
+
+
+def set_identity_drift_digest_enabled(value: bool) -> None:
+    _update({"identity_drift_digest_enabled": bool(value)})
+
+
+def get_feedback_loop_drift_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("feedback_loop_drift_monitor_enabled", True)
+    )
+
+
+def set_feedback_loop_drift_monitor_enabled(value: bool) -> None:
+    _update({"feedback_loop_drift_monitor_enabled": bool(value)})
+
+
+def get_embedding_drift_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("embedding_drift_monitor_enabled", True)
+    )
+
+
+def set_embedding_drift_monitor_enabled(value: bool) -> None:
+    _update({"embedding_drift_monitor_enabled": bool(value)})
+
+
+def get_interest_ossification_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("interest_ossification_monitor_enabled", True)
+    )
+
+
+def set_interest_ossification_monitor_enabled(value: bool) -> None:
+    _update({"interest_ossification_monitor_enabled": bool(value)})
+
+
+def get_lock_contention_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("lock_contention_monitor_enabled", True)
+    )
+
+
+def set_lock_contention_monitor_enabled(value: bool) -> None:
+    _update({"lock_contention_monitor_enabled": bool(value)})
+
+
+def get_influence_graph_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("influence_graph_monitor_enabled", True)
+    )
+
+
+def set_influence_graph_monitor_enabled(value: bool) -> None:
+    _update({"influence_graph_monitor_enabled": bool(value)})

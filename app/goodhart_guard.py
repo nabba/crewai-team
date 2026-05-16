@@ -289,6 +289,20 @@ def detect_gaming_signals(window_days: int = _GAMING_DETECTION_WINDOW_DAYS) -> l
     except Exception:
         pass
 
+    # PROGRAM §49 (Q14.3) — meta-agent recipe-selection-vs-feedback
+    # divergence detector. Generalises the Goodhart hard gate from
+    # promotion safety/quality (the original §25.3 scope) to ANY
+    # metric the system optimizes over. The named example case from
+    # the §10.3 risk register: "meta-agent recipes that score well on
+    # a proxy that degrades user experience."
+    try:
+        signals.extend(_detect_recipe_selection_divergence(window_days))
+    except Exception:
+        logger.debug(
+            "goodhart_guard: recipe-divergence detector raised",
+            exc_info=True,
+        )
+
     if signals:
         _persist_signals(signals)
         for s in signals:
@@ -297,6 +311,109 @@ def detect_gaming_signals(window_days: int = _GAMING_DETECTION_WINDOW_DAYS) -> l
             )
 
     return signals
+
+
+def _detect_recipe_selection_divergence(window_days: int) -> list[GamingSignal]:
+    """Goodhart §10.3 — detect meta-agent recipes whose high SELECTION
+    rate diverges from their user-FEEDBACK rate.
+
+    For each recipe with ≥``_DIVERGENCE_MIN_OUTCOMES`` outcomes in the
+    last ``window_days``:
+
+      * Compute thumbs_up_rate = (count where
+        ``user_feedback == "thumbs_up"``) / total_outcomes.
+      * Compute selection_rank = where this recipe falls in the uses
+        ranking among all active recipes (top 10% = "highly selected").
+
+    Highly-selected × low-thumbs-up = the meta-agent is picking
+    something the user dislikes. Emit a GamingSignal so the existing
+    goodhart_advisory_report aggregates it alongside the other three
+    signal types.
+
+    Failure-isolated: if the meta-agent subsystem is unavailable
+    (no Postgres, no recipe ledger) returns empty list silently.
+    """
+    out: list[GamingSignal] = []
+    try:
+        from app.self_improvement.meta_agent.store import (
+            list_outcomes,
+            list_recipes,
+        )
+    except Exception:
+        return out
+    try:
+        recipes = list_recipes(limit=200, include_null=False)
+    except Exception:
+        return out
+    if not recipes:
+        return out
+
+    # Establish the top-10% selection threshold across active recipes.
+    uses_list = sorted([r.uses for r in recipes], reverse=True)
+    top_10_pct_index = max(1, len(uses_list) // 10) - 1
+    top_10_pct_threshold = uses_list[top_10_pct_index] if uses_list else 0
+    if top_10_pct_threshold < 5:
+        # Sample too small to make claims about gaming.
+        return out
+
+    for rec in recipes:
+        if rec.uses < top_10_pct_threshold:
+            continue  # not "highly selected"
+        try:
+            recent = list_outcomes(
+                recipe_id=rec.id,
+                since_days=window_days,
+                limit=500,
+            )
+        except Exception:
+            continue
+        if len(recent) < _DIVERGENCE_MIN_OUTCOMES:
+            continue
+        thumbs_up = sum(
+            1 for o in recent
+            if (getattr(o, "user_feedback", "") or "").lower()
+            in ("thumbs_up", "👍", "up", "positive")
+        )
+        thumbs_down = sum(
+            1 for o in recent
+            if (getattr(o, "user_feedback", "") or "").lower()
+            in ("thumbs_down", "👎", "down", "negative")
+        )
+        rated = thumbs_up + thumbs_down
+        if rated < _DIVERGENCE_MIN_RATED:
+            # Most outcomes ungraded — can't draw a conclusion.
+            continue
+        up_rate = thumbs_up / rated
+        if up_rate < _DIVERGENCE_UP_RATE_THRESHOLD:
+            # Highly-selected AND poorly-rated → divergence.
+            severity = (
+                "high" if up_rate < 0.15 else
+                "medium" if up_rate < 0.25 else "low"
+            )
+            out.append(GamingSignal(
+                signal_type="recipe_selection_divergence",
+                severity=severity,
+                description=(
+                    f"Recipe {rec.id} ({rec.crew_name}, uses={rec.uses}) "
+                    f"is in the top-10% selected, but user thumbs-up rate "
+                    f"over last {window_days}d is {up_rate:.0%} "
+                    f"({thumbs_up}↑/{thumbs_down}↓ out of {len(recent)} "
+                    f"outcomes). Meta-agent is optimizing a proxy that "
+                    f"may diverge from user experience."
+                ),
+                metric_value=up_rate,
+                threshold=_DIVERGENCE_UP_RATE_THRESHOLD,
+                detected_at=time.time(),
+            ))
+    return out
+
+
+# Thresholds for the recipe-divergence detector. Module-level so an
+# operator can tweak via Python override or runtime_settings without
+# touching this file.
+_DIVERGENCE_MIN_OUTCOMES = 20    # need a sample size before judging
+_DIVERGENCE_MIN_RATED = 5        # need at least this many rated outcomes
+_DIVERGENCE_UP_RATE_THRESHOLD = 0.30  # below = divergence (high selection / low feedback)
 
 
 def _persist_signals(signals: list[GamingSignal]) -> None:

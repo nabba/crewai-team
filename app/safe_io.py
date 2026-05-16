@@ -112,11 +112,36 @@ def safe_write(path: Path | str, data: str | bytes) -> None:
 
     Refuses writes when free disk space < ``DISK_FREE_THRESHOLD_MB``
     (raises ``DiskQuotaError``). Set the env var to ``0`` to disable.
+
+    PROGRAM §49 (Q14.6): passive contention timing — slow writes
+    (>50ms) are recorded to ``workspace/healing/lock_waits.jsonl``
+    so the lock-contention monitor can compute per-resource p99
+    latency. Zero behavior change; instrumentation is failure-
+    isolated.
     """
     path = Path(path)
     _check_free_space(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = data.encode("utf-8") if isinstance(data, str) else data
+
+    # Lazy-import the instrumentation so a broken lock_metrics module
+    # can never break safe_write. The import itself is in a try/except
+    # so even an ImportError can't propagate.
+    try:
+        from app.utils.lock_metrics import time_write as _time_write
+        _ctx = _time_write(str(path))
+    except Exception:
+        _ctx = None
+
+    if _ctx is None:
+        _do_safe_write(path, encoded)
+        return
+    with _ctx:
+        _do_safe_write(path, encoded)
+
+
+def _do_safe_write(path: Path, encoded: bytes) -> None:
+    """Inner write — extracted so the timing wrapper composes cleanly."""
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         os.write(fd, encoded)
@@ -147,10 +172,26 @@ def safe_append(path: Path | str, line: str) -> None:
     fsync ensures the line reaches disk before returning.
 
     Refuses appends when free disk space < ``DISK_FREE_THRESHOLD_MB``.
+
+    PROGRAM §49 (Q14.6): passive contention timing — see safe_write.
     """
     path = Path(path)
     _check_free_space(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from app.utils.lock_metrics import time_write as _time_write
+        _ctx = _time_write(str(path))
+    except Exception:
+        _ctx = None
+    if _ctx is None:
+        _do_safe_append(path, line)
+        return
+    with _ctx:
+        _do_safe_append(path, line)
+
+
+def _do_safe_append(path: Path, line: str) -> None:
+    """Inner append — extracted so the timing wrapper composes cleanly."""
     with open(path, "a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
         f.flush()

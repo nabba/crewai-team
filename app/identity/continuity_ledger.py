@@ -6,7 +6,7 @@ protocol gates *intentional* edits, but it doesn't surface
 narrative-self FIFO holds 5 identity claims; at year 2 the older
 you is gone. This ledger is the multi-year record.
 
-Thirteen event kinds, all append-only::
+Seventeen event kinds, all append-only::
 
     tier3_amendment           Tier-3 IMMUTABLE file edit landed
     governance_ratchet        SAFETY/QUALITY threshold raised or relaxed
@@ -30,6 +30,20 @@ Thirteen event kinds, all append-only::
                               landmark: divergence detected between
                               hand-rolled _helsinki_tz and zoneinfo
                               OR recovery from divergence
+    identity_drift_acceleration PROGRAM §49 — Q14.1 (year-2+ #10.1)
+                              landmark: 30d amendment count >= 2× annual
+                              average OR a specific kind >= 3× its
+                              annual monthly average
+    feedback_loop_drift       PROGRAM §49 — Q14.2 (year-2+ #10.2)
+                              landmark: meta-agent recipe-selection
+                              Gini coefficient trending monotonically
+                              up over 4+ weeks (closed-loop convergence)
+    embedding_model_swap      PROGRAM §49 — Q14.4 (year-2+ #10.4)
+                              landmark: silent embedding-model swap
+                              detected via anchor-query cosine drop
+    interest_ossification     PROGRAM §49 — Q14.5 (year-2+ #10.5)
+                              landmark: interest-model top-30 list is
+                              concentrated, diffuse, or ossified
 
 Storage: ``workspace/identity/continuity_ledger.jsonl``. One
 ``IdentityEvent`` per line. Append-only — never delete, never
@@ -78,6 +92,10 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "sentience_probe_proposal",  # PROGRAM §47 — Q12.4 (8.4 self-design)
     "schema_migration_drill",  # PROGRAM §48 — Q13.1 (year-2+ #2.2)
     "tz_drift",  # PROGRAM §48 — Q13.3 (year-2+ #2.6)
+    "identity_drift_acceleration",  # PROGRAM §49 — Q14.1 (year-2+ #10.1)
+    "feedback_loop_drift",  # PROGRAM §49 — Q14.2 (year-2+ #10.2)
+    "embedding_model_swap",  # PROGRAM §49 — Q14.4 (year-2+ #10.4)
+    "interest_ossification",  # PROGRAM §49 — Q14.5 (year-2+ #10.5)
 })
 
 

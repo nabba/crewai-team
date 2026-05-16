@@ -83,6 +83,11 @@ _DEFAULT_CADENCE_S = {
     "architecture_adoption": 24 * 3600,        # daily probe; proposes rollback CR for unused subsystems; PROGRAM §45.1 Q7.1
     "migration_drill": 24 * 3600,              # daily probe; alerts at 100d stale; PROGRAM §48 Q13.1
     "tz_drift": 24 * 3600,                     # daily probe; alerts on hand-rolled vs zoneinfo divergence; PROGRAM §48 Q13.3
+    "identity_drift_digest": 24 * 3600,        # daily probe; internal monthly cadence; PROGRAM §49 Q14.1
+    "feedback_loop_drift": 24 * 3600,          # daily probe; internal weekly cadence; PROGRAM §49 Q14.2
+    "embedding_drift": 24 * 3600,              # daily probe; internal weekly cadence; PROGRAM §49 Q14.4
+    "interest_ossification": 24 * 3600,        # daily probe; internal weekly cadence; PROGRAM §49 Q14.5
+    "lock_contention": 24 * 3600,              # daily probe; internal weekly cadence; PROGRAM §49 Q14.6
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -349,6 +354,72 @@ def _driver() -> None:
         ))
     except Exception:
         logger.debug("monitors: tz_drift import failed", exc_info=True)
+    # PROGRAM §49 Q14.1 — rolling identity-drift digest. Daily
+    # probe, internal monthly cadence. Alerts when 30d amendment
+    # count exceeds 2× the annualised baseline.
+    try:
+        from app.identity import drift_digest
+        monitors.append((
+            "identity_drift_digest", drift_digest.run,
+            _DEFAULT_CADENCE_S["identity_drift_digest"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: identity_drift_digest import failed", exc_info=True,
+        )
+    # PROGRAM §49 Q14.2 — meta-agent recipe-selection Gini probe.
+    # Daily probe, internal weekly cadence. Alerts when Gini trends
+    # monotonically up over 4+ weeks (closed-loop convergence).
+    try:
+        from app.healing.monitors import feedback_loop_drift
+        monitors.append((
+            "feedback_loop_drift", feedback_loop_drift.run,
+            _DEFAULT_CADENCE_S["feedback_loop_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: feedback_loop_drift import failed", exc_info=True,
+        )
+    # PROGRAM §49 Q14.4 — embedding-model fingerprint drift. Daily
+    # probe, internal weekly cadence. Re-embeds 20 anchor queries +
+    # compares to baseline; alerts on silent vendor model swap.
+    try:
+        from app.healing.monitors import embedding_drift
+        monitors.append((
+            "embedding_drift", embedding_drift.run,
+            _DEFAULT_CADENCE_S["embedding_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: embedding_drift import failed", exc_info=True,
+        )
+    # PROGRAM §49 Q14.5 — interest-model ossification. Daily probe,
+    # internal weekly cadence. Shannon entropy + Jaccard churn on
+    # the interest_model top-30.
+    try:
+        from app.healing.monitors import interest_ossification
+        monitors.append((
+            "interest_ossification", interest_ossification.run,
+            _DEFAULT_CADENCE_S["interest_ossification"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: interest_ossification import failed", exc_info=True,
+        )
+    # PROGRAM §49 Q14.6 — live-process lock contention. Daily
+    # probe, internal weekly cadence. Reads workspace/healing/
+    # lock_waits.jsonl (recorded passively by safe_io); computes
+    # p99 per resource.
+    try:
+        from app.healing.monitors import lock_contention
+        monitors.append((
+            "lock_contention", lock_contention.run,
+            _DEFAULT_CADENCE_S["lock_contention"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: lock_contention import failed", exc_info=True,
+        )
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

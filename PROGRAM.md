@@ -9226,3 +9226,233 @@ Q7→Q13 regression: **279 pass + 6 skipped (gateway-deps), 0 fail.**
     `notify_suppression_review` monitor if its alerts started
     getting suppressed in batches.
 
+
+## 49 2026-05-16 — Q14: Year-2+ risk register (6 monitor-class items)
+
+§10 of the operator's audit framework named 6 emergent failure
+patterns that don't have specific code recommendations — they're
+patterns to watch. Audit verdict before kickoff:
+
+  * **§10.1 Drift via small amendments** — ⚠️ partial. ``summarise_drift``
+    in ``continuity_ledger`` exists but is only called yearly
+    (annual_reflection) and quarterly (long_term_goal_review). No
+    mid-year drift surface, no acceleration alert.
+  * **§10.2 Hidden feedback loops** — ❌ missing entirely. No
+    subsystem-influence topology, no cycle detection, no closed-
+    loop drift monitor. The biggest year-2+ blind spot.
+  * **§10.3 Goodhart on internal metrics** — ⚠️ partial.
+    ``goodhart_guard`` covers 3 evolution-promotion signal types.
+    Meta-agent recipe selection (the user's named example case)
+    has no Goodhart probe.
+  * **§10.4 Embedding-space drift** — ⚠️ partial. ``llm_output_drift``
+    watches LLM-output quality via embedding cosine. Does NOT watch
+    EMBEDDING-MODEL FINGERPRINT drift (silent vendor model rotation).
+  * **§10.5 Interest-model ossification** — ❌ missing. No entropy
+    or churn monitor on ``interest_model``'s top-30 list.
+  * **§10.6 Live-process lock contention** — ❌ missing.
+    ``lock_housekeeper`` sweeps STALE locks; no live-contention
+    monitor.
+
+Operator decisions before kickoff (via ``AskUserQuestion``):
+
+  1. Ship all 6.
+  2. §10.2 = full curated graph + meta-agent loop probe (not just
+     the targeted probe).
+  3. §10.6 = instrument central write primitives in
+     ``app/safe_io.py`` (not opt-in decorator).
+
+### 49.1 — Q14.1 Identity drift digest
+
+New ``app/identity/drift_digest.py`` (270 LOC) + monthly healing
+monitor. Computes:
+
+  * ``counts_30d`` / ``counts_90d`` / ``counts_365d`` via existing
+    ``summarise_drift`` (no new code in continuity_ledger).
+  * ``aggregate_acceleration = counts_30d / (counts_365d / 12)``.
+    1.0 = drift consistent with annual rate; 2.0+ = alert.
+  * Per-kind acceleration: any kind whose 30d count is ≥3× its
+    annual monthly average.
+
+On threshold crossing: Signal alert + ``identity_drift_acceleration``
+continuity-ledger landmark. Daily-briefing composer can pull a
+one-line section via ``briefing_section()``. Master switch
+``identity_drift_digest_enabled`` (default ON).
+
+### 49.2 — Q14.2 Influence graph + meta-agent loop drift
+
+Two new packages:
+
+**Curated influence graph** (``app/healing/influence_graph/``):
+
+  * ``edges.py`` — hand-curated list of ~50 ``InfluenceEdge`` tuples
+    ``(producer, consumer, signal, kind)`` covering the ~30 idle
+    jobs, KBs, decision surfaces, sentience-observation paths.
+    Hand-curated because automatic AST extraction produces noise;
+    the edge set is small enough to maintain by reading diffs.
+  * ``cycles.py`` — Tarjan's SCC algorithm finds every closed loop
+    with >1 node. Iterative implementation (decade-scale recursion-
+    safe). Stable output ordering so test fixtures don't churn.
+
+**Meta-agent loop drift probe** (``app/healing/monitors/feedback_loop_drift.py``):
+
+  * Watches the concrete named loop the operator surfaced:
+    ``meta_agent.selector → agent_factory → crew_lifecycle →
+    meta_agent.recorder → meta_agent.store → meta_agent.selector``.
+  * Computes the Gini coefficient of recipe ``uses`` weekly. Persists
+    a 8-sample rolling history at
+    ``workspace/healing/feedback_loop_drift_history.jsonl``.
+  * Alerts on monotonic-increase pattern: last 4 weekly samples
+    must all be ≥ prior + total delta ≥0.10. This means the closed
+    loop is converging on a fixed point that the system reinforces
+    via its own feedback.
+  * Emits ``feedback_loop_drift`` continuity-ledger landmark.
+
+The test ``test_cycle_detector_finds_meta_agent_loop`` asserts the
+meta-agent loop IS detected as a cycle — if it ever isn't, the
+curated edges are broken.
+
+### 49.3 — Q14.3 Goodhart recipe-selection divergence
+
+Extension to existing ``app/goodhart_guard.py`` (no new module —
+the operator pattern is "Goodhart-guard the metric", which already
+exists with its dispatch + persistence + advisory-report wiring).
+
+New ``_detect_recipe_selection_divergence`` function added to
+``detect_gaming_signals``:
+
+  * For each meta-agent recipe with ≥20 outcomes in last 30d AND
+    in the top-10% by ``uses`` count:
+  * Compute ``thumbs_up_rate = up / (up + down)`` from
+    ``user_feedback`` field on recent outcomes.
+  * If ``thumbs_up_rate < 0.30`` (configurable
+    ``_DIVERGENCE_UP_RATE_THRESHOLD``) → emit
+    ``GamingSignal(signal_type="recipe_selection_divergence")``.
+  * Severity: HIGH if up_rate < 0.15, MEDIUM < 0.25, LOW < 0.30.
+
+Surfaces through the existing ``goodhart_advisory_report`` aggregator
+(the signal-type set naturally extends; no per-signal-type code in
+the report).
+
+### 49.4 — Q14.4 Embedding-model fingerprint drift
+
+New ``app/healing/monitors/embedding_drift.py``. Distinct from
+``llm_output_drift`` (which watches output-quality drift via
+embedding cosine against baseline OUTPUTS) and from the §40.3
+embedding-migration framework (which handles INTENTIONAL migrations).
+
+20 anchor queries seeded at module load; persisted on first run as
+the baseline embedding. Weekly re-embed; alert if ANY anchor's
+self-similarity drops below 0.95. Catches the case where Ollama /
+OpenAI / etc. silently swaps the model weights behind the same
+name — invisible to both ``llm_output_drift`` and the migration
+framework. On alert: Signal + ``embedding_model_swap``
+continuity-ledger landmark. Master switch
+``embedding_drift_monitor_enabled``.
+
+### 49.5 — Q14.5 Interest-model ossification
+
+New ``app/healing/monitors/interest_ossification.py``. Three signals:
+
+  * **Concentrated**: Shannon entropy of top-30 score distribution
+    (normalised) < 0.30 — handful of topics dominate.
+  * **Diffuse**: Shannon entropy > 0.90 — uniform = no signal.
+  * **Ossified**: Jaccard overlap of top-30 names with last week
+    ≥0.95 for 4 consecutive weeks — list is frozen.
+
+Each routes a distinct Signal topic (``interest_concentrated`` /
+``interest_diffuse`` / ``interest_ossified``) so arbiter dedup
+treats them independently. Emits ``interest_ossification``
+continuity-ledger landmark on any alert. Master switch
+``interest_ossification_monitor_enabled``.
+
+### 49.6 — Q14.6 Lock contention (passive timing)
+
+Two new files:
+
+**``app/utils/lock_metrics.py``** — passive contention timer.
+``record_write_timing(resource, elapsed_ms)`` records only writes
+that took ≥50ms (capped 10k lines via ``append_with_cap``).
+``time_write(resource)`` context manager wraps a block, times it,
+calls ``record_write_timing`` on exit. Failure-isolated — never
+propagates, never adds locks, never alters write semantics.
+
+**``app/healing/monitors/lock_contention.py``** — weekly monitor.
+Reads the JSONL, groups by resource, computes p99 latency per
+resource, alerts on any with p99 ≥500ms AND ≥10 samples.
+
+**``app/safe_io.py`` instrumentation**:
+``safe_write`` and ``safe_append`` are wrapped with ``time_write``.
+Inner write logic extracted into ``_do_safe_write`` / ``_do_safe_append``
+so the timing wrapper composes cleanly without disturbing the
+existing crash-safety / disk-quota guarantees. Zero behavior change
+on the fast path.
+
+### 49.7 — Cross-cutting wiring (additive-only)
+
+  * **``app/identity/continuity_ledger.py``** — 4 new event kinds:
+    ``identity_drift_acceleration``, ``feedback_loop_drift``,
+    ``embedding_model_swap``, ``interest_ossification``. Now 17 kinds.
+    Docstring updated.
+  * **``app/runtime_settings.py``** — 6 new master switches + 6
+    getter/setter pairs. All default ON.
+  * **``app/healing/monitors/__init__.py``** — register 5 new
+    monitors (10.1 / 10.2-loop / 10.4 / 10.5 / 10.6).
+  * **No SubIA integrity impact** — all new files outside
+    ``app/subia/``; SubIA manifest unchanged.
+  * **No TIER_IMMUTABLE files touched** — only goodhart_guard.py
+    (not in TIER_IMMUTABLE), safe_io.py (not in TIER_IMMUTABLE),
+    runtime_settings.py (not in TIER_IMMUTABLE).
+
+### 49.8 — Tests
+
+``tests/test_q14_risk_register.py`` — 28 tests, all pass:
+
+  * 10.1: silent-on-routine + acceleration-alert + per-kind alert
+  * 10.2: edges-list exists + cycle-detector finds named loop +
+    stable output + Gini formula + monotonic-increase-alerts +
+    no-alert-on-stable
+  * 10.3: source-level — detector present, called from
+    detect_gaming_signals, signal-type registered
+  * 10.4: first-run baselines + same-vector-silent +
+    silent-swap-alerts (cosine 0.0 < 0.95)
+  * 10.5: entropy-pure-function-correct + concentrated-alerts +
+    diffuse-alerts + ossified-after-4-weeks
+  * 10.6: below-threshold-silent + above-threshold-records +
+    context-manager-records-slow + monitor-alerts-on-high-p99 +
+    safe_io-wrapped
+  * Wiring: continuity_ledger kinds + runtime_settings switches +
+    monitor registrations + influence_graph exports
+
+Q7→Q14 regression: **307 pass + 6 skipped (gateway-deps), 0 fail.**
+
+### 49.9 — What Q14 deliberately did NOT do
+
+  * **No automatic graph extraction.** The curated ``edges.py`` is
+    hand-maintained. Automatic AST analysis produces noise; honest
+    visibility into "what we know about the wiring" beats false
+    automatic completeness.
+  * **No automatic loop intervention.** When the Gini probe alerts,
+    the operator decides whether the convergence is desirable.
+    Convergence on the BEST recipe is good; convergence on a
+    locally-best recipe reinforced through its own feedback is
+    bad. The system can't tell which; that's exactly why the
+    monitor surfaces, doesn't act.
+  * **No new locking primitives in safe_io.** ``Q14.6`` is
+    passive instrumentation only. The current ``os.replace``-based
+    atomic write is already race-free for the WRITE itself;
+    contention manifests in queue time. We measure that without
+    adding a serialization layer that wasn't there before.
+  * **No SubIA integrity touch.** All four sentience-experiment
+    modules emit ``sentience_observation`` events; this Q does
+    NOT modify them, just adds 4 sibling event kinds for the
+    new monitors.
+  * **No per-cycle drift probe for cycles other than meta-agent.**
+    The graph reports all SCCs as observability; only the named
+    meta-agent loop has a concrete drift metric wired. The
+    operator can extend ``feedback_loop_drift.py`` if a different
+    cycle warrants its own probe.
+  * **No automatic embedding re-baseline.** When ``embedding_drift``
+    alerts, the operator decides whether to accept the new model
+    (re-baseline via CLI) or escalate. The monitor never silently
+    accepts drift.
+
