@@ -2703,6 +2703,14 @@ try:
 except Exception:
     logger.debug("Self-Improvement Velocity API not available", exc_info=True)
 
+# ── QoS API (PROGRAM §51 Q16 Theme 6) ──────────────────────────────────────
+try:
+    from app.api.qos_api import router as qos_router
+    app.include_router(qos_router)
+    logger.info("QoS API mounted at /api/cp/quality/")
+except Exception:
+    logger.debug("QoS API not available", exc_info=True)
+
 # ── Brainstorm API (multi-agent + solo Q/A sessions) ─────────────────────────
 try:
     from app.brainstorm.api import router as brainstorm_router

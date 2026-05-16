@@ -98,7 +98,35 @@ def generate_structured_fix(
     All paths emit telemetry + HOT-1 observation events. None of
     these emissions raise — every error path degrades silently into
     "fall back to prose."
+
+    Q16 Theme 8 (PROGRAM §51): consults
+    :mod:`app.healing.hot1_consultation` for prior-attempt history
+    before generating. When the pattern has chronically failed (≥3
+    declines, no successes), short-circuits as Guard 0 to save LLM
+    spend. Otherwise the prior-attempt hint is spliced into the LLM
+    prompt.
     """
+    # Guard 0: HOT-1 consultation — does prior history say skip?
+    hot1_hint_for_prompt: Optional[str] = None
+    try:
+        from app.healing.hot1_consultation import consult as _hot1_consult
+        hot1_context = _hot1_consult(
+            pattern_signature=pattern_signature,
+            file_path=file_path,
+        )
+        if hot1_context.get("recommendation") == "skip":
+            _emit_telemetry_declined(
+                pattern_signature=pattern_signature,
+                file_path=file_path,
+                error_class=error_class,
+                confidence=0.0,
+                decline_reason="hot1_skip_chronic_failure",
+            )
+            return None
+        hot1_hint_for_prompt = hot1_context.get("hint_for_prompt")
+    except Exception:
+        logger.debug("structured_diagnosis: hot1 consult failed", exc_info=True)
+
     # Guard 1: file size cap.
     if len(file_content.encode("utf-8")) > _MAX_FILE_BYTES_FOR_STRUCTURED:
         _emit_telemetry_declined(
@@ -127,6 +155,7 @@ def generate_structured_fix(
         error_traceback=error_traceback,
         file_path=file_path,
         file_content=file_content,
+        prior_attempts_hint=hot1_hint_for_prompt,
     )
     if fix is None:
         return None
@@ -245,10 +274,17 @@ def _call_llm_for_fix(
     error_traceback: str,
     file_path: str,
     file_content: str,
+    prior_attempts_hint: Optional[str] = None,
 ) -> Optional[StructuredFix]:
     """Issue the LLM call. Returns None on infrastructure failure
     (caller falls back to prose). Returns StructuredFix on success
-    OR decline."""
+    OR decline.
+
+    Q16 Theme 8 (PROGRAM §51): ``prior_attempts_hint`` is the optional
+    "what's been tried before" text from
+    :mod:`app.healing.hot1_consultation`. When provided, it's
+    prepended to the user message so the LLM doesn't propose blind.
+    """
     try:
         from anthropic import Anthropic
         from app.config import get_anthropic_api_key
@@ -262,8 +298,13 @@ def _call_llm_for_fix(
     except Exception:
         return None
 
+    hint_block = (
+        f"=== prior_attempt_context ===\n{prior_attempts_hint}\n\n"
+        if prior_attempts_hint else ""
+    )
     user_msg = (
         f"file_path: {file_path}\n\n"
+        f"{hint_block}"
         f"=== error_message ===\n{error_message}\n\n"
         f"=== error_traceback ===\n{error_traceback[:2000]}\n\n"
         f"=== current file content ===\n{file_content}"
