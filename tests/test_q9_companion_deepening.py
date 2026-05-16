@@ -213,6 +213,23 @@ def test_config_api_handles_travel_keys() -> None:
     assert '"aviationstack_api_key" in payload' in src
 
 
+def test_verify_gateway_secret_is_mode_aware() -> None:
+    """PROGRAM §46.12 — verify_gateway_secret must mirror
+    require_gateway_auth's dev/prod split. In dev mode (no
+    GATEWAY_AUTH_REQUIRED) it MUST pass through so React settings
+    cards work without baking VITE_GATEWAY_SECRET into the JS
+    bundle. In prod (GATEWAY_AUTH_REQUIRED=1) it MUST enforce."""
+    src = Path("app/api/config_api.py").read_text(encoding="utf-8")
+    # The function must read GATEWAY_AUTH_REQUIRED
+    assert 'GATEWAY_AUTH_REQUIRED' in src
+    # It must have the pass-through branch
+    fn_start = src.find("def verify_gateway_secret(")
+    fn_end = src.find("\ndef ", fn_start + 1)
+    body = src[fn_start:fn_end]
+    assert 'return True' in body
+    assert "in (\"1\", \"true\"" in body or "'1', 'true'" in body
+
+
 def test_settings_alias_endpoint_exists_and_mounted() -> None:
     """Latent-bug closure (PROGRAM §46.12): React cards all call
     /api/cp/settings, which previously had no handler. The alias

@@ -33,7 +33,30 @@ def _config_rate_check() -> bool:
 
 
 def verify_gateway_secret(request: Request) -> bool:
-    """Verify the forwarder is authenticated with the gateway secret."""
+    """Verify the forwarder is authenticated with the gateway secret.
+
+    Two-mode behavior mirroring
+    :func:`app.control_plane.auth_dep.require_gateway_auth`:
+
+      * **Dev mode** (``GATEWAY_AUTH_REQUIRED`` unset/false): pass-through.
+        Preserves the laptop-developer experience where the dashboard
+        reaches localhost without ceremony — and lets the React
+        ``/cp/settings`` cards flip toggles directly against the gateway
+        without baking ``VITE_GATEWAY_SECRET`` into the JS bundle.
+      * **Enforced mode** (``GATEWAY_AUTH_REQUIRED=1``, set by Helm in
+        K8s): validate ``Authorization: Bearer <gateway-secret>`` via
+        constant-time HMAC compare.
+
+    The 2026-05-15 latent-bug audit (Q9.3 TravelCard follow-up)
+    surfaced this: the function used to be unconditional, which meant
+    every settings card 401'd in dev mode regardless of the mode
+    switch. ``require_gateway_auth`` already had the mode-aware shape;
+    aligning ``verify_gateway_secret`` closes the inconsistency.
+    """
+    import os
+    val = os.environ.get("GATEWAY_AUTH_REQUIRED", "").strip().lower()
+    if val not in ("1", "true", "yes", "on"):
+        return True  # dev mode pass-through
     from app.config import get_gateway_secret
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
