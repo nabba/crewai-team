@@ -103,9 +103,23 @@ def _parse_iso_loose(s: str) -> datetime | None:
 def _generic_feed_records(
     *, url: str, source_name: str, lookback_days: int,
     max_items: int, categories: list[str] | None = None,
+    kind: str = "paper",
 ) -> list[dict[str, Any]]:
     """Pull a feed via ``feed_parser`` and normalise to the pipeline's
-    record shape. Filters by ``published >= now - lookback_days``."""
+    record shape. Filters by ``published >= now - lookback_days``.
+
+    ``kind`` tags the source type so downstream consumers (daily
+    briefing, JSONL ledger) can branch:
+
+      * ``"paper"``    — research papers (arXiv, OpenReview, HF). The
+                        existing experiment-proposal pipeline applies.
+      * ``"standard"`` — language / web standards (PEPs, W3C TR).
+                        Same pipeline, but the LLM's "experiment"
+                        field is unlikely to be ``codeable``.
+      * ``"news"``     — editorial commentary (Rundown, Verge, Wired).
+                        Surfaces in a separate "📰 News" briefing
+                        section; codeable=false expected.
+    """
     body = _fetch_url(url)
     if not body:
         return []
@@ -130,6 +144,7 @@ def _generic_feed_records(
             "published": pub.isoformat(),
             "categories": cats,
             "source": source_name,
+            "kind": kind,
         })
         if len(out) >= max_items:
             break
@@ -159,6 +174,7 @@ def fetch_python_peps(
             lookback_days=lookback_days,
             max_items=max_items,
             categories=["python", "language"],
+            kind="standard",
         )
     except Exception:
         logger.debug("feed_sources: PEPs fetcher raised", exc_info=True)
@@ -187,6 +203,7 @@ def fetch_w3c_tr(
             lookback_days=lookback_days,
             max_items=max_items,
             categories=["web", "standards"],
+            kind="standard",
         )
     except Exception:
         logger.debug("feed_sources: W3C fetcher raised", exc_info=True)
@@ -216,6 +233,7 @@ def fetch_huggingface_papers(
             lookback_days=lookback_days,
             max_items=max_items,
             categories=["ml", "curated"],
+            kind="paper",
         )
     except Exception:
         logger.debug("feed_sources: HF fetcher raised", exc_info=True)
@@ -329,6 +347,7 @@ def _fetch_openreview_inner(
                 "published": published or datetime.now(timezone.utc).isoformat(),
                 "categories": [slug, "openreview"],
                 "source": f"openreview_{slug}",
+                "kind": "paper",
             })
             if sum(1 for r in out if r["source"] == f"openreview_{slug}") >= max_items_per_venue:
                 break
@@ -348,6 +367,122 @@ def _openreview_field(content: dict[str, Any], field: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────
+#   News sources (Q10 follow-up — 2026-05-16)
+#
+# Distinct from the paper / standard adapters above: news is editorial
+# commentary about the industry, not research output. All three news
+# adapters tag rows with ``kind="news"`` so:
+#
+#   - daily_briefing._gather_relevant_news surfaces them under the
+#     dedicated "📰 News (relevant)" section, NOT mixed into the
+#     "📚 Paper-to-experiment" digest
+#   - the existing experiment-proposal flow runs against them too —
+#     codeable=false is the expected outcome from the LLM for news
+#     articles, so they don't pollute the "queued codeable ideas"
+#     section in the morning briefing
+# ─────────────────────────────────────────────────────────────────────
+
+
+# The Rundown AI — Beehiiv-hosted daily newsletter. The user-facing
+# archive page is ``/archive``; the canonical RSS feed for Beehiiv
+# newsletters is ``/feed``. Override via ``RUNDOWN_FEED_URL`` env if
+# the actual host moves.
+_RUNDOWN_FEED_URL = "https://www.therundown.ai/feed"
+
+
+def fetch_rundown_ai(
+    *, lookback_days: int = 14, max_items: int = 8,
+) -> list[dict[str, Any]]:
+    """The Rundown AI daily newsletter. Editorial summary of AI
+    industry news (releases, papers, products) — overlaps with arXiv
+    in coverage but the editorial layer is a different signal.
+
+    Master switch: ``PAPER_PIPELINE_RUNDOWN_ENABLED`` (default ON).
+    """
+    if not _enabled("PAPER_PIPELINE_RUNDOWN_ENABLED"):
+        return []
+    url = os.environ.get("RUNDOWN_FEED_URL", _RUNDOWN_FEED_URL).strip() or _RUNDOWN_FEED_URL
+    try:
+        return _generic_feed_records(
+            url=url,
+            source_name="news_rundown",
+            lookback_days=lookback_days,
+            max_items=max_items,
+            categories=["ai", "industry-news"],
+            kind="news",
+        )
+    except Exception:
+        logger.debug("feed_sources: Rundown fetcher raised", exc_info=True)
+        return []
+
+
+# The Verge — subscriber-only full-feed RSS. Operator-supplied URL.
+_THEVERGE_FEED_URL = (
+    "https://www.theverge.com/rss/partner/subscriber-only-full-feed/rss.xml"
+)
+
+
+def fetch_theverge(
+    *, lookback_days: int = 7, max_items: int = 8,
+) -> list[dict[str, Any]]:
+    """The Verge subscriber-only full feed. Tech/AI industry news,
+    product launches, regulatory coverage. The subscriber-only feed
+    requires the operator's RSS subscription (the public Verge feed
+    is title+lede; the partner feed is full text).
+
+    Master switch: ``PAPER_PIPELINE_VERGE_ENABLED`` (default ON).
+    """
+    if not _enabled("PAPER_PIPELINE_VERGE_ENABLED"):
+        return []
+    try:
+        return _generic_feed_records(
+            url=_THEVERGE_FEED_URL,
+            source_name="news_theverge",
+            lookback_days=lookback_days,
+            max_items=max_items,
+            categories=["tech", "industry-news"],
+            kind="news",
+        )
+    except Exception:
+        logger.debug("feed_sources: Verge fetcher raised", exc_info=True)
+        return []
+
+
+# Wired — main top-stories feed. The operator-supplied URL was the
+# Wired RSS index page; this is the primary feed that captures AI,
+# security, business stories that overlap with the operator's
+# surfaces (Dashboard, PWA, healing, etc.).
+_WIRED_FEED_URL = "https://www.wired.com/feed/rss"
+
+
+def fetch_wired(
+    *, lookback_days: int = 7, max_items: int = 8,
+) -> list[dict[str, Any]]:
+    """Wired top-stories feed. Cross-topic — AI, security, business,
+    culture. Operator can switch to a topic-specific Wired feed via
+    ``WIRED_FEED_URL`` env (e.g. ``/feed/category/ai/rss`` for the
+    AI-only subset).
+
+    Master switch: ``PAPER_PIPELINE_WIRED_ENABLED`` (default ON).
+    """
+    if not _enabled("PAPER_PIPELINE_WIRED_ENABLED"):
+        return []
+    url = os.environ.get("WIRED_FEED_URL", _WIRED_FEED_URL).strip() or _WIRED_FEED_URL
+    try:
+        return _generic_feed_records(
+            url=url,
+            source_name="news_wired",
+            lookback_days=lookback_days,
+            max_items=max_items,
+            categories=["tech", "industry-news"],
+            kind="news",
+        )
+    except Exception:
+        logger.debug("feed_sources: Wired fetcher raised", exc_info=True)
+        return []
+
+
+# ─────────────────────────────────────────────────────────────────────
 #   All sources combined
 # ─────────────────────────────────────────────────────────────────────
 
@@ -361,16 +496,28 @@ def fetch_extra_sources(
     additional sources."""
     out: list[dict[str, Any]] = []
     fetchers: list[Callable[[], list[dict[str, Any]]]] = [
+        # Papers
         lambda: fetch_openreview(
             lookback_days=120, max_items_per_venue=max(2, max_per_source // 3),
         ),
+        lambda: fetch_huggingface_papers(
+            lookback_days=lookback_days, max_items=max_per_source,
+        ),
+        # Standards
         lambda: fetch_python_peps(
             lookback_days=90, max_items=max_per_source,
         ),
         lambda: fetch_w3c_tr(
             lookback_days=lookback_days, max_items=max_per_source,
         ),
-        lambda: fetch_huggingface_papers(
+        # News (2026-05-16 follow-up)
+        lambda: fetch_rundown_ai(
+            lookback_days=lookback_days, max_items=max_per_source,
+        ),
+        lambda: fetch_theverge(
+            lookback_days=lookback_days, max_items=max_per_source,
+        ),
+        lambda: fetch_wired(
             lookback_days=lookback_days, max_items=max_per_source,
         ),
     ]

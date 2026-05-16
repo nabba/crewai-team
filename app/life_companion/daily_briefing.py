@@ -279,6 +279,68 @@ def _gather_health_summary() -> list[str]:
     return lines
 
 
+def _gather_relevant_news(*, n: int = 3, min_relevance: float = 0.5) -> list[str]:
+    """PROGRAM §46.15 follow-up — surface news-source rows from
+    ``workspace/proposed_experiments.jsonl``.
+
+    News sources (Rundown / Verge / Wired) live in the same ledger
+    as papers but are tagged ``kind="news"``. The briefing section
+    is intentionally separate from the "📚 Paper-to-experiment"
+    digest so the operator can scan editorial coverage without
+    sifting through research-paper proposals.
+
+    Filters: ``kind="news"`` AND ``relevance >= min_relevance``.
+    Newest-first, top-N. Soft fail.
+    """
+    from pathlib import Path as _P
+    ledger = _P("/app/workspace/proposed_experiments.jsonl")
+    if not ledger.exists():
+        return []
+    try:
+        import json as _json
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict] = []
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        if not isinstance(r, dict):
+            continue
+        if r.get("kind") != "news":
+            continue
+        try:
+            rel = float(r.get("relevance") or 0.0)
+        except (TypeError, ValueError):
+            rel = 0.0
+        if rel < min_relevance:
+            continue
+        r["_relevance"] = rel
+        rows.append(r)
+        if len(rows) >= n:
+            break
+    if not rows:
+        return []
+    out: list[str] = []
+    for r in rows:
+        title = (r.get("title") or "Untitled")[:80]
+        source = (r.get("source") or "").replace("news_", "")
+        rel = r["_relevance"]
+        out.append(f"  📰 [{source}] {title}  (rel {rel:.2f})")
+        # First implication as a one-line "why it matters"
+        implications = r.get("implications") or []
+        if isinstance(implications, list) and implications:
+            takeaway = str(implications[0])[:140]
+            if takeaway:
+                out.append(f"     → {takeaway}")
+    return out
+
+
 def _gather_codeable_papers(*, n: int = 3) -> list[str]:
     """Q10.2 (PROGRAM §46.14) — queued codeable paper-experiment
     ideas. Reads ``workspace/proposed_experiments.jsonl`` and picks
@@ -753,6 +815,13 @@ def _compose_morning() -> tuple[str, list[float]]:
         # papers stay in the regular weekly digest.
         parts.append("\n💻 Queued codeable paper ideas:")
         parts.extend(codeable)
+    news = _gather_relevant_news(n=3, min_relevance=0.5)
+    if news:
+        # Q10.3 follow-up — news-source rows (Rundown / Verge / Wired)
+        # in a section distinct from the paper digest. Auto-hides when
+        # no news rows clear the relevance bar.
+        parts.append("\n📰 News (relevant):")
+        parts.extend(news)
     return "\n".join(parts), queued_ts
 
 

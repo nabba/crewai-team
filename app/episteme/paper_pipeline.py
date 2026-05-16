@@ -544,6 +544,11 @@ def _append_proposal(paper: dict, llm_out: dict) -> None:
         # consumers (daily briefing's queued-codeable section, the
         # React paper-list view) can filter by source.
         "source": paper.get("source", "arxiv"),
+        # Q10.3 follow-up — distinguish papers / standards / news so
+        # the daily briefing can render the news section separately
+        # from the experiment-proposal digest. Defaults to "paper"
+        # for back-compat with pre-2026-05-16 JSONL rows.
+        "kind": paper.get("kind", "paper"),
         "title": paper["title"],
         "published": paper["published"],
         "categories": paper["categories"],
@@ -607,9 +612,10 @@ def run() -> dict[str, Any]:
     query = _build_arxiv_query(terms, _DEFAULT_CATEGORIES)
     xml = _fetch_arxiv_atom(query, max_results=_MAX_PAPERS_PER_PASS * 2)
     papers = _parse_atom(xml, lookback_days=_LOOKBACK_DAYS)
-    # Tag arXiv rows with a source for downstream visibility.
+    # Tag arXiv rows with a source + kind for downstream visibility.
     for p in papers:
         p.setdefault("source", "arxiv")
+        p.setdefault("kind", "paper")
 
     # Q10.3 (PROGRAM §46.15) — multi-source feeds.
     # Pulls from OpenReview (NeurIPS/ICML/ICLR) + Python PEPs + W3C +

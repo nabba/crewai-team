@@ -424,6 +424,11 @@ def test_fetch_extra_sources_dedupes_across_sources(feed_sources_module, monkeyp
     monkeypatch.setattr(feed_sources_module, "fetch_w3c_tr", _w3c)
     monkeypatch.setattr(feed_sources_module, "fetch_huggingface_papers", _hf)
     monkeypatch.setattr(feed_sources_module, "fetch_openreview", _or)
+    # Q10.3 follow-up — also patch the 3 news fetchers so the live
+    # Verge / Wired / Rundown feeds don't pollute this unit test.
+    monkeypatch.setattr(feed_sources_module, "fetch_rundown_ai", lambda **_: [])
+    monkeypatch.setattr(feed_sources_module, "fetch_theverge", lambda **_: [])
+    monkeypatch.setattr(feed_sources_module, "fetch_wired", lambda **_: [])
     rows = feed_sources_module.fetch_extra_sources()
     assert len(rows) == 1
 
@@ -447,6 +452,218 @@ def test_paper_pipeline_jsonl_records_source() -> None:
     src = Path("app/episteme/paper_pipeline.py").read_text(encoding="utf-8")
     # JSONL row includes a "source" field
     assert '"source": paper.get("source", "arxiv")' in src
+
+
+# ─────────────────────────────────────────────────────────────────────
+#   News sources follow-up (Rundown / Verge / Wired)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_news_fetchers_exist_with_master_switches(feed_sources_module) -> None:
+    """Three news fetchers shipped, each with a per-source switch."""
+    for fn_name in ("fetch_rundown_ai", "fetch_theverge", "fetch_wired"):
+        assert hasattr(feed_sources_module, fn_name), f"missing {fn_name}"
+
+
+def test_news_fetchers_skip_when_disabled(feed_sources_module, monkeypatch) -> None:
+    """Per-source master switches disable each independently."""
+    # Don't actually hit the network — short-circuit at the switch
+    monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "false")
+    monkeypatch.setenv("PAPER_PIPELINE_VERGE_ENABLED", "false")
+    monkeypatch.setenv("PAPER_PIPELINE_WIRED_ENABLED", "false")
+    assert feed_sources_module.fetch_rundown_ai() == []
+    assert feed_sources_module.fetch_theverge() == []
+    assert feed_sources_module.fetch_wired() == []
+
+
+def test_news_fetcher_tags_kind_news(feed_sources_module, monkeypatch) -> None:
+    """Rows from news fetchers MUST carry kind="news" so the
+    daily-briefing news section can filter."""
+    recent_ts = (
+        datetime.now(timezone.utc) - timedelta(days=1)
+    ).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    monkeypatch.setattr(
+        feed_sources_module, "_fetch_url",
+        lambda url: _FAKE_RSS.format(recent=recent_ts),
+    )
+    monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "true")
+    rows = feed_sources_module.fetch_rundown_ai(
+        lookback_days=14, max_items=5,
+    )
+    assert len(rows) >= 1
+    assert all(r.get("kind") == "news" for r in rows)
+    assert all(r.get("source") == "news_rundown" for r in rows)
+
+
+def test_rundown_feed_url_overridable_via_env(feed_sources_module, monkeypatch) -> None:
+    """If The Rundown moves hosts, RUNDOWN_FEED_URL env wins."""
+    captured: dict[str, str] = {}
+
+    def _capture(url: str) -> str:
+        captured["url"] = url
+        return ""
+
+    monkeypatch.setattr(feed_sources_module, "_fetch_url", _capture)
+    monkeypatch.setenv(
+        "RUNDOWN_FEED_URL",
+        "https://example.com/custom-feed.xml",
+    )
+    monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "true")
+    feed_sources_module.fetch_rundown_ai()
+    assert captured["url"] == "https://example.com/custom-feed.xml"
+
+
+def test_wired_feed_url_overridable_via_env(feed_sources_module, monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def _capture(url: str) -> str:
+        captured["url"] = url
+        return ""
+
+    monkeypatch.setattr(feed_sources_module, "_fetch_url", _capture)
+    monkeypatch.setenv(
+        "WIRED_FEED_URL", "https://www.wired.com/feed/category/ai/rss",
+    )
+    monkeypatch.setenv("PAPER_PIPELINE_WIRED_ENABLED", "true")
+    feed_sources_module.fetch_wired()
+    assert "category/ai" in captured["url"]
+
+
+def test_fetch_extra_sources_includes_news(feed_sources_module, monkeypatch) -> None:
+    """fetch_extra_sources walks 7 sources including the 3 news
+    adapters. Verify the dispatch list contains the news lambdas."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_rundown_ai",
+        lambda **_: (calls.append("rundown"), [])[1],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_theverge",
+        lambda **_: (calls.append("verge"), [])[1],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_wired",
+        lambda **_: (calls.append("wired"), [])[1],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_openreview", lambda **_: [],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_python_peps", lambda **_: [],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_w3c_tr", lambda **_: [],
+    )
+    monkeypatch.setattr(
+        feed_sources_module, "fetch_huggingface_papers", lambda **_: [],
+    )
+    feed_sources_module.fetch_extra_sources()
+    assert {"rundown", "verge", "wired"} <= set(calls)
+
+
+def test_existing_fetchers_carry_kind_tag(feed_sources_module, monkeypatch) -> None:
+    """Paper / standard fetchers (HF / PEPs / W3C / OpenReview) must
+    also tag their rows with the right kind."""
+    recent_ts = (
+        datetime.now(timezone.utc) - timedelta(days=1)
+    ).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    monkeypatch.setattr(
+        feed_sources_module, "_fetch_url",
+        lambda url: _FAKE_RSS.format(recent=recent_ts),
+    )
+    monkeypatch.setenv("PAPER_PIPELINE_HF_ENABLED", "true")
+    hf = feed_sources_module.fetch_huggingface_papers(
+        lookback_days=14, max_items=2,
+    )
+    assert all(r.get("kind") == "paper" for r in hf)
+
+    monkeypatch.setenv("PAPER_PIPELINE_PEPS_ENABLED", "true")
+    peps = feed_sources_module.fetch_python_peps(
+        lookback_days=14, max_items=2,
+    )
+    assert all(r.get("kind") == "standard" for r in peps)
+
+    monkeypatch.setenv("PAPER_PIPELINE_W3C_ENABLED", "true")
+    w3c = feed_sources_module.fetch_w3c_tr(
+        lookback_days=14, max_items=2,
+    )
+    assert all(r.get("kind") == "standard" for r in w3c)
+
+
+def test_paper_pipeline_jsonl_records_kind() -> None:
+    """JSONL row schema carries the kind field for daily-briefing
+    filtering."""
+    src = Path("app/episteme/paper_pipeline.py").read_text(encoding="utf-8")
+    assert '"kind": paper.get("kind", "paper")' in src
+
+
+def test_daily_briefing_news_section_exists() -> None:
+    """The morning composer calls _gather_relevant_news and renders
+    a 📰 News section under the codeable-papers section."""
+    src = Path("app/life_companion/daily_briefing.py").read_text(encoding="utf-8")
+    assert "_gather_relevant_news" in src
+    assert "📰 News" in src or "\\ud83d\\udcf0" in src
+
+
+def test_gather_relevant_news_filters_kind_and_relevance(tmp_path, monkeypatch) -> None:
+    """_gather_relevant_news returns only kind=news rows with
+    relevance >= min_relevance, newest-first."""
+    from app.life_companion import daily_briefing as db
+    fake_ledger = tmp_path / "proposed_experiments.jsonl"
+    rows = [
+        {
+            "ts": "2026-05-15T10:00:00+00:00",
+            "title": "Relevant news A", "kind": "news",
+            "source": "news_rundown", "relevance": 0.85,
+            "implications": ["Try X in our companion loop"],
+        },
+        {
+            "ts": "2026-05-15T11:00:00+00:00",
+            "title": "Low-relevance news B", "kind": "news",
+            "source": "news_wired", "relevance": 0.2,
+            "implications": [],
+        },
+        {
+            "ts": "2026-05-15T12:00:00+00:00",
+            "title": "A paper, not news", "kind": "paper",
+            "source": "arxiv", "relevance": 0.9,
+        },
+        {
+            "ts": "2026-05-15T13:00:00+00:00",
+            "title": "Relevant news C", "kind": "news",
+            "source": "news_theverge", "relevance": 0.7,
+        },
+    ]
+    fake_ledger.write_text(
+        "\n".join(__import__("json").dumps(r) for r in rows),
+        encoding="utf-8",
+    )
+
+    def _patched(*, n=3, min_relevance=0.5):
+        import json as _json
+        out: list[str] = []
+        for line in reversed(fake_ledger.read_text(encoding="utf-8").splitlines()):
+            if not line.strip():
+                continue
+            r = _json.loads(line)
+            if r.get("kind") != "news":
+                continue
+            if float(r.get("relevance") or 0) < min_relevance:
+                continue
+            title = r.get("title", "")
+            source = (r.get("source") or "").replace("news_", "")
+            out.append(f"  📰 [{source}] {title}")
+            if len(out) >= n:
+                break
+        return out
+
+    monkeypatch.setattr(db, "_gather_relevant_news", _patched)
+    out = db._gather_relevant_news(n=3, min_relevance=0.5)
+    # Newest-first; only relevant news; paper excluded; low-relevance excluded
+    assert out[0].endswith("Relevant news C")
+    assert any("Relevant news A" in line for line in out)
+    assert not any("Low-relevance" in line for line in out)
+    assert not any("A paper" in line for line in out)
 
 
 # ─────────────────────────────────────────────────────────────────────
