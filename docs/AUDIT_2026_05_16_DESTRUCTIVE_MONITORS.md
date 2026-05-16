@@ -61,93 +61,112 @@ for a follow-up.
    When most records lack timestamps, retention does nothing this pass
    and the audit row + log warning surface it.
 
-## What this PR leaves for follow-up
+## Status of the follow-up items
 
-Listed in descending order of recommended priority.
+All seven RISK-class items + the one CONFIRMED-BUG were closed in
+follow-up PRs the same day. The items are listed below with the
+shipped fix and the PR reference.
 
-### retention.run_worktrees — operator-unattended rmtree from session JSON
+> **Note on this section's shape.** Originally written as
+> "What this PR leaves for follow-up." Rewritten 2026-05-16 to
+> reflect that the deferred work shipped — kept as a living record
+> of what each fix actually addressed so the next maintainer can
+> trace decisions back to the audit. See PROGRAM.md §53 for the
+> full change log.
 
-```python
-shutil.rmtree(data.get("worktree_path"))
-```
+### retention.run_worktrees — operator-unattended rmtree from session JSON  ✅ shipped in #116
 
-`worktree_path` is read from a per-session JSON file with no
-validation. If a malformed session ever wrote a relative path or a
-stale path, `rmtree` would hit the wrong target. Saved today by
+**Before:** `shutil.rmtree(data.get("worktree_path"))` with only an
 `if wt and wt.exists()` guard.
 
-Suggested fix: validate `worktree_path` is absolute, inside
-`WORKSPACE_ROOT/.coding_sessions/`, and the session's `status` is in
-the terminal-set BEFORE calling rmtree. Refuse if any check fails.
+**Shipped:** new `_validate_worktree_path(wt, *, expected_session_id)`
+refuses unless the path is absolute, inside `worktree_root() + '/'`
+(defends against suffix attacks like `/tmp/agent-sessions-evil`),
+basename matches the session ID (defends against cross-session
+collision via corrupted JSON), and exactly one segment under root.
+Refusals counted in audit row; session JSON left in place for
+operator inspection. See `retention.py:_validate_worktree_path`.
 
-### retention.run_attachments — operator-unattended file unlink
+### retention.run_attachments — operator-unattended file unlink  ✅ shipped in #116
 
-Filesystem walk under `SIGNAL_ATTACHMENTS_DIR` deletes files >30d old
-OR over a 1 GB total cap. Lower-risk than the other two because the
-attachments dir is purpose-built for this. But still: no
-operator gate, no snapshot, no dry-run by default. The
-`SIGNAL_ATTACHMENTS_DIR` env-tunable is a hazard if anyone ever
-points it at a wider path.
+**Before:** `SIGNAL_ATTACHMENTS_DIR` env var honored verbatim.
+`SIGNAL_ATTACHMENTS_DIR=/` would have nuked everything writable
+from the container.
 
-Suggested fix: refuse to operate unless `SIGNAL_ATTACHMENTS_DIR` is a
-subdirectory of `WORKSPACE_ROOT`. Default `RETENTION_DRY_RUN=true` for
-the first month after enabling a new attachments dir.
+**Shipped:** new `_is_attachments_dir_safe(p)` refuses unless the
+resolved path is inside `/app/attachments` (the compose mount),
+`/app/workspace/`, or `/tmp/`. Suffix-attack defense via explicit
+prefix + `/` check. Anything else: refusal recorded in state, no
+files touched. See `retention.py:_is_attachments_dir_safe`.
 
-### lock_housekeeper — `*.lock` filename heuristic + auto-delete
+### lock_housekeeper — `*.lock` filename heuristic + auto-delete  ✅ shipped in #116
 
-Deletes `*.lock` files in three curated dirs every 6h via an fcntl
-contention probe + 1h age check. The "what is a lock file" filter is
-`name.endswith('.lock')`. If a future subsystem writes a non-lock
-state file with `.lock` suffix, it gets deleted on the first pass.
+**Before:** any file ending in `.lock` in the three watched dirs was
+auto-deleted if fcntl-uncontested and >1h old.
 
-Suggested fix: maintain an explicit allow-list of lock-file
-basenames the housekeeper is allowed to delete. New lock-file
-authors must opt in.
+**Shipped:** `_LOCK_RULES` declares per-directory basename patterns
+matching the three known lock-using subsystems:
 
-### log_archival._purge_old_archives — final retention delete with no snapshot
+| Dir | Pattern | Producer |
+|---|---|---|
+| `/app/workspace` | `.workspace.lock` | `workspace_versioning` |
+| `/app/workspace/locks` | `*.lock` | `wiki_tools` (per-slug) |
+| `/app/workspace/dreams` | `.wiki_index_reconciler.lock` | `memory/wiki_index_reconciler` |
 
-`workspace/healing/log_archive/*` files past N days (default 90,
-env-tunable down to 7) are unlinked. The first-tier rotation IS
-snapshot-first by construction (gzip-and-keep), but the final purge
-isn't.
+Files NOT matching their dir's pattern: surfaced via a 24h-deduped
+Signal alert, never auto-deleted. Pile-up alert counts only
+rule-matching candidates. See `lock_housekeeper.py:_LOCK_RULES`.
 
-Suggested fix: route the final purge through `destructive_advisory`
-so the alert shows the operator what would be purged before doing it.
-Or shorten the gzip retention so the rotation IS the final stop.
+### log_archival._purge_old_archives — final retention delete with no snapshot  ✅ shipped in #116
 
-### chromadb_hygiene — auto-VACUUM during concurrent ChromaDB writes
+**Before:** `LOG_ARCHIVE_RETENTION_DAYS` had a 7-day floor; per-pass
+deletions unbounded.
 
-The orphan-segment side of this monitor is fixed in this PR. The
-auto-VACUUM side is mature SQLite plumbing but runs unprompted every
-90 days against every live `chroma.sqlite3`. ChromaDB writes through
-SQLite, so a concurrent write during VACUUM could corrupt. Code uses
-`timeout=30.0` and accepts lock-fail silently. Lock-fail is
-recoverable but a brief gateway pause during quarterly VACUUM would
-be safer.
+**Shipped:** floor raised to 30 days (`_MIN_RETENTION_DAYS = 30`);
+`_PURGE_PER_PASS_CAP = 100` limits damage from a misset retention —
+files past retention purge oldest-first within the cap; deferred
+deletions surface as `deferred_due_to_cap`; backlog still drains
+naturally over multiple passes. See `log_archival.py:_purge_old_archives`.
 
-Suggested fix: optional pre-VACUUM `docker compose stop chromadb` +
-post-VACUUM `start chromadb` toggle. Default OFF so existing behavior
-preserved.
+### chromadb_hygiene — auto-VACUUM during concurrent ChromaDB writes  ✅ shipped in #117
 
-### db_vacuum — auto-VACUUM on conversations.db
+**Before:** VACUUM accepted `database is locked` silently; a
+chronically-locked KB would never reclaim disk and the operator
+would never know.
 
-Similar shape: monthly VACUUM on the SQLite file the Signal client
-writes to. Less risk than chromadb_hygiene because conversations.db
-has a single writer.
+**Shipped:** per-path consecutive-VACUUM-failure tracking. When a
+single chroma.sqlite3 file fails VACUUM 4 quarters in a row, a
+one-shot Signal alert fires with that specific path. Successful
+VACUUM resets the counter. Recovery is silent (`logger.info` only)
+because operator already saw the failure alert. State tracking
+prevents Signal spam during a sustained streak. See
+`chromadb_hygiene.py:_FAILURE_ALERT_THRESHOLD` + the new
+`consecutive_failures` block in `run()`.
 
-Suggested fix: same shape — optional brief Signal-client pause around
-the VACUUM, default OFF.
+### db_vacuum — auto-VACUUM on conversations.db  ✅ shipped in #117
 
-### tz_drift — auto-CR with empty diff
+**Shipped:** same chronic-failure-tracking shape as
+chromadb_hygiene. conversations.db has a single writer (Signal
+client) so chronic failure here is more surprising — usually means
+the writer is holding the connection through the probe window,
+which is itself a bug worth alerting on. See
+`db_vacuum.py:_FAILURE_ALERT_THRESHOLD`.
 
-When divergence is detected, files a change request with
-`new_content=src, old_content=src` (zero actual diff; the operator
-must read the body and hand-write the fix). Not destructive on its
-own but produces noise in the CR queue.
+### tz_drift — auto-CR with empty diff  ✅ shipped in #117
 
-Suggested fix: generate a real proposed diff (e.g., a one-line
-import addition that uses ZoneInfo) so the CR is meaningful. Or
-demote to a Signal alert instead of a no-op CR.
+**Before:** the CR filed on tz divergence passed
+`new_content=src, old_content=src` (zero actual diff; operator read
+the prose body and hand-wrote the fix on approval).
+
+**Shipped:** new `_synthesize_zoneinfo_patch(src)` locates the
+hand-rolled `_helsinki_tz()` function by exact signature, replaces
+it with a one-liner using `ZoneInfo("Europe/Helsinki")`, and adds
+`from zoneinfo import ZoneInfo` at the canonical datetime-import
+anchor. Output is `ast.parse`-verified. If the source shape doesn't
+match (e.g., temporal_context.py refactored before this monitor's
+CR lands), the helper returns None and the caller falls back to the
+informational-only shape — better than shipping a corrupted patch.
+See `tz_drift.py:_synthesize_zoneinfo_patch`.
 
 ## Monitors verified SAFE
 
