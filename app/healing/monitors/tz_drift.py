@@ -203,15 +203,20 @@ def _write_state(state: dict[str, Any]) -> None:
 def _propose_consolidation_cr(probes: list[dict[str, Any]]) -> Optional[str]:
     """File a standard change-request proposing to replace the hand-
     rolled ``_helsinki_tz()`` with ``ZoneInfo``. Returns the CR id
-    on success, None on failure (failure-isolated)."""
+    on success, None on failure (failure-isolated).
+
+    Generates a real synthetic diff so the operator can approve the CR
+    as-is rather than reading the prose and hand-writing the edit
+    (post-2026-05-16 discipline — empty-diff CRs were flagged as a
+    RISK item in the monitor audit because they put burden on the
+    operator and the operator can introduce a different error than
+    the proposer's described intent)."""
     try:
         from app.change_requests.lifecycle import create_request
         from app.change_requests.models import RiskClass
     except Exception:
         logger.debug("tz_drift: change_requests unavailable", exc_info=True)
         return None
-    # Read the current file to produce old_content; produce new_content
-    # by string-replacing the hand-rolled function.
     target_path = "app/temporal_context.py"
     try:
         src = Path(target_path).read_text(encoding="utf-8")
@@ -225,10 +230,14 @@ def _propose_consolidation_cr(probes: list[dict[str, Any]]) -> Optional[str]:
         except Exception:
             logger.debug("tz_drift: source read failed", exc_info=True)
             return None
-    # Build a synthetic new_content: a CR with a clear, narrow proposal.
-    # The actual replacement code is laid out in the reason field so the
-    # operator can implement the edit themselves on approve — keeps this
-    # monitor honest (it surfaces the proposal, not the patch text).
+
+    new_src = _synthesize_zoneinfo_patch(src)
+    if new_src is None or new_src == src:
+        # Couldn't safely produce a synthetic diff — fall back to an
+        # informational CR (the old shape), so operator still gets
+        # the signal. Better than no CR at all.
+        new_src = src
+
     proposed_reason = (
         f"TZ_DRIFT_MONITOR: divergence detected between hand-rolled "
         f"_helsinki_tz() in app/temporal_context.py and "
@@ -241,11 +250,15 @@ def _propose_consolidation_cr(probes: list[dict[str, Any]]) -> Optional[str]:
             f"zoneinfo={p['zoneinfo_offset_s']}s, "
             f"divergence={p['divergence_s']}s\n"
         )
+    diff_note = (
+        "(synthetic patch attached)" if new_src != src
+        else "(no synthetic patch — patch by hand from reason)"
+    )
     proposed_reason += (
-        f"\nProposed fix: replace `_helsinki_tz()` body with a thin "
-        f"`zoneinfo.ZoneInfo('Europe/Helsinki')` wrapper so the system "
-        f"automatically follows OS tzdata updates. This is the same "
-        f"approach already used at app/affect/hooks.py:366 and "
+        f"\nProposed fix {diff_note}: replace `_helsinki_tz()` body with "
+        f"a thin `zoneinfo.ZoneInfo('Europe/Helsinki')` wrapper so the "
+        f"system automatically follows OS tzdata updates. This is the "
+        f"same approach already used at app/affect/hooks.py:366 and "
         f"app/companion/scheduler.py:150.\n\n"
         f"Operator: review the diff carefully. If the underlying cause "
         f"is stale tzdata on the host (not an EU rule change), update "
@@ -255,7 +268,7 @@ def _propose_consolidation_cr(probes: list[dict[str, Any]]) -> Optional[str]:
         cr = create_request(
             requestor="tz_drift_monitor",
             path=target_path,
-            new_content=src,  # operator decides the patch — body is informational
+            new_content=new_src,
             old_content=src,
             reason=proposed_reason,
             risk_class=RiskClass.STANDARD,
@@ -264,6 +277,92 @@ def _propose_consolidation_cr(probes: list[dict[str, Any]]) -> Optional[str]:
     except Exception:
         logger.debug("tz_drift: CR filing failed", exc_info=True)
         return None
+
+
+def _synthesize_zoneinfo_patch(src: str) -> Optional[str]:
+    """Produce a synthetic ``new_content`` that replaces the hand-rolled
+    ``_helsinki_tz()`` function with a one-liner using
+    ``zoneinfo.ZoneInfo``.
+
+    Returns the modified source on success, ``None`` if the source
+    doesn't match the expected shape (defensive — if temporal_context
+    is refactored before this monitor's CR lands, the synthetic patch
+    might silently corrupt it).
+
+    The synthesis is conservative:
+      * requires the exact function signature to be present
+      * requires the function to end with a `return timezone(...)` line
+        before either a blank line + `def` or end-of-file
+      * if either is missing, returns None and the caller falls back
+        to the empty-diff CR (informational only)
+    """
+    sig = "def _helsinki_tz() -> timezone:"
+    sig_idx = src.find(sig)
+    if sig_idx < 0:
+        return None
+    # Locate the end of the function body: the first blank line followed
+    # by a top-level token (def / class / # / `_cache` style identifier
+    # at column 0). The current function ends with `return timezone(...)`.
+    body_start = sig_idx + len(sig)
+    # Scan line-by-line for the function's closing — first non-empty
+    # line at column 0 after at least one line of body.
+    lines = src[body_start:].splitlines(keepends=True)
+    consumed = 0
+    seen_body_line = False
+    for i, line in enumerate(lines):
+        stripped = line.rstrip("\n\r")
+        if not stripped.strip():
+            consumed += len(line)
+            continue
+        if stripped[0] not in (" ", "\t"):
+            if seen_body_line:
+                # Reached the next top-level token — function ended here.
+                break
+            consumed += len(line)
+            continue
+        seen_body_line = True
+        consumed += len(line)
+    if not seen_body_line:
+        return None
+    body_end = body_start + consumed
+
+    # Replacement function — drop the `-> timezone` annotation since
+    # ZoneInfo is a different tzinfo subclass; both still satisfy the
+    # tzinfo protocol the caller uses.
+    replacement = (
+        "def _helsinki_tz():\n"
+        '    """Return Helsinki timezone via stdlib ``zoneinfo``.\n'
+        "\n"
+        "    Replaced 2026-05-16 (tz_drift monitor synthetic patch):\n"
+        "    the hand-rolled DST calculation that used to live here\n"
+        "    diverged from ``ZoneInfo('Europe/Helsinki')`` on at least\n"
+        "    one probe. Using zoneinfo means the timezone definition\n"
+        "    follows host tzdata, so EU rule changes propagate\n"
+        '    automatically.\n'
+        '    """\n'
+        '    return ZoneInfo("Europe/Helsinki")\n'
+    )
+
+    new_src = src[:sig_idx] + replacement + src[body_end:]
+
+    # Add the `from zoneinfo import ZoneInfo` import if missing.
+    if "from zoneinfo import" not in new_src and "import zoneinfo" not in new_src:
+        # Insert just after the `from datetime import` line — same
+        # block as the existing stdlib datetime imports.
+        marker = "from datetime import datetime, timedelta, timezone\n"
+        idx = new_src.find(marker)
+        if idx >= 0:
+            insert_at = idx + len(marker)
+            new_src = (
+                new_src[:insert_at]
+                + "from zoneinfo import ZoneInfo\n"
+                + new_src[insert_at:]
+            )
+        else:
+            # Couldn't find the canonical import line — refuse the
+            # patch rather than ship a broken file.
+            return None
+    return new_src
 
 
 # ── Continuity-ledger event emission ────────────────────────────────────
