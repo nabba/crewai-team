@@ -1,10 +1,30 @@
 # HOT-1 metacognitive-repair observation log
 
-**Status (Q2 §39, 2026-05-10): passive collection only.** The
-HOT-1 Butlin indicator probe has not yet been implemented; this
-log is the pre-built data source the future probe will consume.
-This document is the operator handover for understanding what's
-being collected, why, and what the future probe will do with it.
+**Status (2026-05-16):** the log itself remains passive collection
+(per Q2 §39 ship). Two new consumers were wired in Q16 Theme 8.1
++ Q16.1 Item 2:
+
+  * `app/healing/hot1_consultation.py` (Q16 Theme 8.1) — the
+    structured_diagnosis pipeline consults this log BEFORE
+    generating a new fix proposal. Recommends `skip` on chronic
+    failure (≥3 declines, no successes), `proceed_with_caveat` on
+    rolled-back priors, `proceed_normally` on prior success. The
+    hint is spliced into the LLM prompt as `prior_attempt_context`
+    so the diagnosis isn't blind to its own history.
+  * `app/healing/hot1_outcome_reconciler.py` (Q16.1 Item 2) — the
+    missing READ side of `outcome`. Walks the CR audit log for
+    terminal events on `requestor=error_diagnosis` CRs; matches
+    them back to HOT-1 rows by `pattern_signature` + timestamp;
+    writes outcomes to a side overlay at
+    `workspace/healing/hot1_outcomes_overlay.json`. The original
+    JSONL stays append-only (consciousness data is identity-
+    preserving by contract); the consultation reader merges the
+    overlay at read time.
+
+The eventual Butlin HOT-1 probe (in `app/subia/probes/`) remains
+unimplemented — its addition would require a Tier-3 amendment to
+the integrity manifest. Until then, the log feeds the two consumers
+above and the future probe will inherit a multi-year backlog.
 
 ## What this is
 
@@ -21,8 +41,10 @@ runs, it emits one row to this log capturing:
     whether the LLM declined to fix
   * The proposed intervention — target path, additive-only flag,
     line delta
-  * `outcome` — left null at emission; populated later by the
-    outcome reconciler when the resulting CR (if any) resolves
+  * `outcome` — left null at emission; the **Q16.1 outcome
+    reconciler** (`app/healing/hot1_outcome_reconciler.py`)
+    populates it via a side overlay when the resulting CR resolves
+    (applied / rejected / rolled_back / timeout)
 
 Capped at 5000 rows via `app.utils.jsonl_retention.append_with_cap`
 — ≈3 years of observed cadence at the design point of ~1 fix/day

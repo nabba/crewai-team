@@ -109,12 +109,31 @@ _OLLAMA_DEFAULT_HOST = "127.0.0.1"
 _OLLAMA_DEFAULT_PORT = 11434
 _OLLAMA_PROBE_TIMEOUT_S = 1.5
 
-# Live-fitness extension (opt-in via ``drill_vendor_independence_live_enabled``).
-# The structural drill above answers "would routing work?" — the live
-# fitness check answers "does the cascade actually answer when we
-# force it past the dominant providers?" It's strictly opt-in because
-# it costs ~$0.10 per drill in non-Anthropic LLM tokens, and runs only
-# quarterly so the annual cost is bounded by design.
+# Live-fitness extension point (opt-in via ``drill_vendor_independence_
+# live_enabled``).
+#
+# **EXTENSION POINT — not active by default.** The structural drill
+# above answers "would routing work?" The live-fitness check is the
+# answer to "does the cascade actually return a usable reply when we
+# force it past the dominant providers?" It would cost ~$0.10 per
+# drill in non-Anthropic LLM tokens (quarterly cadence; ~$0.40/year).
+#
+# Activation requires TWO operator steps, not just flipping the flag:
+#
+#   1. Flip ``drill_vendor_independence_live_enabled`` to True.
+#   2. Add a ``smoke_completion(question, exclude_providers,
+#      timeout_s, max_chars) -> str`` helper to
+#      ``app/llm_selector.py``. The helper should issue ONE cheap
+#      completion via the cascade with the named providers temporarily
+#      added to the chat-blocked-models blocklist and the result
+#      stripped to ``max_chars`` characters. The helper does NOT
+#      mutate the persistent blocklist — exclusion is per-call only.
+#
+# When the helper is absent, ``_check_live_fitness`` soft-passes with
+# ``reason="llm_selector has no smoke_completion helper"`` — the
+# structural drill remains green. This is the well-documented dormant
+# state; flipping the master switch without the helper does not
+# enable anything.
 _LIVE_FITNESS_QUESTIONS = (
     "What is 2 + 2? Reply with only the digit.",
     "Name one Nordic capital. Reply with only the name.",

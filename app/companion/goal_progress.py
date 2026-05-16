@@ -133,18 +133,17 @@ def _write_state(state: dict[str, Any]) -> None:
 
 
 def _load_current_goals() -> list[Any]:
-    """Load current_goals from the SubIA kernel. Returns empty list
-    on any failure."""
+    """Load current_goals from the SubIA kernel.
+
+    Canonical pattern (mirrors ``app/identity/long_term_goal_review.py:
+    _current_goals``): ``kernel.self_state.current_goals``. Returns
+    empty list on any failure.
+    """
     try:
         from app.subia import kernel
-        state = getattr(kernel, "self_state", None) or getattr(
-            getattr(kernel, "_get_kernel", lambda: None)() or object(),
-            "self_state", None,
-        )
-        if state is not None:
-            goals = getattr(state, "current_goals", None) or []
-            if isinstance(goals, list):
-                return goals
+        goals = getattr(kernel.self_state, "current_goals", None) or []
+        if isinstance(goals, list):
+            return goals
     except Exception:
         logger.debug("goal_progress: kernel load failed", exc_info=True)
     return []

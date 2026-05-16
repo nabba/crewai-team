@@ -165,6 +165,16 @@ def consult(
     out["available"] = True
     out["n_attempts"] = len(rows)
     confidences: list[float] = []
+    # Q16.1 Item 2 — load the outcome overlay from the reconciler.
+    # Original HOT-1 JSONL is append-only (consciousness data is
+    # identity-preserving). The reconciler populates outcomes via a
+    # side overlay; we merge it here at read time.
+    overlay_lookup = None
+    try:
+        from app.healing.hot1_outcome_reconciler import lookup_outcome
+        overlay_lookup = lookup_outcome
+    except Exception:
+        overlay_lookup = None
     for row in rows:
         hot = row.get("higher_order_thought") or {}
         if hot.get("declined"):
@@ -174,7 +184,19 @@ def consult(
             conf = hot.get("self_assessed_confidence")
             if isinstance(conf, (int, float)):
                 confidences.append(float(conf))
-        outcome = (row.get("outcome") or "").lower() if isinstance(row.get("outcome"), str) else ""
+        # First, check the row's own outcome (tests inject it directly).
+        outcome_raw = row.get("outcome")
+        outcome = outcome_raw.lower() if isinstance(outcome_raw, str) else ""
+        # Then, overlay outcome from the reconciler (production path).
+        if not outcome and overlay_lookup is not None:
+            ts_iso = row.get("ts") if isinstance(row.get("ts"), str) else None
+            if ts_iso:
+                overlay_outcome = overlay_lookup(
+                    pattern_signature=pattern_signature,
+                    ts_iso=ts_iso,
+                )
+                if overlay_outcome:
+                    outcome = overlay_outcome.lower()
         if outcome:
             out["n_resolved"] += 1
         if outcome == "applied":

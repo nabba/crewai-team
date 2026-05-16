@@ -98,6 +98,11 @@ _DEFAULT_CADENCE_S = {
     "goal_progress": 24 * 3600,                # daily probe; PROGRAM §51 Q16 Theme 7.2
     "annual_privacy_review": 24 * 3600,        # daily probe; internal 330-day cadence; PROGRAM §51 Q16 Theme 7.3
     "philosophy_digest": 24 * 3600,            # daily probe; internal quarterly cadence; PROGRAM §51 Q16 Theme 8.2
+    "hot1_outcome_reconciler": 24 * 3600,      # daily probe; internal weekly cadence; PROGRAM §51 Q16.1 Item 2
+    "velocity_digest": 24 * 3600,              # daily probe; internal quarterly cadence; PROGRAM §51 Q16.1 Item 9
+    # PROGRAM §52 Q17 monitors.
+    "bit_rot_scan": 24 * 3600,                 # daily probe; internal weekly cadence; Q17.3
+    "kb_contradiction": 24 * 3600,             # daily probe; internal weekly cadence; Q17.6
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -566,6 +571,58 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: philosophy_digest import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16.1 Item 2 — HOT-1 outcome reconciler. Walks CR
+    # audit log for terminal events on error_diagnosis CRs; writes
+    # outcomes to a side overlay the consultation reader merges at
+    # read time. Closes the "we emit but never read back" loop.
+    try:
+        from app.healing import hot1_outcome_reconciler
+        monitors.append((
+            "hot1_outcome_reconciler", hot1_outcome_reconciler.run,
+            _DEFAULT_CADENCE_S["hot1_outcome_reconciler"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: hot1_outcome_reconciler import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16.1 Item 9 — velocity digest. Daily probe;
+    # quarterly internal cadence. Surfaces Theme 4 velocity changes
+    # in a Signal digest so operator doesn't have to poll the REST
+    # endpoint manually.
+    try:
+        from app.self_improvement import velocity_digest
+        monitors.append((
+            "velocity_digest", velocity_digest.run_once,
+            _DEFAULT_CADENCE_S["velocity_digest"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: velocity_digest import failed", exc_info=True,
+        )
+    # PROGRAM §52 Q17.3 — bit-rot scan over identity-critical JSONL
+    # files. Daily probe; internal weekly cadence.
+    try:
+        from app.healing.monitors import bit_rot_scan
+        monitors.append((
+            "bit_rot_scan", bit_rot_scan.run,
+            _DEFAULT_CADENCE_S["bit_rot_scan"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: bit_rot_scan import failed", exc_info=True,
+        )
+    # PROGRAM §52 Q17.6 — KB contradiction probe over epistemic
+    # claims. Daily probe; internal weekly cadence.
+    try:
+        from app.healing.monitors import kb_contradiction
+        monitors.append((
+            "kb_contradiction", kb_contradiction.run,
+            _DEFAULT_CADENCE_S["kb_contradiction"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: kb_contradiction import failed", exc_info=True,
         )
 
     if not monitors:

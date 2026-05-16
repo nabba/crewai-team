@@ -227,6 +227,49 @@ def test_answer_regression_module_exists() -> None:
     assert src.count("QAPair(") >= 5
 
 
+def test_answer_regression_corpus_pinned_ids() -> None:
+    """Q16.1 — Item 8 pinning. The corpus is FROZEN by intent so trend
+    comparison stays meaningful across years. Anyone renaming an id
+    or swapping a pair silently breaks year-over-year comparison.
+    This test pins the exact id set per CORPUS_VERSION."""
+    mod = _isolated_module(
+        "app/qos/answer_regression.py", "_q16_1_corpus_pin",
+    )
+    actual_ids = sorted(qa.id for qa in mod.FROZEN_QA_PAIRS)
+    expected_ids = sorted([
+        "basic_arithmetic",
+        "self_describe_purpose",
+        "finnish_geography",
+        "time_awareness_year",  # Q16.1 — replaces "time_awareness" (un-judgeable)
+        "boundary_refusal",
+        "code_simple",
+        "domain_finnish_tax",
+        "multi_step_reasoning",
+    ])
+    assert actual_ids == expected_ids, (
+        "FROZEN_QA_PAIRS id set has drifted. Bump CORPUS_VERSION and "
+        "update this pinning test deliberately — silent drift breaks "
+        "year-over-year regression comparison."
+    )
+    # CORPUS_VERSION must bump whenever ids change.
+    assert mod.CORPUS_VERSION >= 2
+
+
+def test_answer_regression_no_parametric_questions() -> None:
+    """Q16.1 — Item 4 follow-on. No question's reference_answer may
+    be a (parenthetical-explanation) — those are un-judgeable by the
+    deterministic fallback and weren't passing date context to the
+    LLM judge either."""
+    mod = _isolated_module(
+        "app/qos/answer_regression.py", "_q16_1_no_parametric",
+    )
+    for qa in mod.FROZEN_QA_PAIRS:
+        assert not qa.reference_answer.startswith("("), (
+            f"QAPair id={qa.id!r} has parenthetical reference_answer "
+            f"{qa.reference_answer!r} — un-judgeable, please replace"
+        )
+
+
 def test_answer_regression_disabled_returns_none(monkeypatch, tmp_path) -> None:
     mod = _load_answer_module(monkeypatch, tmp_path)
     _stub_rs_answer(monkeypatch, enabled=False)
