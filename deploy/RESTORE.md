@@ -6,14 +6,22 @@ control_plane state), **Neo4j** (Mem0 graph store), **ChromaDB** (RAG
 indices for KB / philosophy / fiction / episteme / experiential /
 aesthetics / tensions).
 
-Backups are produced by either:
+Backups are produced by a split (2026-05-16):
 
-- `deploy/scripts/backup.sh` (host-side, operator-runnable)
-- `app/healing/db_backup.py` (gateway-driven; opt-in via
-  `HEALING_DB_BACKUP_ENABLED=1`)
+- **Postgres + Neo4j** — host launchd LaunchAgent
+  `org.andrus.botarmy.db-backup` (daily 04:30 local; install via
+  `scripts/install_db_backup.sh install`). Runs `deploy/scripts/backup.sh`
+  with `BACKUP_SKIP_CHROMADB=1`. The Neo4j step briefly stops the
+  container (`docker compose stop neo4j → dump → start`) because
+  Neo4j Community refuses online dumps; ~10–30 s of downtime daily.
+- **ChromaDB** — `app/healing/db_backup.py` from inside the gateway
+  (weekly cadence, opt-in via `HEALING_DB_BACKUP_ENABLED=1`). The
+  data dir is bind-mounted, no docker-exec needed.
 
-Both write to `workspace/backups/{postgres,neo4j,chromadb}/` and update
-`workspace/backups/manifest.json`.
+Both writers update the same `workspace/backups/manifest.json` and
+write archives under `workspace/backups/{postgres,neo4j,chromadb}/`.
+Each manifest entry has per-component `ok` and `skipped` flags; the
+freshness monitor counts only non-skipped successes per component.
 
 > **Read this end-to-end before touching anything in production.**
 > Restore is one-way; a botched run can lose the data the running
@@ -22,22 +30,26 @@ Both write to `workspace/backups/{postgres,neo4j,chromadb}/` and update
 ## 0. Decide what you actually need
 
 `workspace/backups/manifest.json` lists every run with per-component
-`ok` flags. Identify the freshest archive set where Postgres, Neo4j,
-and ChromaDB are all `ok: true`. Mismatched timestamps across stores
-mean foreign-key references in Postgres can dangle into Neo4j /
-ChromaDB; for normal operation, restore from the same `started_at`.
+`ok` and `skipped` flags. Under the host-managed split, no single
+entry will have all three components real-ok at once — gateway runs
+have chromadb real-ok with pg/neo4j skipped, host runs have pg/neo4j
+real-ok with chromadb skipped. Pick the freshest non-skipped success
+per component (paths can come from different rows); divergence across
+component timestamps usually means hours, not days. For normal
+operation aim for ≤24 h spread to keep Mem0's graph node IDs in sync
+with the Postgres `belief.id` they reference.
 
 ```bash
 cd <repo-root>
 python3 -c "
 import json
 m = json.load(open('workspace/backups/manifest.json'))
-for r in reversed(m.get('runs', [])):
-    if r.get('all_ok'):
-        print(r['completed_at'])
-        for k in ('postgres','neo4j','chromadb'):
-            print(' ', k, r[k]['path'])
-        break
+for comp in ('postgres', 'neo4j', 'chromadb'):
+    for r in reversed(m.get('runs', [])):
+        c = r.get(comp, {})
+        if c.get('ok') and not c.get('skipped'):
+            print(comp, r['completed_at'], c.get('path'))
+            break
 "
 ```
 

@@ -248,19 +248,45 @@ asymmetric (recent-inbound + stale-outbound > 7 d) or likely-dead
 (no traffic > 7 d). Multi-channel escalation: Signal → PWA push
 after 3 fails → email after 7 fails. Streak resets on recovery.
 
-### 12. DB backup engine + monitor (Phase A #A1, 2026-05-09)
+### 12. DB backup engine + monitor (Phase A #A1, 2026-05-09; host-managed split 2026-05-16)
 
-`app/healing/db_backup.py` — Postgres + Neo4j + ChromaDB backup
-engine driven from the gateway via Docker SDK (postgres + neo4j
-exec inside sibling containers; chromadb tarball directly).
-Manifest at `workspace/backups/manifest.json` records every run.
+`app/healing/db_backup.py` — backup engine. Originally drove all
+three databases from the gateway via the Docker SDK. The 2026-05-16
+split moves postgres + neo4j to a host launchd LaunchAgent because
+the `tecnativa/docker-socket-proxy` sidecar denies `/exec/.../start`
+without an explicit `EXEC: 1` flag (which would widen the gateway's
+blast radius). When `DB_BACKUP_HOST_MANAGED=1` (set in
+`docker-compose.yml` by default) the gateway's `_backup_postgres` /
+`_backup_neo4j` short-circuit and return a `skipped` placeholder.
+ChromaDB stays gateway-owned (volume is bind-mounted; no exec needed).
+Manifest at `workspace/backups/manifest.json` is shared by all
+writers.
 
 `app/healing/monitors/db_backup.py` — opt-in (default OFF) weekly
-runner + freshness alerter at >14 d since last successful backup.
+runner + per-component freshness alerter. Walks the manifest for
+each of postgres/neo4j/chromadb and finds the most recent
+NON-SKIPPED success; alerts when any component is older than
+`DB_BACKUP_STALE_DAYS` (default 14 d). The per-component check is
+what prevents a happy gateway-only chromadb stream from masking a
+dead host LaunchAgent — without it, the gateway's all_ok=True
+runs would have silently hidden missing pg/neo4j backups.
 
-`deploy/scripts/backup.sh` — operator-runnable equivalent (host-side
-docker exec) for environments where the gateway isn't the backup
-runner.
+`deploy/scripts/backup.sh` — host-side script with three env knobs
+(`BACKUP_SKIP_POSTGRES`, `BACKUP_SKIP_NEO4J`, `BACKUP_SKIP_CHROMADB`).
+The Neo4j step does `docker compose stop neo4j → dump in one-shot
+container → docker compose start neo4j` because Neo4j Community
+refuses `neo4j-admin database dump` while the database is mounted
+in a running server (~10–30 s downtime per run).
+
+`scripts/db_backup_host.plist` + `scripts/install_db_backup.sh` —
+launchd LaunchAgent (daily 04:30 local) that invokes `backup.sh`
+with `BACKUP_SKIP_CHROMADB=1`. Operator install:
+
+  ./scripts/install_db_backup.sh install
+  ./scripts/install_db_backup.sh start    # smoke-test
+  ./scripts/install_db_backup.sh status
+
+Logs land at `workspace/backups/.db_backup_host.log`.
 
 See `crewai-team/deploy/RESTORE.md` for the operator-facing restore
 runbook.
