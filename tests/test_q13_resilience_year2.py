@@ -118,6 +118,45 @@ def test_migration_drill_shell_script_exists() -> None:
         "Drill must not reintroduce the fabricated control_plane._schema_migrations "
         "tracking table. See migration-drill.sh header for rationale."
     )
+    # Must load the isolation overlay (incident 2026-05-16). Without it
+    # the drill's postgres mounts the same host path as the live stack
+    # and corrupts the live database.
+    assert "docker-compose.migration-drill.yml" in src, (
+        "Drill must load the isolation overlay. See header for the "
+        "2026-05-16 corruption incident."
+    )
+    # Must include a pre-flight check that refuses to run against a
+    # live stack — belt-and-suspenders with the overlay.
+    assert "crewai-team-postgres-1" in src, (
+        "Drill must check for the live postgres container before "
+        "starting its own. See header for the 2026-05-16 incident."
+    )
+
+
+def test_migration_drill_isolation_overlay_present() -> None:
+    """The overlay must exist and remap postgres to an ephemeral
+    volume (the load-bearing fix for the 2026-05-16 corruption)."""
+    p = REPO_ROOT / "docker-compose.migration-drill.yml"
+    assert p.is_file(), (
+        "docker-compose.migration-drill.yml must exist alongside "
+        "docker-compose.yml — the drill script references it explicitly."
+    )
+    src = p.read_text()
+    # Must remap postgres data dir to something OTHER than the live
+    # bind mount (./workspace/mem0_pgdata).
+    assert "mem0_pgdata" not in src, (
+        "Overlay must not reference the live bind mount path."
+    )
+    assert "drill_pgdata" in src, (
+        "Overlay must define a drill-specific volume name."
+    )
+    # Must use compose's !override (not !reset) so the parent volumes
+    # list is replaced, not erased. !reset leaves the service with no
+    # data dir at all and breaks initdb.
+    assert "!override" in src, (
+        "Overlay must use !override on volumes (not !reset — that "
+        "erases the list instead of replacing it)."
+    )
 
 
 def test_migration_drill_shell_script_executable() -> None:

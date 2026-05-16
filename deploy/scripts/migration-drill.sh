@@ -31,11 +31,27 @@
 # tables, so the smoke query for that table FAILS — which is exactly
 # the operator-visible signal the drill is supposed to produce.
 #
-# Run quarterly from cron / launchd. Updates a separate manifest at
+# Isolation note (incident 2026-05-16): the drill loads an overlay
+# (`docker-compose.migration-drill.yml`) that remaps postgres to an
+# ephemeral named volume and read-only's the gateway sidecar's
+# workspace/wiki/secrets mounts. Without the overlay the drill's
+# postgres would mount `./workspace/mem0_pgdata` — the SAME host path
+# the live stack uses — and a partial restore would corrupt the live
+# catalog (this is what happened on first run). Belt-and-suspenders:
+# the script also REFUSES to run if `crewai-team-postgres-1` exists
+# in any state, so an accidentally-deleted overlay can't reproduce the
+# same incident.
+#
+# Run quarterly from cron / launchd, with the live stack OFF (the
+# pre-flight check enforces this). Updates a separate manifest at
 # workspace/backups/migration_drill_manifest.json so the
 # `migration_drill` healing monitor can alert on staleness.
 #
-# Exits 0 on success, non-zero on failure. Always tears down on exit.
+# Exits 0 on success, non-zero on failure:
+#   - exit 2: environment broken (no docker, missing files, ...)
+#   - exit 3: no postgres-ok backup to drill against
+#   - exit 4: live stack still up (refuse to corrupt it)
+# Always tears down on exit.
 
 set -euo pipefail
 
@@ -48,12 +64,27 @@ if [[ ! -f docker-compose.yml ]]; then
     exit 2
 fi
 
+# --- Isolation overlay (required) ----------------------------------------
+# The live stack and drill stack share docker-compose.yml. Without this
+# overlay both projects mount ./workspace/mem0_pgdata for postgres,
+# racing on the data dir lock and corrupting the live catalog
+# (incident 2026-05-16). The overlay remaps the drill's postgres data
+# dir to an ephemeral named volume and read-only's the gateway's
+# workspace/wiki/secrets mounts.
+DRILL_OVERLAY="docker-compose.migration-drill.yml"
+if [[ ! -f "$DRILL_OVERLAY" ]]; then
+    echo "ERROR: drill overlay missing: $DRILL_OVERLAY" >&2
+    echo "       Without it the drill would corrupt the live database." >&2
+    echo "       See header comment for context." >&2
+    exit 2
+fi
+
 # --- Compose detection ----------------------------------------------------
 if command -v docker >/dev/null 2>&1; then
     if docker compose version >/dev/null 2>&1; then
-        COMPOSE="docker compose"
+        COMPOSE="docker compose -f docker-compose.yml -f $DRILL_OVERLAY"
     elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE="docker-compose"
+        COMPOSE="docker-compose -f docker-compose.yml -f $DRILL_OVERLAY"
     else
         echo "ERROR: docker compose not found" >&2
         exit 2
@@ -61,6 +92,24 @@ if command -v docker >/dev/null 2>&1; then
 else
     echo "ERROR: docker not found" >&2
     exit 2
+fi
+
+# --- Pre-flight: refuse if live postgres container exists ----------------
+# Belt-and-suspenders with the overlay. The overlay points the drill's
+# postgres at a fresh named volume, but a future operator might delete
+# or fail to load the overlay; if the live postgres is also up, the
+# bind-mount race is back. Refuse to run when crewai-team-postgres-1
+# exists in any state — operator must `docker compose down` first.
+if docker inspect crewai-team-postgres-1 >/dev/null 2>&1; then
+    pg_state="$(docker inspect crewai-team-postgres-1 \
+        --format '{{.State.Status}}' 2>/dev/null || echo unknown)"
+    echo "ERROR: live postgres container (crewai-team-postgres-1) exists, state=$pg_state." >&2
+    echo "       The drill stack and live stack share docker-compose.yml; running both" >&2
+    echo "       concurrently has caused live-database corruption in the past." >&2
+    echo "       Bring the live stack down first:" >&2
+    echo "         docker compose down" >&2
+    echo "       Then re-run this script." >&2
+    exit 4
 fi
 
 DRILL_PROJECT="andrusai-migration-drill"

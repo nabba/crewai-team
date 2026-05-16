@@ -9069,6 +9069,35 @@ and the drill permanently recorded `last_drill_ok=false`. The redesign
 drills the production code path (`startup_migrations.apply_all` + smoke
 queries) instead — which is the honest test of the stated concern.
 
+**Isolation note (2026-05-16 corruption incident).** First-run
+validation of the redesigned drill exposed a second flaw inherited
+from the original: the drill spins up postgres via `docker compose
+-p andrusai-migration-drill up -d postgres`. The `-p` flag renames
+containers and networks but reads bind-mount paths literally from
+`docker-compose.yml`, so the drill's postgres mounted the same
+`./workspace/mem0_pgdata` as the live stack. The two postgreses
+raced on the data-dir lock; the drill's partial `psql` restore
+corrupted the live catalog (pg_class rows survived but pg_attribute
+was emptied for many tables — production tables became unreadable).
+Live data was rebuilt from the 13:58 UTC backup; ~70 min of writes
+lost. The drill PR now ships two compounding fixes:
+
+1. **Compose overlay** (`docker-compose.migration-drill.yml`,
+   loaded by every `$COMPOSE` invocation in the drill script). Uses
+   Compose v2.24+ `!override` to replace postgres' bind mount with
+   an ephemeral named volume `drill_pgdata` (auto-cleaned by
+   `down -v` in teardown) and downgrades the gateway sidecar's
+   `workspace`/`wiki`/`secrets` mounts to read-only.
+2. **Pre-flight refusal**. The drill exits 4 if
+   `crewai-team-postgres-1` exists in any state. Belt-and-suspenders:
+   if a future operator removes or breaks the overlay, the same
+   incident can't recur. Operator must `docker compose down` first.
+
+End-to-end validation: drill passes with `last_drill_ok=true`; live
+`workspace/mem0_pgdata` byte-identical before vs after
+(file count + `PG_VERSION` md5 both unchanged); `drill_pgdata`
+named volume gone after teardown.
+
 The Python monitor (`migration_drill`):
 
   * Reads the manifest. Alerts in 4 states:
