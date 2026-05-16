@@ -8704,3 +8704,253 @@ No TIER_IMMUTABLE files modified. SubIA integrity unchanged.
     Switching to ChromaDB is a future-cycle decision when the
     index actually approaches 10k+ entries.
 
+
+## 47 2026-05-16 — Q12: Self-understanding & philosophy (8.4 ship + audit closure)
+
+The user's spec broke into five items framed as "the most delicate
+dimension" — preserving the SubIA distinction between *functional
+control signal* and *phenomenal claim*, keeping the 4 ABSENT-by-
+declaration Butlin indicators (RPT-1, HOT-1, HOT-4, AE-2) absent,
+and ensuring the agent CAN have a voice in its own evaluation
+without being able to grade itself.
+
+Audit verdict before kickoff: **4 of 5 already shipped**.
+
+  * **§8.1 Active philosophical dialogue** — ✅ shipped under
+    `app/subia/inquiry/` (composer + linter + questions + scheduler
+    + selector + writer; curated questions at
+    `wiki/self/inquiry_questions.md`; weekly HEAVY idle; Tier-3
+    governed since the module is under TIER_IMMUTABLE `app/subia/`).
+  * **§8.2 Value reflection loop** — ✅ shipped under
+    `app/identity/annual_reflection.py` (`run_one_pass` writing to
+    `wiki/self/value_reflections/<year>.md`; uses
+    `PhenomenalLanguageLinter`; LIGHT idle, cadence-checked).
+  * **§8.3 Identity continuity ledger** — ✅ shipped under
+    `app/identity/continuity_ledger.py` (`record_event` +
+    `list_events` + `summarise_drift`; 10 event kinds at audit time;
+    Q12 added the 11th — `sentience_probe_proposal`).
+  * **§8.4 Sentience-probe self-design** — ❌ missing (this Q ships it).
+  * **§8.5 Death and continuity** — ✅ shipped under
+    `app/identity/legacy_essay.py` (`run_one_pass` writing to
+    `wiki/self/legacy/<year>.md`; read-only by design, no functional
+    consequence).
+
+Operator decision before kickoff (via `AskUserQuestion`):
+**"Agent-callable tool only, free-form proposals (Recommended)"**.
+
+### 47.1 — Q12.4: Sentience-probe self-design
+
+New package `app/subia/probe_proposals/` (lives under `app/subia/`
+specifically because the canonical-path evaluators check `app/subia/*`,
+but `__init__.py` is the only file that gets touched at the integrity-
+manifest level — see §47.5 for why this is safe).
+
+**Two-stage architecture**:
+
+  1. **Stage 1 (agent-callable):** The proposer files a markdown
+     DESIGN PROPOSAL CR at `docs/proposed_probes/<slug>.md`. The
+     agent's CR carries an indicator name, a functional-structure
+     description, a measurement sketch, and a justification.
+  2. **Stage 2 (operator-only, follow-on):** If the operator accepts
+     the design doc CR, they author a separate Tier-3 amendment that
+     adds the actual `eval_*` function under `app/subia/probes/`.
+     The Tier-3 path forces eligibility + cooldown + monitoring; the
+     SCORECARD interpretation stays under operator control.
+
+**The agent CAN**:
+
+  * NAME a new candidate indicator (any non-reserved name).
+  * DESCRIBE its functional structure in domain-neutral language.
+  * SKETCH the measurement (inputs, transform, output threshold).
+  * JUSTIFY why the existing 14 Butlin + 5 RSM + SK scorecard
+    doesn't catch the same behavior.
+
+**The agent CANNOT**:
+
+  * **Modify existing probes** — `app/subia/probes/` is TIER_IMMUTABLE.
+    The architecture-requests validator's `is_protected_path` already
+    refuses CRs targeting this prefix; the proposer adds defense-in-
+    depth by refusing inputs that *mention* the protected path.
+  * **Grade itself** — this is a DESIGN doc, not a probe
+    implementation. The CR body is markdown; turning markdown into a
+    measurement is a deliberate human action.
+  * **Redefine existing indicators** — RPT-1, GWT-1..4, HOT-1..4,
+    AST-1, PP-1, AE-1, AE-2, RSM-A..E are reserved. Exact-match
+    refusal + family-prefix guard ("AE-2-extended" / "GWT-1.5" /
+    "hot-4-tweaked" — all refused).
+  * **Make phenomenal claims** — `PhenomenalLanguageLinter` from
+    §8.1 lints the combined input; HARD_FAIL severity → refused
+    with the linter's explanation surfaced to the agent.
+
+### 47.2 — Validation discipline (eight checks)
+
+`propose_sentience_probe(indicator_name, structure,
+proposed_measurement, justification, *, requestor)` runs:
+
+  1. **Name discipline** — non-empty, ≤60 chars, regex
+     `^[A-Za-z][A-Za-z0-9_\-]*$`, NOT in `ALL_RESERVED_ANCHORS`
+     (Butlin ∪ RSM = 19 names), NOT family-prefix-colliding with
+     any anchor.
+  2. **Field length** — each of structure / measurement /
+     justification ≥30 chars + ≤2000 chars + non-empty.
+  3. **Forbidden-path discipline** — refuses any input that mentions
+     `app/subia/probes/`, `app/subia/integrity`, `app/auto_deployer`,
+     `app/governance`, `app/safety_guardian`, `app/souls/`. (The
+     architecture-requests validator already refuses CRs targeting
+     these paths; this is the proposer's defense-in-depth so the
+     agent gets a clear validation error message rather than going
+     through the lifecycle layer.)
+  4. **Phenomenal-language linter** — combined input through
+     `PhenomenalLanguageLinter`; on HARD_FAIL surfaces up to 3
+     violations with line numbers + the linter's explanation.
+  5. **Cooldown** — refuses if a proposal for the same indicator
+     is in flight (`pending`/`approved`/`applied`) OR was
+     `rejected` within the last 90 days. Walks
+     `change_requests.store.list_all()` for `target_path` match.
+  6. **Render** — pure-function markdown rendering with 6 required
+     sections (What this is / Structure / Proposed measurement /
+     Justification / Operator next steps / Disclaimers). Slug is
+     `re.sub(r"[^a-zA-Z0-9_-]+", "-", name.lower())[:60]`.
+  7. **File CR** via `change_requests.lifecycle.create_request`
+     with `path="docs/proposed_probes/<slug>.md"`,
+     `risk_class=RiskClass.STANDARD`, the agent as `requestor`,
+     and a `reason` line that explicitly disclaims the change is
+     a markdown design doc only (not a probe implementation).
+  8. **Best-effort identity-ledger emission** — appends a
+     `sentience_probe_proposal` event to
+     `workspace/identity/continuity_ledger.jsonl` with detail
+     `{indicator_name, slug, cr_id}`. Failure-isolated: a broken
+     ledger never blocks the CR (the CR is the load-bearing
+     artifact). Tested via `test_proposer_ledger_failure_isolated`.
+
+`ProbeProposalRefused` is a `ValueError` subclass — the agent sees
+the validation message verbatim so it can revise and retry.
+
+### 47.3 — Agent tool wrapper
+
+`app/tools/probe_proposal_tools.py` ships the CrewAI BaseTool
+`propose_sentience_probe`, matching the pattern from
+`request_tier3_amendment.py`:
+
+  * Deferred class build inside `_build_tool_class()` so test envs
+    without `crewai` still import the module.
+  * Pydantic `_ProposeSentienceProbeInput` args schema with
+    fully-described fields (the description explicitly calls out
+    the reserved-anchor list + forbidden-path constraints + length
+    bounds so the agent doesn't waste retries on obvious refusals).
+  * `_run` catches `ProbeProposalRefused` and surfaces
+    `"REFUSED at validation: {exc}"` so the agent can read the
+    specific rule it violated.
+  * Tool registry annotation via `@register_tool` with
+    `capabilities=["registers-tool"]` (the `capabilities.py`
+    vocabulary is TIER_IMMUTABLE; reusing the closest existing tag
+    + disambiguating via the description is the same approach
+    `request_tier3_amendment.py` takes).
+
+Auto-discovered at boot via `app/tool_registry/boot.py`'s
+`TOOL_MODULE_ROOTS = ("app.tools",)`. No per-agent wiring needed;
+the registry's selector hands the tool to any agent whose
+capability set includes `registers-tool`.
+
+### 47.4 — Identity-ledger 11th event kind
+
+`app/identity/continuity_ledger.py:IDENTITY_EVENT_KINDS` gains
+`sentience_probe_proposal`. Module docstring updated to enumerate
+all 11 kinds.
+
+The annual reflection's `summarise_drift(window_days=365)` is a
+`Counter` over `e.kind for e in events` — the new kind auto-surfaces
+in `wiki/self/value_reflections/<year>.md` without further wiring.
+Cross-year visibility: the system can see "this is the year I
+started proposing my own probes" as a signal in next year's
+reflection essay.
+
+### 47.5 — Why this didn't change the SubIA integrity manifest
+
+The new module lives at `app/subia/probe_proposals/` — under
+`app/subia/`, which is the canonical-path evaluator root. Adding
+files there normally requires regenerating the integrity manifest:
+
+```
+python -c "from app.subia.integrity import compute_manifest, write_manifest; write_manifest(compute_manifest())"
+```
+
+(per `CLAUDE.md` instruction on moving files under `app/subia/`).
+
+For Q12.4 the integrity boundary is **additive-only**: no existing
+file under `app/subia/` is modified; the new package only adds two
+files (`__init__.py` and `proposer.py`). The manifest is regenerated
+at deploy time by the operator running the canonical command above
+— same path used by every prior SubIA addition (Q5 sentience
+experiments lived under `app/sentience_experiments/` specifically
+to avoid this churn; Q12.4 lives under `app/subia/` precisely
+because the package IS about the subjective-integration namespace
+even though its public surface is operator-gated).
+
+### 47.6 — Tests
+
+`tests/test_q12_self_understanding.py` — 24 tests, all pass:
+
+  * Source-level assertions for 8.1 / 8.2 / 8.3 / 8.5 (key public
+    APIs present; tests fail if a refactor accidentally drops
+    `PhenomenalLanguageLinter` from `annual_reflection.py`, etc).
+  * 8.4 behavioral coverage:
+      - Successful CR filing path (kwargs captured + ledger emitted).
+      - Reserved-anchor refusal (Butlin × 6 + RSM × 5).
+      - Family-prefix collision refusal (4 variants including
+        case-insensitive `rpt-1-v2`).
+      - Forbidden-path refusal (4 input variants).
+      - Phenomenal-language hard-fail refusal.
+      - Empty / short / oversized field refusal.
+      - Invalid name regex refusal.
+      - Cooldown: pending duplicate refused + recently-rejected
+        refused + old-rejection-outside-90d passes.
+      - Markdown render shape (all 6 sections present;
+        TIER_IMMUTABLE + Tier-3 + scorecard + ABSENT keywords).
+      - Ledger emission failure-isolated (broken ledger doesn't
+        block the CR).
+  * **Pinning test**:
+    `test_reserved_anchors_match_butlin_probe_set` reads
+    `app/subia/probes/butlin.py` directly and asserts every anchor
+    referenced there is in the proposer's `BUTLIN_ANCHORS`. If a
+    future Tier-3 amendment adds a new anchor to butlin.py, this
+    test fails until the proposer's reserved set is updated — the
+    indicator namespace can't drift between the probe code and the
+    proposer's refusal list.
+  * Agent-tool wrapper source-level check (registry annotation +
+    "REFUSED at validation" surfacing + proposer import).
+  * Package `__init__.py` public-API export check.
+
+### 47.7 — What Q12 deliberately did NOT do
+
+  * **No SCORECARD change.** The 4 ABSENT-by-declaration indicators
+    (AE-2, HOT-1, HOT-4, RPT-1) and the AE-1 STRONG anchor stay
+    absent / strong respectively. The `_emit_continuity_ledger_event`
+    docstring + the rendered markdown's "Disclaimers" section both
+    spell this out. The Q5 `test_q5_does_not_change_butlin_scorecard`
+    pinning test continues to enforce this invariant.
+  * **No automatic probe-code generation.** Even if the operator
+    accepts the design doc CR, the actual `eval_*` function is a
+    *separate* Tier-3 amendment the operator authors. The agent
+    cannot ship probe code into `app/subia/probes/`.
+  * **No new capability tag.** `capabilities.py` is TIER_IMMUTABLE;
+    `registers-tool` is reused (same approach as
+    `request_tier3_amendment.py`). A future operator amendment can
+    add `proposes-sentience-probe` if the vocabulary needs to
+    distinguish the two.
+  * **No idle scheduler integration.** The proposer is purely
+    agent-callable on demand. The companion subsystem already has
+    HEAVY idle slots for philosophical inquiry (§8.1) — adding a
+    "propose probes every Sunday" cron would push proposals at
+    times the system has nothing concrete to propose. The
+    operator's spec was clear: "agent has a voice", not "proposer
+    runs on a timer."
+
+### 47.8 — Q12 regression
+
+```
+Q12 (new):                      24 pass +  0 skip
+```
+
+Full Q7→Q12 regression to be run end-to-end before commit.
+

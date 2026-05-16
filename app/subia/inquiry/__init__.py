@@ -33,6 +33,15 @@ Failure isolation: idle-job entry point (:func:`idle_registration.run_inquiry_pa
 catches any exception and returns a structured result. The pass NEVER raises
 into the idle scheduler.
 
+Related surface (PROGRAM §47 — Q12.4): :mod:`app.subia.probe_proposals`
+ships a complementary agent-callable proposer. The inquiry pass is the
+system's *internal* contemplation surface (writes essays under
+``wiki/self/inquiries/``, never load-bearing); probe_proposals is the
+system's *external* "I want to propose a new indicator" voice (files
+a markdown design CR through the operator gate, never grades itself).
+Both surfaces reuse :class:`PhenomenalLanguageLinter` as the same
+mechanical safety net against first-person phenomenal claims.
+
 Public surface:
 """
 

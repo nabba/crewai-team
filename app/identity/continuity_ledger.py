@@ -6,17 +6,22 @@ protocol gates *intentional* edits, but it doesn't surface
 narrative-self FIFO holds 5 identity claims; at year 2 the older
 you is gone. This ledger is the multi-year record.
 
-Seven event kinds, all append-only::
+Eleven event kinds, all append-only::
 
-    tier3_amendment        Tier-3 IMMUTABLE file edit landed
-    governance_ratchet     SAFETY/QUALITY threshold raised or relaxed
-    soul_edit              constitution.md or souls/* edited
-    integrity_regen        SubIA integrity manifest regenerated
-    scorecard_change       Butlin/RSM/SK indicator status changed
-    self_quarantine_change file added/removed from quarantine list
-    substrate_migration    embedding-model migration cutover applied
-                           (PROGRAM §40 Item 12) — rewrites the meaning
-                           of every embedding the system holds
+    tier3_amendment           Tier-3 IMMUTABLE file edit landed
+    governance_ratchet        SAFETY/QUALITY threshold raised or relaxed
+    soul_edit                 constitution.md or souls/* edited
+    integrity_regen           SubIA integrity manifest regenerated
+    scorecard_change          Butlin/RSM/SK indicator status changed
+    self_quarantine_change    file added/removed from quarantine list
+    substrate_migration       embedding-model migration cutover applied
+                              (PROGRAM §40 Item 12) — rewrites the meaning
+                              of every embedding the system holds
+    person_correlation_policy PROGRAM §42 — person-correlation policy edit
+    sentience_observation     PROGRAM §43 — Q5 sentience module emission
+    resilience_drill          PROGRAM §44 — Q6 drill landmark
+    sentience_probe_proposal  PROGRAM §47 — Q12.4 agent-proposed probe-
+                              design markdown filed as CR
 
 Storage: ``workspace/identity/continuity_ledger.jsonl``. One
 ``IdentityEvent`` per line. Append-only — never delete, never
@@ -62,6 +67,7 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "person_correlation_policy",  # PROGRAM §42 — Q4.2 (Q4.2.2#1)
     "sentience_observation",  # PROGRAM §43 — Q5.4.2
     "resilience_drill",  # PROGRAM §44 — Q6.1
+    "sentience_probe_proposal",  # PROGRAM §47 — Q12.4 (8.4 self-design)
 })
 
 
