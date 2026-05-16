@@ -478,7 +478,8 @@ def test_news_fetchers_skip_when_disabled(feed_sources_module, monkeypatch) -> N
 
 def test_news_fetcher_tags_kind_news(feed_sources_module, monkeypatch) -> None:
     """Rows from news fetchers MUST carry kind="news" so the
-    daily-briefing news section can filter."""
+    daily-briefing news section can filter. Rundown is default-OFF
+    (no public feed); enable it AND supply a feed URL for this test."""
     recent_ts = (
         datetime.now(timezone.utc) - timedelta(days=1)
     ).strftime("%Y-%m-%dT%H:%M:%S+00:00")
@@ -487,6 +488,9 @@ def test_news_fetcher_tags_kind_news(feed_sources_module, monkeypatch) -> None:
         lambda url: _FAKE_RSS.format(recent=recent_ts),
     )
     monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "true")
+    monkeypatch.setenv(
+        "RUNDOWN_FEED_URL", "https://bridge.example.com/rundown.rss",
+    )
     rows = feed_sources_module.fetch_rundown_ai(
         lookback_days=14, max_items=5,
     )
@@ -496,7 +500,9 @@ def test_news_fetcher_tags_kind_news(feed_sources_module, monkeypatch) -> None:
 
 
 def test_rundown_feed_url_overridable_via_env(feed_sources_module, monkeypatch) -> None:
-    """If The Rundown moves hosts, RUNDOWN_FEED_URL env wins."""
+    """Rundown is default-OFF because the publisher has no public
+    RSS feed. Operator enables via RUNDOWN_FEED_URL + master switch
+    (e.g. RSSHub / kill-the-newsletter.com bridge)."""
     captured: dict[str, str] = {}
 
     def _capture(url: str) -> str:
@@ -511,6 +517,24 @@ def test_rundown_feed_url_overridable_via_env(feed_sources_module, monkeypatch) 
     monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "true")
     feed_sources_module.fetch_rundown_ai()
     assert captured["url"] == "https://example.com/custom-feed.xml"
+
+
+def test_rundown_disabled_when_env_url_missing(feed_sources_module, monkeypatch) -> None:
+    """Master switch ON but RUNDOWN_FEED_URL unset → returns []
+    without hitting the network. Prevents silent 404 spinning when
+    the operator hasn't set up an RSS bridge yet."""
+    called: list[str] = []
+
+    def _capture(url: str) -> str:
+        called.append(url)
+        return ""
+
+    monkeypatch.setattr(feed_sources_module, "_fetch_url", _capture)
+    monkeypatch.setenv("PAPER_PIPELINE_RUNDOWN_ENABLED", "true")
+    monkeypatch.delenv("RUNDOWN_FEED_URL", raising=False)
+    rows = feed_sources_module.fetch_rundown_ai()
+    assert rows == []
+    assert called == []
 
 
 def test_wired_feed_url_overridable_via_env(feed_sources_module, monkeypatch) -> None:

@@ -383,25 +383,47 @@ def _openreview_field(content: dict[str, Any], field: str) -> str:
 # ─────────────────────────────────────────────────────────────────────
 
 
-# The Rundown AI — Beehiiv-hosted daily newsletter. The user-facing
-# archive page is ``/archive``; the canonical RSS feed for Beehiiv
-# newsletters is ``/feed``. Override via ``RUNDOWN_FEED_URL`` env if
-# the actual host moves.
+# The Rundown AI — Beehiiv-hosted daily newsletter. As of 2026-05-16
+# the publisher does NOT expose a public RSS feed: ``/feed``,
+# ``/feed.xml``, ``/rss``, and ``/archive/rss`` all return 404. The
+# archive page at ``/archive`` is rendered HTML only (no Atom/RSS
+# discovery links in the head).
+#
+# The fetcher defaults to OFF for that reason — turning it on without
+# a working feed URL just spins on 404s. To re-enable, the operator
+# needs to supply a working feed URL via ``RUNDOWN_FEED_URL``:
+#
+#   * a third-party RSS bridge (RSSHub, kill-the-newsletter.com,
+#     rss.app, FetchRSS) that generates a feed from the newsletter
+#     subscription, OR
+#   * a future official Rundown feed if/when the publisher exposes
+#     one (Beehiiv newsletters CAN expose RSS — The Rundown has
+#     specifically opted out).
 _RUNDOWN_FEED_URL = "https://www.therundown.ai/feed"
 
 
 def fetch_rundown_ai(
     *, lookback_days: int = 14, max_items: int = 8,
 ) -> list[dict[str, Any]]:
-    """The Rundown AI daily newsletter. Editorial summary of AI
-    industry news (releases, papers, products) — overlaps with arXiv
-    in coverage but the editorial layer is a different signal.
+    """The Rundown AI daily newsletter — disabled by default
+    because the publisher doesn't expose a public RSS feed (see
+    module-level note above the fetcher).
 
-    Master switch: ``PAPER_PIPELINE_RUNDOWN_ENABLED`` (default ON).
+    Operator enables via:
+      1. ``RUNDOWN_FEED_URL=<bridge_url>`` env var, AND
+      2. ``PAPER_PIPELINE_RUNDOWN_ENABLED=true``.
+
+    Both are required — the env-default OFF prevents silent 404
+    spinning when the operator hasn't set up a bridge.
     """
-    if not _enabled("PAPER_PIPELINE_RUNDOWN_ENABLED"):
+    if not _enabled("PAPER_PIPELINE_RUNDOWN_ENABLED", default=False):
         return []
-    url = os.environ.get("RUNDOWN_FEED_URL", _RUNDOWN_FEED_URL).strip() or _RUNDOWN_FEED_URL
+    url = os.environ.get("RUNDOWN_FEED_URL", "").strip()
+    if not url:
+        logger.debug(
+            "feed_sources: Rundown enabled but RUNDOWN_FEED_URL unset"
+        )
+        return []
     try:
         return _generic_feed_records(
             url=url,
