@@ -1,12 +1,30 @@
 # Q17 — Multi-year resilience
 
-Status: shipped 2026-05-16 as a single batch.
+Status: **shipped + deployed 2026-05-16** (commit `e2948b21`).
 Tracking: PROGRAM.md §52.
-Tests: `tests/test_q17_multiyear_resilience.py` — 38 tests.
+Tests: `tests/test_q17_multiyear_resilience.py` — 38 tests, all green.
 Regression: Q13→Q17 = 240 pass / 0 fail.
+Production verification: gateway container rebuilt and restarted; all 8 module
+groups importable, `q17_landmark` registered (20 total event kinds),
+`local_only` drill auto-fired on first boot and filed a CR for sub-50%
+non-dominant provider readiness, `synthesis-pass-daemon` thread running
+alongside the other observational daemons.
 
 Eight observational subsystems that close the surviving gaps for
 installing the system once and running it for many years.
+
+## Live activation state (operator-specific)
+
+Q17.1 warm-spare is **active** on this host:
+- Canonical: `plgs-macbook-pro---andrus.tail5b289b.ts.net`
+- Partner: `andrus.raudsalu@andrus-macbook-pro-16.tail5b289b.ts.net:~/andrusai-mirror/`
+- Mirror size: 2.5 GB initial; ~800 KB hourly delta
+- Schedule: `org.andrus.botarmy.warm-spare-sync` LaunchAgent, every hour at :00 local
+- Heartbeat: `workspace/warm_spare/canonical_heartbeat.json` (synced to partner)
+- Manage: `./scripts/install_warm_spare.sh {install,start,restart,stop,uninstall,status}`
+
+Q17.2-8 are all default-ON observational subsystems; nothing needs operator
+activation beyond what the gateway boot already wires.
 
 ## At a glance
 
