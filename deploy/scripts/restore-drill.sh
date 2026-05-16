@@ -179,15 +179,34 @@ NEO_NODES=$(docker exec -u neo4j "$NEO_CT" cypher-shell \
 echo "  Neo4j node count: $NEO_NODES" | tee -a "$DRILL_LOG"
 
 # --- Restore ChromaDB -----------------------------------------------------
+# Two corrections vs the original implementation:
+#
+#   1. We resolve the chroma volume's actual name from the running
+#      container instead of hardcoding `${DRILL_PROJECT}_chroma`. The
+#      isolation overlay (docker-compose.drill-isolation.yml) declares
+#      `drill_chroma`, which compose namespaces to
+#      `${DRILL_PROJECT}_drill_chroma`. Asking the container is the
+#      robust way — survives future overlay renames.
+#
+#   2. The backup tar is created with `tar -czf ... -C ./workspace memory`
+#      so it has a leading `memory/` directory. Extracting without
+#      --strip-components=1 produced `/chroma/chroma/memory/<uuid>/...`
+#      and chroma silently came up empty. We strip the prefix and
+#      clear the volume first so the restore is deterministic.
 echo ">> Restoring ChromaDB" | tee -a "$DRILL_LOG"
+CHR_VOL=$(docker inspect "$CHR_CT" --format \
+    '{{range .Mounts}}{{if eq .Destination "/chroma/chroma"}}{{.Name}}{{end}}{{end}}' \
+    2>>"$DRILL_LOG")
+if [[ -z "$CHR_VOL" ]]; then
+    echo "ERROR: could not resolve chromadb volume from container" | tee -a "$DRILL_LOG" >&2
+    exit 6
+fi
 # Stop chroma so we can swap its persistent volume contents.
 $COMPOSE -p "$DRILL_PROJECT" stop chromadb 2>>"$DRILL_LOG"
-# The drill stack uses anonymous volumes by default; we extract into
-# the volume's mountpoint directly via a helper container.
 docker run --rm \
-    -v "${DRILL_PROJECT}_chroma:/chroma/chroma" \
+    -v "${CHR_VOL}:/chroma/chroma" \
     -v "$(dirname "$CHR_ARCHIVE"):/backup:ro" \
-    alpine:3 sh -c "cd /chroma/chroma && tar -xzf /backup/$(basename "$CHR_ARCHIVE")" \
+    alpine:3 sh -c "cd /chroma/chroma && find . -mindepth 1 -delete && tar -xzf /backup/$(basename "$CHR_ARCHIVE") --strip-components=1" \
     2>>"$DRILL_LOG" || true
 $COMPOSE -p "$DRILL_PROJECT" start chromadb 2>>"$DRILL_LOG"
 sleep 5

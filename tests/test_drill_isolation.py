@@ -106,3 +106,67 @@ def test_restore_drill_executable() -> None:
 def test_version_upgrade_drill_executable() -> None:
     p = _drill_script("version-upgrade-drill.sh")
     assert os.access(p, os.X_OK), f"{p.name} must be executable"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Follow-up fixes (PR splitting out the two pre-existing bugs noted in
+# the sibling-isolation PR body).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_compose_image_tags_are_overrideable() -> None:
+    """docker-compose.yml must use ${IMAGE:-default} placeholders for
+    the three data services, so version-upgrade-drill.sh's env-var
+    image overrides actually take effect. The default values must
+    preserve the previous hardcoded tags so live-stack behaviour is
+    unchanged unless the operator explicitly sets the env vars."""
+    p = REPO_ROOT / "docker-compose.yml"
+    assert p.is_file()
+    src = p.read_text()
+    for placeholder in (
+        "${POSTGRES_IMAGE:-pgvector/pgvector:pg16}",
+        "${NEO4J_IMAGE:-neo4j:5-community}",
+        "${CHROMA_IMAGE:-chromadb/chroma:0.5.23}",
+    ):
+        assert placeholder in src, (
+            f"docker-compose.yml must contain {placeholder} so the "
+            "version-upgrade drill's image override env vars actually "
+            "flow through compose. The :-default form preserves live "
+            "behaviour when no env var is set."
+        )
+
+
+def _assert_chromadb_restore_correctness(script: Path) -> None:
+    src = script.read_text()
+    # Must NOT hardcode the volume name — that produced a mismatch
+    # against the overlay's `drill_chroma` namespacing and the
+    # tarball ended up in an orphan volume.
+    assert "${DRILL_PROJECT}_chroma:" not in src, (
+        f"{script.name} must not hardcode `${{DRILL_PROJECT}}_chroma`. "
+        "Resolve the volume name from the running container via "
+        "`docker inspect ... --format ... .Destination /chroma/chroma`."
+    )
+    # Must derive the volume name from the running container.
+    assert 'docker inspect "$CHR_CT"' in src and "/chroma/chroma" in src, (
+        f"{script.name} must use docker inspect to get the chromadb "
+        "volume name from the running container."
+    )
+    # Must use --strip-components=1 because the backup tar has a
+    # leading `memory/` directory (created via `tar -czf -C ./workspace memory`),
+    # and without stripping it the restored files end up at
+    # /chroma/chroma/memory/<uuid>/... instead of /chroma/chroma/<uuid>/...
+    # and chromadb silently came up empty.
+    assert "--strip-components=1" in src, (
+        f"{script.name} must use tar --strip-components=1 so the "
+        "leading `memory/` directory in the backup tar is stripped "
+        "and files land at /chroma/chroma/<uuid>/... where chromadb "
+        "expects them."
+    )
+
+
+def test_restore_drill_chromadb_restore_is_correct() -> None:
+    _assert_chromadb_restore_correctness(_drill_script("restore-drill.sh"))
+
+
+def test_version_upgrade_drill_chromadb_restore_is_correct() -> None:
+    _assert_chromadb_restore_correctness(_drill_script("version-upgrade-drill.sh"))
