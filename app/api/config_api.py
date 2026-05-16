@@ -319,6 +319,8 @@ async def set_runtime_settings_endpoint(request: Request):
         # Q9.3 — travel monitor configuration
         set_tripit_ical_url,
         set_aviationstack_api_key,
+        # Q11.1 — analogy-index populator master switch
+        set_analogy_index_populator_enabled,
         snapshot,
     )
 
@@ -515,6 +517,12 @@ async def set_runtime_settings_endpoint(request: Request):
         if "aviationstack_api_key" in payload:
             set_aviationstack_api_key(
                 str(payload["aviationstack_api_key"] or "")
+            )
+
+        # ─── Q11.1 — analogy-index populator (PROGRAM §46.18) ─────────
+        if "analogy_index_populator_enabled" in payload:
+            set_analogy_index_populator_enabled(
+                bool(payload["analogy_index_populator_enabled"])
             )
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

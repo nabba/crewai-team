@@ -27,6 +27,7 @@ import {
 } from '../api/pwa';
 import { PersonCorrelationCard } from './PersonCorrelationCard';
 import { ResilienceDrillsCard } from './ResilienceDrillsCard';
+import { AnalogyIndexCard } from './AnalogyIndexCard';
 import { ArchitectureRequestsCard } from './ArchitectureRequestsCard';
 import { InlineEvolveCard } from './InlineEvolveCard';
 import { TravelCard } from './TravelCard';
@@ -87,6 +88,10 @@ export function SettingsPage() {
         onSettingsChange={() => settingsQ.refetch()}
       />
       <TravelCard
+        settings={settingsQ.data}
+        onSettingsChange={() => settingsQ.refetch()}
+      />
+      <AnalogyIndexCard
         settings={settingsQ.data}
         onSettingsChange={() => settingsQ.refetch()}
       />

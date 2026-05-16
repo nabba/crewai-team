@@ -874,6 +874,16 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
         run_meta_evolution()
     jobs.append(("meta-evolution", _meta_evolution, JobWeight.HEAVY))
 
+    # Q11.1 (PROGRAM §46.18) — Analogy-index populator. HEAVY weekly
+    # LLM pass over wiki + episteme that extracts abstract structural
+    # patterns into the analogy index. Cadence-checked internally;
+    # idempotent across overlapping fires. Master switch
+    # ``analogy_index_populator_enabled`` (default ON).
+    def _analogy_populator() -> None:
+        from app.creativity import analogy_populator
+        analogy_populator.run()
+    jobs.append(("analogy-populator", _analogy_populator, JobWeight.HEAVY))
+
     # ── Proactive learning: discover and queue new topics ──────────────
     def _discover_topics() -> None:
         _auto_discover_topics()

@@ -40,6 +40,11 @@ class BrainstormSession:
     mode: SessionMode = "solo"
     participants: list[str] = field(default_factory=list)
     agent_rounds: list[dict[str, Any]] = field(default_factory=list)
+    # Q11.1 (PROGRAM §46.18) — cross-domain analogues surfaced from
+    # the analogy_index at session start. Empty when the index is
+    # empty / disabled / no match crossed the similarity threshold.
+    # Each entry: {signature, description, examples: [...]}.
+    analogues: list[dict[str, Any]] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     final_report_path: str | None = None
@@ -96,6 +101,7 @@ class BrainstormSession:
             "mode": self.mode,
             "participants": list(self.participants),
             "agent_rounds": list(self.agent_rounds),
+            "analogues": list(self.analogues),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "final_report_path": self.final_report_path,
@@ -116,6 +122,9 @@ class BrainstormSession:
             mode=data.get("mode", "solo"),
             participants=list(data.get("participants", [])),
             agent_rounds=list(data.get("agent_rounds", [])),
+            # Q11.1 — backward-compat: pre-§46.18 sessions have no
+            # ``analogues`` key, default to empty list
+            analogues=list(data.get("analogues", []) or []),
             created_at=float(data.get("created_at", time.time())),
             updated_at=float(data.get("updated_at", time.time())),
             final_report_path=data.get("final_report_path"),

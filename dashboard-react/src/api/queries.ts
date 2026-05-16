@@ -597,6 +597,8 @@ export interface RuntimeSettings {
   // Q9.3 — Travel monitor configuration (PROGRAM §46.6)
   tripit_ical_url?: string;
   aviationstack_api_key?: string;
+  // Q11.1 — Analogy-index populator (PROGRAM §46.18)
+  analogy_index_populator_enabled?: boolean;
 }
 
 export function useRuntimeSettingsQuery() {

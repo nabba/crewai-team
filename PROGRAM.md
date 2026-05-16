@@ -8502,3 +8502,205 @@ No TIER_IMMUTABLE files modified.
     modifying the existing crew. Future cycle can replace the
     crew's generic queries with topic-specific feed queries.
 
+## 46.18-46.22 2026-05-16 — Q11: Creative synthesis (5 threads)
+
+Post-§46 audit of creative-synthesis vs the operator's "beyond
+pastiche" criteria:
+
+  * **7.1 analogy index** — ✅ primitive (PROGRAM §32.3), ❌ no
+    populator, ❌ no brainstorm consumer
+  * **7.2 concept blend operator** — ✅ primitive, ❌ not a
+    brainstorm technique
+  * **7.3 idea evolution via ShinkaEvolve** — ❌ entirely missing
+  * **7.4 novelty detection** — ✅ primitive (`novelty_wrap`),
+    ❌ not called from brainstorm
+  * **7.5 aesthetic feedback** — ✅ KB (`app/aesthetics/`),
+    ❌ no brainstorm filter
+
+Three orphaned primitives + one wholly missing + one unwired KB.
+Q11 wires everything into the brainstorm subsystem.
+
+Operator decisions before kickoff:
+
+  1. Q11.1 populator default ON, **flippable from React** (cost
+     visibility) — new `analogy_index_populator_enabled` runtime
+     setting + AnalogyIndexCard in `/cp/settings`.
+  2. Q11.3 idea evolution — **standalone module** (no shinka
+     package coupling); the ShinkaEvolve reference is to the
+     PATTERN, not the literal library.
+  3. Q11.4 novelty — **tag-only** (Writer prompt sees the verdict;
+     never auto-drop). Spec wisdom: over-filtering kills creativity.
+  4. Q11.5 aesthetic — **score in report, no automatic action**.
+
+### 46.18 — Q11.1: Analogy-index populator + brainstorm consumer
+
+**`app/creativity/analogy_populator.py` (NEW, ~280 LOC)**:
+
+  * `run_one_pass(force, llm_call, max_new)` — walks wiki/*.md +
+    episteme ChromaDB (`list_texts`) for unprocessed sources; for
+    each, LLM (Anthropic Haiku 4.5) extracts one abstract
+    structural pattern + ≥2 cross-domain examples; appends an
+    AnalogyEntry via `add_entry`.
+  * Refusal path: LLM emits `{"refused": true, ...}` for too-narrow
+    sources (config files, date lists, personal notes); fewer than
+    2 examples → also refused (cross-domain requires ≥2).
+  * Cost discipline: hard cap `_MAX_NEW_PER_PASS=5` per cycle =
+    ~$0.25 weekly worst-case spend.
+  * State: `workspace/creativity/analogy_populator_state.json`
+    tracks SHA-256 of normalised processed text + `last_run_at`.
+    Re-runs are idempotent.
+  * Failure-isolated per source: broken LLM call skips, marks
+    processed, continues.
+
+**Runtime setting + React surface**:
+
+  * `runtime_settings.analogy_index_populator_enabled` (default ON).
+  * `config_api.py` routes the key in POST `/api/cp/settings`.
+  * `dashboard-react/src/components/AnalogyIndexCard.tsx` — toggle
+    in `/cp/settings`; documents the weekly spend cap; explicit
+    note that queries to the index keep working even when the
+    populator is OFF (turning off just stops growing the index).
+  * Idle scheduler registers `analogy-populator` as HEAVY weight
+    (sits next to `meta-evolution`).
+
+**Brainstorm consumer**:
+
+  * `BrainstormSession.analogues: list[dict]` (backward-compat
+    via `data.get("analogues", []) or []` in `from_dict`).
+  * `facilitator.start` queries `query_analogies(topic, top_k=3,
+    min_similarity=0.15)`, stores serialised matches on the
+    session.
+  * `_maybe_gather_seed` calls a new `_inject_analogues_into_prompt`
+    helper that prepends a "Cross-domain analogues (inspiration,
+    not constraint)" block before the step prompt — so the
+    multi-agent seed + react rounds see analogues. Empty analogues
+    → prompt unchanged (idempotent).
+  * `report.py:_enriched_summary` passes `session.analogues` to
+    the Writer prompt so the report can credit cross-domain
+    inspiration when an idea obviously drew on one.
+
+### 46.19 — Q11.2: concept-blend as 8th brainstorm technique
+
+**`app/brainstorm/techniques/concept_blend.py` (NEW)**:
+
+  * `ConceptBlendTechnique(LinearTechnique)` with 4 steps:
+    `input_a → input_b → generate_blend → select_projections`.
+  * Override `next_prompt` for `generate_blend`: invoke the
+    Fauconnier-Turner operator (`creativity.concept_blend.
+    blend_concepts`) with the prior two responses, splice the
+    blend result into the prompt for the operator AND the agent
+    team.
+  * `_render_blend_block` packs the BlendResult's generic
+    structure, blend description, selected projections, emergent
+    structure, and follow-on questions into markdown.
+  * Failure-isolated: blend operator raises → degraded notice in
+    the prompt + technique walks on (doesn't get stuck).
+  * Registered in `techniques/__init__.py` as the 8th technique.
+
+### 46.20 — Q11.4: Novelty verdict in brainstorm report
+
+**`app/brainstorm/report.py`**:
+
+  * `_annotate_text(text)` — combined assessment using
+    `creativity.novelty_wrap.assess_brainstorm_idea`. Returns
+    `{novelty: {verdict, ...}, aesthetic_score: float|None}`.
+    Failure-isolated per check.
+  * `_annotate_ideas(responses)` — walks agent response lists,
+    appends `annotation` dict to each. Returns NEW list (no
+    mutation).
+  * `_enriched_summary` calls `_annotate_ideas` on both
+    `agent_seed` and `agent_react` rounds + annotates the user's
+    response per step (`user_response_annotation`).
+  * Writer prompt gains an **Annotation legend** section telling
+    the LLM how to interpret novelty verdicts (NOVEL /
+    RECOMBINATION / RESTATED / REJECTED_BEFORE) and the aesthetic
+    score; explicit instruction to **flag** RESTATED and
+    REJECTED_BEFORE in the top-ideas section, not silently drop.
+
+### 46.21 — Q11.5: Aesthetic score in brainstorm report
+
+**`app/creativity/aesthetic_score.py` (NEW)**:
+
+  * `score(text, top_k=3)` — queries `app.aesthetics.vectorstore.
+    get_store().query(...)` for nearest patterns; returns
+    `mean(top_k_similarity) × mean(top_k_quality_score)` in
+    [0..1] or None when the store is empty / unavailable.
+  * Normalises `quality_score` (curators may store 0..10 or 0..1).
+  * `score_many(texts)` convenience for the report walking many
+    responses.
+  * Failure-isolated: any exception → None. Caller renders
+    "n/a" rather than misleading zero.
+  * Wired into `report._annotate_text` alongside the novelty
+    check.
+
+### 46.22 — Q11.3: Standalone idea_evolution module
+
+**`app/brainstorm/idea_evolution.py` (NEW, ~480 LOC)** — population-
+based idea search using the ShinkaEvolve algorithm pattern but
+NOT the shinka package (which is built for code):
+
+  * `IdeaMember` dataclass (id, text, score, parent_id,
+    generation, judge_rationale).
+  * `IdeaEvolutionResult` with `population`, `archive`,
+    `generations_run`, `judge_calls`, `mutate_calls`,
+    `estimated_cost_usd`, `truncated_reason`. Plus `top_ideas(n)`
+    convenience.
+  * `evolve_ideas(task, seed_ideas, constraints, generations,
+    population_size, archive_size, budget_usd, mutator_fn,
+    judge_fn, rng)` — main entry point.
+  * Algorithm per generation: (1) score every member, (2) pick
+    top-K + diversity outliers via `_diverse_pick` (greedy max
+    pairwise distance via hash-trick cosine), (3) mutate
+    survivors → children, (4) score children, (5) update
+    `_diverse_pick`-preserving archive, (6) stop on budget /
+    cap.
+  * Hard caps: `MAX_BUDGET_USD=2.0`, `MAX_GENERATIONS=20`,
+    `MAX_POPULATION=12`, `MAX_ARCHIVE=24`. Caller can request
+    smaller; never larger.
+  * Cost tracking via fixed per-call constants (judge $0.0005,
+    mutate $0.001) — conservative for Haiku 4.5; over-estimates
+    deliberately so the budget guard fires early.
+  * `mutator_fn` and `judge_fn` are injectable seams — tests
+    drive the algorithm without LLM calls.
+  * Default `_default_mutator` / `_default_judge` use Anthropic
+    Haiku 4.5; the mutator nudges toward diversity ("don't look
+    like these neighbours"); the judge emits strict JSON
+    `{score, rationale}`.
+  * Master switch: `IDEA_EVOLUTION_ENABLED` (default ON, env-var
+    only for now).
+
+**Future integration**: Q11.3 ships the module + tests; wiring it
+into a brainstorm session ("/brainstorm evolve <topic>" slash
+command piping top ideas into a new session) is deferred to a
+follow-up cycle once the cost characteristics under the live LLM
+prove out.
+
+### 46.23 — Q11 regression
+
+```
+Q7 + Q8 + Q9 + Q10 + Q11 + legacy threads + legacy consolidation:
+  262 pass + 6 skipped (gateway-deps)
+```
+
+No TIER_IMMUTABLE files modified. SubIA integrity unchanged.
+
+### 46.24 — What Q11 deliberately did NOT do
+
+  * **No tech_radar refactor.** The 7 generic web-search queries
+    in `tech_radar_crew` stay as-is; analogy_populator reads the
+    corpus directly without going through tech_radar.
+  * **No automatic idea-drop in brainstorm.** Even RESTATED and
+    REJECTED_BEFORE ideas land in the Writer's view with a flag,
+    not a deletion. Spec wisdom honored.
+  * **No aesthetic threshold.** The score is reported; no
+    auto-action.
+  * **No idea_evolution → brainstorm wiring yet.** The module
+    is callable from Python + tested; the operator-facing
+    `/brainstorm evolve` slash command is the next thread.
+  * **No JSON-vs-ChromaDB switch for analogy_index.** Original
+    spec said "ChromaDB collection analogy_structures"; the
+    pre-Q11 primitive uses JSONL with hash-trick embedding
+    (~500 entries at most for the operator's corpus size).
+    Switching to ChromaDB is a future-cycle decision when the
+    index actually approaches 10k+ entries.
+

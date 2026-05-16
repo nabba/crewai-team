@@ -230,6 +230,13 @@ def _defaults() -> dict[str, Any]:
         "tripit_ical_url": "",
         "aviationstack_api_key": "",
 
+        # Q11.1 — Analogy-index populator (PROGRAM §46.18).
+        # HEAVY weekly LLM pass over wiki + episteme that extracts
+        # abstract structural patterns into the analogy index.
+        # Default ON per operator decision; flippable from React
+        # /cp/settings → Analogy index card.
+        "analogy_index_populator_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -1323,3 +1330,16 @@ def set_aviationstack_api_key(value: str) -> None:
             "aviationstack_api_key looks too short to be valid"
         )
     _update({"aviationstack_api_key": v})
+
+
+# ── Q11.1 — Analogy-index populator (PROGRAM §46.18) ─────────────────
+
+
+def get_analogy_index_populator_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("analogy_index_populator_enabled", True)
+    )
+
+
+def set_analogy_index_populator_enabled(value: bool) -> None:
+    _update({"analogy_index_populator_enabled": bool(value)})

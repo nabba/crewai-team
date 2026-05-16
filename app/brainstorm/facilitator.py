@@ -109,6 +109,31 @@ def start(
         participants=list(roster),
     )
     session.technique_state = technique.initial_state()
+    # Q11.1 (PROGRAM §46.18) — surface cross-domain analogues from
+    # the analogy_index on session open. Failure-isolated: an empty
+    # / disabled index returns []; brainstorm proceeds unchanged.
+    try:
+        from app.creativity.analogy_index import query_analogies
+        matches = query_analogies(topic, top_k=3, min_similarity=0.15)
+        session.analogues = [
+            {
+                "signature": m.entry.structure_signature,
+                "description": m.entry.structure_description,
+                "examples": [
+                    {
+                        "domain": ex.domain,
+                        "title": ex.title,
+                        "summary": ex.summary,
+                    }
+                    for ex in m.entry.domain_examples[:3]
+                ],
+                "similarity": round(m.similarity, 3),
+            }
+            for m in matches
+        ]
+    except Exception:
+        # Quiet — analogy module may not be importable in degraded boot
+        session.analogues = []
     first_prompt = technique.next_prompt(session.technique_state, topic)
     if first_prompt is None:
         raise FacilitatorError("Technique returned no first prompt — bug.")
@@ -384,16 +409,51 @@ def _maybe_gather_seed(
     technique = get_technique(session.technique)
     step_id = _current_step_id(session, technique)
     gatherer = seed_gatherer or _default_gather_seed
+    # Q11.1 (PROGRAM §46.18) — fold cross-domain analogues into the
+    # step prompt so the multi-agent seed/react sees them. Empty
+    # session.analogues → prompt unchanged.
+    enriched_prompt = _inject_analogues_into_prompt(prompt, session.analogues)
     seeds = _gather_with_fallback(
         "seed",
         gatherer,
         technique_title=technique_title,
         topic=session.topic,
-        step_prompt=prompt,
+        step_prompt=enriched_prompt,
         roster=session.participants,
     )
     _record_round(session, step_id=step_id, phase="seed", responses=seeds)
     return seeds
+
+
+def _inject_analogues_into_prompt(
+    prompt: str, analogues: list[dict],
+) -> str:
+    """Append a small "Cross-domain analogues" block before the step
+    prompt. The agents see "structurally-similar patterns from other
+    domains" as inspiration — no instruction to "use them", just
+    surfacing. Idempotent: empty analogues → prompt unchanged."""
+    if not analogues:
+        return prompt
+    lines = [
+        "## Cross-domain analogues (inspiration, not constraint)",
+        "Structurally-similar patterns from unrelated domains. "
+        "Feel free to draw on them or ignore them.",
+    ]
+    for a in analogues[:3]:
+        sig = a.get("signature", "")
+        desc = a.get("description", "")
+        if not sig or not desc:
+            continue
+        lines.append(f"- **{sig}** — {desc[:240]}")
+        for ex in (a.get("examples") or [])[:2]:
+            dom = ex.get("domain", "")
+            title = ex.get("title", "")
+            summary = ex.get("summary", "")
+            if dom and (title or summary):
+                lines.append(
+                    f"  * _{dom}_: {title}. {summary[:160]}"
+                )
+    return "\n".join(lines) + "\n\n" + prompt
 
 
 def _gather_with_fallback(

@@ -20,6 +20,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from app.brainstorm.session import BrainstormSession
 from app.brainstorm.techniques import get as get_technique
@@ -36,12 +37,20 @@ def _output_dir() -> Path:
 
 
 def _enriched_summary(session: BrainstormSession, base_summary: dict) -> dict:
-    """Augment the technique summary with per-step agent contributions."""
+    """Augment the technique summary with per-step agent contributions
+    + per-idea novelty verdict (Q11.4) + per-idea aesthetic score (Q11.5).
+
+    Verdicts and scores are advisory — the Writer prompt sees them
+    and credits/critiques accordingly, but no idea is auto-dropped.
+    """
     out = dict(base_summary)
     out["mode"] = session.mode
     out["participants"] = ["user"] + list(session.participants)
-    if not session.agent_rounds:
-        return out
+    # Q11.1 (PROGRAM §46.18) — pass analogues to the Writer so it
+    # can cite cross-domain inspiration that landed in ideas.
+    if session.analogues:
+        out["analogues"] = list(session.analogues)
+
     by_step: dict[str, dict[str, list[dict]]] = {}
     for round_entry in session.agent_rounds:
         sid = round_entry.get("step_id", "?")
@@ -55,11 +64,60 @@ def _enriched_summary(session: BrainstormSession, base_summary: dict) -> dict:
         rounds = by_step.get(sid, {})
         enriched_steps.append({
             **step,
-            "agent_seed": rounds.get("seed", []),
-            "agent_react": rounds.get("react", []),
+            "agent_seed": _annotate_ideas(rounds.get("seed", [])),
+            "agent_react": _annotate_ideas(rounds.get("react", [])),
+            "user_response_annotation": _annotate_text(
+                step.get("response") or ""
+            ),
         })
     out["steps"] = enriched_steps
     return out
+
+
+def _annotate_ideas(responses: list[dict]) -> list[dict]:
+    """Run novelty + aesthetic against each agent response. Returns a
+    NEW list of dicts with the annotations appended; never mutates."""
+    out: list[dict] = []
+    for r in responses or []:
+        annot = _annotate_text(r.get("text") or "")
+        out.append({**r, "annotation": annot})
+    return out
+
+
+def _annotate_text(text: str) -> dict:
+    """Combined annotation for one idea text:
+
+      * ``novelty`` — verdict (NOVEL / RECOMBINATION / RESTATED /
+                      REJECTED_BEFORE) + match metadata
+      * ``aesthetic_score`` — float 0..1 or None when store empty
+
+    Failure-isolated — any error returns a sentinel dict so the
+    Writer prompt always has a stable shape to render.
+    """
+    if not text or not text.strip():
+        return {}
+    annotation: dict[str, Any] = {}
+    # Novelty (Q11.4)
+    try:
+        from app.creativity.novelty_wrap import assess_brainstorm_idea
+        verdict = assess_brainstorm_idea(text)
+        annotation["novelty"] = {
+            "verdict": verdict.verdict.value,
+            "primary_decision": verdict.primary_decision,
+            "primary_distance": verdict.primary_distance,
+            "primary_collection": verdict.primary_collection,
+            "rejected_lesson_id": verdict.rejected_lesson_id,
+            "rejected_score": verdict.rejected_score,
+        }
+    except Exception:
+        annotation["novelty"] = None
+    # Aesthetic (Q11.5)
+    try:
+        from app.creativity.aesthetic_score import score as _aes_score
+        annotation["aesthetic_score"] = _aes_score(text)
+    except Exception:
+        annotation["aesthetic_score"] = None
+    return annotation
 
 
 def _writer_task_prompt(session: BrainstormSession, summary: dict) -> str:
@@ -123,6 +181,19 @@ def _writer_task_prompt(session: BrainstormSession, summary: dict) -> str:
         f"on why it stands out and (if from an agent) which role suggested it.\n"
         f"5. **Suggested next steps** — 3-5 concrete actions, ordered by "
         f"leverage.\n\n"
+        f"# Annotation legend (Q11.4 + Q11.5)\n"
+        f"Each idea in the structured output carries an `annotation` "
+        f"object:\n"
+        f"  * `annotation.novelty.verdict` ∈ {{novel, recombination, "
+        f"restated, rejected_before}}. RESTATED means the idea is "
+        f"covered by the KBs; REJECTED_BEFORE means it matches a past "
+        f"rejected proposal. Flag these in your top-ideas section.\n"
+        f"  * `annotation.aesthetic_score` ∈ [0..1] or null. Higher = "
+        f"closer to curated quality patterns. Use as a soft tiebreaker, "
+        f"not a hard filter.\n"
+        f"  * `analogues` (when present) are cross-domain patterns the "
+        f"session was seeded with. Credit them when a session idea "
+        f"obviously drew on one.\n\n"
         f"Tone: clear, direct, professional. No filler. No emojis. "
         f"Markdown only — no surrounding commentary or explanation of what "
         f"you've done."

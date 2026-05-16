@@ -8,6 +8,7 @@ from app.brainstorm.techniques.base import (
     Technique,
     TechniqueState,
 )
+from app.brainstorm.techniques.concept_blend import ConceptBlendTechnique
 from app.brainstorm.techniques.crazy_8s import CrazyEightsTechnique
 from app.brainstorm.techniques.how_might_we import HowMightWeTechnique
 from app.brainstorm.techniques.rapid_ideation import RapidIdeationTechnique
@@ -26,6 +27,8 @@ _TECHNIQUES: dict[str, Technique] = {
         CrazyEightsTechnique(),
         RapidIdeationTechnique(),
         StarburstingTechnique(),
+        # Q11.2 (PROGRAM §46.19) — 8th technique
+        ConceptBlendTechnique(),
     )
 }
 
