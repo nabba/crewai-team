@@ -300,6 +300,59 @@ def _defaults() -> dict[str, Any]:
         # rows.
         "operator_anomaly_monitor_enabled": True,
 
+        # Theme 4 — self-improvement velocity (PROGRAM §51 Q16).
+        # Observational rollup of CRs by source/quarter, architecture-
+        # adoption histogram, recipe selection rates, lessons-learned
+        # growth, Forge graduations. Read-only — never mutates state.
+        "self_improvement_velocity_enabled": True,
+
+        # Theme 5 — knowledge management at decade-scale (PROGRAM §51).
+        #   * wiki_staleness_monitor_enabled — 38th healing monitor.
+        #     Daily probe, weekly internal cadence. Surfaces wiki
+        #     pages past the 365-day mtime threshold in a Signal
+        #     digest. Per-file 90-day dedup.
+        #   * claude_md_compaction_enabled — annual idle composer.
+        #     Generates a compaction proposal (recent-N-months KEEP +
+        #     pre-cutoff ARCHIVE) into workspace/self_improvement/
+        #     claude_md_compaction/<year>/ for operator review. Never
+        #     auto-applies (CLAUDE.md often sits outside the git repo).
+        "wiki_staleness_monitor_enabled": True,
+        "claude_md_compaction_enabled": True,
+
+        # Themes 6-8 (PROGRAM §51 Q16 third batch) — quality, companion,
+        # sentience consumption.
+        #
+        # Theme 6 — quality of service:
+        #   * latency_slo_monitor_enabled — 39th healing monitor.
+        #     p50/p95/p99 from audit.log request_received/response_sent
+        #     pairs. Weekly trend; alert at ≥2× baseline.
+        #   * answer_regression_enabled — frozen Q-A suite, quarterly
+        #     re-evaluation via cascade + judge. Master switch ON;
+        #     LLM judge OFF by default (operator opts in for cost).
+        #   * answer_regression_llm_enabled — explicit cost-bearing
+        #     opt-in for the LLM judge.
+        "latency_slo_monitor_enabled": True,
+        "answer_regression_enabled": True,
+        "answer_regression_llm_enabled": False,
+        # Theme 7 — companion depth:
+        #   * companion_accuracy_log_enabled — logs proactive
+        #     suggestion → operator-action correlation.
+        #   * goal_progress_probe_enabled — daily probe inferring
+        #     progress on current_goals.
+        #   * annual_privacy_review_enabled — yearly data-source
+        #     enumeration composer.
+        "companion_accuracy_log_enabled": True,
+        "goal_progress_probe_enabled": True,
+        "annual_privacy_review_enabled": True,
+        # Theme 8 — sentience consumption:
+        #   * hot1_consultation_enabled — structured_diagnosis reads
+        #     prior HOT-1 observations before proposing (skips on
+        #     chronic failure, splices hint into LLM prompt).
+        #   * philosophy_digest_enabled — quarterly digest composer
+        #     over consult_panel cache.
+        "hot1_consultation_enabled": True,
+        "philosophy_digest_enabled": True,
+
         # Theme 3 (defense piece): VACATION MODE. Master switch.
         # When ON, the vacation-mode sweep daemon scans PENDING CRs
         # every 5 min; for those matching the OPERATOR-STAGED
@@ -1602,6 +1655,103 @@ def get_operator_anomaly_monitor_enabled() -> bool:
 
 def set_operator_anomaly_monitor_enabled(value: bool) -> None:
     _update({"operator_anomaly_monitor_enabled": bool(value)})
+
+
+def get_self_improvement_velocity_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("self_improvement_velocity_enabled", True)
+    )
+
+
+def set_self_improvement_velocity_enabled(value: bool) -> None:
+    _update({"self_improvement_velocity_enabled": bool(value)})
+
+
+def get_wiki_staleness_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("wiki_staleness_monitor_enabled", True)
+    )
+
+
+def set_wiki_staleness_monitor_enabled(value: bool) -> None:
+    _update({"wiki_staleness_monitor_enabled": bool(value)})
+
+
+def get_claude_md_compaction_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("claude_md_compaction_enabled", True)
+    )
+
+
+def set_claude_md_compaction_enabled(value: bool) -> None:
+    _update({"claude_md_compaction_enabled": bool(value)})
+
+
+# ── Q16 Themes 6-8 (PROGRAM §51) ──────────────────────────────────────────
+
+
+def get_latency_slo_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("latency_slo_monitor_enabled", True))
+
+
+def set_latency_slo_monitor_enabled(value: bool) -> None:
+    _update({"latency_slo_monitor_enabled": bool(value)})
+
+
+def get_answer_regression_enabled() -> bool:
+    return bool(_ensure_initialized().get("answer_regression_enabled", True))
+
+
+def set_answer_regression_enabled(value: bool) -> None:
+    _update({"answer_regression_enabled": bool(value)})
+
+
+def get_answer_regression_llm_enabled() -> bool:
+    return bool(_ensure_initialized().get("answer_regression_llm_enabled", False))
+
+
+def set_answer_regression_llm_enabled(value: bool) -> None:
+    _update({"answer_regression_llm_enabled": bool(value)})
+
+
+def get_companion_accuracy_log_enabled() -> bool:
+    return bool(_ensure_initialized().get("companion_accuracy_log_enabled", True))
+
+
+def set_companion_accuracy_log_enabled(value: bool) -> None:
+    _update({"companion_accuracy_log_enabled": bool(value)})
+
+
+def get_goal_progress_probe_enabled() -> bool:
+    return bool(_ensure_initialized().get("goal_progress_probe_enabled", True))
+
+
+def set_goal_progress_probe_enabled(value: bool) -> None:
+    _update({"goal_progress_probe_enabled": bool(value)})
+
+
+def get_annual_privacy_review_enabled() -> bool:
+    return bool(_ensure_initialized().get("annual_privacy_review_enabled", True))
+
+
+def set_annual_privacy_review_enabled(value: bool) -> None:
+    _update({"annual_privacy_review_enabled": bool(value)})
+
+
+def get_hot1_consultation_enabled() -> bool:
+    return bool(_ensure_initialized().get("hot1_consultation_enabled", True))
+
+
+def set_hot1_consultation_enabled(value: bool) -> None:
+    _update({"hot1_consultation_enabled": bool(value)})
+
+
+def get_philosophy_digest_enabled() -> bool:
+    return bool(_ensure_initialized().get("philosophy_digest_enabled", True))
+
+
+def set_philosophy_digest_enabled(value: bool) -> None:
+    _update({"philosophy_digest_enabled": bool(value)})
 
 
 def get_vacation_mode_enabled() -> bool:

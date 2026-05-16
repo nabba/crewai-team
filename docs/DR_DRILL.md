@@ -16,10 +16,18 @@ backup right now?"** It runs without touching the live workspace.
 
 The system has two complementary backup paths:
 
-| Layer | Module | Format | Best for |
-|------|--------|--------|----------|
-| Container-resident | `app/healing/db_backup.py` | `pg_dump` + `neo4j-admin database dump` + chromadb tarball | Same-cluster restore (e.g. K8s rollback) |
+| Layer | Producer | Format | Best for |
+|------|----------|--------|----------|
+| Container-resident | Host LaunchAgent + `app/healing/db_backup.py` | `pg_dump` + `neo4j-admin database dump` + chromadb tarball | Same-cluster restore (e.g. K8s rollback) |
 | Portable | `app/dr/export_kbs.py` | Self-contained `.tar.gz` with JSONL exports of every KB | Cold-restore on a fresh laptop with NO running cluster |
+
+The container-resident layer is split (2026-05-16): the host launchd
+LaunchAgent `org.andrus.botarmy.db-backup` (installed via
+`scripts/install_db_backup.sh`) handles Postgres + Neo4j via
+`deploy/scripts/backup.sh`, while the gateway-side
+`app/healing/db_backup.py` handles ChromaDB. Both write to the same
+`workspace/backups/manifest.json` with per-component `ok` + `skipped`
+flags.
 
 The DR drill (this doc) validates the **portable** layer. The
 binary backup is verified by the existing `restore_drill` healing

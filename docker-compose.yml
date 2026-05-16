@@ -84,6 +84,13 @@ services:
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: safe.directory
       GIT_CONFIG_VALUE_0: /app/workspace
+      # DB backup split (2026-05-16, Option C). The gateway only runs
+      # the chromadb step; pg + neo4j are handled by the host launchd
+      # LaunchAgent installed via scripts/install_db_backup.sh. The
+      # docker-proxy doesn't expose /exec/.../start (no EXEC: 1 flag),
+      # so attempting pg_dump/neo4j-admin from inside the gateway
+      # returns 403. See app/healing/db_backup.py docstring.
+      DB_BACKUP_HOST_MANAGED: ${DB_BACKUP_HOST_MANAGED:-1}
     volumes:
       - ./workspace:/app/workspace
       - ./wiki:/app/wiki

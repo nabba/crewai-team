@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.andrus.botarmy.db-backup</string>
+
+  <!-- Run deploy/scripts/backup.sh daily at 04:30 local time.
+       Postgres + Neo4j only (chromadb is gateway-owned under the
+       2026-05-16 split). bash -lc loads the user shell rc so docker
+       compose is on PATH the same way an interactive shell finds it. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/andrus/BotArmy/crewai-team &amp;&amp; bash deploy/scripts/backup.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- The script writes the same workspace/backups/manifest.json the
+         gateway monitor reads. -->
+    <key>BACKUP_SKIP_CHROMADB</key>
+    <string>1</string>
+    <!-- Retention day default matches the gateway side. -->
+    <key>DB_BACKUP_RETENTION_DAYS</key>
+    <string>30</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/andrus/BotArmy/crewai-team</string>
+
+  <!-- One shot every day at 04:30 local time. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <!-- Don't fire immediately on load; first run happens at the next
+       calendar interval. If you need to test, use
+       `./scripts/install_db_backup.sh start`. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Periodic task, not a daemon — exit cleanly each invocation. -->
+  <key>KeepAlive</key>
+  <false/>
+
+  <!-- Logs land inside the workspace so they're visible via /cp/files. -->
+  <key>StandardOutPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/backups/.db_backup_host.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/backups/.db_backup_host.log</string>
+</dict>
+</plist>

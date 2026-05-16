@@ -91,6 +91,13 @@ _DEFAULT_CADENCE_S = {
     "host_substrate_health": 24 * 3600,        # daily probe; internal weekly trend; PROGRAM §51 Q16 Theme 1
     "oauth_token_freshness": 24 * 3600,        # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 2
     "operator_anomaly": 24 * 3600,             # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 3
+    "wiki_staleness": 24 * 3600,               # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 5
+    "claude_md_compaction": 24 * 3600,         # daily probe; internal annual cadence; PROGRAM §51 Q16 Theme 5
+    "latency_slo": 24 * 3600,                  # daily probe; internal weekly cadence; PROGRAM §51 Q16 Theme 6.1
+    "answer_regression": 24 * 3600,            # daily probe; internal 90-day cadence; PROGRAM §51 Q16 Theme 6.2
+    "goal_progress": 24 * 3600,                # daily probe; PROGRAM §51 Q16 Theme 7.2
+    "annual_privacy_review": 24 * 3600,        # daily probe; internal 330-day cadence; PROGRAM §51 Q16 Theme 7.3
+    "philosophy_digest": 24 * 3600,            # daily probe; internal quarterly cadence; PROGRAM §51 Q16 Theme 8.2
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -469,6 +476,96 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: operator_anomaly import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 5 — wiki staleness digest. Daily probe,
+    # internal weekly cadence. Walks ``wiki/`` for markdown files
+    # past 365-day mtime; surfaces 10 stalest in a Signal digest
+    # per cycle, with per-file 90-day dedup. Excludes auto-archive
+    # dirs (legacy / value_reflections / quarterly_reviews /
+    # governance / archive).
+    try:
+        from app.healing.monitors import wiki_staleness
+        monitors.append((
+            "wiki_staleness", wiki_staleness.run,
+            _DEFAULT_CADENCE_S["wiki_staleness"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: wiki_staleness import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 5 — CLAUDE.md compaction proposer.
+    # Daily probe; internal annual cadence via _already_proposed_
+    # this_year guard. Composes a structural-only KEEP/ARCHIVE split
+    # into workspace/self_improvement/claude_md_compaction/<year>/
+    # for operator review. Never auto-applies (CLAUDE.md often sits
+    # outside the git repo).
+    try:
+        from app.self_improvement import claude_md_compaction
+        monitors.append((
+            "claude_md_compaction", claude_md_compaction.run_once,
+            _DEFAULT_CADENCE_S["claude_md_compaction"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: claude_md_compaction import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 6.1 — latency SLO. Daily probe, weekly
+    # internal cadence. Computes p50/p95/p99 from audit.log + alerts
+    # on ≥2× baseline regressions.
+    try:
+        from app.healing.monitors import latency_slo
+        monitors.append((
+            "latency_slo", latency_slo.run,
+            _DEFAULT_CADENCE_S["latency_slo"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: latency_slo import failed", exc_info=True)
+    # PROGRAM §51 Q16 Theme 6.2 — answer regression suite. Daily
+    # probe, internal 90-day cadence. Runs frozen Q-A pairs through
+    # the cascade + (optionally) an LLM judge.
+    try:
+        from app.qos import answer_regression
+        monitors.append((
+            "answer_regression",
+            lambda: answer_regression.run_regression() or None,
+            _DEFAULT_CADENCE_S["answer_regression"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: answer_regression import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 7.2 — goal-progress probe.
+    try:
+        from app.companion import goal_progress
+        monitors.append((
+            "goal_progress", goal_progress.evaluate,
+            _DEFAULT_CADENCE_S["goal_progress"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: goal_progress import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 7.3 — annual privacy review.
+    try:
+        from app.privacy import annual_review
+        monitors.append((
+            "annual_privacy_review", annual_review.run_once,
+            _DEFAULT_CADENCE_S["annual_privacy_review"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: annual_privacy_review import failed", exc_info=True,
+        )
+    # PROGRAM §51 Q16 Theme 8.2 — philosophy panel quarterly digest.
+    try:
+        from app.philosophy import panel_digest
+        monitors.append((
+            "philosophy_digest", panel_digest.run_once,
+            _DEFAULT_CADENCE_S["philosophy_digest"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: philosophy_digest import failed", exc_info=True,
         )
 
     if not monitors:

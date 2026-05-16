@@ -1,20 +1,36 @@
 """Database backup engine — Postgres + Neo4j + ChromaDB.
 
-Wave 0/1 closure (#A1, 2026-05-09). The gateway has Docker socket
-access via the ``docker-proxy`` sidecar (see ``docker-compose.yml``)
-with ``CONTAINERS: 1`` and ``POST: 1`` enabled — sufficient to call
-``exec`` against sibling containers. We use this to run ``pg_dump``
-inside the Postgres container and ``neo4j-admin database dump`` inside
-the Neo4j container, then tar the ChromaDB volume directly (it's
-mounted into the gateway at ``/app/workspace/memory``).
+Wave 0/1 closure (#A1, 2026-05-09). The gateway tars the ChromaDB
+volume directly (mounted at ``/app/workspace/memory``). It can also
+call ``exec`` inside the Postgres and Neo4j containers via the
+``docker-proxy`` sidecar — BUT only when the proxy is configured
+with ``EXEC: 1``. The default compose config (``CONTAINERS: 1`` +
+``POST: 1``) is NOT sufficient: the tecnativa proxy gates
+``/exec/.../start`` with a separate ``EXEC`` ACL flag, denied by
+default for security. Without ``EXEC: 1`` the pg/neo4j paths
+return 403 from the proxy.
+
+The 2026-05-16 split (Option C, docs/RESILIENCE_POSTURE.md):
+
+  * Gateway keeps doing ChromaDB (no exec needed — volume is shared).
+  * Postgres + Neo4j move to a host launchd LaunchAgent running
+    ``deploy/scripts/backup.sh`` (which uses the host's docker
+    socket directly and doesn't go through the proxy).
+
+When ``DB_BACKUP_HOST_MANAGED=1`` (default in compose), the pg/neo4j
+steps are skipped at gateway side and the entry records
+``skipped: True, skipped_reason: "host_managed"`` for them. The
+freshness monitor checks for a recent non-skipped success per
+component — if the host LaunchAgent isn't actually running the
+operator still gets a staleness alert.
 
 Output layout::
 
     workspace/backups/
       manifest.json                       # see _update_manifest
-      postgres/postgres-YYYYMMDDTHHMMSSZ.sql.gz
-      neo4j/neo4j-YYYYMMDDTHHMMSSZ.dump
-      chromadb/chromadb-YYYYMMDDTHHMMSSZ.tar.gz
+      postgres/postgres-YYYYMMDDTHHMMSSZ.sql.gz     # host
+      neo4j/neo4j-YYYYMMDDTHHMMSSZ.dump             # host
+      chromadb/chromadb-YYYYMMDDTHHMMSSZ.tar.gz     # gateway
 
 Retention: ``DB_BACKUP_RETENTION_DAYS`` (default 30). Manifest never
 deletes its history; only the actual archive files are purged.
@@ -53,6 +69,29 @@ def _retention_days() -> int:
         return _DEFAULT_RETENTION_DAYS
 
 
+def _host_managed() -> bool:
+    """True when pg + neo4j backups are owned by the host launchd LaunchAgent.
+
+    Gateway then only runs the chromadb step (which doesn't need
+    docker-exec — the volume is bind-mounted into the gateway).
+    """
+    raw = os.getenv("DB_BACKUP_HOST_MANAGED", "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _skipped_entry(reason: str) -> dict[str, Any]:
+    """Manifest payload for a step the gateway deliberately didn't run."""
+    return {
+        "ok": True,
+        "skipped": True,
+        "skipped_reason": reason,
+        "path": None,
+        "bytes": 0,
+        "duration_s": 0.0,
+        "error": None,
+    }
+
+
 def _ts_compact() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -79,6 +118,8 @@ def _container_by_name_or_label(client: Any, *candidates: str):
 
 def _backup_postgres(now_ts: str) -> dict:
     """Run ``pg_dump`` inside the Postgres container; gzip the output."""
+    if _host_managed():
+        return _skipped_entry("host_managed")
     out: dict[str, Any] = {
         "ok": False, "path": None, "bytes": 0, "duration_s": 0, "error": None,
     }
@@ -152,6 +193,8 @@ def _backup_neo4j(now_ts: str) -> dict:
     online. We stream the dump to a local file (no compression — the
     dump itself is already block-deduplicated).
     """
+    if _host_managed():
+        return _skipped_entry("host_managed")
     out: dict[str, Any] = {
         "ok": False, "path": None, "bytes": 0, "duration_s": 0, "error": None,
     }
@@ -317,6 +360,8 @@ def run_backup() -> dict:
         "started_at": started.isoformat(),
         "completed_at": completed.isoformat(),
         "duration_s": round((completed - started).total_seconds(), 2),
+        "source": "gateway",
+        "host_managed": _host_managed(),
         "postgres": pg,
         "neo4j": n4j,
         "chromadb": chr_,
