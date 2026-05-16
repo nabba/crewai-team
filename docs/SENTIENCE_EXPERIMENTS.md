@@ -314,3 +314,20 @@ curl -X POST /api/cp/settings -d '{"sentience_hot4_enabled": false}'
 The four JSONL data files at `workspace/sentience/*.jsonl` are
 operator-readable and survive across restarts. Deleting them resets
 the module's state without affecting anything else.
+
+## See also
+
+* **`docs/PROBE_PROPOSALS.md` (PROGRAM §47 — Q12.4)** — agent-callable
+  sentience-probe self-design surface. The Q5 modules implement
+  functional approximations of specific Butlin indicators; the
+  probe-proposals surface lets the agent NAME new candidate
+  indicators it observes in its own behaviour. Hard refusal at
+  validate-time for any redefinition of the 19 reserved Butlin/RSM
+  anchors; phenomenal-language linter shared with the inquiry
+  package. Composes with the Q5 anti-Goodhart pinning test —
+  the SCORECARD interpretation stays under operator control even
+  as agents have a voice in proposing new measurements.
+* `docs/IDENTITY_CONTINUITY.md` — the `sentience_observation` (Q5)
+  and `sentience_probe_proposal` (Q12.4) event kinds; the annual
+  reflection's drift summary picks both up so the operator sees
+  yearly trends in self-observation + self-proposed measurements.

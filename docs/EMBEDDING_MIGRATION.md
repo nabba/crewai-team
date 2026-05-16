@@ -379,3 +379,11 @@ of the previously-dormant Tier-3 amendment path**.
 * `docs/TIER3_AMENDMENT.md` — operator runbook for the protocol
 * `app/memory/chromadb_rebuild.py` — operator-runnable per-collection rebuild (failsafe)
 * `docs/DR_DRILL.md` — the DR drill that the verifier requires to be ≤7 days old
+* **`docs/RISK_REGISTER.md` §10.4** — the `embedding_drift` monitor
+  (PROGRAM §49 Q14.4) watches for SILENT vendor-side embedding-model
+  rotation under the same model name. Complementary to this
+  framework: the migration handles INTENTIONAL swaps the operator
+  declares; the Q14.4 monitor catches the case where no migration
+  was declared but the model changed anyway. Both wire into the
+  identity continuity ledger so an annual reflection sees both
+  intentional and silent substrate changes year over year.

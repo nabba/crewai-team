@@ -34,16 +34,32 @@ strengthened prompt.
 
 ## §2.8 — Continuity ledger (`continuity_ledger.py`)
 
-Append-only JSONL of identity-shaping events. Six kinds:
+Append-only JSONL of identity-shaping events. **18 kinds**
+(originally 6 in the §2.8 spec; 12 added across PROGRAM §40-§50 as
+new subsystems shipped):
 
 ```python
 IDENTITY_EVENT_KINDS = frozenset({
-    "tier3_amendment",        # Tier-3 IMMUTABLE file edit landed
-    "governance_ratchet",     # SAFETY/QUALITY threshold raised or relaxed
-    "soul_edit",              # constitution.md or souls/* edited
-    "integrity_regen",        # SubIA integrity manifest regenerated
-    "scorecard_change",       # Butlin/RSM/SK indicator status changed
-    "self_quarantine_change", # file added to/removed from quarantine list
+    # Original §2.8
+    "tier3_amendment",            # Tier-3 IMMUTABLE file edit landed
+    "governance_ratchet",         # SAFETY/QUALITY threshold raised or relaxed
+    "soul_edit",                  # constitution.md or souls/* edited
+    "integrity_regen",            # SubIA integrity manifest regenerated
+    "scorecard_change",           # Butlin/RSM/SK indicator status changed
+    "self_quarantine_change",     # file added/removed from quarantine list
+    # Added as subsystems shipped
+    "substrate_migration",        # PROGRAM §40 Item 12 (Q3.1) — embedding-model cutover
+    "person_correlation_policy",  # PROGRAM §42 (Q4.2.2) — person-correlation policy edit
+    "sentience_observation",      # PROGRAM §43 (Q5.4.2) — Q5 sentience-module landmark
+    "resilience_drill",           # PROGRAM §44 (Q6.1) — drill landmark
+    "sentience_probe_proposal",   # PROGRAM §47 (Q12.4) — agent-proposed probe-design CR
+    "schema_migration_drill",     # PROGRAM §48 (Q13.1) — migration-drill manifest landmark
+    "tz_drift",                   # PROGRAM §48 (Q13.3) — hand-rolled vs zoneinfo divergence
+    "identity_drift_acceleration",# PROGRAM §49 (Q14.1) — 30d count ≥2× annual rate
+    "feedback_loop_drift",        # PROGRAM §49 (Q14.2) — meta-agent recipe-Gini monotonic up
+    "embedding_model_swap",       # PROGRAM §49 (Q14.4) — anchor-cosine drop
+    "interest_ossification",      # PROGRAM §49 (Q14.5) — top-30 entropy/churn alert
+    "browse_ingestion_policy",    # PROGRAM §50 (Q15.1) — browse-ingestion policy event
 })
 ```
 
@@ -83,7 +99,7 @@ Master switch: `IDENTITY_LEDGER_ENABLED` (default `true`).
 
 ### Emission sites
 
-Five subsystems emit events automatically. Each call wraps
+All 17 event kinds have defined emission sites. Each call wraps
 `record_event` in a defensive try/except so a missing/disabled
 identity package never breaks the upstream operation:
 
@@ -94,11 +110,24 @@ identity package never breaks the upstream operation:
 | `governance_ratchet` (down) | [governance_ratchet/protocol.py:relax_ratchet](../app/governance_ratchet/protocol.py) | SAFETY/QUALITY relaxed (typed-phrase confirmation gate upstream) |
 | `integrity_regen` | [subia/integrity.py:write_manifest](../app/subia/integrity.py) | SubIA integrity manifest regenerated |
 | `soul_edit` | [change_requests/lifecycle.py:mark_applied](../app/change_requests/lifecycle.py) | Path matches `app/souls/*` or `wiki/governance/constitution.md` |
+| `substrate_migration` | [memory/embedding_migration/cutover.py:post_apply_hook](../app/memory/embedding_migration/cutover.py) | Embedding-model cutover applied (Q3.1) |
+| `person_correlation_policy` | [companion/person_model.py + person_centrality + social_graph](../app/companion/) | L1/L2/L4 level policy toggle or forget operation (Q4.2.2) |
+| `sentience_observation` | [sentience_experiments/{ae2,hot1,hot4,rpt1}.py](../app/sentience_experiments/) | Q5 module landmark — AE-2 first emission per (action, outcome) pair, HOT-1 pattern, HOT-4 cooldown, RPT-1 forecast resolved |
+| `resilience_drill` | [resilience_drills/audit.py:emit_landmark_for](../app/resilience_drills/audit.py) | First-pass / FAIL / recovery transitions only |
+| `sentience_probe_proposal` | [subia/probe_proposals/proposer.py:_emit_continuity_ledger_event](../app/subia/probe_proposals/proposer.py) | Agent-proposed probe design CR filed (Q12.4) |
+| `schema_migration_drill` | [healing/monitors/migration_drill.py](../app/healing/monitors/migration_drill.py) | Manifest never-run / stale / failed / recovered transitions (Q13.1) |
+| `tz_drift` | [healing/monitors/tz_drift.py](../app/healing/monitors/tz_drift.py) | Hand-rolled `_helsinki_tz` vs `ZoneInfo` divergence detected OR recovered (Q13.3) |
+| `identity_drift_acceleration` | [identity/drift_digest.py](../app/identity/drift_digest.py) | 30d amendment count ≥2× annual rate OR per-kind ≥3× (Q14.1) |
+| `feedback_loop_drift` | [healing/monitors/feedback_loop_drift.py](../app/healing/monitors/feedback_loop_drift.py) | Meta-agent recipe-selection Gini monotonically up over 4 weekly samples (Q14.2) |
+| `embedding_model_swap` | [healing/monitors/embedding_drift.py](../app/healing/monitors/embedding_drift.py) | Anchor-query cosine drop below 0.95 (Q14.4) |
+| `interest_ossification` | [healing/monitors/interest_ossification.py](../app/healing/monitors/interest_ossification.py) | Top-30 concentrated / diffuse / ossified (Q14.5) |
+| `browse_ingestion_policy` | [browse_ingestion/](../app/browse_ingestion/) (Q15.1) | Master-switch flip, blocklist edit, forget_all / forget_domain / forget_day |
 
 Two kinds are **declared but not yet emitted**: `scorecard_change`
 (would need a before/after diff layer over `subia/probes/scorecard.py`)
 and `self_quarantine_change` (the quarantine list is a static
-frozenset with no write API today).
+frozenset with no write API today). All other 16 kinds have live
+emission as of 2026-05-16.
 
 ## §8.2 — Annual value-reflection essay (`annual_reflection.py`)
 

@@ -1,13 +1,50 @@
 # Resilience Drills
 
-**Status (2026-05-13):** Q6 shipped at PROGRAM §44.1-§44.3. Four
-quarterly drills + scheduler + staleness monitor.
+**Status (2026-05-16):** Q6 shipped four drills in
+`app/resilience_drills/` at PROGRAM §44.1-§44.3 (the operationally
+canonical registry). Q13 added three SIBLING drill+monitor pairs
+outside that registry (PROGRAM §48 Q13.1, §44.5 P2#3, §48 Q13.3)
+because each runs as an operator-invoked shell script rather than
+through the Q6 registry.
 
 The drills exist to verify recovery procedures actually work. They
 operationalize the posture decision documented in
 `docs/RESILIENCE_POSTURE.md`: identity is data, not uptime.
 
-## The four drills
+## The two drill patterns
+
+**Pattern A (Q6 registry):** drills live in `app/resilience_drills/`
++ are auto-run by the scheduler. Each has a `DrillSpec` + an audit
+JSONL + landmark emission to the continuity ledger. Four drills
+listed below.
+
+**Pattern B (sibling shell scripts):** operator-runnable
+`deploy/scripts/*-drill.sh` + paired healing monitor watching the
+manifest file. Each monitor alerts on never-run / stale / failed
+states + emits its own continuity-ledger landmark on transitions.
+Three drill+monitor pairs:
+
+| Drill | Shell script | Monitor | PROGRAM ref |
+|---|---|---|---|
+| Restore | `deploy/scripts/restore-drill.sh` | `restore_drill` | Phase H #1 |
+| Version upgrade | `deploy/scripts/version-upgrade-drill.sh` | `version_upgrade_drill` | §2.5 |
+| **Schema migration** | `deploy/scripts/migration-drill.sh` | `migration_drill` | **§48 Q13.1** |
+
+Pattern A is appropriate when the drill is safe to auto-run from
+inside the gateway. Pattern B is appropriate when the drill spawns
+scratch containers, applies SQL, or otherwise needs operator
+scheduling. **Both patterns compose** with the same posture
+declaration (`docs/RESILIENCE_POSTURE.md`) and the same continuity-
+ledger landmark mechanism.
+
+The TZ-drift monitor (`tz_drift`, PROGRAM §48 Q13.3, default ON) is
+arguably a fourth Pattern-B drill but without a shell script — it's
+a pure-Python comparison every day between the hand-rolled
+`_helsinki_tz` function and `zoneinfo.ZoneInfo("Europe/Helsinki")`.
+Files a CR proposing consolidation on first divergence. See
+`docs/RISK_REGISTER.md` for the year-2+ sibling monitors.
+
+## The four Q6 drills
 
 ### `backup_restore`
 

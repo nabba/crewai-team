@@ -594,11 +594,57 @@ Existing crew-touching test suites verified unaffected:
 
 ---
 
+## Year-2+ observability hooks (PROGRAM §49 — Q14)
+
+Two probes were added at Q14 to make the meta-agent layer watchable
+for long-horizon failure modes the §10 risk register named:
+
+### Q14.2 — `feedback_loop_drift` monitor
+
+The meta-agent forms the most operationally important closed loop
+in the system: `selector → factory → lifecycle → recorder → store →
+selector`. The `app/healing/monitors/feedback_loop_drift.py` monitor
+computes the **Gini coefficient** of recipe `uses` weekly and
+persists a rolling 8-sample history. When the last 4 weekly samples
+trend monotonically up (total delta ≥0.10), it alerts:
+
+> The loop is converging on a fixed point. May be (a) genuinely
+> learning the best strategy, or (b) reinforcing a locally-optimal
+> pattern that drifts from user value.
+
+The probe never adjusts selection; the operator decides whether
+the convergence is desirable. Emits `feedback_loop_drift` continuity-
+ledger landmark on alert. Master switch
+`feedback_loop_drift_monitor_enabled`.
+
+### Q14.3 — `recipe_selection_divergence` Goodhart signal
+
+Extension to `app/goodhart_guard.py` — new signal type
+`recipe_selection_divergence`. For each recipe with ≥20 outcomes in
+30d AND in the top-10% by `uses` count, computes
+`thumbs_up_rate = up / (up + down)` from the `user_feedback` field.
+Emits `GamingSignal` when rate < 0.30 — meaning the meta-agent is
+heavily selecting a recipe whose resulting tasks the user
+dislikes. Severity scales (HIGH < 0.15, MEDIUM < 0.25, LOW < 0.30).
+
+Flows through existing `goodhart_advisory_report` — no new
+aggregation needed; the signal-type set is dynamic.
+
+Both probes are observational. The meta-agent layer itself is
+unchanged; the probes read the same outcome store and recipe
+ledger.
+
+See `docs/RISK_REGISTER.md` for the broader year-2+ risk-register
+context (§10.2 + §10.3).
+
+---
+
 ## References
 
 - arXiv:2603.19461 — Hyperagents (Zhang et al., Meta — March 2026)
 - arXiv:2505.22954 — Darwin Gödel Machine (prior work)
 - `docs/SELF_IMPROVEMENT.md` — broader self-improvement subsystem
 - `docs/RECOVERY_LOOP.md`, `docs/COMPANION_LAYER.md` — sibling per-subsystem docs
+- `docs/RISK_REGISTER.md` — year-2+ probes including Q14.2 + Q14.3
 - `app/crews/delegation_settings.py` — sibling toggle pattern
 - `app.self_improvement.novelty` — IMMUTABLE-thresholds convention
