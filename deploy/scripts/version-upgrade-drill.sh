@@ -220,14 +220,25 @@ echo "  Neo4j node count: $NEO_NODES" | tee -a "$DRILL_LOG"
 NEO_OK=${NEO_OK:-true}
 
 # --- Restore + migrate ChromaDB ------------------------------------------
+# See header comment in restore-drill.sh's equivalent block for the
+# two correctness fixes: (1) resolve volume name from container,
+# (2) strip leading `memory/` from tar + clear volume first.
 echo ">> Restoring ChromaDB into target version" | tee -a "$DRILL_LOG"
-$COMPOSE -p "$DRILL_PROJECT" stop chromadb 2>>"$DRILL_LOG" || true
-docker run --rm \
-    -v "${DRILL_PROJECT}_chroma:/chroma/chroma" \
-    -v "$(dirname "$CHR_ARCHIVE"):/backup:ro" \
-    alpine:3 sh -c "cd /chroma/chroma && tar -xzf /backup/$(basename "$CHR_ARCHIVE")" \
-    2>>"$DRILL_LOG" || true
-$COMPOSE -p "$DRILL_PROJECT" start chromadb 2>>"$DRILL_LOG" || true
+CHR_VOL=$(docker inspect "$CHR_CT" --format \
+    '{{range .Mounts}}{{if eq .Destination "/chroma/chroma"}}{{.Name}}{{end}}{{end}}' \
+    2>>"$DRILL_LOG")
+if [[ -z "$CHR_VOL" ]]; then
+    echo "ERROR: could not resolve chromadb volume from container" | tee -a "$DRILL_LOG" >&2
+    CHR_OK="false"
+else
+    $COMPOSE -p "$DRILL_PROJECT" stop chromadb 2>>"$DRILL_LOG" || true
+    docker run --rm \
+        -v "${CHR_VOL}:/chroma/chroma" \
+        -v "$(dirname "$CHR_ARCHIVE"):/backup:ro" \
+        alpine:3 sh -c "cd /chroma/chroma && find . -mindepth 1 -delete && tar -xzf /backup/$(basename "$CHR_ARCHIVE") --strip-components=1" \
+        2>>"$DRILL_LOG" || true
+    $COMPOSE -p "$DRILL_PROJECT" start chromadb 2>>"$DRILL_LOG" || true
+fi
 sleep 8  # chroma migration on version bump can take longer than start
 CHR_PORT=$(docker port "$CHR_CT" 8000 2>/dev/null | head -1 | cut -d: -f2 || echo "")
 if [[ -n "$CHR_PORT" ]]; then
@@ -238,7 +249,9 @@ else
     CHR_HEALTH="(no port mapping)"
 fi
 echo "  ChromaDB heartbeat: $CHR_HEALTH" | tee -a "$DRILL_LOG"
-CHR_OK="true"
+# Inherit prior CHR_OK if already false (volume-resolve failure above)
+# — otherwise key off the heartbeat.
+CHR_OK="${CHR_OK:-true}"
 [[ "$CHR_HEALTH" == "FAIL" ]] && CHR_OK="false"
 
 # --- Manifest update -----------------------------------------------------

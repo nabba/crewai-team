@@ -135,7 +135,8 @@ services:
       - /home/appuser/.mem0:uid=1000,gid=1000
 
   chromadb:
-    image: chromadb/chroma:0.5.23
+    # Override-able via CHROMA_IMAGE (see postgres comment above).
+    image: ${CHROMA_IMAGE:-chromadb/chroma:0.5.23}
     restart: unless-stopped
     volumes:
       - ./workspace/memory:/chroma/chroma
@@ -165,7 +166,11 @@ services:
   # pgvector for vector storage, Neo4j for entity relationship graph.
   # Both internal-only (no internet, no host ports).
   postgres:
-    image: pgvector/pgvector:pg16
+    # The default tag matches the live stack baseline. Operators can
+    # override via env var (used by deploy/scripts/version-upgrade-drill.sh
+    # to drill the forward-version-migration path against a newer image
+    # without touching the live stack baseline).
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
     restart: unless-stopped
     shm_size: '1gb'
     command:
@@ -202,7 +207,8 @@ services:
           cpus: '2.0'
 
   neo4j:
-    image: neo4j:5-community
+    # Override-able via NEO4J_IMAGE (see postgres comment above).
+    image: ${NEO4J_IMAGE:-neo4j:5-community}
     restart: unless-stopped
     environment:
       NEO4J_AUTH: neo4j/${MEM0_NEO4J_PASSWORD:?MEM0_NEO4J_PASSWORD must be set in .env}
