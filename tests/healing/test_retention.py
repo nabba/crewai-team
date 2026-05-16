@@ -141,6 +141,184 @@ def test_chromadb_cadence_skips_under_window(isolated):
 
 
 # ════════════════════════════════════════════════════════════════════════
+# Post-2026-05-16: records lacking timestamps must NOT be classified as
+# oldest via silent zero-fallback. See retention.py:_oldest_ids docstring.
+# ════════════════════════════════════════════════════════════════════════
+
+
+def _fake_collection_with_meta(name: str, ids_with_meta: list[tuple[str, dict]]):
+    """Stub collection where each record carries an explicit metadata
+    dict — None for missing-timestamp records. Lets us exercise the
+    post-2026-05-16 filter discipline."""
+    deletions: list[list[str]] = []
+
+    class _Col:
+        def __init__(self):
+            self.name = name
+            self._count = len(ids_with_meta)
+            self._records = ids_with_meta
+            self.deletions = deletions
+
+        def count(self):
+            return self._count
+
+        def get(self, *, include=None):
+            return {
+                "ids": [i for i, _ in self._records],
+                "metadatas": [m for _, m in self._records],
+            }
+
+        def delete(self, *, ids):
+            self.deletions.append(list(ids))
+
+    return _Col()
+
+
+def test_chromadb_records_without_timestamp_are_NOT_deleted(isolated, monkeypatch):
+    """Regression test: a record with no timestamp metadata used to be
+    classified as ts=0 and selected for deletion preferentially. The
+    fixed version excludes it from the candidate pool."""
+    from app.healing.monitors import retention
+
+    # 6 records: 3 with timestamps, 3 without. Cap is 2 → 4 over cap.
+    # Buggy version would delete the 3 timestamp-less first + 1 with
+    # ts=0. Fixed version deletes only from the 3 timestamped records.
+    records = [
+        ("id-with-1", {"timestamp": 100.0}),
+        ("id-no-ts-a", {"some_other_key": "x"}),
+        ("id-with-2", {"timestamp": 200.0}),
+        ("id-no-ts-b", {}),
+        ("id-with-3", {"timestamp": 300.0}),
+        ("id-no-ts-c", None),  # metadata entry is None entirely
+    ]
+    col = _fake_collection_with_meta("c1", records)
+
+    class _Client:
+        def list_collections(self):
+            return [col]
+
+    monkeypatch.setattr(
+        "app.memory.chromadb_manager.get_client", lambda: _Client(),
+    )
+    from app.life_companion._common import write_state_json
+    write_state_json("chromadb_retention.json", {
+        "last_run_at": 0.0,
+        "caps": {"c1": 2},
+    })
+    retention.run_chromadb()
+
+    # Only records with timestamps should be candidates. 3 timestamped
+    # records, cap of 2 → 1 deletion (the timestamped record with the
+    # oldest ts).
+    assert len(col.deletions) == 1
+    deleted = col.deletions[0]
+    assert "id-with-1" in deleted, "oldest timestamped record should delete"
+    assert "id-no-ts-a" not in deleted, (
+        "record without timestamp must NOT be classified as oldest"
+    )
+    assert "id-no-ts-b" not in deleted
+    assert "id-no-ts-c" not in deleted
+
+
+def test_chromadb_all_records_lacking_timestamps_results_in_no_delete(
+    isolated, monkeypatch,
+):
+    """If NO records have a parseable timestamp, retention does nothing
+    rather than silently classifying everything as ts=0 and deleting
+    by ID order or insertion order. Cap accumulation is a visible
+    failure mode (audit row + log warning); silent deletion is not."""
+    from app.healing.monitors import retention
+
+    records = [(f"id-{i}", {"unrelated": "x"}) for i in range(20)]
+    col = _fake_collection_with_meta("c1", records)
+
+    class _Client:
+        def list_collections(self):
+            return [col]
+
+    monkeypatch.setattr(
+        "app.memory.chromadb_manager.get_client", lambda: _Client(),
+    )
+    from app.life_companion._common import write_state_json
+    write_state_json("chromadb_retention.json", {
+        "last_run_at": 0.0,
+        "caps": {"c1": 5},
+    })
+    retention.run_chromadb()
+    assert col.deletions == [], (
+        "When no records have timestamps, retention must do nothing. "
+        "Treating absent-timestamp as ts=0 caused the 2026-05-16 class "
+        "of bug — see retention.py:_oldest_ids docstring."
+    )
+
+
+def test_chromadb_oldest_ids_returns_stats(isolated):
+    """The (ids, stats) tuple lets the audit row record what was
+    skipped so the operator can see when timestamp coverage is poor."""
+    from app.healing.monitors import retention
+
+    records = [
+        ("a", {"timestamp": 1.0}),
+        ("b", {}),
+        ("c", {"timestamp": 2.0}),
+        ("d", None),
+    ]
+    col = _fake_collection_with_meta("c1", records)
+    ids, stats = retention._oldest_ids(col, 10)
+    assert set(ids) == {"a", "c"}
+    assert stats["total"] == 4
+    assert stats["with_ts"] == 2
+    assert stats["without_ts"] == 2
+    assert stats["selected"] == 2
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Source-level discipline pins (work without gateway-deps env).
+#
+# The tests above need a working `app.healing.monitors.retention` import
+# which transitively needs pydantic_settings. The pins below grep the
+# source file directly so the load-bearing discipline survives even on
+# stripped-down envs.
+# ════════════════════════════════════════════════════════════════════════
+
+
+def test_source_no_ts_zero_fallback():
+    """The literal ``ts = 0.0`` fallback that caused the 2026-05-16
+    class of bug must never reappear in retention.py."""
+    src = Path("app/healing/monitors/retention.py").read_text()
+    assert "ts = 0.0" not in src, (
+        "Fallback to ts=0 was the 2026-05-16 class bug — records "
+        "lacking a timestamp got classified as oldest. Use the "
+        "_parse_ts_from_metadata helper which returns None for missing."
+    )
+
+
+def test_source_oldest_ids_returns_tuple():
+    """_oldest_ids must return (ids, stats) so the caller can record
+    skipped-record counts in the audit row."""
+    src = Path("app/healing/monitors/retention.py").read_text()
+    assert "def _oldest_ids(" in src
+    assert "ids_to_delete, ts_stats = _oldest_ids" in src, (
+        "caller must unpack stats from _oldest_ids; without the stats "
+        "operator can't see when timestamp coverage drops to where "
+        "the cap can't be safely enforced."
+    )
+
+
+def test_source_uses_parser_helper():
+    """The timestamp parsing must go through a dedicated helper whose
+    return contract is `float | None` — not the inline 0-fallback that
+    used to live in the loop."""
+    src = Path("app/healing/monitors/retention.py").read_text()
+    assert "_parse_ts_from_metadata" in src
+    # The helper must have a return-None branch (not silent default).
+    helper_start = src.find("def _parse_ts_from_metadata")
+    helper_end = src.find("\ndef ", helper_start + 1)
+    helper_body = src[helper_start:helper_end]
+    assert "return None" in helper_body
+
+
+# ════════════════════════════════════════════════════════════════════════
 # (b) Worktree retention
 # ════════════════════════════════════════════════════════════════════════
 
