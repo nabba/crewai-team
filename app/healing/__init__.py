@@ -129,6 +129,18 @@ try:
 except Exception:
     _log.warning("app.healing: boot cooldown reset failed", exc_info=True)
 
+# PROGRAM §51 Q16 Theme 3 — vacation-mode sweep daemon. Anchored
+# here for the same reason as proposal_bridge / library_radar /
+# governance_notifier: eager-start at module-import time of a known
+# boot-chain entry point. The daemon itself is bounded by
+# ``vacation_mode.state.is_active()`` so the thread is harmless when
+# vacation mode isn't engaged.
+try:
+    from app.vacation_mode.sweep import start_daemon as _vacation_start
+    _vacation_start()
+except Exception:
+    _log.warning("app.healing: vacation_mode wiring failed", exc_info=True)
+
 __all__ = [
     "diagnose_and_fix",
     "log_error",

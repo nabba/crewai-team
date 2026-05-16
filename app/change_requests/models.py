@@ -62,6 +62,12 @@ class DecisionSource(str, enum.Enum):
     REACT_REJECT = "react-reject"
     TIMEOUT = "timeout"
     SELF_HEAL_AUTO_APPLY = "self-heal-auto-apply"
+    # Q16 Theme 3 (PROGRAM §51) — vacation mode auto-approval. Operator
+    # pre-staged an allowlist before going unavailable; vacation_mode
+    # sweep matched a PENDING CR against it and approved on the
+    # operator's pre-authorized intent. Composes with the existing
+    # auto-revert watcher for the rollback window.
+    VACATION_AUTO_APPLY = "vacation-auto-apply"
 
 
 # Risk classification for a change request. ``STANDARD`` is the

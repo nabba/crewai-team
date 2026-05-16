@@ -42,6 +42,7 @@ _CATEGORIES = (
     "Brainstorm",
     "Sessions",
     "Threads",
+    "Vacation",
 )
 
 
@@ -376,6 +377,26 @@ SIGNAL_COMMANDS: tuple[SignalCommand, ...] = (
     SignalCommand("/goals list-reviews", (), "/goals list-reviews",
                   "List past quarterly reviews on disk.",
                   "Self-improvement"),
+
+    # ── Vacation mode (Q16 Theme 3, PROGRAM §51) ─────────────────
+    SignalCommand("/vacation", ("vacation",), "/vacation",
+                  "Vacation-mode status: engaged or not, time remaining, allowlist summary.",
+                  "Vacation"),
+    SignalCommand("/vacation status", (), "/vacation status",
+                  "Detailed status (same as /vacation).",
+                  "Vacation"),
+    SignalCommand("/vacation show", (), "/vacation show",
+                  "Show staged or frozen allowlist (requestors + path prefixes + line cap).",
+                  "Vacation"),
+    SignalCommand("/vacation engage", (), "/vacation engage <hours> <reason>",
+                  "Engage vacation mode for N hours (1–720). Requires pre-staged allowlist.",
+                  "Vacation"),
+    SignalCommand("/vacation disengage", (), "/vacation disengage",
+                  "Disengage vacation mode immediately; triggers end-of-vacation digest.",
+                  "Vacation"),
+    SignalCommand("/vacation digest", (), "/vacation digest [N]",
+                  "Show the most recent end-of-vacation digest (N=index, default 0 = newest).",
+                  "Vacation"),
 )
 
 
