@@ -67,10 +67,25 @@ _EVOLUTION_ARCHIVE_DIR = Path("/app/workspace/shinka_results/archive")
 _EVOLUTION_AGE_DAYS = 90
 
 
+# Discipline (post-2026-05-16): per-pass deletion cap defends against
+# a mis-set retention env that would nuke a large archive in one pass.
+# Files past retention persist for at most ceil(N_files / cap) passes;
+# at 30-day cadence that's months of grace before any archive is fully
+# purged, which gives the operator time to notice a runaway purge
+# before it's irreversible.
+_PURGE_PER_PASS_CAP = 100
+
+# Floor for retention days. Operators occasionally set
+# LOG_ARCHIVE_RETENTION_DAYS to small values for testing; bump the
+# floor so a forgotten env can't delete fresh archives. 30 days >
+# our default cron probe cadence + plenty of inspection window.
+_MIN_RETENTION_DAYS = 30
+
+
 def _retention_days() -> int:
     raw = os.getenv("LOG_ARCHIVE_RETENTION_DAYS", "90").strip()
     try:
-        return max(7, int(raw))
+        return max(_MIN_RETENTION_DAYS, int(raw))
     except ValueError:
         return 90
 
@@ -158,25 +173,50 @@ def _archive_evolution_runs() -> dict:
 
 
 def _purge_old_archives(retention_days: int) -> dict:
-    """Delete archive files older than retention_days. Returns count + bytes."""
-    summary = {"deleted_files": 0, "bytes_deleted": 0}
+    """Delete archive files older than retention_days. Returns count + bytes.
+
+    Discipline (post-2026-05-16): purges are capped at
+    ``_PURGE_PER_PASS_CAP`` files per pass — oldest-first within
+    each directory — so a misset retention can't nuke a backlog in
+    one go. If the cap is hit, the next pass continues; eventually
+    everything past retention purges out.
+    """
+    summary = {
+        "deleted_files": 0, "bytes_deleted": 0,
+        "deferred_due_to_cap": 0,
+    }
     cutoff = time.time() - retention_days * 24 * 3600
+    cap_remaining = _PURGE_PER_PASS_CAP
     # The evolution archive runs on its own retention (90 days fixed) —
     # keep the user-tunable retention only for errors + audit archives.
     for d in (_ERRORS_ARCHIVE_DIR, _AUDIT_ARCHIVE_DIR, _EVOLUTION_ARCHIVE_DIR):
         if not d.exists():
             continue
         try:
+            # Gather candidates sorted oldest-first so we delete the
+            # oldest within the per-pass cap (not whatever iterdir
+            # happens to return first).
+            candidates: list[tuple[Path, float, int]] = []
             for f in d.iterdir():
                 if not f.is_file():
                     continue
                 try:
-                    if f.stat().st_mtime > cutoff:
-                        continue
-                    size = f.stat().st_size
+                    st = f.stat()
+                except OSError:
+                    continue
+                if st.st_mtime > cutoff:
+                    continue
+                candidates.append((f, st.st_mtime, st.st_size))
+            candidates.sort(key=lambda t: t[1])  # oldest first
+            for f, _mtime, size in candidates:
+                if cap_remaining <= 0:
+                    summary["deferred_due_to_cap"] += 1
+                    continue
+                try:
                     f.unlink()
                     summary["deleted_files"] += 1
                     summary["bytes_deleted"] += size
+                    cap_remaining -= 1
                 except OSError:
                     continue
         except OSError:

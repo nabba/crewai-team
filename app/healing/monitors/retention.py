@@ -248,6 +248,73 @@ _WT_TERMINAL_STATES = {"submitted", "discarded", "expired", "failed"}
 _WT_LEAK_THRESHOLD = 50
 
 
+def _worktree_root() -> str:
+    """Where new worktrees are created (matches app.coding_session.runtime)."""
+    return os.environ.get("CODING_SESSION_WORKTREE_ROOT") or "/tmp/agent-sessions"
+
+
+def _validate_worktree_path(
+    wt_path: str, *, expected_session_id: str,
+) -> tuple[bool, str]:
+    """Validate that ``wt_path`` is safe to ``shutil.rmtree``.
+
+    Returns ``(is_valid, reason)``. The caller MUST NOT rmtree unless
+    ``is_valid`` is True. This is the structural guard against the
+    2026-05-16 class of bug (silent classification fallback → automatic
+    destructive action against unintended targets).
+
+    Refuses if:
+      * path is empty or not a string
+      * path is not absolute (relative paths resolve against cwd → could
+        hit anywhere)
+      * path is not under ``worktree_root()`` (with separator; defends
+        against suffix attacks like ``/tmp/agent-sessions-evil``)
+      * path's basename doesn't match ``expected_session_id`` (defends
+        against session JSONs that point at someone else's worktree)
+      * path contains symlink components that escape worktree_root
+        (defends against ``/tmp/agent-sessions/abc/../../../etc``)
+    """
+    if not wt_path or not isinstance(wt_path, str):
+        return False, "empty_or_non_string_path"
+    p = Path(wt_path)
+    if not p.is_absolute():
+        return False, f"relative_path: {wt_path!r}"
+    root = _worktree_root().rstrip("/")
+    # Resolve symlinks to defend against escapes via symlinks INSIDE
+    # the worktree. If the worktree dir itself is a symlink (unusual
+    # but possible) we resolve through it; what matters is the target.
+    try:
+        resolved = p.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return False, "path_resolve_failed"
+    resolved_str = str(resolved)
+    root_with_sep = root + "/"
+    if not resolved_str.startswith(root_with_sep):
+        return False, (
+            f"path_outside_worktree_root: resolved={resolved_str!r} "
+            f"not under {root_with_sep!r}"
+        )
+    # Basename must match the session ID — defends against a corrupted
+    # session JSON pointing at someone else's worktree dir.
+    if resolved.name != expected_session_id:
+        return False, (
+            f"basename_mismatch: {resolved.name!r} vs session_id "
+            f"{expected_session_id!r}"
+        )
+    # Final structural check: exactly one level under worktree_root
+    # (no nested paths like /tmp/agent-sessions/abc/def).
+    try:
+        rel = resolved.relative_to(root)
+        if len(rel.parts) != 1:
+            return False, (
+                f"path_depth_unexpected: {len(rel.parts)} segments under "
+                f"worktree_root, expected 1"
+            )
+    except ValueError:
+        return False, "relative_to_root_failed"
+    return True, "ok"
+
+
 def run_worktrees() -> None:
     """One coding-session worktree-retention pass — cadence-guarded."""
     if not background_enabled():
@@ -295,17 +362,38 @@ def run_worktrees() -> None:
 
         # Found a stale terminal session — remove its worktree dir
         # (read from session record) AND its JSON record.
+        #
+        # Discipline (post-2026-05-16): validate worktree_path BEFORE
+        # rmtree. Earlier behaviour was `shutil.rmtree(data.get('worktree_path'))`
+        # with only an `if wt and wt.exists()` guard — a corrupted session
+        # JSON with a stale or out-of-tree path would have rmtree'd the
+        # wrong target. Now we require absolute, inside worktree_root,
+        # basename matching the session ID, and exactly one level deep.
         worktree_path = data.get("worktree_path") or ""
-        wt = Path(worktree_path) if worktree_path else None
+        session_id = data.get("id") or f.stem
         if _dry_run():
             summary["removed"] += 1  # accounting only
             continue
+        is_valid, reason = _validate_worktree_path(
+            worktree_path, expected_session_id=session_id,
+        )
+        if not is_valid:
+            summary.setdefault("refused_validation", 0)
+            summary["refused_validation"] += 1
+            logger.warning(
+                "retention[worktrees]: refusing rmtree for session %s — %s "
+                "(see _validate_worktree_path docstring)",
+                session_id, reason,
+            )
+            # Leave the session JSON in place so the operator can inspect.
+            continue
         try:
-            if wt and wt.exists():
+            wt = Path(worktree_path)
+            if wt.exists():
                 shutil.rmtree(str(wt), ignore_errors=True)
         except Exception:
             logger.debug(
-                "retention[worktrees]: rmtree failed for %s", wt,
+                "retention[worktrees]: rmtree failed for %s", worktree_path,
                 exc_info=True,
             )
         try:
@@ -343,11 +431,51 @@ _ATT_STATE_FILE = "attachment_retention.json"
 _ATT_AGE_S = 30 * 24 * 3600
 _ATT_TOTAL_BYTES_CAP = 1024 ** 3   # 1 GB
 
+# Discipline (post-2026-05-16): refuse to operate on env-set
+# SIGNAL_ATTACHMENTS_DIR unless it resolves to a known-safe prefix.
+# The retention sweep deletes files; an env mis-set could nuke
+# anything writable from inside the container.
+_ATT_SAFE_PREFIXES: tuple[str, ...] = (
+    "/app/attachments",
+    "/app/workspace/",
+    "/tmp/",
+)
+
 
 def _attachments_dir() -> Path:
     """Location of Signal/inbound attachments. Env-tunable."""
     raw = os.getenv("SIGNAL_ATTACHMENTS_DIR", "/app/attachments")
     return Path(raw)
+
+
+def _is_attachments_dir_safe(p: Path) -> tuple[bool, str]:
+    """Return ``(is_safe, reason)``. Caller MUST NOT delete files
+    inside ``p`` unless ``is_safe`` is True.
+
+    The check refuses any path that isn't a sub-tree of one of
+    ``_ATT_SAFE_PREFIXES``. Refusal is the safe default — an operator
+    who really wants a custom attachments dir can either:
+
+      * move it inside ``/app/workspace/attachments/`` (the standard
+        location), or
+      * extend ``_ATT_SAFE_PREFIXES`` here with a code change.
+    """
+    if not p.is_absolute():
+        return False, f"relative_path: {p!s}"
+    try:
+        resolved = p.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return False, "path_resolve_failed"
+    resolved_str = str(resolved)
+    for prefix in _ATT_SAFE_PREFIXES:
+        if resolved_str == prefix.rstrip("/"):
+            return True, "ok"
+        if resolved_str.startswith(prefix if prefix.endswith("/") else prefix + "/"):
+            return True, "ok"
+    return False, (
+        f"attachments_dir_not_in_safe_prefix: {resolved_str!r}; "
+        f"allowed prefixes: {_ATT_SAFE_PREFIXES}"
+    )
 
 
 def run_attachments() -> None:
@@ -362,6 +490,16 @@ def run_attachments() -> None:
     state["last_run_at"] = now
 
     root = _attachments_dir()
+    # Discipline (post-2026-05-16): structural guard against env mis-set.
+    is_safe, reason = _is_attachments_dir_safe(root)
+    if not is_safe:
+        logger.warning(
+            "retention[attachments]: refusing to sweep %s — %s",
+            root, reason,
+        )
+        state["last_summary"] = {"refused": True, "reason": reason}
+        write_state_json(_ATT_STATE_FILE, state)
+        return
     if not root.exists() or not root.is_dir():
         write_state_json(_ATT_STATE_FILE, state)
         return
