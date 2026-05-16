@@ -264,15 +264,26 @@ def _scan_for_orphan_segments(sqlites: list[Path]) -> list[dict]:
                     disk_uuids.add(name)
             if not disk_uuids:
                 continue
-            # 2. Collect known collection IDs from SQLite.
+            # 2. Collect known SEGMENT IDs from SQLite.
+            #
+            # IMPORTANT: ChromaDB names per-collection HNSW directories
+            # after `segments.id`, NOT `collections.id`. The two are
+            # different — each collection typically has 2 segments
+            # (METADATA + VECTOR), and only the VECTOR segment has an
+            # on-disk dir. The earlier version of this monitor compared
+            # disk UUIDs against `collections.id`, which mis-classified
+            # EVERY live VECTOR segment dir as an orphan and caused a
+            # cleanup pass to delete ~43 live segment dirs across 5 KBs
+            # on 2026-05-16 (recovered from snapshot, no permanent
+            # loss). Always check `segments.id`.
             known: set[str] = set()
             try:
                 conn = sqlite3.connect(str(db_path), timeout=10.0)
                 try:
-                    cur = conn.execute("SELECT id FROM collections")
-                    for (cid,) in cur.fetchall():
-                        if isinstance(cid, str):
-                            known.add(cid)
+                    cur = conn.execute("SELECT id FROM segments")
+                    for (sid,) in cur.fetchall():
+                        if isinstance(sid, str):
+                            known.add(sid)
                 finally:
                     conn.close()
             except sqlite3.OperationalError:
@@ -326,8 +337,11 @@ def _alert_orphan_segments(findings: list[dict]) -> None:
             f"🗂 ChromaDB orphan segments detected — "
             f"{total_orphans} orphans, "
             f"{total_bytes / 1024 / 1024:.1f} MB total. {per_kb}. "
-            f"Run `python -m app.memory.chromadb_rebuild --kb <kb> "
-            f"--collection <name>` per affected collection to reclaim.",
+            f"Orphans are UUID-named dirs with no row in `segments`. "
+            f"Reclaim path: stop chromadb, snapshot the orphan dirs, "
+            f"`rm -rf` them, restart. "
+            f"`chromadb_rebuild` is the wrong tool for this — it "
+            f"compacts LIVE collections, not orphans.",
             tag="chromadb_hygiene_orphans",
         )
     except Exception:

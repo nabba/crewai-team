@@ -293,34 +293,100 @@ def hygiene():
     )
 
 
-def test_orphan_scan_finds_uuid_dirs_not_in_sqlite(hygiene, tmp_path):
-    """Create a fake chroma.sqlite3 with one known collection ID; add
-    two UUID-named directories alongside, one matching + one orphan.
-    Scanner should flag the orphan only."""
-    kb_dir = tmp_path / "memory"
-    kb_dir.mkdir()
-    db = kb_dir / "chroma.sqlite3"
-    known_id = "11111111-2222-3333-4444-555555555555"
-    orphan_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    conn = sqlite3.connect(str(db))
+def _make_chroma_sqlite(db_path, *, collection_id, segment_ids):
+    """Create a fake chroma.sqlite3 with the real ChromaDB schema:
+    `collections.id` for catalog rows, `segments.id` for the per-
+    segment UUIDs that become on-disk dirs. The earlier orphan-scan
+    test used only `collections`, which matched the buggy production
+    code and missed the 2026-05-16 incident."""
+    conn = sqlite3.connect(str(db_path))
     conn.execute(
         "CREATE TABLE collections (id TEXT PRIMARY KEY, name TEXT)"
     )
-    conn.execute("INSERT INTO collections (id, name) VALUES (?, 'team')", (known_id,))
+    conn.execute(
+        "CREATE TABLE segments (id TEXT PRIMARY KEY, collection TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO collections (id, name) VALUES (?, 'team')",
+        (collection_id,),
+    )
+    for sid in segment_ids:
+        conn.execute(
+            "INSERT INTO segments (id, collection) VALUES (?, ?)",
+            (sid, collection_id),
+        )
     conn.commit()
     conn.close()
+
+
+def test_orphan_scan_finds_uuid_dirs_not_in_sqlite(hygiene, tmp_path):
+    """Create a fake chroma.sqlite3 with the segments table populated;
+    add two UUID-named directories alongside, one matching a live
+    segment + one orphan. Scanner should flag the orphan only."""
+    kb_dir = tmp_path / "memory"
+    kb_dir.mkdir()
+    db = kb_dir / "chroma.sqlite3"
+    collection_id = "11111111-2222-3333-4444-555555555555"
+    live_segment_id = "22222222-3333-4444-5555-666666666666"
+    orphan_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    _make_chroma_sqlite(db, collection_id=collection_id,
+                        segment_ids=[live_segment_id])
     # On-disk dirs
-    (kb_dir / known_id).mkdir()
+    (kb_dir / live_segment_id).mkdir()
     (kb_dir / orphan_id).mkdir()
-    # Add a small file inside the orphan so it has non-zero size
     (kb_dir / orphan_id / "data.bin").write_bytes(b"x" * 100)
 
     findings = hygiene._scan_for_orphan_segments([db])
     assert len(findings) == 1
     assert findings[0]["kb"] == "memory"
     assert orphan_id in findings[0]["orphan_uuids"]
-    assert known_id not in findings[0]["orphan_uuids"]
+    assert live_segment_id not in findings[0]["orphan_uuids"]
     assert findings[0]["orphan_bytes"] > 0
+
+
+def test_orphan_scan_does_not_flag_segment_dirs_2026_05_16_regression(
+    hygiene, tmp_path,
+):
+    """Regression test for the 2026-05-16 incident.
+
+    ChromaDB names per-collection HNSW dirs after `segments.id`, NOT
+    `collections.id`. The original monitor compared disk UUIDs against
+    `collections.id` only, mis-flagging EVERY live VECTOR segment as
+    an orphan. A cleanup pass following the (incorrect) advisory
+    deleted 43 live segment dirs across 5 KBs (recovered from
+    snapshot; no permanent loss).
+
+    Pin: a UUID dir whose name matches a row in `segments` must NEVER
+    be flagged as orphan, even when there's no matching row in
+    `collections`."""
+    kb_dir = tmp_path / "memory"
+    kb_dir.mkdir()
+    db = kb_dir / "chroma.sqlite3"
+    collection_id = "11111111-2222-3333-4444-555555555555"
+    # Two segments per collection — the typical chromadb shape: a
+    # METADATA segment (SQLite-only, no on-disk dir) and a VECTOR
+    # segment (HNSW, gets a dir).
+    metadata_segment_id = "22222222-3333-4444-5555-666666666666"
+    vector_segment_id = "33333333-4444-5555-6666-777777777777"
+    _make_chroma_sqlite(
+        db,
+        collection_id=collection_id,
+        segment_ids=[metadata_segment_id, vector_segment_id],
+    )
+    # Only the VECTOR segment has an on-disk dir (chromadb's real
+    # behaviour for HNSW-persisted segments).
+    (kb_dir / vector_segment_id).mkdir()
+    (kb_dir / vector_segment_id / "data_level0.bin").write_bytes(b"x" * 100)
+
+    findings = hygiene._scan_for_orphan_segments([db])
+    # The buggy version would have flagged vector_segment_id as
+    # orphan (it doesn't match collection_id). The fixed version
+    # checks against segments.id and finds it live.
+    assert findings == [], (
+        "Live VECTOR segment dirs must NOT be flagged as orphans. "
+        "See chromadb_hygiene.py header comment for the 2026-05-16 "
+        "incident this regression test pins against."
+    )
 
 
 def test_orphan_scan_quiet_when_no_orphans(hygiene, tmp_path):
@@ -329,6 +395,7 @@ def test_orphan_scan_quiet_when_no_orphans(hygiene, tmp_path):
     db = kb_dir / "chroma.sqlite3"
     conn = sqlite3.connect(str(db))
     conn.execute("CREATE TABLE collections (id TEXT PRIMARY KEY, name TEXT)")
+    conn.execute("CREATE TABLE segments (id TEXT PRIMARY KEY, collection TEXT)")
     conn.commit()
     conn.close()
     findings = hygiene._scan_for_orphan_segments([db])
@@ -341,6 +408,7 @@ def test_orphan_scan_skips_non_uuid_subdirs(hygiene, tmp_path):
     db = kb_dir / "chroma.sqlite3"
     conn = sqlite3.connect(str(db))
     conn.execute("CREATE TABLE collections (id TEXT PRIMARY KEY, name TEXT)")
+    conn.execute("CREATE TABLE segments (id TEXT PRIMARY KEY, collection TEXT)")
     conn.commit()
     conn.close()
     # Decoys that look like dirs but aren't UUID-shaped
