@@ -801,3 +801,91 @@ by retrospective queries.
 | `STRUCTURED_DIAGNOSIS_TELEMETRY_LOG` (env) | `workspace/healing/structured_diagnosis_telemetry.jsonl` | Override telemetry log path (test fixtures) |
 | `STRUCTURED_DIAGNOSIS_THRESHOLD_STATE` (env) | `workspace/healing/structured_diagnosis_threshold.json` | Override state-file path |
 | `HOT1_OBSERVATION_LOG` (env) | `workspace/subia/observations/metacognitive_repair.jsonl` | Override HOT-1 log path |
+
+
+## §53 amendments — destructive_advisory guardrail + audit-driven monitor hardening (2026-05-16)
+
+Same-day post-incident hardening pass (full change-log in
+PROGRAM.md §53). Two live-data incidents (migration drill corrupting
+postgres; chromadb_hygiene mis-classifying live segment dirs as
+orphans) prompted an audit of every monitor under
+`app/healing/monitors/`. Audit doc:
+`docs/AUDIT_2026_05_16_DESTRUCTIVE_MONITORS.md`. Eight priority
+items closed across PRs #113 / #114 / #116 / #117.
+
+### §53.A The structural guardrail — `app/healing/destructive_advisory.py`
+
+A monitor whose alert recommends a destructive action constructs a
+`DestructiveAdvisory` dataclass. Construction REFUSES if any of the
+five discipline fields is missing or if the snapshot file is not on
+disk:
+
+| Field | Discipline |
+|---|---|
+| `snapshot_path` | Pre-action tar snapshot, MUST exist before the alert is sent, MUST be > 100 bytes (refuses 0-byte placeholders) |
+| `apply_command` | Operator-runnable shell command (paste-and-run) |
+| `undo_command` | Reversal path — typically `tar -xzf <snapshot>` |
+| `verify_command` | Schema check operator runs BEFORE acting. The chromadb_hygiene incident would have been caught here — verify would have run the same query the monitor used and shown 0 orphans |
+| `schema_assumption` | One sentence on what classification depends on |
+
+`format()` puts verify BEFORE apply in the alert body — operator's
+eye lands on verification first. `emit()` routes through the
+standard Signal alert + audit log path with a dedicated
+`destructive_advisory:<monitor_name>` tag for arbiter dedup.
+`snapshot_paths()` is the canonical tar helper.
+
+Use sites today: `chromadb_hygiene._alert_orphan_segments` (the
+load-bearing example — orphan dirs are snapshotted to
+`workspace/.snapshots/chromadb_orphans_<ts>.tar.gz` before any
+destructive advice reaches the operator).
+
+### §53.B Monitor changes
+
+| Monitor | Change | PR |
+|---|---|---|
+| `chromadb_hygiene` (orphan scan) | Query `segments.id` not `collections.id`; alert text updated; 8 dirs become true orphans (down from 50+ false positives) | #113 |
+| `chromadb_hygiene` (orphan alert) | Routes through `DestructiveAdvisory`; pre-snapshot tarball lives in `workspace/.snapshots/` | #114 |
+| `chromadb_hygiene` (VACUUM) | Per-path consecutive-failure tracking; one-shot Signal alert after 4 quarters of consecutive failure | #117 |
+| `db_vacuum` | Same chronic-failure shape for `conversations.db` | #117 |
+| `retention.run_chromadb` | `_oldest_ids` returns `(ids, stats)`; records lacking timestamp excluded (not silently classified as oldest); audit row surfaces skipped count | #114 |
+| `retention.run_worktrees` | `_validate_worktree_path(wt, *, expected_session_id)` before rmtree — refuses unless absolute + inside worktree_root + basename match + 1 segment deep | #116 |
+| `retention.run_attachments` | `_is_attachments_dir_safe(p)` refuses unless `SIGNAL_ATTACHMENTS_DIR` resolves inside `/app/attachments`, `/app/workspace/`, or `/tmp/` | #116 |
+| `lock_housekeeper` | `_LOCK_RULES` per-directory basename patterns; unknown-shape `.lock` files alerted + never auto-deleted | #116 |
+| `log_archival` | Retention floor 7d → 30d; `_PURGE_PER_PASS_CAP = 100` oldest-first | #116 |
+| `tz_drift` | `_synthesize_zoneinfo_patch(src)` produces a real CR diff (no longer empty); refuses on unexpected source shape | #117 |
+
+### §53.C The discipline (codified)
+
+Future monitors that emit destructive recommendations:
+
+1. **Snapshot first.** Take a tar snapshot of the targets BEFORE
+   emitting the alert. The operator sees the snapshot path in the
+   alert text and has a one-line undo command.
+2. **Verify-before-act.** Include a concrete shell command the
+   operator can run to validate the monitor's classification
+   against the current state of the world.
+3. **Declare the assumption.** One sentence on what schema
+   assumption the classification depends on.
+4. **Route through `DestructiveAdvisory`.** The dataclass refuses
+   construction if any of (1)-(3) is missing — discipline enforced
+   at compile time, not relied on memory of past incidents.
+
+### §53.D Tests
+
+Three new pinning files, 74 tests, all pass without gateway-deps env:
+
+* `tests/test_destructive_advisory.py` (19) — snapshot helper
+  edges, dataclass refusal per-field, format ordering (verify
+  before apply), emit integration.
+* `tests/test_risk_items_followup.py` (22) — path-validation
+  refusals, safe-prefix refusals incl. suffix-attack, lock-rule
+  basenames, source-level ordering pins.
+* `tests/test_remaining_risk_items.py` (15) — chronic-failure
+  source-level pins, synth-helper pure-function tests
+  (`ast.parse`-verified output), refusal-shape tests.
+
+Plus the regression pin in `tests/test_q3_2_cleanup.py`:
+`test_orphan_scan_does_not_flag_segment_dirs_2026_05_16_regression`
+exercises the exact incident scenario — a `segments` row whose UUID
+matches a dir on disk must NEVER be flagged orphan, regardless of
+`collections.id`.
