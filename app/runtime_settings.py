@@ -218,6 +218,23 @@ def _defaults() -> dict[str, Any]:
         # (``app.shinka_engine``) is gated separately.
         "shinka_inline_evolve_enabled": True,
 
+        # Q13 — year-2+ resilience (PROGRAM §48). Three new master
+        # switches, all default ON:
+        #   * migration_drill_monitor_enabled — alerts when the
+        #     deploy/scripts/migration-drill.sh hasn't been run on
+        #     cadence (catches "today's code can't read 6-mo-old
+        #     backup" silently).
+        #   * dependency_radar_enabled — weekly HEAVY idle running
+        #     pip outdated + OSV.dev CVE + GitHub abandonment.
+        #     Files patch-level + CVE-patch CRs via proposal_bridge;
+        #     Signal-alerts major + abandoned.
+        #   * tz_drift_monitor_enabled — daily probe comparing
+        #     hand-rolled _helsinki_tz() vs ZoneInfo. On first
+        #     divergence files a CR proposing consolidation.
+        "migration_drill_monitor_enabled": True,
+        "dependency_radar_enabled": True,
+        "tz_drift_monitor_enabled": True,
+
         # Q9.3 — Travel monitor configuration (PROGRAM §46.6).
         # ``tripit_ical_url`` is the per-user TripIt iCal feed
         # (Settings → Calendar Sync → "Copy to your calendar" in
@@ -1343,3 +1360,32 @@ def get_analogy_index_populator_enabled() -> bool:
 
 def set_analogy_index_populator_enabled(value: bool) -> None:
     _update({"analogy_index_populator_enabled": bool(value)})
+
+
+# ── Q13 — year-2+ resilience (PROGRAM §48) ────────────────────────────
+
+
+def get_migration_drill_monitor_enabled() -> bool:
+    return bool(
+        _ensure_initialized().get("migration_drill_monitor_enabled", True)
+    )
+
+
+def set_migration_drill_monitor_enabled(value: bool) -> None:
+    _update({"migration_drill_monitor_enabled": bool(value)})
+
+
+def get_dependency_radar_enabled() -> bool:
+    return bool(_ensure_initialized().get("dependency_radar_enabled", True))
+
+
+def set_dependency_radar_enabled(value: bool) -> None:
+    _update({"dependency_radar_enabled": bool(value)})
+
+
+def get_tz_drift_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("tz_drift_monitor_enabled", True))
+
+
+def set_tz_drift_monitor_enabled(value: bool) -> None:
+    _update({"tz_drift_monitor_enabled": bool(value)})

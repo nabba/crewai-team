@@ -81,6 +81,8 @@ _DEFAULT_CADENCE_S = {
     "drill_staleness": 24 * 3600,              # daily probe; alerts when any drill past cadence+grace; PROGRAM §44.2 Q6.2
     "backup_freshness": 24 * 3600,             # daily probe; alerts when local DR tarball > 14d old; PROGRAM §44.5 Q6.5 P2#3
     "architecture_adoption": 24 * 3600,        # daily probe; proposes rollback CR for unused subsystems; PROGRAM §45.1 Q7.1
+    "migration_drill": 24 * 3600,              # daily probe; alerts at 100d stale; PROGRAM §48 Q13.1
+    "tz_drift": 24 * 3600,                     # daily probe; alerts on hand-rolled vs zoneinfo divergence; PROGRAM §48 Q13.3
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -324,6 +326,29 @@ def _driver() -> None:
         logger.debug(
             "monitors: diagnosis_auto_tune import failed", exc_info=True,
         )
+    # PROGRAM §48 Q13.1 — alerts when bash deploy/scripts/migration-drill.sh
+    # has not been run on quarterly cadence. Catches the silent failure
+    # mode "today's code can't read a 6-month-old backup".
+    try:
+        from app.healing.monitors import migration_drill
+        monitors.append((
+            "migration_drill", migration_drill.run,
+            _DEFAULT_CADENCE_S["migration_drill"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: migration_drill import failed", exc_info=True)
+    # PROGRAM §48 Q13.3 — daily probe comparing hand-rolled
+    # _helsinki_tz() vs ZoneInfo("Europe/Helsinki"). Catches EU
+    # DST abolition + stale host tzdata. On first material
+    # divergence files a regular CR proposing consolidation.
+    try:
+        from app.healing.monitors import tz_drift
+        monitors.append((
+            "tz_drift", tz_drift.run,
+            _DEFAULT_CADENCE_S["tz_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: tz_drift import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

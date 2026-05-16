@@ -6,7 +6,7 @@ protocol gates *intentional* edits, but it doesn't surface
 narrative-self FIFO holds 5 identity claims; at year 2 the older
 you is gone. This ledger is the multi-year record.
 
-Eleven event kinds, all append-only::
+Thirteen event kinds, all append-only::
 
     tier3_amendment           Tier-3 IMMUTABLE file edit landed
     governance_ratchet        SAFETY/QUALITY threshold raised or relaxed
@@ -22,6 +22,14 @@ Eleven event kinds, all append-only::
     resilience_drill          PROGRAM §44 — Q6 drill landmark
     sentience_probe_proposal  PROGRAM §47 — Q12.4 agent-proposed probe-
                               design markdown filed as CR
+    schema_migration_drill    PROGRAM §48 — Q13.1 (year-2+ #2.2)
+                              landmark: never-run / stale / failed /
+                              recovered transitions for the
+                              migration-drill manifest
+    tz_drift                  PROGRAM §48 — Q13.3 (year-2+ #2.6)
+                              landmark: divergence detected between
+                              hand-rolled _helsinki_tz and zoneinfo
+                              OR recovery from divergence
 
 Storage: ``workspace/identity/continuity_ledger.jsonl``. One
 ``IdentityEvent`` per line. Append-only — never delete, never
@@ -68,6 +76,8 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
     "sentience_observation",  # PROGRAM §43 — Q5.4.2
     "resilience_drill",  # PROGRAM §44 — Q6.1
     "sentience_probe_proposal",  # PROGRAM §47 — Q12.4 (8.4 self-design)
+    "schema_migration_drill",  # PROGRAM §48 — Q13.1 (year-2+ #2.2)
+    "tz_drift",  # PROGRAM §48 — Q13.3 (year-2+ #2.6)
 })
 
 

@@ -8954,3 +8954,275 @@ Q12 (new):                      24 pass +  0 skip
 
 Full Q7→Q12 regression to be run end-to-end before commit.
 
+
+## 48 2026-05-16 — Q13: Year-2+ resilience (audit + 3 missing-item ship)
+
+The user's spec §2 framed 8 classes of failure that "don't bite at
+year 1 but bite at year 2-3-5-7" and asked which are implemented.
+
+Audit verdict before kickoff: **5 of 8 already shipped**.
+
+  * **§2.1 Cryptographic & schema half-lives** — ✅ shipped
+    `app/audit/algorithm_pinning.py` (KNOWN_ARTIFACT_CLASSES manifest,
+    runtime sha256→sha3_256 rotation drill) + `crypto_rotation_drill`
+    monitor (weekly probe, 2-year review interval).
+  * **§2.2 Schema migration drills** — ❌ **PARTIAL** — restore-drill
+    restores into scratch containers + counts rows BUT does NOT
+    apply pending `migrations/*.sql` or run `startup_migrations.
+    apply_all`. 37 migration SQL files exist with no walker; a
+    6-month-old backup + current code would crash on tables
+    migrations 030-035 created. Q13.1 ships the fix.
+  * **§2.3 Dependency rot** — ❌ **MISSING** — `library_radar` is
+    outbound discovery (new tools to ADD); no inbound scanner for
+    pip-outdated / OSV.dev CVE / GitHub repo abandonment. Q13.2
+    ships it.
+  * **§2.4 Audit-log rotation under hash continuity** — ✅ mostly
+    shipped. `app/audit/rolled_log.py` (cross-segment root-hash
+    chain) is the infrastructure; `app/audit/journal.py` migrated
+    `audit_journal.json` to it; `errors.jsonl` rotates via
+    `log_archival` monitor (no hash chain — diagnostic only).
+    Three remaining hash-chained logs (`change_requests/audit.jsonl`,
+    `governance_amendment/audit.jsonl`, `coding_session/audit*`) are
+    still single-file at KB scale — pinned in the §2.1 manifest,
+    ready for migration when growth warrants. Year-5 work, not
+    year-2.
+  * **§2.5 PG/Neo/Chroma major-version upgrades** — ✅ shipped
+    `app/healing/monitors/version_upgrade_drill.py` +
+    `deploy/scripts/version-upgrade-drill.sh` (real `pg_upgrade` /
+    `neo4j-admin database migrate` / Chroma migration against
+    scratch containers; quarterly cadence).
+  * **§2.6 TZ database + DST changes** — ❌ **MISSING** —
+    `app/temporal_context.py:_helsinki_tz()` is hand-rolled DST math
+    while sister sites (`affect/hooks.py`, `companion/scheduler.py`)
+    use `zoneinfo.ZoneInfo("Europe/Helsinki")`. If EU abolishes DST
+    (Estonia/Finland voted for permanent summer time in 2018,
+    activation pending), the surfaces diverge silently. No monitor.
+    Q13.3 ships it.
+  * **§2.7 LLM provider contract drift** — ✅ shipped
+    `app/healing/monitors/provider_contract_drift.py` (351 LOC,
+    structural-signature diff against committed baseline, complements
+    `llm_output_drift`).
+  * **§2.8 Identity slow-drift** — ✅ shipped
+    `app/identity/continuity_ledger.py` + `annual_reflection.py`
+    (yearly synthesis to `wiki/self/value_reflections/<year>.md`).
+    Q13 added 2 more event kinds (`schema_migration_drill`,
+    `tz_drift`) so this Q's own observations show up in next
+    year's drift summary.
+
+Operator decisions before kickoff (via `AskUserQuestion`):
+
+  1. **Ship all 3** missing per plan.
+  2. **2.3 routing** = patch-level → auto-CR via proposal_bridge.
+  3. **2.6 elevation** = on first divergence, also file a CR
+     proposing consolidation onto `ZoneInfo`. (Operator chose
+     "Also file architecture-request on first alert" — I shipped
+     it as a regular CR via `change_requests.lifecycle.create_request`
+     because the change is a function-level refactor, not a new-
+     package architecture; the architecture-request framework is
+     for whole-subsystem scaffolds with file_layout / env_switches /
+     test_plan. End result identical from the operator's POV: a CR
+     appears at `/cp/changes`. Documented inline in `tz_drift.py`.)
+
+### 48.1 — Q13.1 Schema-migration drill
+
+New `deploy/scripts/migration-drill.sh` + new healing monitor
+`app/healing/monitors/migration_drill.py` (30th monitor):
+
+The shell script (operator-runnable separately, quarterly cadence):
+
+  1. Spins up scratch Postgres in a separate compose project
+     (`andrusai-migration-drill`).
+  2. Restores the freshest DR tarball from
+     `workspace/backups/dr/*.tar.gz`.
+  3. Walks `migrations/0*_*.sql` in numeric order. Creates
+     `control_plane._schema_migrations` if missing (idempotent on
+     re-runs). Applies each migration not yet recorded, using
+     `psql --set ON_ERROR_STOP=1`. Tracks applied/skipped/failed
+     counts.
+  4. Runs `app.memory.startup_migrations.apply_all` against the
+     drill DB (inlined pgvector HNSW indexes).
+  5. Runs schema-smoke `SELECT count(*) FROM control_plane.<table>`
+     against tables created by migrations 030-035
+     (`epistemic_peer_reviews`, `epistemic_overrides`,
+     `error_anomalies`, plus the older `audit_log`, `crew_tasks`,
+     `tickets` baselines). Catches "today's code referenced a
+     table that migrations 030-035 created but the snapshot's
+     schema doesn't have" — the user's exact §2.2 concern.
+  6. Updates `workspace/backups/migration_drill_manifest.json` with
+     `last_drill_at`, `last_drill_ok`, per-migration counts,
+     smoke-probe row counts.
+  7. Always tears down on exit (signal trap).
+
+The Python monitor (`migration_drill`):
+
+  * Reads the manifest. Alerts in 4 states:
+    `never_run` / `malformed_manifest` / `stale` (>100 days) /
+    `failed` (last_drill_ok=False).
+  * Emits `schema_migration_drill` continuity-ledger event on
+    landmark transitions only (state CHANGED — not routine
+    pass-pass).
+  * 14-day per-tag alert dedup; daily probe + cadence guard.
+  * Master switch `migration_drill_monitor_enabled` (default ON).
+
+### 48.2 — Q13.2 Dependency-radar
+
+New package `app/dependency_radar/` with `proposer.py` (~700 LOC)
++ `__init__.py`. Three-signal composition:
+
+  * **`_gather_outdated`** — `pip list --outdated --format=json`
+    via subprocess, 60s hard timeout. Injectable for tests.
+  * **`_gather_cves`** — OSV.dev `/v1/querybatch` POST with all
+    (package, current_version) tuples. One round-trip per pass.
+    Injectable.
+  * **`_gather_abandonment`** — `pip show <pkg>` extracts
+    Home-page; if it points at github.com, fetches
+    `api.github.com/repos/{owner}/{repo}` for `pushed_at`. Falls
+    back gracefully on rate-limit (60/hr unauthenticated, fine for
+    one weekly pass over 100-ish deps).
+
+Severity routing:
+
+| Severity | Route | Cooldown |
+|---|---|---|
+| PATCH (e.g. 1.2.3 → 1.2.4) | proposal_bridge.stage → CR via 7d cooldown | 7d |
+| MINOR (1.2.3 → 1.3.0) | proposal_bridge.stage → CR via 14d cooldown | 14d |
+| MAJOR (1.x → 2.0) | Signal alert ONLY — operator schedules migration window | n/a |
+| CVE (patched version available) | proposal_bridge.stage → CR with **3d** cooldown | 3d |
+| CVE_NO_FIX (no patched version) | Signal alert ONLY | n/a |
+| ABANDONED (no GitHub push >365d) | Signal alert ONLY, once/week dedup | n/a |
+
+Rate limit: `_MAX_PROPOSALS_PER_PASS=3` matches proposal_bridge.
+Lessons-learned consult before staging (interface ready;
+no-op when LL KB unavailable).
+
+Wiring:
+
+  * Added `"dependency_radar"` to `proposal_bridge.store._KNOWN_SOURCES`.
+  * Boot-anchored in `app/healing/__init__.py` (mirrors
+    `library_radar` + `proposal_bridge` pattern).
+  * Eager-start at module-bottom is gated by `_enabled()` so the
+    daemon doesn't spin up in the test env via subprocess.
+  * Master switch `dependency_radar_enabled` (default ON).
+
+### 48.3 — Q13.3 TZ-drift monitor
+
+New `app/healing/monitors/tz_drift.py` (31st monitor):
+
+Three probes per pass:
+
+  1. **Now-offset** — compare `_handrolled_offset_at(now)` (re-
+     implementing the production rule) vs.
+     `ZoneInfo("Europe/Helsinki").utcoffset(now)`.
+  2. **March-equinox-anchor** — same comparison at the year's
+     March equinox (astronomically pinned, hand-rolled +
+     zoneinfo SHOULD agree on this date).
+  3. **October-equinox-anchor** — same.
+
+Any divergence > 60 seconds counts as material. Each probe
+returns `{label, moment_iso, handrolled_offset_s, zoneinfo_offset_s,
+divergence_s, diverged}`.
+
+On material divergence detected:
+
+  * Signal alert via canonical `app.notify.notify` with topic
+    `tz_drift` for arbiter dedup; includes both offsets per anchor.
+  * **First-time-in-this-drift-episode**: file a regular CR via
+    `change_requests.lifecycle.create_request` proposing
+    consolidation of `_helsinki_tz()` onto `ZoneInfo`. The CR
+    target_path is `app/temporal_context.py`; the reason field
+    spells out the proposed fix and references the sister-site
+    precedent (`app/affect/hooks.py:366`,
+    `app/companion/scheduler.py:150` already use ZoneInfo).
+  * Emit `tz_drift` continuity-ledger event with `n_diverged`,
+    `cr_id`, `probes`.
+
+On routine pass (no divergence) after a prior divergence:
+
+  * Emit `tz_drift` recovery event (so annual reflection sees
+    "this is the year we detected + fixed a TZ drift" as a signal).
+
+State at `workspace/healing/tz_drift_state.json`: tracks
+`last_divergence_at`, `cr_filed`, `recovered`.
+
+Master switch `tz_drift_monitor_enabled` (default ON).
+Cadence daily. State-write failure-isolated.
+
+### 48.4 — Wiring summary
+
+Edits to existing files (additive-only, no behavior change for
+disabled paths):
+
+  * `app/proposal_bridge/store.py:_KNOWN_SOURCES` — add
+    `"dependency_radar"`.
+  * `app/identity/continuity_ledger.py:IDENTITY_EVENT_KINDS` —
+    add `"schema_migration_drill"` + `"tz_drift"` (now 13 kinds).
+    Docstring updated.
+  * `app/runtime_settings.py:_defaults()` — add 3 new switches +
+    3 new getter/setter pairs at end.
+  * `app/healing/monitors/__init__.py` — register 2 new monitors
+    (`migration_drill` + `tz_drift`) in `_DEFAULT_CADENCE_S` +
+    lazy-import + daemon-loop tuple.
+  * `app/healing/__init__.py` — boot-anchor `dependency_radar`
+    import (mirrors `library_radar` + `proposal_bridge`).
+  * `app/dependency_radar/proposer.py` — eager `start_daemon()`
+    at module bottom (gated by `_enabled()`).
+
+### 48.5 — Tests
+
+`tests/test_q13_resilience_year2.py` — 31 tests, all pass:
+
+  * Source-level assertions for 2.1 / 2.4 / 2.5 / 2.7 / 2.8 already
+    shipped (catch refactor regressions).
+  * **2.2 migration drill**: shell script exists + executable +
+    contains migration walker + manifest write; monitor's 4 alert
+    states (`never_run` / `stale` / `failed` / silent-on-healthy)
+    + disabled-master-switch path.
+  * **2.3 dependency_radar**: SemVer classification correctness;
+    PATCH→CR via stage; MAJOR→Signal alert; CVE-with-fix→CR with
+    `_COOLDOWN_CVE`; CVE_NO_FIX→Signal; ABANDONED→Signal;
+    `_MAX_PROPOSALS_PER_PASS` rate limit; disabled-master-switch
+    path; `_KNOWN_SOURCES` registration check.
+  * **2.6 tz_drift**: silent-on-healthy; divergence-detection +
+    CR-file + alert via injected stubs; recovery transition
+    emits landmark ledger event; **pinning test**
+    `test_tz_drift_handrolled_matches_zoneinfo_on_current_year`
+    asserts hand-rolled and zoneinfo agree on today's date —
+    fails when EU abolishes DST and the production code needs
+    consolidation.
+  * Wiring: monitors `__init__.py` registers both, healing
+    `__init__.py` boot-anchors `dependency_radar`,
+    `runtime_settings.py` has all 3 getter/setter pairs,
+    continuity_ledger has both new event kinds.
+
+Q7→Q13 regression: **279 pass + 6 skipped (gateway-deps), 0 fail.**
+
+### 48.6 — What Q13 deliberately did NOT do
+
+  * **No rolled_log migration for the 3 remaining hash-chained
+    audit logs** (`change_requests/`, `governance_amendment/`,
+    `coding_session/`). They're at KB-scale; year-5 work, not
+    year-2. The §2.1 manifest already lists them so an operator
+    can re-evaluate when the time comes.
+  * **No replacement of `_helsinki_tz()` with `ZoneInfo`.**
+    Operator decided on monitor-with-auto-CR pattern instead.
+    On first divergence the CR appears; the operator decides
+    whether to apply.
+  * **No `dependency_radar` UI in `/cp/changes`** beyond what the
+    standard CR list provides. The radar's CRs look identical
+    to any other CR; the operator distinguishes via `requestor=
+    "dependency_radar"` in the CR body.
+  * **No SBOM tracking** (CycloneDX / SPDX). Out of scope for
+    year-2 resilience; the radar's three-axis signal set covers
+    the operator's stated concern.
+  * **No SubIA integrity impact.** All new files live OUTSIDE
+    `app/subia/` — `dependency_radar/` is a parallel observational
+    subsystem; `healing/monitors/` already an additive surface;
+    `temporal_context.py` is not under `app/subia/`. SubIA
+    integrity manifest unchanged.
+  * **No Goodhart-grade pinning test** for the dependency_radar's
+    auto-CR behavior, beyond the rate limit. The proposal_bridge
+    layer already enforces the 7d cooldown / weighted GW publish;
+    the radar would be flagging Goodhart drift via the existing
+    `notify_suppression_review` monitor if its alerts started
+    getting suppressed in batches.
+

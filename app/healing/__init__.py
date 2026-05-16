@@ -90,6 +90,15 @@ try:
 except Exception:
     _log.warning("app.healing: proposal_bridge wiring failed", exc_info=True)
 
+# PROGRAM §48 (Q13.2) — weekly inbound-dependency health scan. Same
+# anchor pattern as library_radar / proposal_bridge: import at boot
+# so the daemon's eager-start trigger fires exactly once on a known
+# entry point.
+try:
+    from app import dependency_radar as _dependency_radar  # noqa: F401
+except Exception:
+    _log.warning("app.healing: dependency_radar wiring failed", exc_info=True)
+
 try:
     from app.change_requests import auto_revert as _auto_revert  # noqa: F401
 except Exception:

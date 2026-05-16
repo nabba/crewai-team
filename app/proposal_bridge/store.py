@@ -52,6 +52,7 @@ _KNOWN_SOURCES: frozenset[str] = frozenset({
     "capability_gap",
     "library_radar",
     "paper_pipeline",
+    "dependency_radar",  # PROGRAM §48 — Q13.2 (year-2+ resilience #2.3)
 })
 
 _SAFE_SIG_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
