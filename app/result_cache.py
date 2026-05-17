@@ -133,6 +133,7 @@ def _prune(col):
                 to_delete.append(id_)
         if to_delete:
             col.delete(ids=to_delete)
+            _ledger_delete("result_cache", to_delete)
             logger.debug(f"result_cache pruned {len(to_delete)} expired entries")
     except Exception:
         logger.debug("result_cache prune failed", exc_info=True)
@@ -145,11 +146,23 @@ def invalidate(crew_name: str = None):
             all_data = col.get(where={"crew": crew_name}, include=["metadatas"])
             if all_data["ids"]:
                 col.delete(ids=all_data["ids"])
+                _ledger_delete("result_cache", all_data["ids"])
         else:
             from app.memory.chromadb_manager import get_client
             get_client().delete_collection(_COLLECTION_NAME)
     except Exception:
         logger.debug("result_cache invalidate failed", exc_info=True)
+
+
+def _ledger_delete(collection: str, ids: list[str]) -> None:
+    """PROGRAM §56 iter-2 — mirror chromadb deletes into the source
+    ledger as tombstones so replay-rebuild doesn't resurrect deleted
+    rows. Failure-isolated."""
+    try:
+        from app.memory.source_ledger import hook_collection_delete
+        hook_collection_delete("memory", collection, list(ids))
+    except Exception:
+        logger.debug("result_cache: ledger delete hook failed", exc_info=True)
 
 
 def invalidate_by_task(task: str, *, crew_name: str | None = None) -> int:
@@ -198,6 +211,7 @@ def invalidate_by_task(task: str, *, crew_name: str | None = None) -> int:
 
         if to_delete:
             col.delete(ids=to_delete)
+            _ledger_delete("result_cache", to_delete)
             logger.info(
                 "result_cache: INVALIDATE_BY_TASK crew=%s n=%d "
                 "(task=%r)", crew_name or "*", len(to_delete), task[:80],

@@ -271,6 +271,12 @@ def cleanup_stale_working_beliefs(max_age_hours: int = 6) -> int:
         if not stale_ids:
             return 0
         col.delete(ids=stale_ids)
+        # PROGRAM §56 iter-2 — ledger tombstone
+        try:
+            from app.memory.source_ledger import hook_collection_delete
+            hook_collection_delete("memory", "beliefs", list(stale_ids))
+        except Exception:
+            pass
         logger.info(
             "belief_state: cleanup removed %d stale 'working' beliefs "
             "(older than %dh)", len(stale_ids), max_age_hours,

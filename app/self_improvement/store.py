@@ -267,6 +267,12 @@ def prune_old_gaps(max_age_days: int = 60) -> int:
         if ids:
             col.delete(ids=ids)
             removed = len(ids)
+            # PROGRAM §56 iter-2 — ledger tombstone
+            try:
+                from app.memory.source_ledger import hook_collection_delete
+                hook_collection_delete("memory", GAPS_COLLECTION, list(ids))
+            except Exception:
+                pass
     except Exception as exc:
         logger.debug(f"prune_old_gaps failed: {exc}")
     return removed

@@ -371,6 +371,19 @@ def store(collection_name: str, text: str, metadata: dict = None):
         maybe_dual_write(collection_name, doc_id, text, metadata)
     except Exception:
         logger.debug("chromadb_manager: dual_write hook failed", exc_info=True)
+    # PROGRAM §56 (2026-05-17) — source-ledger dual-write. Append the
+    # row to workspace/<kb>/.source_ledger.jsonl so the KB stays
+    # reconstructable even if chroma.sqlite3 + HNSW segment dirs are
+    # lost entirely. Failure-isolated end-to-end; never blocks the
+    # live write path. ``memory`` is the default KB for this module's
+    # PersistentClient (see PERSIST_DIR); other KBs go through
+    # scoped_memory which has its own hook. See
+    # ``app/memory/source_ledger.py`` for the protocol.
+    try:
+        from app.memory.source_ledger import append_row
+        append_row("memory", collection_name, doc_id, text, metadata or {})
+    except Exception:
+        logger.debug("chromadb_manager: source_ledger hook failed", exc_info=True)
 
 
 def retrieve(collection_name: str, query: str, n: int = 5) -> list[str]:

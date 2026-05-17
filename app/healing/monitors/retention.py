@@ -143,6 +143,25 @@ def run_chromadb() -> None:
             continue
         try:
             col.delete(ids=ids_to_delete)
+            # PROGRAM §56 iter-2 — ledger tombstone. Retention deletes
+            # are large bulk operations; we hook them so replay doesn't
+            # resurrect the rows the retention monitor pruned.
+            try:
+                from app.memory.source_ledger import hook_collection_delete
+                # KB inference: this retention monitor scans every KB,
+                # not just memory. The current pass's KB is the parent
+                # of the chroma client's path. Best-effort.
+                kb_name_inferred = "memory"
+                try:
+                    from pathlib import Path as _P
+                    cpath = getattr(getattr(col, "_client", None), "_persist_directory", "") or ""
+                    if cpath:
+                        kb_name_inferred = _P(str(cpath)).name
+                except Exception:
+                    pass
+                hook_collection_delete(kb_name_inferred, name, list(ids_to_delete))
+            except Exception:
+                pass
             summary["total_deleted"] += len(ids_to_delete)
             summary["collections"].append({
                 "name": name, "count": count, "cap": cap,

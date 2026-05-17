@@ -78,10 +78,30 @@ async def upload_fiction_text(
         try:
             (FICTION_TEXTS_DIR / dup.existing_filename).unlink(missing_ok=True)
             if col is not None:
-                # Best-effort: remove existing chunks for the same source_file
-                await asyncio.to_thread(
-                    col.delete, where={"source_file": dup.existing_filename},
-                )
+                # PROGRAM §56 iter-2 — resolve ids first so we can
+                # tombstone them; then delete by ids (avoids two
+                # different code paths for the same logical op).
+                def _fetch_ids() -> list[str]:
+                    try:
+                        existing = col.get(where={"source_file": dup.existing_filename})
+                        return list(existing.get("ids") or [])
+                    except Exception:
+                        return []
+                ids_to_drop = await asyncio.to_thread(_fetch_ids)
+                if ids_to_drop:
+                    await asyncio.to_thread(col.delete, ids=ids_to_drop)
+                    try:
+                        from app.memory.source_ledger import hook_collection_delete
+                        col_name = getattr(col, "name", "fiction")
+                        hook_collection_delete("knowledge", col_name, ids_to_drop)
+                    except Exception:
+                        pass
+                else:
+                    # Fallback: original where-delete path (no ids found
+                    # to ledger but at least don't leak stale rows).
+                    await asyncio.to_thread(
+                        col.delete, where={"source_file": dup.existing_filename},
+                    )
         except Exception:
             logger.debug("fiction: pre-overwrite cleanup failed", exc_info=True)
 

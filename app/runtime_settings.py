@@ -59,6 +59,12 @@ def _env_bool(name: str, default: bool = False) -> bool:
         return False
     return default
 
+
+def _env_str(name: str, default: str) -> str:
+    """Read an env var as a string, returning ``default`` if empty/unset."""
+    raw = os.getenv(name, "").strip()
+    return raw if raw else default
+
 logger = logging.getLogger(__name__)
 
 VALID_VOICE_MODES = ("off", "local", "cloud")
@@ -87,9 +93,67 @@ def _defaults() -> dict[str, Any]:
         "error_runbooks_enabled": _env_bool("ERROR_RUNBOOKS_ENABLED", False),
         "tool_supervisor_enabled": _env_bool("TOOL_SUPERVISOR_ENABLED", False),
         "recovery_loop_enabled": _env_bool("RECOVERY_LOOP_ENABLED", False),
+        # SubIA master switches (productization plan T1.3, 2026-05-16).
+        # Previously env-only — flipping required a gateway restart AND
+        # editing .env. Mirroring here makes them discoverable from
+        # /cp/settings. The actual hook registration happens at boot in
+        # app.main; toggling here takes effect on the next restart.
+        # Seeded from the existing env-default so an .env-true setup
+        # doesn't silently turn OFF on first read.
+        "subia_live_enabled": _env_bool(
+            "SUBIA_FEATURE_FLAG_LIVE",
+            bool(getattr(s, "subia_live_enabled", False)),
+        ),
+        "subia_grounding_enabled": _env_bool(
+            "SUBIA_GROUNDING_ENABLED",
+            bool(getattr(s, "subia_grounding_enabled", False)),
+        ),
+        "subia_idle_jobs_enabled": _env_bool(
+            "SUBIA_IDLE_JOBS_ENABLED",
+            bool(getattr(s, "subia_idle_jobs_enabled", False)),
+        ),
+        "subia_introspection_enabled": _env_bool(
+            "SUBIA_INTROSPECTION_ENABLED",
+            bool(getattr(s, "subia_introspection_enabled", False)),
+        ),
         # Goodhart hard-gate three-way control.
         "goodhart_hard_gate_disabled": _env_bool("GOODHART_HARD_GATE_DISABLED", False),
         "goodhart_hard_gate_enforcing": _env_bool("GOODHART_HARD_GATE_ENFORCING", False),
+        # Cloud-migrate execute-gate (productization plan WP D, 2026-05-17).
+        # Layer-3 of the three safety gates: typed-phrase (API), --really-do-it
+        # (CLI/API arg), and THIS env-var/runtime-setting (the actual subprocess
+        # gate inside _shell). Default OFF — operator must consciously flip ON
+        # before any real terraform apply / gcloud / kubectl invocation. Without
+        # this, migration runs in dry-shell mode (orchestrator works, every
+        # subprocess returns ``<dry: ...>``). Seeded from the legacy env var
+        # so existing setups don't silently turn OFF on first read.
+        "migrate_live_execute": _env_bool("BOTARMY_MIGRATE_LIVE_EXECUTE", False),
+        # Cloud-migrate Stage 0a — project bootstrap (productization plan
+        # extension, 2026-05-17). When OFF (default), the migrate wizard
+        # refuses to run if the target GCP project doesn't already exist.
+        # When ON, a new pre-Step-1 "Create project" card surfaces and the
+        # orchestrator runs ``scripts/install/gcp_bootstrap.sh``
+        # (typed-phrase gated, idempotent — no-op if the project exists).
+        "gcp_bootstrap_enabled": _env_bool("BOTARMY_GCP_BOOTSTRAP_ENABLED", False),
+        # AWS Organizations member-account-create path. Same shape as
+        # gcp_bootstrap_enabled — default OFF, opt-in via Settings card.
+        # When ON, the wizard's bootstrap-account endpoint can call
+        # ``aws organizations create-account``. Requires caller to be in
+        # the Organizations management account.
+        "aws_bootstrap_enabled": _env_bool("BOTARMY_AWS_BOOTSTRAP_ENABLED", False),
+        # Hardening profile for both GCP and AWS targets. "strict" is the
+        # default — gives you Shielded nodes / Workload Identity / master-
+        # authorized-networks / Binary Authorization (AUDIT) / Cloud Armor /
+        # CMEK / audit-log sink / org policies on day one. "basic" ships
+        # only the things that are painful to add post-hoc. "off" matches
+        # the pre-hardening behavior.
+        "hardening_profile": _env_str("BOTARMY_HARDENING_PROFILE", "strict"),
+        # Binary Authorization mode. AUDIT (default) logs would-be-blocks
+        # but lets unsigned images through, so the first deploy doesn't
+        # brick the cluster. Operator graduates to ENFORCE after their
+        # image-signing pipeline lands — flipping this is an identity-
+        # shaping decision and emits a ledger event.
+        "binauthz_mode": _env_str("BOTARMY_BINAUTHZ_MODE", "AUDIT"),
         # Life-companion per-feature overrides — populated by the
         # /cp/life-companion control panel.  Schema:
         #   {<feature_key>: {"enabled": bool|None,
@@ -433,6 +497,45 @@ def _defaults() -> dict[str, Any]:
         "synthesis_pass_enabled": True,
         "conversation_memory_enabled": True,
 
+        # ── ChromaDB integrity protection (PROGRAM §55, 2026-05-17) ──
+        # Defense-in-depth layer added after the dual-writer SQLite
+        # corruption events of 2026-04-25 and 2026-05-17 wiped the
+        # ``memory/`` KB. The root-cause fix (removing the orphaned
+        # chromadb container from docker-compose.yml) eliminates the
+        # specific bug; these switches gate the broader protection
+        # layer that catches the next class of corruption (unclean
+        # restart, journal recovery anomaly, silent btree damage).
+        #
+        # All four default ON. Disabling any one is failure-OPEN — the
+        # remaining switches keep working. The whole stack is also
+        # observational with respect to running subsystems: enabling
+        # /disabling never affects request-path behavior, only the
+        # boot-time + idle-time integrity surface.
+        #
+        # See ``app/memory/chromadb_integrity.py`` for the
+        # implementation and ``docs/CHROMADB_INTEGRITY.md`` for the
+        # operator runbook.
+        "chromadb_wal_enforcement_enabled": True,
+        "chromadb_boot_integrity_check_enabled": True,
+        "chromadb_integrity_monitor_enabled": True,
+        "chromadb_daily_snapshot_enabled": True,
+        "chromadb_auto_replay_enabled": True,
+
+        # ── PROGRAM §56 — Source ledger (10-year resiliency) ─────────
+        # Hash-chained append-only ledger per KB that makes chromadb
+        # purely cacheable. Every store call dual-writes; replay
+        # reconstructs from the ledger. See docs/SOURCE_LEDGER.md.
+        # All four core flags default ON. Off-host uploaders default
+        # OFF until operator wires credentials (S3 / Google Drive).
+        "chromadb_source_ledger_enabled": True,
+        "chromadb_ledger_bootstrap_enabled": True,
+        "chromadb_ledger_drift_replay_enabled": True,
+        "chromadb_ledger_s3_upload_enabled": False,
+        "chromadb_ledger_gdrive_upload_enabled": False,
+        "chromadb_ledger_compaction_enabled": True,
+        "drill_source_ledger_replay_enabled": True,
+        "drill_embedding_rotation_enabled": True,
+
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
         # whose effect requires reloading the running interpreter
@@ -591,6 +694,55 @@ def set_recovery_loop_enabled(value: bool) -> None:
     logger.info("runtime_settings: recovery_loop_enabled set to %s", bool(value))
 
 
+# ── SubIA master switches (productization plan T1.3, 2026-05-16) ────────
+# All four flags take effect on next gateway restart — SubIA hooks
+# register at boot via app.subia.live_integration.enable_subia_hooks.
+# The runtime-settings mirror makes them flippable from /cp/settings;
+# previously the only path was editing .env and restarting.
+
+
+def get_subia_live_enabled() -> bool:
+    """Read by ``app.main`` at boot to decide whether to call
+    ``enable_subia_hooks()``. Takes effect on next restart."""
+    return bool(_ensure_initialized()["subia_live_enabled"])
+
+
+def set_subia_live_enabled(value: bool) -> None:
+    _update({"subia_live_enabled": bool(value)})
+    logger.info("runtime_settings: subia_live_enabled set to %s (restart required)", bool(value))
+
+
+def get_subia_grounding_enabled() -> bool:
+    """Read by ``app.main.handle_task`` at request time — flippable live."""
+    return bool(_ensure_initialized()["subia_grounding_enabled"])
+
+
+def set_subia_grounding_enabled(value: bool) -> None:
+    _update({"subia_grounding_enabled": bool(value)})
+    logger.info("runtime_settings: subia_grounding_enabled set to %s", bool(value))
+
+
+def get_subia_idle_jobs_enabled() -> bool:
+    """Read by ``app.subia.live_integration`` when registering idle jobs.
+    Takes effect on next restart."""
+    return bool(_ensure_initialized()["subia_idle_jobs_enabled"])
+
+
+def set_subia_idle_jobs_enabled(value: bool) -> None:
+    _update({"subia_idle_jobs_enabled": bool(value)})
+    logger.info("runtime_settings: subia_idle_jobs_enabled set to %s (restart required)", bool(value))
+
+
+def get_subia_introspection_enabled() -> bool:
+    """Read by the chat introspection prompt prefix — flippable live."""
+    return bool(_ensure_initialized()["subia_introspection_enabled"])
+
+
+def set_subia_introspection_enabled(value: bool) -> None:
+    _update({"subia_introspection_enabled": bool(value)})
+    logger.info("runtime_settings: subia_introspection_enabled set to %s", bool(value))
+
+
 # ── Goodhart hard-gate (2026-05-09) ─────────────────────────────────────
 
 
@@ -631,6 +783,179 @@ def set_goodhart_hard_gate_enforcing(value: bool) -> None:
         _emit_goodhart_governance_event(
             setting="goodhart_hard_gate_enforcing",
             prior=bool(prior), new=bool(value),
+        )
+
+
+# ── Cloud-migrate execute-gate (productization WP D, 2026-05-17) ────
+
+
+def get_migrate_live_execute() -> bool:
+    """Layer-3 execute-gate for ``botarmy migrate --live``.
+
+    Read by ``app.substrate.migration._shell``,
+    ``app.substrate.cloud_prep._shell``,
+    ``app.substrate.cutover._shell``, and
+    ``app.control_plane.migrate_api.post_start``.
+
+    When False (default), every cloud-mutating subprocess call inside
+    the orchestrator returns a ``<dry: ...>`` placeholder. Operator
+    sees a complete report without spending a dollar.
+    """
+    return bool(_ensure_initialized()["migrate_live_execute"])
+
+
+def set_migrate_live_execute(value: bool) -> None:
+    """Flip the execute-gate. Emits a ``cloud_migration`` event of
+    phase ``execute_policy_changed`` on every transition — annual
+    reflection picks this up as ``the year I enabled real cloud spend``.
+    """
+    prior = get_migrate_live_execute()
+    _update({"migrate_live_execute": bool(value)})
+    logger.info(
+        "runtime_settings: migrate_live_execute set to %s",
+        bool(value),
+    )
+    if bool(prior) != bool(value):
+        _emit_migrate_execute_event(prior=bool(prior), new=bool(value))
+
+
+def _emit_migrate_execute_event(*, prior: bool, new: bool) -> None:
+    """Record the flip on the identity continuity ledger. Best-effort —
+    ledger errors don't roll back the persistence (which already
+    happened in ``_update``)."""
+    try:
+        from app.identity.continuity_ledger import record_event
+        summary = (
+            f"migrate execute-gate flipped {prior} → {new} "
+            f"({'real cloud spend now possible' if new else 'returned to report-only mode'})"
+        )
+        record_event(
+            kind="cloud_migration",
+            actor="operator",
+            summary=summary,
+            detail={
+                "phase": "execute_policy_changed",
+                "prior": prior,
+                "new": new,
+            },
+        )
+    except Exception:
+        logger.debug(
+            "runtime_settings: ledger emission failed on migrate_live_execute flip",
+            exc_info=True,
+        )
+
+
+VALID_HARDENING_PROFILES = ("off", "basic", "strict")
+VALID_BINAUTHZ_MODES = ("AUDIT", "ENFORCE")
+
+
+def get_gcp_bootstrap_enabled() -> bool:
+    return bool(_ensure_initialized()["gcp_bootstrap_enabled"])
+
+
+def set_gcp_bootstrap_enabled(value: bool) -> None:
+    prior = get_gcp_bootstrap_enabled()
+    _update({"gcp_bootstrap_enabled": bool(value)})
+    if bool(prior) != bool(value):
+        _emit_cloud_hardening_event(
+            phase="gcp_bootstrap_policy_changed",
+            prior=prior,
+            new=bool(value),
+            summary=(
+                "GCP project-bootstrap path enabled — wizard can now create new projects"
+                if value else
+                "GCP project-bootstrap path disabled — wizard refuses runs against missing projects"
+            ),
+        )
+
+
+def get_aws_bootstrap_enabled() -> bool:
+    return bool(_ensure_initialized()["aws_bootstrap_enabled"])
+
+
+def set_aws_bootstrap_enabled(value: bool) -> None:
+    prior = get_aws_bootstrap_enabled()
+    _update({"aws_bootstrap_enabled": bool(value)})
+    if bool(prior) != bool(value):
+        _emit_cloud_hardening_event(
+            phase="aws_bootstrap_policy_changed",
+            prior=prior,
+            new=bool(value),
+            summary=(
+                "AWS member-account-bootstrap path enabled — wizard can call Organizations create-account"
+                if value else
+                "AWS member-account-bootstrap path disabled"
+            ),
+        )
+
+
+def get_hardening_profile() -> str:
+    raw = str(_ensure_initialized()["hardening_profile"]).strip().lower()
+    return raw if raw in VALID_HARDENING_PROFILES else "strict"
+
+
+def set_hardening_profile(value: str) -> None:
+    normalized = str(value).strip().lower()
+    if normalized not in VALID_HARDENING_PROFILES:
+        raise ValueError(
+            f"hardening_profile must be one of {VALID_HARDENING_PROFILES}, got {value!r}"
+        )
+    prior = get_hardening_profile()
+    _update({"hardening_profile": normalized})
+    if prior != normalized:
+        _emit_cloud_hardening_event(
+            phase="hardening_profile_changed",
+            prior=prior,
+            new=normalized,
+            summary=f"Cloud hardening profile changed {prior} → {normalized}",
+        )
+
+
+def get_binauthz_mode() -> str:
+    raw = str(_ensure_initialized()["binauthz_mode"]).strip().upper()
+    return raw if raw in VALID_BINAUTHZ_MODES else "AUDIT"
+
+
+def set_binauthz_mode(value: str) -> None:
+    normalized = str(value).strip().upper()
+    if normalized not in VALID_BINAUTHZ_MODES:
+        raise ValueError(
+            f"binauthz_mode must be one of {VALID_BINAUTHZ_MODES}, got {value!r}"
+        )
+    prior = get_binauthz_mode()
+    _update({"binauthz_mode": normalized})
+    if prior != normalized:
+        _emit_cloud_hardening_event(
+            phase="binauthz_mode_changed",
+            prior=prior,
+            new=normalized,
+            summary=(
+                f"Binary Authorization {prior} → {normalized} "
+                f"({'now enforcing — unsigned images will be blocked' if normalized == 'ENFORCE' else 'back to audit-only — unsigned images logged but allowed'})"
+            ),
+        )
+
+
+def _emit_cloud_hardening_event(
+    *, phase: str, prior: Any, new: Any, summary: str,
+) -> None:
+    """Record a cloud-hardening flip on the identity continuity ledger.
+    Same kind=cloud_migration channel as the execute-gate, distinguished
+    by the ``phase`` field in detail."""
+    try:
+        from app.identity.continuity_ledger import record_event
+        record_event(
+            kind="cloud_migration",
+            actor="operator",
+            summary=summary,
+            detail={"phase": phase, "prior": prior, "new": new},
+        )
+    except Exception:
+        logger.debug(
+            "runtime_settings: ledger emission failed on %s",
+            phase,
+            exc_info=True,
         )
 
 
@@ -1905,3 +2230,163 @@ def get_conversation_memory_enabled() -> bool:
 
 def set_conversation_memory_enabled(value: bool) -> None:
     _update({"conversation_memory_enabled": bool(value)})
+
+
+# ── ChromaDB integrity protection (PROGRAM §55, 2026-05-17) ──────────────
+
+
+def get_chromadb_wal_enforcement_enabled() -> bool:
+    """Read by ``app.memory.chromadb_integrity.boot_integrity_scan``."""
+    return bool(_ensure_initialized().get("chromadb_wal_enforcement_enabled", True))
+
+
+def set_chromadb_wal_enforcement_enabled(value: bool) -> None:
+    _update({"chromadb_wal_enforcement_enabled": bool(value)})
+
+
+def get_chromadb_boot_integrity_check_enabled() -> bool:
+    """Read by ``app.memory.chromadb_integrity.boot_integrity_scan``."""
+    return bool(_ensure_initialized().get("chromadb_boot_integrity_check_enabled", True))
+
+
+def set_chromadb_boot_integrity_check_enabled(value: bool) -> None:
+    _update({"chromadb_boot_integrity_check_enabled": bool(value)})
+
+
+def get_chromadb_integrity_monitor_enabled() -> bool:
+    """Read by ``app.healing.monitors.chromadb_integrity``."""
+    return bool(_ensure_initialized().get("chromadb_integrity_monitor_enabled", True))
+
+
+def set_chromadb_integrity_monitor_enabled(value: bool) -> None:
+    _update({"chromadb_integrity_monitor_enabled": bool(value)})
+
+
+def get_chromadb_daily_snapshot_enabled() -> bool:
+    """Read by ``app.healing.monitors.chromadb_integrity`` (daily branch)."""
+    return bool(_ensure_initialized().get("chromadb_daily_snapshot_enabled", True))
+
+
+def set_chromadb_daily_snapshot_enabled(value: bool) -> None:
+    _update({"chromadb_daily_snapshot_enabled": bool(value)})
+
+
+def get_chromadb_auto_replay_enabled() -> bool:
+    """Read by ``app.memory.chromadb_integrity.replay_from_postgres``."""
+    return bool(_ensure_initialized().get("chromadb_auto_replay_enabled", True))
+
+
+def set_chromadb_auto_replay_enabled(value: bool) -> None:
+    _update({"chromadb_auto_replay_enabled": bool(value)})
+
+
+# ── PROGRAM §56 — Source ledger (10-year resiliency) ─────────────────────
+
+
+def get_chromadb_source_ledger_enabled() -> bool:
+    """Master kill switch for the source-ledger primitive.
+
+    Read by ``app.memory.source_ledger`` (dual-write hook, replay,
+    bootstrap, drift detection). Default ON. Disabling makes the
+    chromadb writes pure single-writer to chromadb only — drift
+    detection and ledger-based recovery stop working.
+    """
+    return bool(_ensure_initialized().get("chromadb_source_ledger_enabled", True))
+
+
+def set_chromadb_source_ledger_enabled(value: bool) -> None:
+    _update({"chromadb_source_ledger_enabled": bool(value)})
+
+
+def get_chromadb_ledger_bootstrap_enabled() -> bool:
+    """Read by ``app.memory.source_ledger_daemon`` (bootstrap branch).
+
+    When ON, daily back-fill walks every KB and appends any chromadb
+    rows missing from the ledger. Idempotent on doc_id.
+    """
+    return bool(_ensure_initialized().get("chromadb_ledger_bootstrap_enabled", True))
+
+
+def set_chromadb_ledger_bootstrap_enabled(value: bool) -> None:
+    _update({"chromadb_ledger_bootstrap_enabled": bool(value)})
+
+
+def get_chromadb_ledger_drift_replay_enabled() -> bool:
+    """Read by ``app.memory.source_ledger_daemon`` + boot scan.
+
+    When ON, drift detection at boot + daily triggers replay when
+    ledger has more rows than the KB does. Recovers from quarantine
+    + accidental KB rebuilds automatically.
+    """
+    return bool(_ensure_initialized().get("chromadb_ledger_drift_replay_enabled", True))
+
+
+def set_chromadb_ledger_drift_replay_enabled(value: bool) -> None:
+    _update({"chromadb_ledger_drift_replay_enabled": bool(value)})
+
+
+def get_chromadb_ledger_s3_upload_enabled() -> bool:
+    """Read by ``app.memory.source_ledger_offhost.s3``.
+
+    Default OFF — needs S3 credentials wired via env vars
+    (``LEDGER_S3_BUCKET`` etc.). When ON, daily idle job uploads
+    new ledger lines as per-day gzip objects.
+    """
+    return bool(_ensure_initialized().get("chromadb_ledger_s3_upload_enabled", False))
+
+
+def set_chromadb_ledger_s3_upload_enabled(value: bool) -> None:
+    _update({"chromadb_ledger_s3_upload_enabled": bool(value)})
+
+
+def get_chromadb_ledger_gdrive_upload_enabled() -> bool:
+    """Read by ``app.memory.source_ledger_offhost.gdrive``.
+
+    Default OFF — needs Google Workspace OAuth (already wired for the
+    other Google tools; just enable). When ON, daily idle job uploads
+    new ledger lines into the operator's Drive.
+    """
+    return bool(_ensure_initialized().get("chromadb_ledger_gdrive_upload_enabled", False))
+
+
+def set_chromadb_ledger_gdrive_upload_enabled(value: bool) -> None:
+    _update({"chromadb_ledger_gdrive_upload_enabled": bool(value)})
+
+
+def get_drill_source_ledger_replay_enabled() -> bool:
+    """Read by ``app.resilience_drills.drills.source_ledger_replay``.
+
+    Quarterly drill that rebuilds a random KB to a scratch dir to
+    verify the ledger → KB reconstruction works end-to-end.
+    """
+    return bool(_ensure_initialized().get("drill_source_ledger_replay_enabled", True))
+
+
+def set_drill_source_ledger_replay_enabled(value: bool) -> None:
+    _update({"drill_source_ledger_replay_enabled": bool(value)})
+
+
+def get_chromadb_ledger_compaction_enabled() -> bool:
+    """PROGRAM §56 iter-2 — weekly ledger fold. Read by
+    ``source_ledger_daemon.py``. Default ON; disabling means ledgers
+    grow unboundedly. Compaction is internally gated so tiny ledgers
+    are skipped even when the switch is ON.
+    """
+    return bool(_ensure_initialized().get("chromadb_ledger_compaction_enabled", True))
+
+
+def set_chromadb_ledger_compaction_enabled(value: bool) -> None:
+    _update({"chromadb_ledger_compaction_enabled": bool(value)})
+
+
+def get_drill_embedding_rotation_enabled() -> bool:
+    """PROGRAM §56 iter-2 — 8th resilience drill. Verifies that
+    replay-with-a-different-embedding-model produces a queryable KB,
+    proving the §56 "model-rotation tolerant" claim is operationally
+    true. Default ON; the drill itself never touches live data.
+    """
+    return bool(_ensure_initialized().get("drill_embedding_rotation_enabled", True))
+
+
+def set_drill_embedding_rotation_enabled(value: bool) -> None:
+    _update({"drill_embedding_rotation_enabled": bool(value)})

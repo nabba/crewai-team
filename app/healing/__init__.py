@@ -119,6 +119,15 @@ try:
 except Exception:
     _log.warning("app.healing: recipe_consolidation wiring failed", exc_info=True)
 
+# PROGRAM §56 (2026-05-17) — source-ledger daemon. Eager-start at
+# import time so the bootstrap / drift / chain-verify branches kick
+# in 5 minutes after gateway boot. Same anchor pattern as the other
+# observational daemons above.
+try:
+    from app.memory import source_ledger_daemon as _source_ledger_daemon  # noqa: F401
+except Exception:
+    _log.warning("app.healing: source_ledger_daemon wiring failed", exc_info=True)
+
 # Boot-time stale-cooldown reset (Wave 0/1 #A7, 2026-05-09). Sweeps
 # already-expired ``skip:<jobname>`` keys from
 # workspace/memory/idle_job_state so a fresh boot doesn't carry

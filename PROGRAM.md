@@ -10876,3 +10876,238 @@ degraded behavior (fresh ticket; audit log without project_id).
     in several `app/healing/handlers/*.py` files; each is per-case
     judgment).
 
+
+
+## 55 2026-05-17 — ChromaDB integrity protection (root-cause + 5-layer defense)
+
+Built in response to two `memory.corrupt_*` quarantine events
+(2026-04-25 and 2026-05-17) that wiped the gateway's `memory/` KB.
+
+### Root cause
+
+`docker-compose.yml` defined two services bind-mounted to
+`workspace/memory/`:
+
+  * standalone `chromadb` container (chromadb 0.5.23) — server-internal
+    PersistentClient writer
+  * gateway container (chromadb 1.5.9) — embedded
+    `chromadb.PersistentClient(path=".../memory")`
+
+Both opened the same `chroma.sqlite3` as competing writers. Different
+chromadb major versions wrote incompatible schemas → "Rowid out of
+order", "invalid page number", "2nd reference to page X",
+"btreeInitPage error 11" — textbook concurrent-writer corruption.
+
+Git blame: chromadb service is an orphan from before commit
+`f240d54e` ("Fix 7 modules using broken `chromadb.HttpClient` →
+`get_client()`"), which migrated the gateway off the HTTP API.
+Nothing in `app/` has used the HTTP API since
+(pinned by `tests/test_subsystem_wiring.py:385`). Cleanup was
+incomplete.
+
+### Surgical fix
+
+  * Removed `chromadb` service from `docker-compose.yml`
+  * Pinning test `test_docker_compose_has_no_chromadb_service`
+    fails CI if the service or bind-mount is ever restored
+
+### Defense-in-depth layers
+
+  1. **WAL enforcement** at gateway boot — `journal_mode=WAL;
+     synchronous=FULL` idempotently set on every KB. Survives
+     crashes far better than the default rollback-journal mode
+     every chromadb KB shipped with.
+
+  2. **Boot integrity scan** (`app/main.py` lifespan, after
+     post-amendment restart-claims, before port-bind) — runs
+     `PRAGMA integrity_check` on every KB. On failure:
+     quarantine + Signal alert + (memory KB only) auto-replay
+     from postgres source-of-truth (`beliefs` + `crewai_memories`).
+
+  3. **Daily snapshot** — SQLite's online `.backup` API atomically
+     writes a consistent copy to
+     `workspace/<kb>/.sqlite_snapshots/<ts>.db`. 7-day rolling
+     retention via mtime.
+
+  4. **35th healing monitor** `chromadb_integrity` — daily probe
+     with the same integrity check + snapshot logic. Never snapshots
+     a known-bad file (pinned by
+     `test_monitor_does_not_snapshot_corrupt_files`).
+
+  5. **Auto-replay from Postgres** — for the `memory` KB specifically,
+     because `crewai_memories` and `beliefs` Postgres tables are the
+     Mem0 source-of-truth (160 + 6 rows recovered after today's
+     incident). Idempotent on doc_id via chromadb `col.add` with
+     curated embeddings.
+
+### Components
+
+  * NEW `app/memory/chromadb_integrity.py` (~600 LOC)
+  * NEW `app/healing/monitors/chromadb_integrity.py` (~200 LOC) —
+    35th monitor; daily probe; integrity + snapshot branches
+  * EDITED `app/main.py` lifespan — boot scan wired in
+  * EDITED `docker-compose.yml` — chromadb service removed
+  * EDITED `app/runtime_settings.py` — 5 master switches (all default ON):
+    `chromadb_wal_enforcement_enabled` / `chromadb_boot_integrity_check_enabled`
+    / `chromadb_integrity_monitor_enabled` / `chromadb_daily_snapshot_enabled`
+    / `chromadb_auto_replay_enabled`
+  * NEW identity-continuity event kind `chromadb_corruption`
+    (auto-surfaces into annual reflection via `summarise_drift` Counter)
+  * NEW `docs/CHROMADB_INTEGRITY.md` — operator runbook
+
+### Test coverage
+
+19 tests in `tests/test_chromadb_integrity.py` (16 pass + 3 skipped
+gateway-deps). Pins include: WAL enforcement + idempotency, integrity
+check on healthy + corrupt DBs, snapshot atomicity + retention,
+quarantine rename + ledger emission, boot scan composition end-to-end,
+disabled-state no-op, monitor cadence guard, snapshot-not-on-corrupt
+invariant, runtime-settings failure-OPEN posture,
+docker-compose-no-chromadb-service regression pin.
+
+### Live recovery from the 2026-05-17 incident
+
+After `replay_from_postgres('memory')` ran post-deploy:
+
+  * `team_shared`: 2 → 162 (160 Mem0 long-term memories recovered)
+  * `beliefs`: 6 → 12 (6 beliefs recovered with proper metadata)
+
+Recovered samples: "User lives in Helsinki", "User works at PLG Moments",
+"User prefers concise answers", "User prefers concise Finnish nature
+answers", + 158 more.
+
+
+## 56 2026-05-17 — Source ledger (10-year resiliency)
+
+Layered on top of §55. The §55 integrity layer catches damage; §56
+guarantees **every chromadb KB is reconstructable** from a plain
+JSONL file even if the chromadb files are lost entirely.
+
+### The mechanism
+
+Every chromadb write dual-writes to
+`workspace/<kb>/.source_ledger.jsonl` (append-only, hash-chained:
+`sha256(prev_hash + canonical_json(payload))` at every link). The
+KB becomes a derived artifact; `replay_kb(name)` reconstructs by
+re-embedding the ledger rows with the *current* embed model.
+
+Properties:
+
+  * **Universal**: same mechanism for all 7 KBs (memory, episteme,
+    experiential, philosophy, aesthetics, tensions, knowledge)
+  * **Embedding-model-rotation tolerant**: ledger stores text, not
+    embeddings; replay always uses the live embed function
+  * **ChromaDB-major-version tolerant**: JSONL outlives any vendor;
+    replay code targets stable `col.upsert(...)` API
+  * **Single-writer ACID**: hash chain catches any tamper or bit-rot
+
+### Components
+
+  * NEW `app/memory/source_ledger.py` (~1000 LOC) — core: append, read,
+    verify, replay, drift detection, bootstrap, compaction, state_summary
+  * NEW `app/memory/source_ledger_daemon.py` — daily bootstrap +
+    drift check + chain verify + off-host upload; weekly compaction
+  * NEW `app/memory/source_ledger_offhost/` package — S3 + Google Drive
+    uploaders (both opt-in via runtime_settings)
+  * NEW `app/resilience_drills/drills/source_ledger_replay.py` —
+    7th drill (quarterly LOW-risk): rebuild a random KB to a scratch
+    dir, verify row count + hash chain
+  * NEW `app/resilience_drills/drills/embedding_rotation.py` —
+    8th drill (quarterly LOW-risk): rebuild a random KB with a
+    DIFFERENT embed model, verify self-consistency at ≥80%
+  * EDITED `app/memory/chromadb_manager.py` + all 6 KB-specific
+    vectorstores (`episteme`, `experiential`, `philosophy`, `aesthetics`,
+    `tensions`, `knowledge_base`) — dual-write hooks on every `.add()` site
+  * EDITED 15+ chromadb `col.delete()` and `col.update()` call sites
+    — tombstone hooks so replay doesn't resurrect deleted rows
+    (`result_cache`, `idle_scheduler`, `belief_state`, `self_improvement/store`
+    + `meta_agent/store`, `episteme.remove_by_source`, `philosophy.remove_by_source`,
+    `knowledge_base.remove_document`, `experiential.api`, firebase listeners,
+    `tool_registry/indexer`, `transfer_memory.promotion`, `api/fiction.py`,
+    `healing/monitors/retention.py`)
+  * EDITED `app/memory/chromadb_integrity.py` (from §55) — boot scan
+    now does drift detection too (catches KB-rebuilt-but-ledger-has-history)
+  * EDITED `app/healing/__init__.py` — daemon eager-anchored at boot
+  * EDITED `app/healing/monitors/bit_rot_scan.py` — includes every
+    KB's `.source_ledger.jsonl` in the SHA-256 baseline
+  * EDITED `app/warm_spare/manifest.py` — adds per-KB ledger paths
+    for memory/experiential/philosophy/knowledge (the 4 KBs whose
+    parent dirs weren't in the allowlist) + `backups/postgres` +
+    `backups/neo4j` + `backups/dr` (Postgres dumps from the host
+    LaunchAgent are now off-host-replicated via Q17.1 warm-spare)
+  * NEW `app/control_plane/dashboard_routes_budgets_costs.py`
+    `/source-ledger/state` REST endpoint
+  * NEW `dashboard-react/src/components/SourceLedgerCard.tsx` —
+    operator UI: per-KB stats table + 8 master-switch toggles
+  * EDITED `app/runtime_settings.py` — 8 master switches
+    (`chromadb_source_ledger_enabled` / `chromadb_ledger_bootstrap_enabled`
+    / `chromadb_ledger_drift_replay_enabled` / `chromadb_ledger_compaction_enabled`
+    / `chromadb_ledger_s3_upload_enabled` / `chromadb_ledger_gdrive_upload_enabled`
+    / `drill_source_ledger_replay_enabled` / `drill_embedding_rotation_enabled`)
+  * NEW `docs/SOURCE_LEDGER.md` — operator runbook
+
+### §56 iter-1 → iter-2: correctness completeness
+
+Audit found 5 gaps post-iter-1; all shipped in iter-2:
+
+  1. **Tombstone schema** — `op` field with `add` (default, backward-compat)
+     / `update` / `delete`. Hash chain preserved via conditional
+     inclusion of `op` in the hashed payload (pre-iter-2 add rows
+     hash identically to before).
+  2. **Mem0 path verification** — confirmed Mem0 writes ONLY to
+     pgvector, never chromadb. No hook needed; documented inline.
+  3. **Compaction** — `compact_ledger(kb_name)` folds the ledger to
+     its minimum-equivalent form; weekly daemon branch; gated by
+     min-rows + min-reduction thresholds; pre-compaction hard-link
+     snapshot to `.source_ledger_history/<ts>.jsonl`.
+  4. **Warm-spare manifest** — added 14 paths (per-KB ledgers +
+     Postgres/Neo4j dumps).
+  5. **8th drill** `embedding_rotation` — quarterly LOW-risk drill
+     verifying model-rotation tolerance.
+
+### §56 iter-2 → iter-3: race fix + sentinel + operator visibility
+
+Audit found 3 subtle gaps post-iter-2; all shipped in iter-3:
+
+  1. **Compaction-during-write race** — original sequence read-all →
+     fold → write-compacted → snapshot-history → atomic-rename had a
+     real race: rows appended between "read-all" and the rename made
+     it into history but NOT the new live ledger, silently invisible
+     to replay. Fix: tail-stabilization loop with
+     `_COMPACTION_MAX_TAIL_PASSES=3`. Tail rows applied DIRECTLY
+     onto the base state (so tail updates can find their prior adds
+     from the head). Plus one final pre-swap check.
+
+  2. **Metadata None-vs-empty sentinel** — pre-iter-3
+     `append_update(new_metadata=None)` got coerced to `{}` for
+     storage, collapsing "don't touch" vs "clear to empty." Fix:
+     `_META_NO_CHANGE_SENTINEL = {"__sl_no_change__": True}` is
+     stored on None; strict 1-key discriminator detects it on fold;
+     explicit `{}` still clears.
+
+  3. **Operator visibility** — `state_summary()` helper + REST
+     endpoint `GET /api/cp/source-ledger/state` + React
+     `SourceLedgerCard` with per-KB stats + 8 master-switch toggles.
+
+### Test coverage
+
+  * iter-1: 22 tests in `test_source_ledger.py` (21 pass + 1 skipped)
+  * iter-2: 19 tests in `test_source_ledger_iter2.py`
+  * iter-3: 12 tests in `test_source_ledger_iter3.py`
+  * Cumulative Q3 + Q6 + Q17 + §55 + §56 (all iters): **269 pass +
+    10 skipped, 0 fail**
+
+### Live verification post-rebuild
+
+```
+INFO app.memory.source_ledger_daemon: source_ledger_daemon: started (warm-up=300s, pass=24h)
+INFO app.main: main: chromadb integrity scan complete — ok=[7 KBs]
+Registered drills: 8
+  - source_ledger_replay
+  - embedding_rotation
+Source-ledger routes registered: ['/api/cp/source-ledger/state']
+Tombstone helpers + compaction: importable ✓
+Op constants: add update delete
+MAX_TAIL_PASSES: 3
+state_summary() output: 7 KBs reported with full schema
+```

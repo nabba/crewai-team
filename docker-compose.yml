@@ -106,8 +106,14 @@ services:
       # Postgres (observability_snapshots) + /api/cp/* endpoints.
       # Set FIREBASE_ENABLED=1 and restore this line to re-enable Firestore.
     depends_on:
-      chromadb:
-        condition: service_healthy
+      # chromadb service removed 2026-05-17 — orphaned legacy container.
+      # The gateway uses chromadb as an embedded library (PersistentClient
+      # on workspace/<kb>/), never via HTTP. The standalone container had
+      # been bind-mounting the workspace memory dir since the f240d54e
+      # migration moved gateway code off chromadb.HttpClient, which
+      # silently introduced a dual-writer SQLite corruption bug that
+      # wiped the `memory/` KB twice (2026-04-25, 2026-05-17). See
+      # docs/CHROMADB_INTEGRITY.md and PROGRAM §54.
       postgres:
         condition: service_healthy
       neo4j:
@@ -141,33 +147,30 @@ services:
       - /home/appuser/.cache:uid=1000,gid=1000
       - /home/appuser/.mem0:uid=1000,gid=1000
 
-  chromadb:
-    # Override-able via CHROMA_IMAGE (see postgres comment above).
-    image: ${CHROMA_IMAGE:-chromadb/chroma:0.5.23}
-    restart: unless-stopped
-    volumes:
-      - ./workspace/memory:/chroma/chroma
-    networks:
-      - internal
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    # NOT exposed to host — internal only
-    healthcheck:
-      test: ["CMD", "/bin/sh", "-c", "curl -sf http://localhost:8000/api/v1/heartbeat || curl -sf http://localhost:8000/api/v2/heartbeat"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 20s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 3g
+  # ── chromadb service removed 2026-05-17 ─────────────────────────
+  # The chromadb HTTP server container was an orphaned legacy artifact
+  # from before commit f240d54e ("Fix 7 modules using broken
+  # chromadb.HttpClient → get_client()"), which migrated the gateway
+  # off the HTTP API and onto embedded chromadb.PersistentClient.
+  #
+  # The container kept bind-mounting the workspace memory directory
+  # into the same path the gateway's PersistentClient also writes to.
+  # Two processes (chromadb 0.5.23 in the container + chromadb 1.5.9
+  # embedded in the gateway) writing to the same SQLite file caused
+  # two `memory.corrupt_*` quarantine events (2026-04-25 + 2026-05-17).
+  # Different chromadb versions have different schemas, which made the
+  # corruption acute rather than just race-prone.
+  #
+  # Removing the service eliminates the dual-writer at the source.
+  # The codebase already explicitly bans `chromadb.HttpClient(` in
+  # production code (pinned by tests/test_subsystem_wiring.py:385).
+  # See docs/CHROMADB_INTEGRITY.md for the protection layers that
+  # replace whatever role this container was nominally serving.
+  #
+  # If you ever need the HTTP server back (e.g. for an external
+  # consumer), restore this block via `git revert` AND change the
+  # volume to a named volume — never bind-mount the workspace memory
+  # directory again while the gateway also reads/writes that path.
 
   # ── Mem0 persistent memory infrastructure ───────────────────────
   # pgvector for vector storage, Neo4j for entity relationship graph.

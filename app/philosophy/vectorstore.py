@@ -124,6 +124,15 @@ class PhilosophyStore:
                 ids=batch_ids,
             )
             total_added += len(batch_chunks)
+            # PROGRAM §56 — source ledger dual-write.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add(
+                    "philosophy", self.collection_name,
+                    batch_ids, batch_chunks, batch_meta,
+                )
+            except Exception:
+                logger.debug("PhilosophyStore: source_ledger hook failed", exc_info=True)
 
         logger.info(
             f"Ingested {total_added} chunks. Collection total: {self._collection.count()}"
@@ -216,6 +225,12 @@ class PhilosophyStore:
             if existing and existing["ids"]:
                 self._collection.delete(ids=existing["ids"])
                 count = len(existing["ids"])
+                # PROGRAM §56 iter-2 — ledger tombstone
+                try:
+                    from app.memory.source_ledger import hook_collection_delete
+                    hook_collection_delete("philosophy", self.collection_name, list(existing["ids"]))
+                except Exception:
+                    logger.debug("PhilosophyStore: ledger delete hook failed", exc_info=True)
                 logger.info(f"Removed {count} chunks from '{source_file}'")
                 return count
         except Exception as e:

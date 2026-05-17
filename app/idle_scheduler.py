@@ -54,6 +54,51 @@ TIME_CAPS = {
     JobWeight.HEAVY: 600,
 }
 
+
+def _substrate_defer_reason(weight: str) -> str | None:
+    """Productization plan T2.5 — consult the substrate resource policy.
+
+    Returns a defer_reason string if heavy/medium work should pause this
+    cycle (disk pressure, host_substrate alert, etc.), or None to proceed.
+    LIGHT jobs are never deferred — they're observability/reconciler work
+    that needs to keep running even under pressure.
+
+    Fail-safe: if the substrate package isn't importable, returns None
+    (run normally). The whole point of substrate is to be additive — a
+    broken policy module must never stall the system.
+    """
+    if weight == JobWeight.LIGHT:
+        return None
+    try:
+        from app.substrate.policy import should_defer_heavy_work
+        return should_defer_heavy_work()
+    except Exception:
+        logger.debug("idle_scheduler: substrate policy probe failed", exc_info=True)
+        return None
+
+
+def _publish_deferral(job_name: str, weight: str, reason: str) -> None:
+    """Emit a visible event when an idle job is deferred for resource posture.
+
+    Silent deferral is the failure mode the substrate policy exists to
+    prevent. Every defer fires through workspace_publish so the dashboard
+    + chronicle can render the operator-visible event.
+    """
+    logger.info(
+        "idle_scheduler: deferred %s (%s) — %s", job_name, weight, reason,
+    )
+    try:
+        from app.workspace_publish import publish_idle_outcome
+        publish_idle_outcome(
+            source="idle_scheduler",
+            signal_type="resource_pressure",
+            counts={"deferred": 1, "weight": weight},
+            salience_key="deferred",
+            content_template=f"idle_job_deferred: {job_name} ({weight}) — {reason}",
+        )
+    except Exception:
+        logger.debug("idle_scheduler: publish_deferral failed", exc_info=True)
+
 # Global state
 _last_task_end: float = 0.0  # monotonic timestamp of last user task completion
 _active_tasks: int = 0
@@ -508,7 +553,14 @@ def _run_idle_loop(jobs) -> None:
         if medium_jobs:
             name, fn = medium_jobs[medium_idx % len(medium_jobs)]
             medium_idx += 1
-            _run_single_job(name, fn, TIME_CAPS[JobWeight.MEDIUM])
+            # Productization plan T2.5 — consult substrate resource policy.
+            # Heavy/medium work defers under disk pressure or host alerts;
+            # the deferral is published as a visible event (no silent skip).
+            defer_reason = _substrate_defer_reason(JobWeight.MEDIUM)
+            if defer_reason:
+                _publish_deferral(name, JobWeight.MEDIUM, defer_reason)
+            else:
+                _run_single_job(name, fn, TIME_CAPS[JobWeight.MEDIUM])
 
         if _stop_event.is_set() or not is_idle():
             continue
@@ -524,7 +576,12 @@ def _run_idle_loop(jobs) -> None:
                     continue  # Skip: ran less than 1 hour ago
                 _last_training_run = time.monotonic()
 
-            _run_single_job(name, fn, _heavy_cap)
+            # Substrate resource policy — productization plan T2.5.
+            defer_reason = _substrate_defer_reason(JobWeight.HEAVY)
+            if defer_reason:
+                _publish_deferral(name, JobWeight.HEAVY, defer_reason)
+            else:
+                _run_single_job(name, fn, _heavy_cap)
 
         # Brief pause between cycles
         for _ in range(INTER_JOB_PAUSE_SECONDS):
@@ -1791,6 +1848,12 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                             if oldest and oldest.get("ids"):
                                 col.delete(ids=oldest["ids"])
                                 pruned[f"chromadb:{col_name}"] = len(oldest["ids"])
+                                # PROGRAM §56 iter-2 — ledger tombstone
+                                try:
+                                    from app.memory.source_ledger import hook_collection_delete
+                                    hook_collection_delete("memory", col_name, list(oldest["ids"]))
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 # Sentience-critical (NOT pruned): scope_beliefs, self_reports,

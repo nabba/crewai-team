@@ -103,6 +103,8 @@ _DEFAULT_CADENCE_S = {
     # PROGRAM §52 Q17 monitors.
     "bit_rot_scan": 24 * 3600,                 # daily probe; internal weekly cadence; Q17.3
     "kb_contradiction": 24 * 3600,             # daily probe; internal weekly cadence; Q17.6
+    # PROGRAM §55 — ChromaDB integrity (35th monitor, 2026-05-17).
+    "chromadb_integrity": 24 * 3600,           # daily probe; internal 23h cadence
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -282,6 +284,18 @@ def _driver() -> None:
     except Exception:
         logger.debug(
             "monitors: chromadb_hygiene import failed", exc_info=True,
+        )
+    # PROGRAM §55 (2026-05-17) — chromadb_integrity (35th monitor). Daily
+    # integrity_check + atomic snapshot; quarantine + auto-replay on damage.
+    try:
+        from app.healing.monitors import chromadb_integrity
+        monitors.append((
+            "chromadb_integrity", chromadb_integrity.run,
+            _DEFAULT_CADENCE_S["chromadb_integrity"], 0.0,
+        ))
+    except Exception:
+        logger.debug(
+            "monitors: chromadb_integrity import failed", exc_info=True,
         )
     try:
         from app.healing.monitors import notify_suppression_review

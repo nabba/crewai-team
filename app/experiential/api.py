@@ -142,6 +142,12 @@ async def delete_entry(entry_id: str):
     store = get_store()
     try:
         store._collection.delete(ids=[entry_id])
+        # PROGRAM §56 iter-2 — ledger tombstone
+        try:
+            from app.memory.source_ledger import hook_collection_delete
+            hook_collection_delete("experiential", store.collection_name, [entry_id])
+        except Exception:
+            pass
         _report_async()
         return {"status": "ok", "deleted": entry_id}
     except Exception as e:

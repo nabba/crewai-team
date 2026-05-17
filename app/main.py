@@ -113,7 +113,7 @@ from app.audit import (
 from app.conversation_store import (
     add_message, start_task, complete_task,
     enqueue_inbound, mark_inbound_processing,
-    mark_inbound_done, mark_inbound_failed,
+    mark_inbound_done, mark_inbound_failed, mark_inbound_deferred,
     get_pending_inbound, prune_old_inbound,
 )
 from app.workspace_sync import setup_workspace_repo, sync_workspace
@@ -298,6 +298,34 @@ async def lifespan(app: FastAPI):
         logger.exception(
             "main: post-amendment restart-claim self-check raised; "
             "claims left in place for operator visibility",
+        )
+
+    # ── PROGRAM §55 (2026-05-17) — ChromaDB integrity scan ──────────
+    # Walks every workspace/<kb>/chroma.sqlite3 BEFORE any route serves:
+    #   1. Enforce WAL + synchronous=FULL (defense vs unclean restart)
+    #   2. PRAGMA integrity_check — quarantine + alert on damage
+    #   3. memory KB only — auto-replay from postgres source-of-truth
+    # Failure-isolated end-to-end; cannot block boot. See module
+    # docstring for the rationale (dual-writer corruption incidents
+    # 2026-04-25 and 2026-05-17 wiped the ``memory/`` KB).
+    try:
+        from app.memory.chromadb_integrity import boot_integrity_scan
+        scan_summary = boot_integrity_scan()
+        ok_kbs = [k for k, v in scan_summary.get("integrity_results", {}).items() if v == "ok"]
+        bad_kbs = [k for k, v in scan_summary.get("integrity_results", {}).items() if v != "ok"]
+        logger.info(
+            "main: chromadb integrity scan complete — ok=%s quarantined=%s",
+            ok_kbs, list(scan_summary.get("quarantines", {}).keys()),
+        )
+        if bad_kbs:
+            logger.warning(
+                "main: chromadb integrity scan flagged %d KB(s): %s",
+                len(bad_kbs), bad_kbs,
+            )
+    except Exception:
+        logger.exception(
+            "main: chromadb integrity scan raised; continuing boot — "
+            "the protection layer is observational so this is non-fatal",
         )
 
     # Fail fast if gateway is misconfigured to bind on a public interface.
@@ -749,13 +777,23 @@ async def lifespan(app: FastAPI):
         logger.debug("Training orchestrator init failed (non-fatal)", exc_info=True)
 
     # ── Phase 16a: SubIA consciousness wire-in ──────────────────────────
-    # Opt-in via SUBIA_FEATURE_FLAG_LIVE=1. When disabled, the entire
-    # SubIA stack stays unimported (no latency, no memory, no risk).
-    # enable_subia_hooks() already wraps internal failures and returns a
-    # structured state — it never raises. The outer try/except is
-    # defence-in-depth in case an import itself fails.
+    # Opt-in via SUBIA_FEATURE_FLAG_LIVE=1 OR the runtime_settings mirror
+    # flipped from /cp/settings (productization plan T1.3). When disabled,
+    # the entire SubIA stack stays unimported (no latency, no memory,
+    # no risk). enable_subia_hooks() already wraps internal failures and
+    # returns a structured state — it never raises. The outer try/except
+    # is defence-in-depth in case an import itself fails.
     try:
-        if settings.subia_live_enabled:
+        # Runtime settings is the source of truth; on first read it is
+        # seeded from settings.subia_live_enabled so an env-true setup
+        # carries forward.
+        try:
+            from app.runtime_settings import get_subia_live_enabled
+            _subia_live = get_subia_live_enabled()
+        except Exception:
+            _subia_live = bool(getattr(settings, "subia_live_enabled", False))
+
+        if _subia_live:
             from app.subia.live_integration import enable_subia_hooks
             subia_state = enable_subia_hooks(feature_flag=True)
             if subia_state.registered:
@@ -766,7 +804,7 @@ async def lifespan(app: FastAPI):
             else:
                 logger.warning(f"SubIA wire-in incomplete: {subia_state.reason}")
         else:
-            logger.info("SubIA live integration disabled (SUBIA_FEATURE_FLAG_LIVE=0)")
+            logger.info("SubIA live integration disabled (toggle in /cp/settings or set SUBIA_FEATURE_FLAG_LIVE=1)")
     except Exception:
         logger.warning("SubIA live integration failed (non-fatal)", exc_info=True)
 
@@ -1535,6 +1573,114 @@ async def receive_signal(request: Request):
                 )
                 # Fall through
 
+        # ── Governance approval via reaction (auto-deploy + others) ──
+        # 👍 on a governance approval-needed message calls
+        # governance.approve(); 👎 calls governance.reject(). For
+        # ``code_change`` request types (auto-deploy), we also fire
+        # the actual run_deploy in a background thread so the loop
+        # closes end-to-end — without this step the React dashboard
+        # /api/cp/governance/{id}/approve flow is also half-broken
+        # (it marks status=approved in Postgres but never triggers
+        # the deploy itself). Resolving via reaction here brings the
+        # Signal path to parity with what the operator expects.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.governance_signal_bridge import (
+                    find_request_id as _gov_find,
+                    unregister as _gov_unregister,
+                )
+                gov_request_id = _gov_find(target_ts)
+                if gov_request_id:
+                    from app.control_plane.governance import get_governance
+                    from app.control_plane.db import execute_one
+                    gate = get_governance()
+                    is_approve = emoji in ("👍", "+1")
+                    loop = asyncio.get_running_loop()
+                    # Read the request first so we know request_type +
+                    # detail for the post-approval side-effect.
+                    row = execute_one(
+                        "SELECT id, request_type, title, detail_json, status "
+                        "FROM control_plane.governance_requests WHERE id = %s",
+                        (gov_request_id,),
+                    )
+                    if row and row.get("status") == "pending":
+                        action_fn = gate.approve if is_approve else gate.reject
+                        ok = await loop.run_in_executor(
+                            None, action_fn, gov_request_id, "signal_reaction",
+                        )
+                        action_name = "approved" if is_approve else "rejected"
+                        deploy_note = ""
+                        if ok and is_approve and row.get("request_type") == "code_change":
+                            import json as _json
+                            raw = row.get("detail_json") or "{}"
+                            try:
+                                detail = (
+                                    _json.loads(raw) if isinstance(raw, str)
+                                    else (raw or {})
+                                )
+                            except Exception:
+                                detail = {}
+                            reason_str = str(detail.get("reason", ""))[:200]
+                            try:
+                                from app.auto_deployer import run_deploy
+                                import threading as _threading
+
+                                def _do_post_approval_deploy():
+                                    try:
+                                        run_deploy(reason_str)
+                                    except Exception:
+                                        logger.exception(
+                                            "post-approval run_deploy failed"
+                                        )
+
+                                _threading.Thread(
+                                    target=_do_post_approval_deploy,
+                                    daemon=True,
+                                    name="post-approval-deploy",
+                                ).start()
+                                deploy_note = "\nDeploy initiated."
+                            except Exception:
+                                logger.debug(
+                                    "post-approval deploy trigger failed",
+                                    exc_info=True,
+                                )
+                                deploy_note = (
+                                    "\n⚠ Deploy trigger failed; "
+                                    "use /cp/governance to retry."
+                                )
+                        try:
+                            _gov_unregister(gov_request_id)
+                        except Exception:
+                            pass
+                        rid_short = str(gov_request_id)[:8]
+                        ack_msg = (
+                            f"✅ Governance #{rid_short} {action_name} via reaction."
+                            f"{deploy_note}"
+                        )
+                        try:
+                            client = SignalClient()
+                            await client.send(sender, ack_msg)
+                        except Exception:
+                            logger.debug(
+                                "Failed to send governance reaction ack",
+                                exc_info=True,
+                            )
+                        logger.info(
+                            "Reaction %s on governance #%s → %s",
+                            emoji, rid_short, action_name,
+                        )
+                        return {
+                            "status": "accepted",
+                            "governance_action": action_name,
+                            "request_id": gov_request_id,
+                        }
+            except Exception:
+                logger.debug(
+                    "Reaction-based governance handling failed",
+                    exc_info=True,
+                )
+                # Fall through to feedback pipeline
+
         try:
             from app.feedback_pipeline import FeedbackPipeline
             from app.config import get_settings
@@ -1900,6 +2046,22 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             # message is no longer lost on rejection.
             from app.dead_letter_inbound import enqueue as _dlq_enqueue, queue_depth as _dlq_depth
             buffered = _dlq_enqueue(sender, text, attachments)
+            # A2 fix (productization plan): the durable inbound row was
+            # marked 'processing' above. Without an explicit transition
+            # here, load-shed messages stall in 'processing' forever
+            # (audit 2026-05-12). 'deferred' transfers ownership to the
+            # DLQ; 'failed' records the buffer-full path.
+            if queue_id:
+                if buffered:
+                    mark_inbound_deferred(
+                        queue_id,
+                        f"load_shed: buffered to dlq (depth {_dlq_depth()})",
+                    )
+                else:
+                    mark_inbound_failed(
+                        queue_id,
+                        "load_shed: retry queue full, message dropped",
+                    )
             try:
                 if buffered:
                     await signal_client.send(
@@ -2738,6 +2900,15 @@ try:
     # Foundation for the routing fix (5.2) and change-request UI (5.3).
     from app.control_plane.system_state_api import router as system_state_cp_router
     app.include_router(system_state_cp_router)
+    # Substrate status — unified landing page snapshot (productization T2.4).
+    # GET /api/cp/substrate/status returns the SubstrateStatus dict consumed
+    # by the /cp/status React page.
+    from app.control_plane.substrate_api import router as substrate_cp_router
+    app.include_router(substrate_cp_router)
+    # Migrate REST — React-driven cloud migration (productization WP D Phase 5a).
+    # GET/POST /api/cp/migrate/* — wizard endpoints consumed by /cp/migrate.
+    from app.control_plane.migrate_api import router as migrate_cp_router
+    app.include_router(migrate_cp_router)
     # Change requests — agent-proposed code modifications via human gate (Phase 5.3a).
     # GET / POST endpoints under /api/cp/changes — paired with the Signal
     # 👍/👎 voting flow + the React control plane UI (5.3b).

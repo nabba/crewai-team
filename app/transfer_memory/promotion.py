@@ -266,6 +266,21 @@ def _set_kb_status(kb: str, record_id: str, new_status: str) -> bool:
         meta = dict(metas[0] or {})
         meta["status"] = new_status
         col.update(ids=[record_id], metadatas=[meta])
+        # PROGRAM §56 iter-2 — ledger update so replay preserves the
+        # status change (not just the original add).
+        try:
+            from app.memory.source_ledger import hook_collection_update
+            # ``kb`` here is the canonical KB name passed in by the
+            # caller; collection name is just the record's home.
+            collection_name = getattr(col, "name", "transfer_memory")
+            hook_collection_update(
+                kb, collection_name, [record_id], metadatas=[meta],
+            )
+        except Exception:
+            logger.debug(
+                "transfer_memory.promotion: ledger update hook failed",
+                exc_info=True,
+            )
         return True
     except Exception:
         logger.debug(

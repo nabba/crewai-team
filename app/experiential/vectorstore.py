@@ -98,6 +98,15 @@ class ExperientialStore:
                 embeddings=[embed(text)],
                 ids=[entry_id],
             )
+            # PROGRAM §56 — source ledger dual-write.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add(
+                    "experiential", self.collection_name,
+                    [entry_id], [text], [metadata],
+                )
+            except Exception:
+                logger.debug("ExperientialStore: source_ledger hook failed", exc_info=True)
             return True
         except Exception as e:
             logger.error("Failed to add journal entry: %s", e)
@@ -132,6 +141,12 @@ class ExperientialStore:
                 embeddings=[embed(c) for c in bc], ids=bi,
             )
             total += len(bc)
+            # PROGRAM §56 — source ledger dual-write.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add("experiential", self.collection_name, bi, bc, bm)
+            except Exception:
+                logger.debug("ExperientialStore: source_ledger hook failed", exc_info=True)
         return total
 
     def query(

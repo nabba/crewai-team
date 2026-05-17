@@ -46,6 +46,39 @@ _CRITICAL_RELATIVE_PATHS: tuple[str, ...] = (
     "output",
     "skills",
     "warm_spare",
+
+    # ── PROGRAM §56 iter-2 (2026-05-17) — KB recovery artifacts ──
+    # Source ledgers + daily SQLite snapshots for KBs whose parent
+    # dirs aren't in the list above. (episteme, aesthetics, tensions
+    # have their full KB dirs included; memory / experiential /
+    # philosophy / knowledge do not — list their recovery surfaces
+    # explicitly instead of pulling in the whole KB dir, which would
+    # waste bandwidth on HNSW segment files.)
+    "memory/.source_ledger.jsonl",
+    "memory/.source_ledger_history",
+    "memory/.sqlite_snapshots",
+    "experiential/.source_ledger.jsonl",
+    "experiential/.source_ledger_history",
+    "experiential/.sqlite_snapshots",
+    "philosophy/.source_ledger.jsonl",
+    "philosophy/.source_ledger_history",
+    "philosophy/.sqlite_snapshots",
+    "knowledge/.source_ledger.jsonl",
+    "knowledge/.source_ledger_history",
+    "knowledge/.sqlite_snapshots",
+
+    # ── PROGRAM §56 iter-2 — Postgres + Neo4j dumps from the host
+    # LaunchAgent (see CLAUDE.md "DB backup ownership" section).
+    # These are the Mem0 source-of-truth for the 160 crewai_memories
+    # rows that today's quarantine event recovered from. Without
+    # off-host replication they're vulnerable to a single-host disk
+    # failure. The chromadb subdir is INTENTIONALLY excluded — it's
+    # the obsolete pre-§55 path (~515 MB) superseded by per-KB
+    # .sqlite_snapshots above.
+    "backups/postgres",
+    "backups/neo4j",
+    "backups/dr",
+    "backups/manifest.json",
 )
 
 _EXCLUDE_DIRS = {"__pycache__", ".cache", "tmp", "node_modules", ".venv", "venv"}
