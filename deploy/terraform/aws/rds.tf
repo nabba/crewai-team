@@ -73,12 +73,20 @@ resource "aws_db_instance" "botarmy" {
   password = random_password.rds.result
   port     = 5432
 
+  # Customer-managed encryption — hardening on swaps the AWS-managed key
+  # for our own KMS key, giving rotation + revoke control.
+  kms_key_id = local.hardening_active_aws ? aws_kms_key.rds[0].arn : null
+
   parameter_group_name = aws_db_parameter_group.pg16_vector.name
   db_subnet_group_name = aws_db_subnet_group.botarmy.name
 
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   multi_az               = local.rds_multi_az
+
+  # IAM authentication — alongside password auth, lets EKS pods
+  # connect via IRSA-issued IAM tokens instead of long-lived passwords.
+  iam_database_authentication_enabled = local.hardening_active_aws
 
   backup_retention_period   = var.tier == "prod" ? 7 : 1
   delete_automated_backups  = var.tier != "prod"
@@ -87,6 +95,9 @@ resource "aws_db_instance" "botarmy" {
   deletion_protection       = var.tier == "prod"
 
   performance_insights_enabled = var.tier == "prod"
+
+  # Strict: send DB engine logs to CloudWatch for centralized audit.
+  enabled_cloudwatch_logs_exports = local.hardening_strict_aws ? ["postgresql"] : []
 
   apply_immediately = true
 

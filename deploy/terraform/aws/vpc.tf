@@ -32,4 +32,10 @@ module "vpc" {
     "kubernetes.io/role/internal-elb"     = 1
     "kubernetes.io/cluster/${local.name}" = "shared"
   }
+
+  # VPC flow logs to CloudWatch when hardening is active.
+  enable_flow_log                                 = local.hardening_active_aws
+  create_flow_log_cloudwatch_iam_role             = local.hardening_active_aws
+  create_flow_log_cloudwatch_log_group            = local.hardening_active_aws
+  flow_log_cloudwatch_log_group_retention_in_days = 90
 }

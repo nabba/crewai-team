@@ -3,15 +3,20 @@
 # do that itself (avoids burning a `terraform apply` cycle on every code change).
 
 resource "aws_ecr_repository" "gateway" {
-  name                 = "${local.name}-gateway"
-  image_tag_mutability = "MUTABLE"
+  name = "${local.name}-gateway"
+  # Strict: immutable tags so a malicious push can't replace a known-good
+  # image with the same tag. Basic/off keep MUTABLE for dev ergonomics.
+  image_tag_mutability = local.hardening_strict_aws ? "IMMUTABLE" : "MUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
+  # Customer-managed KMS when hardening is active. Defaults to AES256
+  # (AWS-managed key) when off.
   encryption_configuration {
-    encryption_type = "AES256"
+    encryption_type = local.hardening_active_aws ? "KMS" : "AES256"
+    kms_key         = local.hardening_active_aws ? aws_kms_key.ecr[0].arn : null
   }
 }
 

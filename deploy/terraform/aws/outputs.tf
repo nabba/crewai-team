@@ -59,3 +59,39 @@ data "kubernetes_ingress_v1" "botarmy" {
   }
   depends_on = [helm_release.botarmy]
 }
+
+# ─── Hardening summary ────────────────────────────────────────
+output "hardening_summary" {
+  description = "Map of hardening primitives → enabled state for this apply."
+  value       = local.hardening_summary_aws
+}
+
+output "kms_eks_secrets_arn" {
+  description = "KMS key encrypting EKS Kubernetes Secrets. Empty when hardening_profile=off."
+  value       = try(aws_kms_key.eks_secrets[0].arn, "")
+}
+
+output "kms_rds_arn" {
+  description = "KMS key encrypting the RDS instance at rest. Empty when hardening_profile=off."
+  value       = try(aws_kms_key.rds[0].arn, "")
+}
+
+output "cloudtrail_bucket" {
+  description = "S3 bucket holding the CloudTrail audit log. Empty when hardening_profile != strict."
+  value       = try(aws_s3_bucket.cloudtrail[0].bucket, "")
+}
+
+output "guardduty_detector_id" {
+  description = "GuardDuty detector ID. Empty when hardening_profile != strict."
+  value       = try(aws_guardduty_detector.this[0].id, "")
+}
+
+output "waf_acl_arn" {
+  description = "WAFv2 Web ACL ARN to attach to the ALB. Empty when hardening_profile != strict."
+  value       = try(aws_wafv2_web_acl.botarmy[0].arn, "")
+}
+
+output "eks_public_access_cidrs" {
+  description = "CIDR allowlist applied to the EKS public endpoint."
+  value       = local.eks_public_access_cidrs
+}

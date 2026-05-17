@@ -7,6 +7,10 @@ resource "google_artifact_registry_repository" "gateway" {
   description   = "BotArmy gateway container images"
   format        = "DOCKER"
 
+  # CMEK on the repository when hardening is active. Customer-managed key
+  # gives the operator the rotation + revoke surface for image layers.
+  kms_key_name = local.hardening_active ? google_kms_crypto_key.artifact_registry[0].id : null
+
   cleanup_policies {
     id     = "keep-last-20"
     action = "KEEP"
@@ -24,7 +28,10 @@ resource "google_artifact_registry_repository" "gateway" {
     }
   }
 
-  depends_on = [google_project_service.required]
+  depends_on = [
+    google_project_service.required,
+    google_kms_crypto_key_iam_member.artifact_registry_sa,
+  ]
 }
 
 # Computed URL the dispatcher uses for `docker push`.

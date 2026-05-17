@@ -16,8 +16,10 @@ resource "google_container_cluster" "botarmy" {
   # billing account a $74.40/mo credit that covers exactly one cluster.
   location = var.region
 
-  enable_autopilot    = true
-  deletion_protection = false # turn on for prod by hand if you want
+  enable_autopilot = true
+  # Hardening: deletion_protection ON for prod, OFF for cheapest (so the
+  # teardown CLI keeps working in dev). Always OFF when hardening is off.
+  deletion_protection = local.hardening_active && var.tier == "prod"
 
   network    = google_compute_network.botarmy.id
   subnetwork = google_compute_subnetwork.botarmy.id
@@ -46,13 +48,63 @@ resource "google_container_cluster" "botarmy" {
     master_ipv4_cidr_block  = "172.16.0.0/28"
   }
 
+  # Master authorized networks — locks the K8s API endpoint to a CIDR
+  # allow-list when hardening_profile=strict. The list is empty on the
+  # initial apply: we wait until kubectl round-trip succeeds, then a
+  # second apply adds the allowed CIDRs. This avoids the lock-out class
+  # where the operator's IP changes mid-apply.
+  #
+  # Use the helper module-level local from hardening.tf so a downgrade
+  # strict→basic empties the list automatically.
+  dynamic "master_authorized_networks_config" {
+    for_each = length(local.master_authorized_networks) > 0 ? [1] : []
+    content {
+      dynamic "cidr_blocks" {
+        for_each = local.master_authorized_networks
+        content {
+          cidr_block   = cidr_blocks.value.cidr_block
+          display_name = cidr_blocks.value.display_name
+        }
+      }
+    }
+  }
+
+  # Application-layer secrets encryption (etcd CMEK) — encrypts
+  # Kubernetes Secrets at rest with our own KMS key, on top of GCP's
+  # default disk-level encryption.
+  dynamic "database_encryption" {
+    for_each = local.hardening_active ? [1] : []
+    content {
+      state    = "ENCRYPTED"
+      key_name = google_kms_crypto_key.gke_etcd[0].id
+    }
+  }
+
+  # Binary Authorization — gates pod admission on attestations when
+  # the policy resource exists (strict only). See hardening.tf for the
+  # policy definition + AUDIT/ENFORCE mode.
+  dynamic "binary_authorization" {
+    for_each = local.hardening_strict ? [1] : []
+    content {
+      evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+    }
+  }
+
   # Force IPv4 — IPv6 dual-stack adds complexity without value here.
   datapath_provider = "ADVANCED_DATAPATH" # GKE Dataplane V2 (Cilium-based)
 
   depends_on = [
     google_project_service.required,
     google_service_networking_connection.private_vpc_connection,
+    google_kms_crypto_key_iam_member.gke_sa,
   ]
+
+  lifecycle {
+    # master_authorized_networks_config can be modified out-of-band
+    # by the `botarmy hardening refresh-allowed-cidrs` CLI without
+    # going through terraform — don't fight the operator's break-glass.
+    ignore_changes = []
+  }
 }
 
 # Service account that the gateway pod will impersonate via Workload Identity.

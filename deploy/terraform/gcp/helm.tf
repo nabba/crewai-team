@@ -35,7 +35,11 @@ resource "helm_release" "botarmy" {
       tag        = var.gateway_image_tag
     }
 
-    envSecretName = kubernetes_secret.botarmy_env.metadata[0].name
+    # Secret name is constant across both paths:
+    #   * use_external_secrets=false: kubernetes_secret.botarmy_env creates "botarmy-env"
+    #   * use_external_secrets=true:  ESO ExternalSecret reconciles into "botarmy-env"
+    # Hardcoding the name avoids a count-aware reference + works for both.
+    envSecretName = "botarmy-env"
 
     # Bind the gateway's KSA to the GCP SA via Workload Identity.
     serviceAccount = {
@@ -118,4 +122,67 @@ resource "kubernetes_manifest" "managed_cert" {
   }
 
   depends_on = [kubernetes_namespace.botarmy]
+}
+
+# ─── BackendConfig: Cloud Armor + healthcheck ────────────────
+# Creates the BackendConfig CRD that GKE's ingress controller reads to
+# attach Cloud Armor + customise the LB's health check. Only created
+# at hardening_profile=strict when an ingress exists.
+resource "kubernetes_manifest" "gateway_backend_config" {
+  count = local.hardening_strict && var.domain != "" ? 1 : 0
+
+  manifest = {
+    apiVersion = "cloud.google.com/v1"
+    kind       = "BackendConfig"
+    metadata = {
+      name      = "botarmy-gateway-backendconfig"
+      namespace = var.namespace
+    }
+    spec = {
+      securityPolicy = {
+        name = google_compute_security_policy.botarmy[0].name
+      }
+      healthCheck = {
+        type        = "HTTP"
+        requestPath = "/health"
+        port        = 8765
+      }
+      logging = {
+        enable     = true
+        sampleRate = 0.5
+      }
+    }
+  }
+
+  depends_on = [
+    kubernetes_namespace.botarmy,
+    google_compute_security_policy.botarmy,
+  ]
+}
+
+# Annotate the gateway Service so the GCE ingress picks up the
+# BackendConfig. helm_release writes the Service; this resource
+# patches the annotation after the chart lands. Using
+# kubernetes_annotations avoids needing chart values for this — the
+# chart stays surface-agnostic.
+resource "kubernetes_annotations" "gateway_service_backend_config" {
+  count = local.hardening_strict && var.domain != "" ? 1 : 0
+
+  api_version = "v1"
+  kind        = "Service"
+  metadata {
+    name      = "botarmy-gateway"
+    namespace = var.namespace
+  }
+  annotations = {
+    "cloud.google.com/backend-config" = jsonencode({
+      default = "botarmy-gateway-backendconfig"
+    })
+  }
+  force = true
+
+  depends_on = [
+    helm_release.botarmy,
+    kubernetes_manifest.gateway_backend_config,
+  ]
 }

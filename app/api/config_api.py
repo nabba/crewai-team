@@ -321,6 +321,8 @@ async def set_runtime_settings_endpoint(request: Request):
         set_aviationstack_api_key,
         # Q11.1 — analogy-index populator master switch
         set_analogy_index_populator_enabled,
+        # Productization plan WP D — cloud-migrate execute-gate
+        set_migrate_live_execute,
         snapshot,
     )
 
@@ -524,6 +526,15 @@ async def set_runtime_settings_endpoint(request: Request):
             set_analogy_index_populator_enabled(
                 bool(payload["analogy_index_populator_enabled"])
             )
+
+        # ─── Productization plan WP D — cloud-migrate execute-gate ────
+        # Layer-3 safety gate for `botarmy migrate --live`. False (default)
+        # → orchestrator runs but every cloud-mutating subprocess returns
+        # a `<dry: ...>` placeholder. True → real terraform apply +
+        # gcloud + kubectl. The flip emits a `cloud_migration` event of
+        # phase `execute_policy_changed` to the identity ledger.
+        if "migrate_live_execute" in payload:
+            set_migrate_live_execute(bool(payload["migrate_live_execute"]))
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

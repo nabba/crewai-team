@@ -68,12 +68,35 @@ locals {
 # per-key secrets. Per-key adds a few cents/mo per secret; skipping for now.
 resource "google_secret_manager_secret" "botarmy_env" {
   secret_id = "${local.name}-env"
-  replication {
-    auto {}
+
+  # CMEK requires user-managed replication (replication.auto incompatible
+  # with CMEK). When hardening is off, keep the simpler auto-replication.
+  dynamic "replication" {
+    for_each = local.hardening_active ? [] : [1]
+    content {
+      auto {}
+    }
   }
+  dynamic "replication" {
+    for_each = local.hardening_active ? [1] : []
+    content {
+      user_managed {
+        replicas {
+          location = var.region
+          customer_managed_encryption {
+            kms_key_name = google_kms_crypto_key.secret_manager[0].id
+          }
+        }
+      }
+    }
+  }
+
   labels = var.labels
 
-  depends_on = [google_project_service.required]
+  depends_on = [
+    google_project_service.required,
+    google_kms_crypto_key_iam_member.secret_manager_sa,
+  ]
 }
 
 resource "google_secret_manager_secret_version" "botarmy_env" {

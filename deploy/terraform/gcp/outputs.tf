@@ -42,3 +42,42 @@ output "ingress_ip" {
   description = "Static IP attached to the Ingress (assign your DNS A record to this)."
   value       = try(google_compute_global_address.botarmy_ingress[0].address, "")
 }
+
+# ─── Hardening summary ───────────────────────────────────────────
+# Operator-readable map of every hardening primitive that's active in
+# this plan. ``cloud_doctor.verify_hardening`` reads this output back
+# after apply to confirm the policies actually landed.
+output "hardening_summary" {
+  description = "Map of hardening primitives → enabled state for this apply."
+  value       = local.hardening_summary
+}
+
+output "cmek_keyring_name" {
+  description = "Fully-qualified name of the CMEK keyring. Empty when hardening_profile=off."
+  value       = try(google_kms_key_ring.botarmy[0].id, "")
+}
+
+output "audit_log_bucket" {
+  description = "GCS bucket holding the cloud-audit-log sink. Empty when hardening_profile != strict."
+  value       = try(google_storage_bucket.audit_logs[0].name, "")
+}
+
+output "audit_log_bq_dataset" {
+  description = "BigQuery dataset for queryable audit logs. Empty when hardening_profile != strict."
+  value       = try(google_bigquery_dataset.audit_logs[0].dataset_id, "")
+}
+
+output "cloud_armor_policy" {
+  description = "Cloud Armor security policy attached to ingress. Empty when hardening_profile != strict."
+  value       = try(google_compute_security_policy.botarmy[0].name, "")
+}
+
+output "binauthz_policy_mode" {
+  description = "Effective Binary Authorization mode. 'disabled' when hardening_profile != strict."
+  value       = local.hardening_strict ? var.binauthz_mode : "disabled"
+}
+
+output "master_authorized_cidrs" {
+  description = "CIDR allowlist applied to the GKE master endpoint."
+  value       = [for c in local.master_authorized_networks : c.cidr_block]
+}
