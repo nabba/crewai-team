@@ -368,3 +368,70 @@ to Redis and the in-process deque stays empty.
   fail. The trade-off is that during a Redis outage, multi-pod
   deployments can briefly split the queue across pods (each pod
   buffers locally). Drain reads from BOTH backends.
+
+
+## 6. Cloud-hardening profile (provision-time, GCP + AWS)
+
+Added 2026-05-17/18. PROGRAM.md §57. Sits *above* layers 1-5 — those
+are runtime/cluster hardening; this layer is provision-time defense
+applied by the migrate wizard.
+
+### Activating
+
+The wizard ships with `hardening_profile = "strict"` as the default.
+To downgrade or disable, flip in `/cp/settings` → **Cloud hardening**.
+
+| Profile | Applied |
+|---|---|
+| `off`    | Pre-2026-05-17 behavior — no extra hardening |
+| `basic`  | Shielded GKE nodes, Workload Identity, VPC flow logs, CMEK on data-at-rest, deletion_protection on prod tier |
+| `strict` | `basic` + master-authorized-networks (Tailnet+IP allowlist), Cloud Armor / WAFv2, Binary Authorization (AUDIT), audit-log sinks, org policies / SCPs (when org_id set) |
+
+### Surfaces
+
+- **REST**: `GET /api/cp/migrate/hardening-preview` (auto-detected
+  Tailnet/laptop IP/org), `POST /api/cp/migrate/bootstrap-project`,
+  `POST /api/cp/migrate/bootstrap-aws-account`.
+- **CLI**: `botarmy hardening preview`, `botarmy hardening
+  refresh-allowed-cidrs --write` (lock-out break-glass),
+  `botarmy hardening sign-image <image@sha256:...>`.
+- **React**: `/cp/migrate` Step 3.5 Hardening card,
+  `/cp/settings` → Cloud-hardening card.
+- **Install scripts**: `scripts/install/{gcp,aws}_bootstrap.sh` (Stage
+  0a), `scripts/install/cosign_setup.sh` (attestor pipeline).
+
+### Operator docs
+
+- **[CLOUD_LOCKOUT_RECOVERY.md](../docs/CLOUD_LOCKOUT_RECOVERY.md)** —
+  5 recovery procedures, least-destructive first, for when
+  master-authorized-networks / Cloud Armor / Binary Authorization /
+  VPC-SC lock you out.
+- **[COSIGN_ATTESTOR.md](../docs/COSIGN_ATTESTOR.md)** — image-signing
+  setup; prerequisite for graduating `binauthz_mode` from AUDIT to
+  ENFORCE.
+- **[VPC_SC_PERIMETER.md](../docs/VPC_SC_PERIMETER.md)** — when to
+  enable VPC Service Controls, prerequisites, dry-run → enforced
+  rollout.
+
+### Composition with layers 1-5
+
+- **Layer 1 (Gateway HTTP auth)** still applies post-provision —
+  `master_authorized_networks` blocks at the K8s API tier; gateway
+  auth blocks at the application tier inside the cluster.
+- **Layer 2 (NetworkPolicy)** unchanged.
+- **Layer 3 (ESO)** unchanged; the hardening layer adds CMEK on
+  Secret Manager so even if a secret leaks, it's encrypted with a key
+  you control.
+- **Layer 4 (etcd encryption-at-rest)** — `basic` profile makes this
+  customer-managed via `database_encryption.key_name` referencing the
+  CMEK keyring. The Helm-chart-level setting is unchanged.
+- **Layer 5 (Redis DLQ)** unchanged.
+
+### Failure-open posture
+
+Every detection helper in `app/substrate/cloud_hardening.py` is
+failure-isolated — a missing `tailscale` binary or a broken HTTPS probe
+returns None, never an exception. Same for the hardening probes added
+to `cloud_doctor.py`. The Binary Authorization policy stays
+`ALWAYS_ALLOW` when an attestor isn't wired even at ENFORCE mode — the
+operator never gets their cluster bricked by mis-configuration alone.

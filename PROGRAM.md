@@ -11313,3 +11313,305 @@ Op constants: add update delete
 MAX_TAIL_PASSES: 3
 state_summary() output: 7 KBs reported with full schema
 ```
+
+
+## 57 2026-05-17/18 — Cloud-hardening surface (migrate wizard hardening for GCP + AWS)
+
+Cloud-migrate wizard gains a strict-by-default hardening layer that
+applies industry-standard primitives to GKE + EKS at provision time.
+Default profile is `strict`; flips to `basic` or `off` in `/cp/settings`.
+
+Two ship cycles via PRs #119/#120 (chore commits `3e0566c7` +
+`a8d51c39` capturing the working tree state) and PR #121 (the wiring
+follow-up). After this work landed the `hardening_summary` terraform
+output reports every primitive's active state per-apply.
+
+### What the strict profile applies
+
+**GCP (`hardening_profile = "strict"`):**
+
+* **GKE**: `master_authorized_networks_config` (Tailnet CIDR + laptop
+  public IP auto-detected via `app/substrate/cloud_hardening.py`), etcd
+  CMEK via `google_kms_crypto_key.gke_etcd`, Binary Authorization policy
+  (AUDIT mode by default; ENFORCE only when `binauthz_attestor_name` is
+  set after `scripts/install/cosign_setup.sh` runs).
+* **CloudSQL**: CMEK via `google_kms_crypto_key.cloudsql`, private-IP
+  only (already), deletion_protection on tier=prod.
+* **Cloud Armor**: WAF policy with per-IP rate-limit (default 600 rpm,
+  10-min ban) + OWASP preconfigured rules (SQLi, XSS, LFI, RCE).
+  Attached to ingress via `BackendConfig` CRD + Service annotation.
+* **VPC**: flow logs at 5-sec aggregation + 50% sampling.
+* **Audit logs**: GCS bucket (uniform access, 400-day retention,
+  public-access-prevention enforced) + BigQuery dataset, both populated
+  by `google_logging_project_sink` filters on `cloudaudit.googleapis.com`.
+* **Artifact Registry + Secret Manager**: CMEK + user-managed
+  replication for Secret Manager.
+* **Org policies** (when `var.org_id` + Workspace org admin):
+  `iam.disableServiceAccountKeyCreation`, `compute.requireOsLogin`,
+  `compute.vmExternalIpAccess=deny_all`, `compute.requireShieldedVm`,
+  `sql.restrictPublicIp`, `storage.uniformBucketLevelAccess`.
+* **VPC Service Controls** (opt-in via `vpc_sc_enabled=true`): perimeter
+  around the project restricting 10 GCP services; defaults to DRY-RUN
+  mode (`use_explicit_dry_run_spec=true`) for first apply, flip to
+  enforced in `/cp/settings` after observing the log.
+
+**AWS (`hardening_profile = "strict"`):**
+
+* **EKS**: `cluster_endpoint_public_access_cidrs` allowlist (same CIDRs
+  as GCP), `cluster_encryption_config` (Secrets envelope-encrypted with
+  CMEK), all 5 control-plane log types to CloudWatch.
+* **RDS**: `kms_key_id` (CMEK), `iam_database_authentication_enabled`,
+  `enabled_cloudwatch_logs_exports=["postgresql"]`.
+* **ECR**: `image_tag_mutability=IMMUTABLE`, KMS encryption,
+  scan-on-push (already).
+* **VPC**: flow logs to CloudWatch (90-day retention).
+* **WAFv2**: REGIONAL Web ACL with per-IP rate-limit (default
+  3000 req/5min) + AWS Managed Rules (Common, Known Bad Inputs, SQLi).
+* **CloudTrail**: multi-region trail to encrypted S3 bucket
+  (versioned, public-access blocked, 400-day lifecycle).
+* **GuardDuty + Security Hub**: enabled for the account.
+* **SCPs** (when `var.aws_org_enabled=true` + management account):
+  deny root actions, require MFA for IAM, deny disable of
+  CloudTrail/GuardDuty/Security Hub, deny unwanted regions.
+
+### Auto-detection layer
+
+`app/substrate/cloud_hardening.py` (~360 LOC) provides failure-isolated
+detection of:
+
+* `detect_tailnet_cidr()` — returns `100.64.0.0/10` iff
+  `tailscale status` exits 0.
+* `detect_laptop_public_ip()` — HTTPS probe of
+  `checkip.amazonaws.com` / `api.ipify.org` / `ifconfig.me/ip` with
+  per-endpoint fallback.
+* `detect_org_id()` — `gcloud organizations list` for Workspace orgs.
+* `detect_aws_org_root_id()` — `aws organizations list-roots` for
+  the Organizations management account.
+* `detect_access_policy_id(org_id)` — looks up the existing
+  Access Context Manager policy id for VPC-SC.
+* `build_allowed_cidrs()` — composes the master-authorized-networks
+  list from auto-detected sources; validates each CIDR and refuses
+  world-open sentinels (`0.0.0.0/0`, `::/0`, `0.0.0.0/1`, `128.0.0.0/1`).
+* `hardening_preview(profile, binauthz_mode)` — one-shot composition
+  for the React Step 3.5 card; surfaces operator-visible notes about
+  detection gaps (no Tailnet, no org, ENFORCE-without-signing-pipeline).
+* `verify_hardening(run_dir, project_id)` — post-apply readback of the
+  `hardening_summary` terraform output.
+
+### Stage 0a — project bootstrap (opt-in)
+
+For first-time use cases where the target project/account doesn't exist
+yet, two bootstrap scripts handle provisioning under operator approval:
+
+* `scripts/install/gcp_bootstrap.sh` — `gcloud projects create` +
+  `gcloud billing projects link` + 16-API `gcloud services enable`.
+  Typed-phrase `CREATE GCP PROJECT`, idempotent (no-op if project
+  exists + active), refuses without `runtime_settings.gcp_bootstrap_enabled=true`.
+* `scripts/install/aws_bootstrap.sh` — `aws organizations create-account`
+  + 5-min polling for `SUCCEEDED` + optional OU placement. Typed-phrase
+  `CREATE AWS ACCOUNT`, idempotent on existing email, refuses unless
+  caller is the Organizations management account.
+
+Both ship as POST endpoints under `/api/cp/migrate/` (`bootstrap-project`,
+`bootstrap-aws-account`) with Bearer auth + master-switch gating.
+
+### Binary Authorization attestor pipeline
+
+`scripts/install/cosign_setup.sh` (typed-phrase `SET UP COSIGN`,
+idempotent) provisions:
+
+1. cosign keypair at `deploy/k8s/binauthz/{cosign.key,cosign.pub}`
+   (mode 600 / 644 respectively; `cosign.key` gitignored).
+2. Container Analysis NOTE `botarmy-attestor-note`.
+3. Binary Authorization ATTESTOR `botarmy-attestor` bound to the note,
+   PKIX P-256 SHA-256 public key uploaded.
+
+After setup, `botarmy hardening sign-image <image@sha256:...>` runs
+`cosign sign --key` + `gcloud container binauthz attestations create`
+in one step. Operator then flips `binauthz_mode` from `AUDIT` to
+`ENFORCE` in `/cp/settings` (typed-phrase modal `ENFORCE BINAUTHZ`)
+to require attestations at pod admission. Until then, the policy stays
+`ALWAYS_ALLOW` so the first deploy never bricks the cluster.
+
+### Lock-out break-glass
+
+`docs/CLOUD_LOCKOUT_RECOVERY.md` ranks 5 recovery procedures
+least-destructive first. The most common —
+`botarmy hardening refresh-allowed-cidrs --write` — re-detects current
+IPs and writes the new `allowed_cidrs` block into the per-run tfvars,
+followed by a targeted
+`terraform apply -target=google_container_cluster.botarmy` (no
+cluster recreate, no downtime).
+
+### Runtime settings + ledger
+
+`app/runtime_settings.py` gains 7 cloud-hardening keys, each with
+a paired getter/setter that emits a `cloud_migration` event to the
+identity continuity ledger on every flip:
+
+| Key | Default | Phase emitted |
+|---|---|---|
+| `gcp_bootstrap_enabled` | False | `gcp_bootstrap_policy_changed` |
+| `aws_bootstrap_enabled` | False | `aws_bootstrap_policy_changed` |
+| `hardening_profile` | `"strict"` | `hardening_profile_changed` |
+| `binauthz_mode` | `"AUDIT"` | `binauthz_mode_changed` |
+| `binauthz_attestor_name` | `""` | `binauthz_attestor_changed` |
+| `vpc_sc_enabled` | False | `vpc_sc_policy_changed` |
+| `vpc_sc_dry_run` | True | `vpc_sc_dry_run_changed` |
+
+`app/identity/continuity_ledger.py` adds `cloud_migration` to
+`IDENTITY_EVENT_KINDS` and replaces the hardcoded `_DEFAULT_PATH` with a
+lazy `_default_path()` that reads `WORKSPACE_ROOT` at call time (same
+pattern as `app/dr/export_kbs.py:_default_backup_root`). Annual
+reflection's `summarise_drift.by_kind` Counter auto-surfaces every
+`cloud_migration` flip on the year-in-review.
+
+`app/api/config_api.py` runtime-settings dispatcher routes the
+`migrate_live_execute` payload key through `set_migrate_live_execute`,
+closing the gap that prevented the React toggle from reaching the
+underlying setter.
+
+### React surfaces
+
+* **`/cp/migrate` Step 2 (Preflight)**: conditional `BootstrapProjectCard`
+  renders when `cloud_doctor` reports `gcloud project exists=MISSING`
+  AND `gcp_bootstrap_enabled=true`. Operator fills `project_id` +
+  billing-account + typed phrase + clicks Create.
+* **`/cp/migrate` Step 3 (Configure)**: `HardeningCard` renders live
+  auto-detected data — Tailnet CIDR, laptop public IP, Workspace org_id,
+  composed allowlist, profile + binauthz mode summary, operator notes
+  for any detection gaps.
+* **`/cp/settings`**: `CloudHardeningCard` with profile selector
+  (off/basic/strict), Binary Authorization mode toggle (typed-phrase
+  modal for ENFORCE), gcp_bootstrap toggle (typed-phrase modal
+  `ENABLE GCP BOOTSTRAP`).
+
+### CLI
+
+* `botarmy hardening preview [--profile strict|basic|off] [--binauthz-mode AUDIT|ENFORCE]`
+  — read-only display of what the wizard will see.
+* `botarmy hardening refresh-allowed-cidrs [--run-id <id>] [--write]`
+  — lock-out break-glass; emits HCL fragment or patches the tfvars.
+* `botarmy hardening sign-image <image@sha256:...> --project-id <id> [--attestor-name botarmy-attestor]`
+  — sign + attest a container image. Refuses image refs lacking a digest.
+
+### Test coverage
+
+* `tests/test_cloud_hardening.py` — 40 tests (CIDR validation, dedup,
+  auto-detection mocking, preview composition, AWS Org root detection,
+  tfvars rendering)
+* `tests/test_cloud_doctor_hardening.py` — 9 tests (3 new probes
+  registered, bootstrap-enabled-affects-required-flag, attestor signing
+  ready)
+* `tests/test_migrate_api_hardening.py` — 8 tests
+  (`hardening-preview` query param plumbing, `bootstrap-project`
+  master-switch refusal + typed-phrase + dry-run path)
+* `tests/test_gcp_bootstrap_script.py` — 11 contract tests on
+  `scripts/install/gcp_bootstrap.sh` (typed phrase, format validation,
+  exit codes)
+* `tests/test_terraform_hardening_contract.py` — 29 grep-based pinning
+  tests on the GCP module (file existence + key resource attributes)
+* `tests/test_terraform_aws_hardening_contract.py` — 37 same for AWS
+* `tests/test_aws_bootstrap.py` — 13 tests for AWS Stage 0a
+* `tests/test_three_missing_pieces.py` — 27 tests covering the
+  cosign + VPC-SC + AWS bootstrap delta
+* `tests/test_migrate_live_execute_setting.py` — 17 tests (existing,
+  green again after the dispatcher fix)
+
+**197 hardening tests pass on the wired branch.**
+`terraform validate` succeeds on both GCP and AWS modules.
+
+### Components
+
+* `app/substrate/cloud_hardening.py` (new ~360 LOC) — auto-detection
+* `app/control_plane/migrate_api.py` — 3 new endpoints
+  (`hardening-preview`, `bootstrap-project`, `bootstrap-aws-account`)
+* `app/substrate/cloud_doctor.py` — 3 new probes
+  (`_probe_gcp_project_exists`, `_probe_tailnet_reachable`,
+  `_probe_gcp_binauthz_signing_ready`) + `verify_hardening()`
+* `app/substrate/migration.py` — tfvars renderer extended with
+  hardening block (target-aware: GCP uses `org_id`, AWS uses
+  `aws_org_enabled` + `aws_org_root_id`)
+* `app/runtime_settings.py` — 7 keys + getters/setters with ledger
+  emission
+* `app/identity/continuity_ledger.py` — `cloud_migration` event kind +
+  lazy path resolution
+* `app/api/config_api.py` — `migrate_live_execute` dispatcher route
+* `scripts/botarmy` — `hardening preview / refresh-allowed-cidrs /
+  sign-image` subcommands
+* `scripts/install/gcp_bootstrap.sh`, `aws_bootstrap.sh`,
+  `cosign_setup.sh`
+* `deploy/terraform/gcp/{hardening,kms,cloud_armor,audit_logs,org_policies,vpc_sc}.tf`
+  (new) + inline edits to gke/cloudsql/network/helm/secrets/outputs/artifactregistry/variables
+* `deploy/terraform/aws/{hardening,kms,waf,cloudtrail,scp}.tf`
+  (new) + inline edits to eks/rds/ecr/vpc/helm/outputs/variables
+* `deploy/k8s/binauthz/.gitignore` — never commits cosign.key
+* `dashboard-react/src/components/MigratePage.tsx` —
+  `BootstrapProjectCard` + `HardeningCard`
+* `dashboard-react/src/components/SettingsPage.tsx` — `CloudHardeningCard`
+* `dashboard-react/src/api/migrate.ts` — `useHardeningPreviewQuery`,
+  `useBootstrapProjectMutation`
+* `docs/CLOUD_LOCKOUT_RECOVERY.md`, `COSIGN_ATTESTOR.md`,
+  `VPC_SC_PERIMETER.md`
+
+### Deliberate non-decisions
+
+* **Binary Authorization ENFORCE doesn't default ON.** Even at strict
+  profile, AUDIT is the default. A first-time deploy with no signed
+  images otherwise bricks every pod at admission. Operator graduates
+  to ENFORCE after wiring + verifying the cosign pipeline.
+* **VPC Service Controls doesn't default ON even at strict.** Same
+  lock-out class as `master_authorized_networks` (mis-config can fence
+  the operator out of their own buckets). Opt-in only via
+  `vpc_sc_enabled=true`, and defaults to DRY-RUN for the first apply.
+* **AWS member-account bootstrap doesn't run from a workload account.**
+  The script refuses unless caller is in the Organizations management
+  account — script-side check + AWS API enforcement.
+* **No automatic master-authorized-networks refresh at gateway start.**
+  Operator-initiated via `botarmy hardening refresh-allowed-cidrs`.
+  Otherwise a flapping laptop IP causes a churn of targeted applies.
+* **No HSM-protected KMS keys by default.** Operator can flip
+  `var.kms_protection_level=HSM` at the cost of $2-3/key/month FIPS
+  140-2 Level 3 attestation. SOFTWARE protection meets Level 1.
+
+### Live verification post-rebuild
+
+```
+$ curl -s http://127.0.0.1:8765/api/cp/health
+{"status":"ok","tickets_total":392,"audit_entries":6627,"governance_pending":0}
+
+$ curl -s http://127.0.0.1:8765/config/runtime_settings | jq
+'.hardening_profile, .binauthz_mode, .vpc_sc_enabled, .vpc_sc_dry_run, .migrate_live_execute'
+"strict"
+"AUDIT"
+false
+true
+false
+
+$ botarmy hardening preview
+Hardening profile:    strict
+Binauthz mode:        AUDIT
+Tailnet reachable:    True
+Tailnet CIDR:         100.64.0.0/10
+Laptop public IP:     37.157.102.228
+Recommended CIDRs:
+  - 100.64.0.0/10          Tailnet (auto-detected)
+  - 37.157.102.228/32      Laptop public IP (auto-detected)
+
+$ cd deploy/terraform/gcp && terraform validate
+Success! The configuration is valid.
+
+$ cd deploy/terraform/aws && terraform validate
+Success! The configuration is valid.
+```
+
+### PRs
+
+* **PR #119** — `chore: pre-existing operator working-tree state +
+  2026-05-17 runtime accumulation` (bulk capture of session-accumulated
+  working tree including new hardening files)
+* **PR #120** — `merge: §55 + §56 chromadb resiliency + 2026-05-17
+  working-tree state`
+* **PR #121** — `feat(cloud): wire hardening primitives into tracked
+  terraform + runtime_settings` (the wiring delta — 18 files, 568
+  insertions, makes the dormant scaffolding functional)
