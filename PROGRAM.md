@@ -11615,3 +11615,192 @@ Success! The configuration is valid.
 * **PR #121** — `feat(cloud): wire hardening primitives into tracked
   terraform + runtime_settings` (the wiring delta — 18 files, 568
   insertions, makes the dormant scaffolding functional)
+
+## 58 2026-05-18 — Operator CLI (`python -m app.cli`)
+
+Narrow operational + recovery + scripting surface at `app/cli/`. Sits
+alongside Signal, Discord, the React dashboard, voice, and the PWA as
+a **sixth** operator surface — but deliberately a different kind of
+surface than the existing five.
+
+The three jobs the CLI does that no existing surface does well:
+
+1. **Substrate-level escape hatch.** When Signal is broken or the
+   dashboard is sick, `python -m app.cli status --endpoint tailnet`
+   still works. The CLI is stdlib-only (urllib + argparse + tomllib)
+   precisely so the recovery surface isn't coupled to the gateway
+   venv it might be needed to recover.
+2. **Consolidation** of the 6+ scattered `python -m app.X` modules
+   under one discoverable umbrella. Before §58 the operator had to
+   remember `python -m app.brainstorm`, `python -m app.resilience_drills`,
+   `python -m app.google_workspace.bootstrap`, `python -m app.web_push.bootstrap`,
+   `python -m app.observability.goodhart_advisory_report`, `python -m app.browse.host_collector`.
+   After §58 it's `aai brainstorm`, `aai drill`, `aai bootstrap google`,
+   `aai bootstrap web-push`, `aai advisory goodhart`, `aai bootstrap browse`.
+3. **Scriptability.** `aai recall "Helsinki ferry" --json | jq` and
+   `aai ledger tail --kind chromadb_corruption --json` compose with
+   Unix in a way no other surface does. The other surfaces (Signal /
+   Discord / dashboard / voice) all assume an interactive operator;
+   the CLI assumes a shell pipeline.
+
+### What it ships
+
+**18 subcommands across 4 categories:**
+
+* **Recovery / diagnostic**: `status` (HTTP `/api/cp/system-status`),
+  `healing run <monitor>` (in-repo `app.healing.monitors.<name>.run()`),
+  `logs tail` (workspace/errors.jsonl with JSONL parse).
+* **Recall / inspection**: `recall <query>` (in-repo
+  `app.conversation_memory.retrieval.recall`), `briefing
+  {morning,evening,weekly}` (in-repo `app.life_companion.daily_briefing`
+  composers), `ledger tail` (in-repo
+  `app.identity.continuity_ledger.list_events` with `--kind` filter),
+  `threads {list,show}` (HTTP `/api/cp/threads`).
+* **Data / governance read**: `files {list,send}` (HTTP `/api/cp/files`),
+  `notes save` (writes `workspace/notes/<title>.md` with safe-filename
+  guard), `skills {list,show}` (HTTP `/api/cp/skills`), `cr {list,show}`
+  (HTTP `/api/cp/changes`), `amendments list` (HTTP `/api/cp/amendments`).
+* **Passthrough wrappers**: `brainstorm`, `drill`, `bootstrap
+  {google,web-push,browse,warm-spare}`, `advisory goodhart`. These
+  use `argparse.REMAINDER` and forward verbatim via `runpy.run_module`
+  — no subprocess fork, no double-parse cost; the wrapped module sees
+  the same argv shape it does when invoked directly.
+
+### What it deliberately does NOT ship
+
+* **`aai chat` was rejected.** Signal + Discord + `/cp/chat` already
+  cover conversational input. A fourth chat surface would add
+  audit-log discipline, sender_id namespacing, conversation-history
+  wiring, and Goodhart-guard plumbing without closing a real gap.
+* **Write-side governance was rejected.** `aai amendment approve`,
+  `aai cr approve` — those operator-authorization surfaces keep
+  typed-phrase / Signal-reaction confirmation flows on devices. The
+  CLI reads governance state, never acts on it.
+* **No new HTTP endpoints.** v1 wraps what already exists. Subcommands
+  that need data from new endpoints are postponed until the endpoint
+  ships independently.
+* **No new dependencies.** `click` / `typer` / `httpx` / `requests`
+  would all have been ergonomic but each couples the recovery surface
+  to the thing being recovered. Stdlib `argparse` + `urllib` + `tomllib`
+  is the safer floor.
+
+### The `argparse.SUPPRESS` footgun (load-bearing)
+
+Global flags (`--endpoint` / `--bearer` / `--json` / `--quiet`) live
+on a `_common_parent()` parser and are shared into every leaf
+subparser via `parents=`. Without `default=argparse.SUPPRESS`, this
+silently breaks: argparse stores the parent's parse-time value in the
+namespace, then the leaf's defaults OVERWRITE it. The user-visible
+symptom: `aai --json ledger tail -n 3` returns nothing because
+`ns.json` got reset to False during the leaf parse.
+
+Fix: every flag on the common parent uses `default=argparse.SUPPRESS`
+so the attribute is set ONLY when the user passes the flag — the
+parent's True value survives the leaf's parse. The CLI commands then
+read via `getattr(args, "json", False)` since the attribute may not
+exist. Pinned by `test_json_flag_works_in_every_position` parametrized
+across three positionings so a future refactor can't regress this.
+
+### Config resolution
+
+Four sources in priority order:
+
+1. CLI flag (`--endpoint`, `--bearer`)
+2. Env (`AAI_ENDPOINT`, `AAI_BEARER`, with `GATEWAY_SECRET` as a
+   final fallback for the bearer — matches the gateway-internal name)
+3. `~/.config/andrusai/config.toml` with three keyed sections:
+   `[default]` (`.endpoint`), `[endpoints]` (named aliases), `[auth]`
+   (`.bearer`)
+4. Built-in defaults: endpoint = `http://localhost:3100`
+
+Named endpoint aliases (`local` / `tailnet` / `funnel`) are resolved
+by checking TOML's `[endpoints]` first, then `DASHBOARD_PUBLIC_URL` /
+`DASHBOARD_MAC_URL` env vars (matches the rest of the system), then
+built-in defaults matching the operator's tailnet (per Q17.1 warm
+spare convention).
+
+### Exit code contract
+
+* 0 — ok
+* 1 — user error (bad args, unknown monitor, file already exists, etc.)
+* 2 — transport / auth error (network unreachable, 401, 403, timeout)
+* 3 — gateway returned non-2xx other than auth
+* 130 — Ctrl-C (KeyboardInterrupt → SIGINT convention)
+
+`TransportError` subclasses (`AuthError` / `NetworkError` /
+`GatewayError`) carry `exit_code` as a class attribute; `_http_or_die`
+maps the exception to the documented code. Tested in
+`test_transport_error_class_exit_codes` + `test_status_returns_2_on_network_error`.
+
+### Install path
+
+`pyproject.toml` has no `[project]` section yet (only `[tool.ruff]`
+and `[tool.mypy]`), so adding `[project.scripts]` for an `aai` entry
+point would require introducing a full `[project]` block — invasive
+and unrelated to the CLI itself. Instead, operators add a shell alias:
+
+```bash
+# ~/.zshrc
+alias aai='python -m app.cli'
+```
+
+This matches the existing pattern for `python -m app.brainstorm` and
+`python -m app.resilience_drills` — both of which the CLI now wraps
+under shorter verb names.
+
+### Files
+
+* `app/cli/__init__.py` (24 LOC) — module docstring + alias guidance
+* `app/cli/__main__.py` (9 LOC) — `python -m` entry
+* `app/cli/config.py` (110 LOC) — endpoint/bearer resolution
+* `app/cli/transport.py` (94 LOC) — stdlib urllib client + error classes
+* `app/cli/output.py` (75 LOC) — text/JSON/quiet rendering + table helper
+* `app/cli/commands.py` (523 LOC) — 18 subcommand implementations
+* `app/cli/main.py` (230 LOC) — argparse dispatcher
+* `tests/test_cli_dispatcher.py` (290 LOC) — 40 tests
+* `docs/CLI.md` (213 LOC) — operator guide
+
+Total CLI: 1065 LOC + 290 LOC tests + 213 LOC docs.
+
+### Tests (40, all passing)
+
+* Global flag positioning (parametrized × 3 positions) — pins the
+  `argparse.SUPPRESS` discipline.
+* Endpoint + bearer flag preservation across parent → leaf transition.
+* Config resolution: flag > env > TOML > defaults; named aliases;
+  `GATEWAY_SECRET` fallback for bearer; empty auth header when no
+  bearer is set.
+* Transport error class exit codes (2/2/3); status returns 2 on
+  unreachable network.
+* `notes save` writes inside `workspace/notes/`; refuses overwrite
+  without `--overwrite`; sanitizes unsafe titles — path-traversal
+  pinning test.
+* `logs tail` reads `workspace/errors.jsonl`, respects `-n N`, parses
+  JSONL per line under `--json`, returns 1 when no log exists.
+* `healing run` returns 1 on unknown monitor with explanatory stderr.
+* Help screens parametrized across all 18 leaf subcommands.
+* TOML config: endpoint + bearer from `~/.config/andrusai/config.toml`
+  with `HOME` monkeypatched.
+* Mode resolution: `--quiet` wins over `--json`; default is text.
+
+### Deliberate non-decisions
+
+* **No `[project]` section in `pyproject.toml`.** Adding the block
+  just to wire `[project.scripts]` would be a 10-line addition unrelated
+  to the CLI. Shell alias is the matching-convention solution.
+* **No CLAUDE.md / PROGRAM.md updates ahead of time.** The §58 doc
+  entry follows the ship convention — written after the code is
+  green and the operator has reviewed.
+* **No new master switches.** The CLI has no runtime configuration
+  knobs because there's nothing for a knob to control — it's a
+  read-mostly client.
+* **No identity-continuity event kind.** Adding a 21st kind for
+  "operator invoked the CLI" would be Goodhart-adjacent (the
+  ledger is for identity-shaping events; routine tool use isn't
+  one). Heavy operations the CLI proxies (e.g. `healing run`,
+  `briefing`) emit their own events through the existing surfaces.
+
+### PR
+
+* **Commit `869d44fc`** — direct-to-main push per operator
+  request. 9 files, 1568 insertions.
