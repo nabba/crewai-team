@@ -11804,3 +11804,85 @@ Total CLI: 1065 LOC + 290 LOC tests + 213 LOC docs.
 
 * **Commit `869d44fc`** — direct-to-main push per operator
   request. 9 files, 1568 insertions.
+
+## 59 2026-05-18 — Calendar fast-route removal (correctness over latency)
+
+Deleted `_try_answer_calendar_question` from
+`app/agents/commander/orchestrator.py` and its call site. 187 LOC
+removed, 0 added. Calendar-listing queries now route through the PIM
+crew like every other request, which has working
+`list_calendar_events` backed by the Swift/EventKit helper via the
+host bridge.
+
+### The bug it fixed
+
+User asked "what are my meetings today and tomorrow" — system
+replied "No events on your calendar for tomorrow." Tomorrow had
+six visible events including a 10:00 haircut at Filmi 6 and an
+all-day TripIt entry for Bucharest.
+
+Two compounding defects in the fast-route:
+
+1. **Time-window narrowing.** The function walked a 5-branch
+   if/elif chain over time anchors ("tomorrow", "this week",
+   "next week", named weekdays, default "today"). First match
+   won, so "today AND tomorrow" silently collapsed to
+   tomorrow-only — the "today" half of the query was dropped.
+   Same defect surfaced 2026-05-06 for "meetings tomorrow or
+   friday?" (the "or friday" conjunction gets ignored after
+   "tomorrow" matches).
+2. **Empty-result conflation.** `bridge.execute()` returning
+   empty stdout was indistinguishable from "Swift returned 0
+   events". Both paths produced the same definitive negative
+   `"No events on your calendar for {label}."` even when the
+   bridge call had silently failed.
+
+Audit log evidence: between `request_received` (21:58:17 UTC)
+and `response_sent` (21:58:43 UTC) there is no `crew_dispatch`
+event — PIM was never reached. The fast-route short-circuited
+and returned the canned negative directly.
+
+### Why deletion vs. patching
+
+The fast-route was duplicating ~150 LOC of `calendar_tools`'
+logic (skip lists, time-window math, multi-lang formatting,
+weekday parsing) to save one LLM hop. Drift between the two
+paths is exactly what caused this bug, and every new natural
+phrase the operator might type ("this weekend", "next 3 days",
+"Friday afternoon") would need handling in both places.
+
+The PIM agent's LLM already parses time references correctly
+and calls `list_calendar_events` with an appropriate
+`days_ahead`. The cost is one LLM hop (~3-5s) that the fast-
+route saved at the price of correctness. For calendar queries
+— low-frequency, high-trust — that trade-off is wrong.
+
+### Files
+
+* **DELETED** `_try_answer_calendar_question` (179 lines) from
+  `app/agents/commander/orchestrator.py`.
+* **DELETED** the 8-line call block at line 2879 (comment +
+  invocation + early-return).
+
+### Deliberate non-decisions
+
+* **No replacement fast-route.** If natural-language parsing
+  turns out to be incomplete, the LLM is the better fallback
+  than handcrafted regex. The principle generalizes — every
+  prior "intercept before the LLM" optimization in this code
+  base has eventually grown brittle for the same reason.
+* **No new tests.** The deletion is observable through the
+  negative: any calendar query that previously short-circuited
+  now produces a `crew_dispatch` event in `workspace/audit.log`.
+  The functional path (PIM → `list_calendar_events`) is already
+  test-covered.
+* **No `gcal_tools` wiring into PIM.** Separate concern —
+  `workspace/google_token.json` doesn't exist, so the OAuth
+  bootstrap (`python -m app.google_workspace.bootstrap`) is the
+  prerequisite. Today the macOS AppleScript path is the only
+  calendar route the PIM agent has, and that's fine when the
+  bridge is up.
+
+### Commit
+
+* Direct-to-main per operator request.
