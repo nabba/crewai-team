@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.andrus.botarmy.gateway-watchdog</string>
+
+  <!-- Continuous daemon polling http://127.0.0.1:8765/health and restarting
+       the gateway container when it stays unresponsive past the threshold.
+       Lives on the host because it has to recover the gateway when the
+       gateway can't recover itself. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>-u</string>
+    <string>/Users/andrus/BotArmy/crewai-team/scripts/gateway_watchdog.py</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Tiny grace so a watchdog crash loop doesn't burn CPU. -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HEALTH_URL</key>
+    <string>http://127.0.0.1:8765/health</string>
+    <key>POLL_INTERVAL_SECONDS</key>
+    <string>20</string>
+    <key>HEALTH_TIMEOUT_SECONDS</key>
+    <string>5</string>
+    <key>FAILURE_THRESHOLD</key>
+    <string>6</string>
+    <key>RESTART_COOLDOWN_SECONDS</key>
+    <string>300</string>
+    <key>RESTART_GRACE_SECONDS</key>
+    <string>90</string>
+    <key>COMPOSE_PROJECT_DIR</key>
+    <string>/Users/andrus/BotArmy/crewai-team</string>
+    <key>GATEWAY_SERVICE</key>
+    <string>gateway</string>
+    <key>SIGNAL_CLI_HTTP_URL</key>
+    <string>http://127.0.0.1:7583</string>
+    <key>SIGNAL_OWNER_NUMBER</key>
+    <string>+3725100500</string>
+    <key>DOCKER_BIN</key>
+    <string>/usr/local/bin/docker</string>
+    <key>LOG_PATH</key>
+    <string>/Users/andrus/BotArmy/crewai-team/workspace/healing/.gateway_watchdog.log</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/andrus/BotArmy/crewai-team</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/healing/.gateway_watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/andrus/BotArmy/crewai-team/workspace/healing/.gateway_watchdog.log</string>
+</dict>
+</plist>

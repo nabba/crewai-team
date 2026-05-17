@@ -8,9 +8,18 @@ Environment variables:
     GATEWAY_SECRET        — shared secret for authenticating with the gateway
     SIGNAL_CLI_HTTP_URL   — signal-cli HTTP endpoint (default: http://127.0.0.1:7583)
     GATEWAY_URL           — gateway inbound endpoint (default: http://127.0.0.1:8765/signal/inbound)
+    FORWARDER_OUTBOX_DB   — SQLite path for the durable outbox (default: ~/.crewai-bridge/signal_outbox.sqlite)
+
+Durable outbox: every payload pulled from signal-cli is persisted to a local
+SQLite WAL before the gateway POST is attempted. Failed deliveries stay queued
+with exponential backoff (cap 600s) and drain on the next loop iteration,
+through gateway restarts or hangs. signal-cli's manual receive mode means once
+the forwarder reads a message it's the only durable copy until the gateway
+acks — the outbox closes that loss window.
 """
 import json
 import os
+import sqlite3
 import sys
 import time
 import requests
@@ -18,14 +27,178 @@ import requests
 SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://127.0.0.1:7583")
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8765/signal/inbound")
 GATEWAY_SECRET = os.environ.get("GATEWAY_SECRET", "")
+OUTBOX_DB = os.environ.get(
+    "FORWARDER_OUTBOX_DB",
+    os.path.expanduser("~/.crewai-bridge/signal_outbox.sqlite"),
+)
 
 _signal_session = requests.Session()
 _signal_session.headers["Content-Type"] = "application/json"
 _gateway_session = requests.Session()
 
+# Backoff ladder for redelivery attempts; capped so a long gateway outage
+# doesn't push the next retry hours into the future.
+_BACKOFF_SECONDS = [2, 5, 15, 60, 120, 300, 600]
+_DRAIN_BATCH = 25  # cap per loop iteration so a large backlog doesn't starve the receive path
+_OUTBOX_REPORT_INTERVAL = 60.0  # log queue depth at most once a minute
+
 
 def log(msg):
     print(f"[forwarder] {msg}", flush=True)
+
+
+# ---- Durable outbox ---------------------------------------------------------
+
+def _outbox_conn():
+    """Open the outbox SQLite, creating the dir + schema if needed.
+
+    WAL mode + busy_timeout keeps concurrent readers (e.g. an operator running
+    sqlite3 on the file) from blocking the forwarder.
+    """
+    os.makedirs(os.path.dirname(OUTBOX_DB), exist_ok=True)
+    conn = sqlite3.connect(OUTBOX_DB, timeout=10, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at REAL NOT NULL,
+            created_at REAL NOT NULL,
+            last_error TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_outbox_next ON outbox(next_attempt_at)"
+    )
+    return conn
+
+
+def _enqueue(kind: str, payload: dict) -> None:
+    """Persist a payload to the outbox so it survives crashes and gateway hangs."""
+    try:
+        conn = _outbox_conn()
+        try:
+            now = time.time()
+            conn.execute(
+                "INSERT INTO outbox (kind, payload, attempts, next_attempt_at, created_at) "
+                "VALUES (?, ?, 0, ?, ?)",
+                (kind, json.dumps(payload), now, now),
+            )
+        finally:
+            conn.close()
+    except Exception as e:
+        # Catastrophic: outbox unwritable. Log loudly but don't drop the
+        # message — fall back to a best-effort direct POST so we degrade to
+        # pre-durability behaviour rather than silently losing data.
+        log(f"OUTBOX WRITE FAILED ({e}); falling back to direct POST")
+        _direct_post(kind, payload)
+
+
+def _direct_post(kind: str, payload: dict) -> bool:
+    """Last-resort direct POST when the outbox itself can't be written.
+
+    Returns True on success. Single attempt, no retries — we don't have
+    durable state to track them.
+    """
+    headers = {}
+    if GATEWAY_SECRET:
+        headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
+    try:
+        resp = _gateway_session.post(GATEWAY_URL, json=payload, headers=headers, timeout=30)
+        log(f"Direct {kind} POST: {resp.status_code}")
+        return 200 <= resp.status_code < 300
+    except Exception as e:
+        log(f"Direct {kind} POST failed: {e}")
+        return False
+
+
+_last_outbox_report = 0.0
+
+
+def _drain_outbox() -> None:
+    """Attempt redelivery of any pending rows whose backoff has elapsed.
+
+    Bounded by _DRAIN_BATCH per call so the receive loop keeps running even
+    with a large backlog. Returns nothing; failures stay queued.
+    """
+    global _last_outbox_report
+    try:
+        conn = _outbox_conn()
+    except Exception as e:
+        log(f"OUTBOX OPEN FAILED ({e}); skipping drain this cycle")
+        return
+
+    try:
+        now = time.time()
+        rows = conn.execute(
+            "SELECT id, kind, payload, attempts FROM outbox "
+            "WHERE next_attempt_at <= ? ORDER BY id ASC LIMIT ?",
+            (now, _DRAIN_BATCH),
+        ).fetchall()
+
+        headers = {}
+        if GATEWAY_SECRET:
+            headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
+
+        for row_id, kind, payload_json, attempts in rows:
+            try:
+                payload = json.loads(payload_json)
+            except Exception as e:
+                log(f"Outbox row {row_id} unparseable ({e}); dropping")
+                conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
+                continue
+
+            try:
+                resp = _gateway_session.post(
+                    GATEWAY_URL, json=payload, headers=headers, timeout=30,
+                )
+                if 200 <= resp.status_code < 300:
+                    conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
+                    if attempts > 0:
+                        log(f"Outbox row {row_id} delivered after {attempts + 1} attempts ({kind})")
+                    else:
+                        log(f"Forwarded {kind} to gateway: {resp.status_code}")
+                else:
+                    _reschedule(conn, row_id, attempts, f"HTTP {resp.status_code}")
+            except requests.exceptions.RequestException as e:
+                _reschedule(conn, row_id, attempts, str(e)[:200])
+            except Exception as e:
+                _reschedule(conn, row_id, attempts, f"unexpected: {str(e)[:200]}")
+
+        # Periodic depth report so a slow-growing backlog is visible.
+        if (now - _last_outbox_report) >= _OUTBOX_REPORT_INTERVAL:
+            pending = conn.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]
+            if pending:
+                oldest = conn.execute(
+                    "SELECT MIN(created_at) FROM outbox"
+                ).fetchone()[0]
+                age = int(now - oldest) if oldest else 0
+                log(f"Outbox depth: {pending} pending, oldest {age}s old")
+            _last_outbox_report = now
+    finally:
+        conn.close()
+
+
+def _reschedule(conn: sqlite3.Connection, row_id: int, attempts: int, err: str) -> None:
+    """Bump attempts + push next_attempt_at out by the backoff ladder."""
+    idx = min(attempts, len(_BACKOFF_SECONDS) - 1)
+    delay = _BACKOFF_SECONDS[idx]
+    next_at = time.time() + delay
+    conn.execute(
+        "UPDATE outbox SET attempts = attempts + 1, next_attempt_at = ?, last_error = ? "
+        "WHERE id = ?",
+        (next_at, err, row_id),
+    )
+    # First failure logs at INFO; sustained failures only every 5 attempts
+    # to keep the log readable during long outages.
+    if attempts == 0 or attempts % 5 == 0:
+        log(f"Outbox row {row_id} attempt {attempts + 1} failed ({err}); retry in {delay}s")
 
 
 def _receive_messages():
@@ -126,28 +299,13 @@ def _process_envelope(envelope: dict) -> None:
         is_remove = reaction.get("isRemove", False)
         log(f"Reaction from {sender[-4:]}: {emoji} on ts={target_ts} (remove={is_remove})")
 
-        payload = {
+        _enqueue("reaction", {
             "type": "reaction_feedback",
             "sender": sender,
             "emoji": emoji,
             "target_timestamp": target_ts,
             "is_remove": is_remove,
-        }
-        headers = {}
-        if GATEWAY_SECRET:
-            headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
-        for attempt in range(3):
-            try:
-                resp = _gateway_session.post(
-                    GATEWAY_URL, json=payload, headers=headers, timeout=10,
-                )
-                log(f"Reaction forwarded: {resp.status_code}")
-                break
-            except Exception as e:
-                if attempt < 2:
-                    time.sleep(2)
-                else:
-                    log(f"Failed to forward reaction: {e}")
+        })
         return
 
     if not data_msg.get("message") and not data_msg.get("attachments"):
@@ -172,31 +330,12 @@ def _process_envelope(envelope: dict) -> None:
     att_info = f", {len(attachments)} attachment(s)" if attachments else ""
     log(f"Incoming message from {sender[-4:]} ({len(message)} chars{att_info})")
 
-    payload = {
+    _enqueue("message", {
         "sender": sender,
         "message": message,
         "timestamp": timestamp,
         "attachments": attachments,
-    }
-    headers = {}
-    if GATEWAY_SECRET:
-        headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
-
-    # Retry with back-off so messages aren't lost during gateway restarts
-    for attempt in range(4):
-        try:
-            resp = _gateway_session.post(
-                GATEWAY_URL, json=payload, headers=headers, timeout=30,
-            )
-            log(f"Forwarded to gateway: {resp.status_code}")
-            break
-        except Exception as e:
-            if attempt < 3:
-                wait = [2, 5, 15][attempt]
-                log(f"Forward attempt {attempt+1} failed ({e}), retrying in {wait}s…")
-                time.sleep(wait)
-            else:
-                log(f"Failed to forward after 4 attempts: {e}")
+    })
 
 
 _LOCATION_FILE = "/tmp/botarmy-location.json"
@@ -239,12 +378,18 @@ def _probe_location():
 def poll_loop():
     """Poll signal-cli for messages and forward them.
 
-    Monitors connection health and reconnects if signal-cli becomes unresponsive.
+    Each iteration also drains the durable outbox so any queued payload from
+    a prior gateway hang gets retried as soon as the gateway is healthy again.
     """
     log(f"Polling signal-cli at {SIGNAL_CLI_URL} every ~1.5s")
     log(f"Forwarding to {GATEWAY_URL}")
+    log(f"Outbox at {OUTBOX_DB}")
     _consecutive_errors = 0
     _MAX_ERRORS = 60  # ~30s of consecutive connection failures triggers reconnect
+
+    # Drain anything left over from a prior process so an early crash doesn't
+    # delay redelivery until the next inbound message arrives.
+    _drain_outbox()
 
     while True:
         # Periodic location probe (every 30 min, non-blocking)
@@ -274,6 +419,13 @@ def poll_loop():
             log(f"signal-cli unresponsive ({_consecutive_errors} consecutive errors)")
             _wait_for_signal_cli()
             _consecutive_errors = 0
+
+        # Drain the outbox every cycle so retries fire on the backoff cadence
+        # rather than waiting for the next inbound message.
+        try:
+            _drain_outbox()
+        except Exception as e:
+            log(f"Drain pass raised: {e}")
 
         # Gap between polls — signal-cli needs a brief pause to release the lock
         time.sleep(0.5)
