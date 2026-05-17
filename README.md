@@ -482,7 +482,8 @@ python -m host_bridge.main &   # FastAPI on 127.0.0.1:9100
 
 # Start containerised services
 docker compose up -d            # gateway + chromadb + postgres + neo4j
-python scripts/run_migrations.py
+# Migrations apply automatically at gateway boot via
+# app.memory.startup_migrations.apply_all (idempotent IF NOT EXISTS).
 
 # Verify
 open http://localhost:8765/cp/  # dashboard

@@ -12,3 +12,7 @@ from app.resilience_drills.drills import kill_the_gateway  # noqa: F401
 from app.resilience_drills.drills import vendor_independence  # noqa: F401
 # PROGRAM §52 Q17.2 — local-only quarterly drill (6th drill).
 from app.resilience_drills.drills import local_only  # noqa: F401
+# PROGRAM §56 — source-ledger replay drill (7th drill).
+from app.resilience_drills.drills import source_ledger_replay  # noqa: F401
+# PROGRAM §56 iter-2 — embedding-model rotation drill (8th drill).
+from app.resilience_drills.drills import embedding_rotation  # noqa: F401

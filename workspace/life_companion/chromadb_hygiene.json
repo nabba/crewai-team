@@ -1,0 +1,118 @@
+{
+  "consecutive_failures": {
+    "/app/workspace/memory/chroma.sqlite3": 1
+  },
+  "last_run_at": 1778960858.4424868,
+  "last_summary": {
+    "files": 7,
+    "freed_bytes_total": 212992,
+    "orphan_findings": [
+      {
+        "kb": "memory",
+        "orphan_bytes": 321700,
+        "orphan_count": 1,
+        "orphan_uuids": [
+          "c3b3f85f-f59d-42a7-a9a1-e04d446553e2"
+        ]
+      },
+      {
+        "kb": "knowledge",
+        "orphan_bytes": 2085124,
+        "orphan_count": 2,
+        "orphan_uuids": [
+          "5c3e2de9-7675-45e1-8669-fd8c8b977123",
+          "90d16b8b-7c72-482f-ba82-adeb81ec95ee"
+        ]
+      },
+      {
+        "kb": "philosophy",
+        "orphan_bytes": 20895642,
+        "orphan_count": 5,
+        "orphan_uuids": [
+          "0a3f3f7f-237c-4eda-b3bb-0cdb33d61498",
+          "3d7cbd78-bccb-40bb-9ab7-85ed2016957d",
+          "b7052d52-a97c-41e1-9c36-005c0ac4db1c",
+          "d671917e-140a-4e61-b4ce-ffc1b37c95a6",
+          "db9b4ff7-d47d-400a-8415-849f3a14368e"
+        ]
+      }
+    ],
+    "per_file": [
+      {
+        "bytes_after": 21417984,
+        "bytes_before": 21598208,
+        "duration_s": 1.55,
+        "error": null,
+        "freed_bytes": 180224,
+        "ok": true,
+        "path": "/app/workspace/episteme/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 214659072,
+        "bytes_before": 214659072,
+        "duration_s": 0.044,
+        "error": "unexpected: DatabaseError: database disk image is malformed",
+        "freed_bytes": 0,
+        "ok": false,
+        "path": "/app/workspace/memory/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 3551232,
+        "bytes_before": 3584000,
+        "duration_s": 0.146,
+        "error": null,
+        "freed_bytes": 32768,
+        "ok": true,
+        "path": "/app/workspace/experiential/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 26800128,
+        "bytes_before": 26800128,
+        "duration_s": 0.799,
+        "error": null,
+        "freed_bytes": 0,
+        "ok": true,
+        "path": "/app/workspace/knowledge/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 87617536,
+        "bytes_before": 87617536,
+        "duration_s": 2.43,
+        "error": null,
+        "freed_bytes": 0,
+        "ok": true,
+        "path": "/app/workspace/philosophy/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 167936,
+        "bytes_before": 167936,
+        "duration_s": 0.009,
+        "error": null,
+        "freed_bytes": 0,
+        "ok": true,
+        "path": "/app/workspace/tensions/chroma.sqlite3"
+      },
+      {
+        "bytes_after": 167936,
+        "bytes_before": 167936,
+        "duration_s": 0.007,
+        "error": null,
+        "freed_bytes": 0,
+        "ok": true,
+        "path": "/app/workspace/aesthetics/chroma.sqlite3"
+      }
+    ],
+    "reclaim_trend": {
+      "alert": false,
+      "history": [
+        212992
+      ],
+      "median_prior": null,
+      "reason": "not enough history yet"
+    }
+  },
+  "reclaim_history": [
+    212992
+  ],
+  "trend_alert_repeats": 0
+}

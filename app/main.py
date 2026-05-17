@@ -113,7 +113,7 @@ from app.audit import (
 from app.conversation_store import (
     add_message, start_task, complete_task,
     enqueue_inbound, mark_inbound_processing,
-    mark_inbound_done, mark_inbound_failed,
+    mark_inbound_done, mark_inbound_failed, mark_inbound_deferred,
     get_pending_inbound, prune_old_inbound,
 )
 from app.workspace_sync import setup_workspace_repo, sync_workspace
@@ -298,6 +298,34 @@ async def lifespan(app: FastAPI):
         logger.exception(
             "main: post-amendment restart-claim self-check raised; "
             "claims left in place for operator visibility",
+        )
+
+    # ── PROGRAM §55 (2026-05-17) — ChromaDB integrity scan ──────────
+    # Walks every workspace/<kb>/chroma.sqlite3 BEFORE any route serves:
+    #   1. Enforce WAL + synchronous=FULL (defense vs unclean restart)
+    #   2. PRAGMA integrity_check — quarantine + alert on damage
+    #   3. memory KB only — auto-replay from postgres source-of-truth
+    # Failure-isolated end-to-end; cannot block boot. See module
+    # docstring for the rationale (dual-writer corruption incidents
+    # 2026-04-25 and 2026-05-17 wiped the ``memory/`` KB).
+    try:
+        from app.memory.chromadb_integrity import boot_integrity_scan
+        scan_summary = boot_integrity_scan()
+        ok_kbs = [k for k, v in scan_summary.get("integrity_results", {}).items() if v == "ok"]
+        bad_kbs = [k for k, v in scan_summary.get("integrity_results", {}).items() if v != "ok"]
+        logger.info(
+            "main: chromadb integrity scan complete — ok=%s quarantined=%s",
+            ok_kbs, list(scan_summary.get("quarantines", {}).keys()),
+        )
+        if bad_kbs:
+            logger.warning(
+                "main: chromadb integrity scan flagged %d KB(s): %s",
+                len(bad_kbs), bad_kbs,
+            )
+    except Exception:
+        logger.exception(
+            "main: chromadb integrity scan raised; continuing boot — "
+            "the protection layer is observational so this is non-fatal",
         )
 
     # Fail fast if gateway is misconfigured to bind on a public interface.
@@ -749,13 +777,23 @@ async def lifespan(app: FastAPI):
         logger.debug("Training orchestrator init failed (non-fatal)", exc_info=True)
 
     # ── Phase 16a: SubIA consciousness wire-in ──────────────────────────
-    # Opt-in via SUBIA_FEATURE_FLAG_LIVE=1. When disabled, the entire
-    # SubIA stack stays unimported (no latency, no memory, no risk).
-    # enable_subia_hooks() already wraps internal failures and returns a
-    # structured state — it never raises. The outer try/except is
-    # defence-in-depth in case an import itself fails.
+    # Opt-in via SUBIA_FEATURE_FLAG_LIVE=1 OR the runtime_settings mirror
+    # flipped from /cp/settings (productization plan T1.3). When disabled,
+    # the entire SubIA stack stays unimported (no latency, no memory,
+    # no risk). enable_subia_hooks() already wraps internal failures and
+    # returns a structured state — it never raises. The outer try/except
+    # is defence-in-depth in case an import itself fails.
     try:
-        if settings.subia_live_enabled:
+        # Runtime settings is the source of truth; on first read it is
+        # seeded from settings.subia_live_enabled so an env-true setup
+        # carries forward.
+        try:
+            from app.runtime_settings import get_subia_live_enabled
+            _subia_live = get_subia_live_enabled()
+        except Exception:
+            _subia_live = bool(getattr(settings, "subia_live_enabled", False))
+
+        if _subia_live:
             from app.subia.live_integration import enable_subia_hooks
             subia_state = enable_subia_hooks(feature_flag=True)
             if subia_state.registered:
@@ -766,7 +804,7 @@ async def lifespan(app: FastAPI):
             else:
                 logger.warning(f"SubIA wire-in incomplete: {subia_state.reason}")
         else:
-            logger.info("SubIA live integration disabled (SUBIA_FEATURE_FLAG_LIVE=0)")
+            logger.info("SubIA live integration disabled (toggle in /cp/settings or set SUBIA_FEATURE_FLAG_LIVE=1)")
     except Exception:
         logger.warning("SubIA live integration failed (non-fatal)", exc_info=True)
 
@@ -929,6 +967,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Discord bot startup failed (non-fatal)")
 
+    # Signal that lifespan setup is complete. Consumers (idle_scheduler,
+    # potentially other deferrable subsystems over time) gate on this so
+    # background work doesn't storm into a still-initializing gateway.
+    # See app/boot_state.py for the contract.
+    from app import boot_state
+    boot_state.mark_boot_complete()
     logger.info("CrewAI Agent Team started")
     yield
     # Discord clean shutdown (closes the gateway WS before APScheduler dies).
@@ -1028,18 +1072,10 @@ try:
 except Exception:
     logger.warning("metrics: registration failed", exc_info=True)
 
-# ── CORS — allow control plane dashboard (port 3100) to call API (port 8765) ──
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3100", "http://127.0.0.1:3100",
-                   "http://100.85.195.121:3100",
-                   "http://plgs-macbook-pro---andrus:3100",
-                   "http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is configured in app/middleware.py (single source of truth as of
+# 2026-05-16). The duplicate block that used to live here has been
+# removed; add new origins via the ``CORS_EXTRA_ORIGINS`` env var or by
+# editing ``_dashboard_origins`` in middleware.py.
 
 # Mount philosophy API routes
 from app.philosophy.api import philosophy_router
@@ -2016,6 +2052,22 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             # message is no longer lost on rejection.
             from app.dead_letter_inbound import enqueue as _dlq_enqueue, queue_depth as _dlq_depth
             buffered = _dlq_enqueue(sender, text, attachments)
+            # A2 fix (productization plan): the durable inbound row was
+            # marked 'processing' above. Without an explicit transition
+            # here, load-shed messages stall in 'processing' forever
+            # (audit 2026-05-12). 'deferred' transfers ownership to the
+            # DLQ; 'failed' records the buffer-full path.
+            if queue_id:
+                if buffered:
+                    mark_inbound_deferred(
+                        queue_id,
+                        f"load_shed: buffered to dlq (depth {_dlq_depth()})",
+                    )
+                else:
+                    mark_inbound_failed(
+                        queue_id,
+                        "load_shed: retry queue full, message dropped",
+                    )
             try:
                 if buffered:
                     await signal_client.send(
@@ -2854,6 +2906,15 @@ try:
     # Foundation for the routing fix (5.2) and change-request UI (5.3).
     from app.control_plane.system_state_api import router as system_state_cp_router
     app.include_router(system_state_cp_router)
+    # Substrate status — unified landing page snapshot (productization T2.4).
+    # GET /api/cp/substrate/status returns the SubstrateStatus dict consumed
+    # by the /cp/status React page.
+    from app.control_plane.substrate_api import router as substrate_cp_router
+    app.include_router(substrate_cp_router)
+    # Migrate REST — React-driven cloud migration (productization WP D Phase 5a).
+    # GET/POST /api/cp/migrate/* — wizard endpoints consumed by /cp/migrate.
+    from app.control_plane.migrate_api import router as migrate_cp_router
+    app.include_router(migrate_cp_router)
     # Change requests — agent-proposed code modifications via human gate (Phase 5.3a).
     # GET / POST endpoints under /api/cp/changes — paired with the Signal
     # 👍/👎 voting flow + the React control plane UI (5.3b).

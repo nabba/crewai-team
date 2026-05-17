@@ -1,0 +1,26 @@
+{
+  "reflection_id": "cogito_20260517_042211",
+  "timestamp": "2026-05-17T04:22:11.481935+00:00",
+  "self_model_stale": false,
+  "discrepancies": [
+    {
+      "type": "memory_chromadb_error",
+      "detail": "Error executing plan: Error sending backfill request to compactor: Failed to send request",
+      "severity": "medium"
+    }
+  ],
+  "failure_patterns": [],
+  "observations": [
+    "Agent 'concierge' has no versioned prompt",
+    "Agent 'desktop' has no versioned prompt",
+    "Agent 'devops' has no versioned prompt",
+    "Agent 'financial_analyst' has no versioned prompt",
+    "Agent 'pim' has no versioned prompt",
+    "Agent 'reasoning_methods' has no versioned prompt",
+    "Agent 'repo_analyst' has no versioned prompt",
+    "Agent 'introspector' has no versioned prompt"
+  ],
+  "improvement_proposals": [],
+  "overall_health": "degraded",
+  "narrative": ""
+}

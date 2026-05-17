@@ -2,11 +2,55 @@
 middleware.py — Security headers and CORS middleware.
 
 Extracted from main.py to reduce gravity-well coupling.
+
+PR 1 (2026-05-16): CORS configuration is now the single source of
+truth for the gateway. The previous duplicate block in ``main.py``
+has been removed; ``allow_origins`` here is the union of both prior
+configs (dashboard dev port 3100 across localhost / loopback /
+tailscale, plus the same-origin gateway port and the Firebase-hosted
+assets). Stack order: ``CORSMiddleware`` then ``SecurityHeadersMiddleware``
+— security headers wrap the response after CORS has decided whether
+to short-circuit a preflight.
 """
+
+import os
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
+
+
+def _dashboard_origins(gateway_port: int) -> list[str]:
+    """Build the explicit allow-origin list.
+
+    Explicit origins (no wildcards) are required because we use
+    ``allow_credentials=True`` for the dashboard — browsers reject
+    ``Access-Control-Allow-Origin: *`` with credentials.
+
+    Extra origins can be appended via ``CORS_EXTRA_ORIGINS`` env
+    (comma-separated). Useful for adding new tailscale hostnames or
+    reverse-proxy URLs without editing source.
+    """
+    base = [
+        # Dashboard dev server (Vite at port 3100)
+        "http://localhost:3100",
+        "http://127.0.0.1:3100",
+        "http://100.85.195.121:3100",
+        "http://plgs-macbook-pro---andrus:3100",
+        "http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100",
+        # Same-origin gateway (mainly for the bundled /cp/ React app)
+        f"http://127.0.0.1:{gateway_port}",
+        f"http://localhost:{gateway_port}",
+        # Firebase-hosted assets calling back into the gateway
+        "https://botarmy-ba0c9.web.app",
+        "https://botarmy-ba0c9.firebaseapp.com",
+    ]
+    extra = os.environ.get("CORS_EXTRA_ORIGINS", "")
+    if extra:
+        base.extend(
+            o.strip() for o in extra.split(",") if o.strip()
+        )
+    return base
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -52,18 +96,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def add_middleware(app, settings):
-    """Configure all middleware on the FastAPI app."""
-    app.add_middleware(SecurityHeadersMiddleware)
+    """Configure all middleware on the FastAPI app.
+
+    Order matters: ``add_middleware`` in FastAPI is LIFO — the last-added
+    middleware is the OUTERMOST (closest to the request). We add CORS
+    first so it can short-circuit preflight, then SecurityHeaders so the
+    headers wrap the final response.
+    """
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            f"http://127.0.0.1:{settings.gateway_port}",
-            f"http://localhost:{settings.gateway_port}",
-            "https://botarmy-ba0c9.web.app",
-            "https://botarmy-ba0c9.firebaseapp.com",
-        ],
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-        allow_credentials=False,
+        allow_origins=_dashboard_origins(settings.gateway_port),
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
         max_age=3600,
     )
+    app.add_middleware(SecurityHeadersMiddleware)

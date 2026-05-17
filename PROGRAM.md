@@ -10772,3 +10772,544 @@ EDITED:
     `main.py`'s handler, so operators using Signal get end-to-end
     behaviour even before the React fix lands.
 
+## 54 2026-05-16 — Silent-failure DB hygiene + heartbeat gate + writer required-helpers (3 internal PRs)
+
+Operator-driven hardening pass after a wider remediation-plan
+ultrathink. The plan named eight phases; this section ships three
+of them in one feature branch:
+
+  * **§54.1 PR 1 — silent-failure remediation**: required/optional
+    DB-helper split, observational pool diagnostics, snapshot
+    `_ensured` ordering bug, idle scheduler iterator-level
+    `TimeoutError` catch, Docker SDK `timeout=` kwarg fix, CORS
+    single-source-of-truth, README cleanup.
+  * **§54.2 PR 2 — autonomous_mode gate + pool REST + 2 phase spans**:
+    heartbeat split into passive/active + `autonomous_mode`-gated
+    dispatch, `/api/cp/pool/diagnostics` endpoint, orchestrator
+    `proactive` + `critic` spans.
+  * **§54.3 PR 3 — high-value writer conversion**: four modules
+    (`audit.py`, `governance.py`, `tickets.py`,
+    `error_monitor.py`) switched from silent-`execute` to raising
+    `execute_required` / `execute_one_required` on the writes whose
+    silent failure would corrupt operator-visible state.
+
+One feature branch, one commit, one PR. The work is presented as
+three logical PRs because each closes a distinct silent-failure
+class — operators reviewing the diff can read them as three
+independent stories.
+
+**TIER_IMMUTABLE callout**: three of the modified files
+(`app/control_plane/audit.py`, `app/control_plane/governance.py`,
+`app/idle_scheduler.py`) are members of `TIER_IMMUTABLE` in
+`app/auto_deployer.py`. All edits are additive-or-semantic-preserving:
+no new behaviours (audit still fire-and-forget; governance still
+returns True/False/dict; idle scheduler still drains the same
+futures pool). The required-helper conversions make existing
+documented contracts ACTUALLY hold — pre-PR-3 the API claimed
+"silent failure on DB error" was unreachable but it WAS reachable
+because `execute()` swallowed exceptions; the conversion finally
+matches code to spec. Operator approved each change explicitly
+during the conversation.
+
+### §54.1 PR 1 — silent-failure remediation
+
+The dominant pattern in `workspace/logs/errors.jsonl` is "48,520
+× connection pool exhausted" (per the operator's plan audit), then
+~7,600 vendor-credit errors, then ~1,021 missing-relation/-column
+errors. The pool-exhausted pattern is partly mitigated by the
+self-heal v3 `db_pool_reset` handler (~51% resolution, §38.4) but
+the remaining 49% has no diagnostic surface. Before this PR a real
+DB outage looked exactly like "query returned no rows" because every
+helper in `app/control_plane/db.py` swallowed all exceptions and
+returned None / [].
+
+`app/control_plane/db.py` now has two families that share a single
+private inner loop (`_checkout` + `_run_query`) so they cannot drift
+apart on connection-state quirks:
+
+  * **Required family** — `execute_required`, `execute_one_required`,
+    `execute_scalar_required`. Raises on any failure. Use for
+    correctness-critical operations.
+  * **Optional family** — existing `execute`, `execute_one`,
+    `execute_scalar`. Returns None on failure. Use for observational
+    writes where silent miss is acceptable. Refactored to call
+    `execute_required` internally + catch the exception classes.
+
+New `DBUnavailable` exception covers `get_pool() → None` (not
+configured, breaker open). Distinct from `psycopg2.pool.PoolError`
+(pool exists but no connection available).
+
+New thread-safe diagnostics counters (`get_pool_diagnostics()`):
+
+  * `acquires_total`, `acquires_slow` (>500ms)
+  * `failures_{pool_unavailable, pool_exhausted, pool_other, connection_error}`
+  * `current_borrows`, `peak_borrows`
+  * `last_exhaust_ts`, `last_slow_acquire_ms`
+
+Counters are observational only — they NEVER change pool behavior.
+A `peak_borrows` value approaching `maxconn` (default 24) is the
+signature of pool pressure. A growing `current_borrows` that doesn't
+return to zero between idle windows is a leak signature.
+
+`app/observability/snapshots.py:120` — `PostgresSnapshotStore._ensure_table`
+switched from `execute` to `execute_required`. Pre-fix, a silent
+CREATE TABLE failure (pool unavailable, permission denied) still
+set `_ensured = True` because no exception propagated; subsequent
+`put()`/`latest()`/`recent()` also silently failed against a
+never-created table. Post-fix, a real CREATE failure raises, the
+except branch catches it WITHOUT setting `_ensured`, and the next
+`put()` retries.
+
+`app/idle_scheduler.py:399` — new `_drain_futures_with_timeout`
+helper catches the iterator-level `concurrent.futures.TimeoutError`
+that `as_completed(timeout=N)` raises when at least one future
+hasn't completed within N seconds. Pre-fix the for-loop only had
+`try/except Exception` around `future.result()` — an iterator
+timeout escaped the loop and killed the scheduler daemon thread,
+silently stopping ALL background work until the next gateway
+restart. Helper also cancels still-pending futures so a single
+stuck job doesn't permanently consume a pool slot. Logs stuck job
+names for operator visibility.
+
+`app/tools/code_executor.py:97` — removed the invalid `timeout=`
+kwarg from `containers.run()`. Docker SDK does not accept it; the
+SDK silently ignored the value so the documented "30s wall-clock"
+contract was actually enforced as the 10s HTTP socket timeout on
+`docker.from_env(timeout=10)`. Switched to the proper enforcement
+pattern: `detach=True` + `container.wait(timeout=N)` +
+`container.kill()` on wait-timeout. HTTP socket timeout bumped to
+`sandbox_timeout_seconds + 10` so HTTP doesn't drop mid-wait.
+
+`app/middleware.py` + `app/main.py` — CORS was previously
+configured in BOTH places with different `allow_origins`,
+`allow_credentials`, `allow_methods`, and `allow_headers`. FastAPI
+processes middleware LIFO so the stricter `middleware.py` config
+shadowed the more permissive `main.py` block for non-Firebase
+origins. New `_dashboard_origins(gateway_port)` helper in
+`middleware.py` is now the single source of truth — union of both
+prior lists, `allow_credentials=True`, `CORS_EXTRA_ORIGINS` env
+override for adding tailscale/proxy hostnames without editing
+source. `main.py` duplicate block deleted.
+
+`README.md:485` — removed the reference to nonexistent
+`scripts/run_migrations.py`. Migrations apply automatically at
+gateway boot via `app.memory.startup_migrations.apply_all`
+(idempotent `IF NOT EXISTS`). The `scripts/` dir has 28 utilities
+but `run_migrations.py` isn't among them and never was.
+
+### §54.2 PR 2 — autonomous_mode gate + pool REST + 2 phase spans
+
+`app/control_plane/heartbeats.py` — `HeartbeatScheduler.run_heartbeat`
+was unconditionally pulling assigned tickets and dispatching them
+through Commander, regardless of the `autonomous_mode` setting
+(defined in `config.py` as `autonomous_mode: bool = False` but
+never read). The flag was effectively dead code.
+
+Split into three methods:
+
+  * `run_passive_heartbeat(agent_role, project_id)` — telemetry-only.
+    Records the beat, returns `{"status": "passive", "reason":
+    "autonomous_mode disabled"}`. Wakes queued via `trigger_wake`
+    are NOT consumed — they remain pending so the next active beat
+    (after operator flips the flag) picks them up.
+  * `run_active_heartbeat(agent_role, project_id)` — full pull-and-
+    dispatch cycle. Body is the previous `run_heartbeat` logic
+    verbatim.
+  * `run_heartbeat(agent_role, project_id)` — dispatch wrapper.
+    Reads `settings.autonomous_mode` per call (no caching) so an
+    operator can flip the setting and the next heartbeat picks it
+    up. Falls closed (passive) if settings can't load — safe-by-
+    default.
+
+`app/control_plane/dashboard_api.py` — new `/api/cp/pool/diagnostics`
+GET endpoint. Returns:
+
+```
+{
+  "counters": {...PR-1 diagnostics dict...},
+  "maxconn": <CONTROL_PLANE_POOL_MAX env, default 24>,
+  "utilisation": current_borrows / maxconn,
+  "peak_utilisation": peak_borrows / maxconn
+}
+```
+
+Surfaces the PR-1 counters via Bearer-auth-protected REST. Counters
+are in-process; a gateway restart zeroes them. Useful for "watch
+peak_borrows / failures_pool_exhausted climb under a load window",
+NOT for long-term trends.
+
+`app/agents/commander/orchestrator.py` — added two `_phase_log`
+spans alongside the existing four (`ctx_load`, `consciousness`,
+`crew_exec`, `run_crew`, `route`, `vetting`):
+
+  * `proactive` — wraps the `_run_proactive_scan` future + 30s
+    timeout block. `ran=True` only when `difficulty >= 4` triggers
+    the gate; `ok=True` only when the future actually returned
+    notes within the budget.
+  * `critic` — wraps the `_run_critic` future + 120s timeout
+    block. `ran=True` only when `difficulty >= 7` triggers the
+    gate; `ok=True` only when the critic LLM returned usable output
+    that replaced the pre-critic result.
+
+Both spans fire even when the gate is skipped (`difficulty` below
+threshold) so operators can confirm via `LOG_PHASE_TIMING=1` that
+the gate is engaged. Zero-cost when `LOG_PHASE_TIMING` is unset.
+
+Two spans deferred: `transfer_memory` and `outbound_delivery`. Both
+live in `main.py:handle_task`, not the orchestrator dispatch path.
+Splitting them is its own focused pass.
+
+### §54.3 PR 3 — high-value writer conversion
+
+Four modules converted from `execute` / `execute_one` to
+`execute_required` / `execute_one_required` for the writes whose
+silent failure would corrupt state. Reads + observational writes +
+background sweeps stayed on optional semantics (judgment call per
+call site; not a blanket conversion).
+
+`app/control_plane/audit.py:log()` — the `AUDIT WRITE FAILED`
+ERROR log line existed but was unreachable because the inner
+`execute()` swallowed every exception. Switched to
+`execute_required` so the error log finally fires. Fire-and-forget
+contract to the caller is preserved (the outer
+`try/except Exception` still swallows after logging).
+
+`app/control_plane/governance.py` — three methods converted to
+`execute_one_required`:
+
+  * `request_approval` — INSERT a new approval request
+  * `approve` — UPDATE pending → approved (returning the row)
+  * `reject` — UPDATE pending → rejected
+
+Pre-fix, `approve` and `reject` returned False for both legitimate
+"no matching pending row" AND "DB unavailable". Post-fix, False is
+reserved for the legitimate case; DB errors raise so the FastAPI
+dashboard handler returns 500 instead of misleading 404.
+`expire_old` (background sweep) and the read methods stay on
+optional semantics.
+
+`app/control_plane/tickets.py` — seven methods converted to
+`execute_required` / `execute_one_required`:
+
+  * `create_from_signal` — INSERT new ticket
+  * `create_manual` — INSERT new ticket (dashboard path)
+  * `assign_to_crew` — UPDATE assignment + status → in_progress
+  * `complete` — UPDATE → done + cost telemetry
+  * `move_ticket` — UPDATE project_id (cross-project move)
+  * `fail` — UPDATE → failed (terminal state)
+  * `close` — UPDATE → done (manual close)
+
+`add_comment` (observational), `fail_stuck_in_progress` (janitor
+sweep), and all reads stayed optional. The dedup-read in
+`create_from_signal` and the project_id lookup in `complete` also
+stayed optional — silent failure there falls through to acceptable
+degraded behavior (fresh ticket; audit log without project_id).
+
+`app/observability/error_monitor.py` — two methods converted:
+
+  * `_record_anomaly` — INSERT anomaly row. The catch block now
+    logs at WARNING (was DEBUG/silent under the old `execute`
+    swallow path). An anomaly that triggers a runbook below could
+    previously leave no row in `error_anomalies` — operators
+    inspecting the table saw "nothing wrong" while the runbook had
+    already attempted remediation.
+  * `acknowledge` — UPDATE open → acknowledged. Pre-fix returned
+    True even on DB failure because `execute` silently swallowed.
+    Post-fix returns False on DB error, matching the documented
+    contract.
+
+`_open_anomaly_exists` (dedup read), `_auto_resolve_open_anomalies`
+(background sweep) stayed optional.
+
+### §54.4 Tests
+
+  * `tests/control_plane/test_db_required_helpers.py` (NEW, 15 tests) —
+    DBUnavailable raised vs returned, SQL error propagation, pool
+    exhaustion handling, diagnostics counters, dict-row results,
+    optional-and-required-share-private-path pin.
+  * `tests/test_snapshots_ensure_retry.py` (NEW, 4 tests) — `_ensured`
+    retry behavior pin.
+  * `tests/test_idle_scheduler_iterator_timeout.py` (NEW, 6 tests) —
+    iterator-level TimeoutError catch + pending-future cancellation
+    + log-message contents.
+  * `tests/control_plane/test_heartbeat_split.py` (NEW, 7 tests) —
+    routing dispatch + flag-read-at-call-time + falls-closed-on-
+    settings-failure + wakes-preserved-by-passive-beat.
+  * `tests/control_plane/test_pool_diagnostics_api.py` (NEW, 4 tests) —
+    endpoint shape + counter reflection + utilisation math +
+    failure handling.
+  * `tests/control_plane/test_required_writers.py` (NEW, 15 tests) —
+    4 test classes (audit, governance, tickets, error_monitor)
+    pinning the new contract per module.
+  * `tests/test_control_plane.py` — 9 existing tests updated to
+    patch the new `*_required` symbols. Lifecycle tests
+    (`test_full_lifecycle`, `test_failure_lifecycle`) now patch
+    all four symbols since they exercise the full create→assign→
+    complete→fail chain.
+  * `conftest.py` (NEW, top-level) — forces real psycopg2 import at
+    pytest collection time so the defensive `MagicMock` injected at
+    `tests/test_control_plane.py:50` (and parallel ones in
+    `test_consciousness_gaps.py`, `test_failure_recovery.py`, etc.)
+    sees psycopg2 already in `sys.modules` and skips the stub. The
+    dev .venv ships psycopg2-binary; the stubs were leaking
+    `pg_pool.PoolError`-as-MagicMock across files and breaking any
+    test that asserted on real psycopg2 exception types.
+
+### §54.5 Scorecard
+
+  * 51 new tests; full PR 1+2+3 regression: 166/167 pass (the 1
+    failure is `test_route_paths` — pre-existing path-prefix
+    mismatch, verified by stashing all changes; identical failure
+    on clean HEAD).
+  * No new failures introduced anywhere in the wider regression
+    (`tests/control_plane/`, `tests/healing/`, snapshots, idle
+    scheduler). The 8 failures in `tests/healing/test_lock_housekeeper.py`,
+    `tests/healing/test_paper_pipeline.py`, `tests/healing/test_retention.py`
+    that surface in wider runs are pre-existing user WIP unrelated
+    to this PR.
+  * TIER_IMMUTABLE files modified: 3 (audit.py, governance.py,
+    idle_scheduler.py). All edits semantic-preserving; operator
+    approved each conversion explicitly during the planning
+    conversation. No `app/subia/` integrity manifest changes.
+  * Net code: ~580 LOC source + ~520 LOC tests.
+  * Two follow-ups parked: pool-exhaustion investigation (counters
+    in place, needs production load window), writer conversion in
+    other modules (audit.py-style fire-and-forget pattern exists
+    in several `app/healing/handlers/*.py` files; each is per-case
+    judgment).
+
+
+
+## 55 2026-05-17 — ChromaDB integrity protection (root-cause + 5-layer defense)
+
+Built in response to two `memory.corrupt_*` quarantine events
+(2026-04-25 and 2026-05-17) that wiped the gateway's `memory/` KB.
+
+### Root cause
+
+`docker-compose.yml` defined two services bind-mounted to
+`workspace/memory/`:
+
+  * standalone `chromadb` container (chromadb 0.5.23) — server-internal
+    PersistentClient writer
+  * gateway container (chromadb 1.5.9) — embedded
+    `chromadb.PersistentClient(path=".../memory")`
+
+Both opened the same `chroma.sqlite3` as competing writers. Different
+chromadb major versions wrote incompatible schemas → "Rowid out of
+order", "invalid page number", "2nd reference to page X",
+"btreeInitPage error 11" — textbook concurrent-writer corruption.
+
+Git blame: chromadb service is an orphan from before commit
+`f240d54e` ("Fix 7 modules using broken `chromadb.HttpClient` →
+`get_client()`"), which migrated the gateway off the HTTP API.
+Nothing in `app/` has used the HTTP API since
+(pinned by `tests/test_subsystem_wiring.py:385`). Cleanup was
+incomplete.
+
+### Surgical fix
+
+  * Removed `chromadb` service from `docker-compose.yml`
+  * Pinning test `test_docker_compose_has_no_chromadb_service`
+    fails CI if the service or bind-mount is ever restored
+
+### Defense-in-depth layers
+
+  1. **WAL enforcement** at gateway boot — `journal_mode=WAL;
+     synchronous=FULL` idempotently set on every KB. Survives
+     crashes far better than the default rollback-journal mode
+     every chromadb KB shipped with.
+
+  2. **Boot integrity scan** (`app/main.py` lifespan, after
+     post-amendment restart-claims, before port-bind) — runs
+     `PRAGMA integrity_check` on every KB. On failure:
+     quarantine + Signal alert + (memory KB only) auto-replay
+     from postgres source-of-truth (`beliefs` + `crewai_memories`).
+
+  3. **Daily snapshot** — SQLite's online `.backup` API atomically
+     writes a consistent copy to
+     `workspace/<kb>/.sqlite_snapshots/<ts>.db`. 7-day rolling
+     retention via mtime.
+
+  4. **35th healing monitor** `chromadb_integrity` — daily probe
+     with the same integrity check + snapshot logic. Never snapshots
+     a known-bad file (pinned by
+     `test_monitor_does_not_snapshot_corrupt_files`).
+
+  5. **Auto-replay from Postgres** — for the `memory` KB specifically,
+     because `crewai_memories` and `beliefs` Postgres tables are the
+     Mem0 source-of-truth (160 + 6 rows recovered after today's
+     incident). Idempotent on doc_id via chromadb `col.add` with
+     curated embeddings.
+
+### Components
+
+  * NEW `app/memory/chromadb_integrity.py` (~600 LOC)
+  * NEW `app/healing/monitors/chromadb_integrity.py` (~200 LOC) —
+    35th monitor; daily probe; integrity + snapshot branches
+  * EDITED `app/main.py` lifespan — boot scan wired in
+  * EDITED `docker-compose.yml` — chromadb service removed
+  * EDITED `app/runtime_settings.py` — 5 master switches (all default ON):
+    `chromadb_wal_enforcement_enabled` / `chromadb_boot_integrity_check_enabled`
+    / `chromadb_integrity_monitor_enabled` / `chromadb_daily_snapshot_enabled`
+    / `chromadb_auto_replay_enabled`
+  * NEW identity-continuity event kind `chromadb_corruption`
+    (auto-surfaces into annual reflection via `summarise_drift` Counter)
+  * NEW `docs/CHROMADB_INTEGRITY.md` — operator runbook
+
+### Test coverage
+
+19 tests in `tests/test_chromadb_integrity.py` (16 pass + 3 skipped
+gateway-deps). Pins include: WAL enforcement + idempotency, integrity
+check on healthy + corrupt DBs, snapshot atomicity + retention,
+quarantine rename + ledger emission, boot scan composition end-to-end,
+disabled-state no-op, monitor cadence guard, snapshot-not-on-corrupt
+invariant, runtime-settings failure-OPEN posture,
+docker-compose-no-chromadb-service regression pin.
+
+### Live recovery from the 2026-05-17 incident
+
+After `replay_from_postgres('memory')` ran post-deploy:
+
+  * `team_shared`: 2 → 162 (160 Mem0 long-term memories recovered)
+  * `beliefs`: 6 → 12 (6 beliefs recovered with proper metadata)
+
+Recovered samples: "User lives in Helsinki", "User works at PLG Moments",
+"User prefers concise answers", "User prefers concise Finnish nature
+answers", + 158 more.
+
+
+## 56 2026-05-17 — Source ledger (10-year resiliency)
+
+Layered on top of §55. The §55 integrity layer catches damage; §56
+guarantees **every chromadb KB is reconstructable** from a plain
+JSONL file even if the chromadb files are lost entirely.
+
+### The mechanism
+
+Every chromadb write dual-writes to
+`workspace/<kb>/.source_ledger.jsonl` (append-only, hash-chained:
+`sha256(prev_hash + canonical_json(payload))` at every link). The
+KB becomes a derived artifact; `replay_kb(name)` reconstructs by
+re-embedding the ledger rows with the *current* embed model.
+
+Properties:
+
+  * **Universal**: same mechanism for all 7 KBs (memory, episteme,
+    experiential, philosophy, aesthetics, tensions, knowledge)
+  * **Embedding-model-rotation tolerant**: ledger stores text, not
+    embeddings; replay always uses the live embed function
+  * **ChromaDB-major-version tolerant**: JSONL outlives any vendor;
+    replay code targets stable `col.upsert(...)` API
+  * **Single-writer ACID**: hash chain catches any tamper or bit-rot
+
+### Components
+
+  * NEW `app/memory/source_ledger.py` (~1000 LOC) — core: append, read,
+    verify, replay, drift detection, bootstrap, compaction, state_summary
+  * NEW `app/memory/source_ledger_daemon.py` — daily bootstrap +
+    drift check + chain verify + off-host upload; weekly compaction
+  * NEW `app/memory/source_ledger_offhost/` package — S3 + Google Drive
+    uploaders (both opt-in via runtime_settings)
+  * NEW `app/resilience_drills/drills/source_ledger_replay.py` —
+    7th drill (quarterly LOW-risk): rebuild a random KB to a scratch
+    dir, verify row count + hash chain
+  * NEW `app/resilience_drills/drills/embedding_rotation.py` —
+    8th drill (quarterly LOW-risk): rebuild a random KB with a
+    DIFFERENT embed model, verify self-consistency at ≥80%
+  * EDITED `app/memory/chromadb_manager.py` + all 6 KB-specific
+    vectorstores (`episteme`, `experiential`, `philosophy`, `aesthetics`,
+    `tensions`, `knowledge_base`) — dual-write hooks on every `.add()` site
+  * EDITED 15+ chromadb `col.delete()` and `col.update()` call sites
+    — tombstone hooks so replay doesn't resurrect deleted rows
+    (`result_cache`, `idle_scheduler`, `belief_state`, `self_improvement/store`
+    + `meta_agent/store`, `episteme.remove_by_source`, `philosophy.remove_by_source`,
+    `knowledge_base.remove_document`, `experiential.api`, firebase listeners,
+    `tool_registry/indexer`, `transfer_memory.promotion`, `api/fiction.py`,
+    `healing/monitors/retention.py`)
+  * EDITED `app/memory/chromadb_integrity.py` (from §55) — boot scan
+    now does drift detection too (catches KB-rebuilt-but-ledger-has-history)
+  * EDITED `app/healing/__init__.py` — daemon eager-anchored at boot
+  * EDITED `app/healing/monitors/bit_rot_scan.py` — includes every
+    KB's `.source_ledger.jsonl` in the SHA-256 baseline
+  * EDITED `app/warm_spare/manifest.py` — adds per-KB ledger paths
+    for memory/experiential/philosophy/knowledge (the 4 KBs whose
+    parent dirs weren't in the allowlist) + `backups/postgres` +
+    `backups/neo4j` + `backups/dr` (Postgres dumps from the host
+    LaunchAgent are now off-host-replicated via Q17.1 warm-spare)
+  * NEW `app/control_plane/dashboard_routes_budgets_costs.py`
+    `/source-ledger/state` REST endpoint
+  * NEW `dashboard-react/src/components/SourceLedgerCard.tsx` —
+    operator UI: per-KB stats table + 8 master-switch toggles
+  * EDITED `app/runtime_settings.py` — 8 master switches
+    (`chromadb_source_ledger_enabled` / `chromadb_ledger_bootstrap_enabled`
+    / `chromadb_ledger_drift_replay_enabled` / `chromadb_ledger_compaction_enabled`
+    / `chromadb_ledger_s3_upload_enabled` / `chromadb_ledger_gdrive_upload_enabled`
+    / `drill_source_ledger_replay_enabled` / `drill_embedding_rotation_enabled`)
+  * NEW `docs/SOURCE_LEDGER.md` — operator runbook
+
+### §56 iter-1 → iter-2: correctness completeness
+
+Audit found 5 gaps post-iter-1; all shipped in iter-2:
+
+  1. **Tombstone schema** — `op` field with `add` (default, backward-compat)
+     / `update` / `delete`. Hash chain preserved via conditional
+     inclusion of `op` in the hashed payload (pre-iter-2 add rows
+     hash identically to before).
+  2. **Mem0 path verification** — confirmed Mem0 writes ONLY to
+     pgvector, never chromadb. No hook needed; documented inline.
+  3. **Compaction** — `compact_ledger(kb_name)` folds the ledger to
+     its minimum-equivalent form; weekly daemon branch; gated by
+     min-rows + min-reduction thresholds; pre-compaction hard-link
+     snapshot to `.source_ledger_history/<ts>.jsonl`.
+  4. **Warm-spare manifest** — added 14 paths (per-KB ledgers +
+     Postgres/Neo4j dumps).
+  5. **8th drill** `embedding_rotation` — quarterly LOW-risk drill
+     verifying model-rotation tolerance.
+
+### §56 iter-2 → iter-3: race fix + sentinel + operator visibility
+
+Audit found 3 subtle gaps post-iter-2; all shipped in iter-3:
+
+  1. **Compaction-during-write race** — original sequence read-all →
+     fold → write-compacted → snapshot-history → atomic-rename had a
+     real race: rows appended between "read-all" and the rename made
+     it into history but NOT the new live ledger, silently invisible
+     to replay. Fix: tail-stabilization loop with
+     `_COMPACTION_MAX_TAIL_PASSES=3`. Tail rows applied DIRECTLY
+     onto the base state (so tail updates can find their prior adds
+     from the head). Plus one final pre-swap check.
+
+  2. **Metadata None-vs-empty sentinel** — pre-iter-3
+     `append_update(new_metadata=None)` got coerced to `{}` for
+     storage, collapsing "don't touch" vs "clear to empty." Fix:
+     `_META_NO_CHANGE_SENTINEL = {"__sl_no_change__": True}` is
+     stored on None; strict 1-key discriminator detects it on fold;
+     explicit `{}` still clears.
+
+  3. **Operator visibility** — `state_summary()` helper + REST
+     endpoint `GET /api/cp/source-ledger/state` + React
+     `SourceLedgerCard` with per-KB stats + 8 master-switch toggles.
+
+### Test coverage
+
+  * iter-1: 22 tests in `test_source_ledger.py` (21 pass + 1 skipped)
+  * iter-2: 19 tests in `test_source_ledger_iter2.py`
+  * iter-3: 12 tests in `test_source_ledger_iter3.py`
+  * Cumulative Q3 + Q6 + Q17 + §55 + §56 (all iters): **269 pass +
+    10 skipped, 0 fail**
+
+### Live verification post-rebuild
+
+```
+INFO app.memory.source_ledger_daemon: source_ledger_daemon: started (warm-up=300s, pass=24h)
+INFO app.main: main: chromadb integrity scan complete — ok=[7 KBs]
+Registered drills: 8
+  - source_ledger_replay
+  - embedding_rotation
+Source-ledger routes registered: ['/api/cp/source-ledger/state']
+Tombstone helpers + compaction: importable ✓
+Op constants: add update delete
+MAX_TAIL_PASSES: 3
+state_summary() output: 7 KBs reported with full schema
+```

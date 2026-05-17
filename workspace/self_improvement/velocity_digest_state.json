@@ -1,0 +1,59 @@
+{
+  "last_run_at": 1778960960.4777172,
+  "last_snapshot": {
+    "architecture_adoption": {
+      "available": true,
+      "below_rollback_threshold": 0,
+      "histogram": {
+        "0.0-0.2": 0,
+        "0.2-0.4": 0,
+        "0.4-0.6": 0,
+        "0.6-0.8": 0,
+        "0.8-1.0": 0
+      },
+      "n_measured": 0
+    },
+    "change_requests": {
+      "applied_rate_overall": null,
+      "available": true,
+      "by_quarter": {
+        "2026Q2": {
+          "pending": 1
+        }
+      },
+      "by_requestor": {
+        "wiki_index_reconciler": 1
+      },
+      "by_status": {
+        "pending": 1
+      },
+      "n_total": 1
+    },
+    "forge_graduations": {
+      "available": false,
+      "by_stage": {},
+      "n_last_90d": 0,
+      "n_total": 0
+    },
+    "generated_at": "2026-05-16T19:49:20.483444+00:00",
+    "lessons_learned": {
+      "available": true,
+      "n_added_last_30d": 0,
+      "n_total": 1,
+      "n_with_consultations": null,
+      "sources": [
+        "self_heal/lessons_learned.json",
+        "companion/lessons_learned.json"
+      ]
+    },
+    "recipes": {
+      "available": true,
+      "global_success_rate": null,
+      "n_active": 0,
+      "top": [],
+      "total_successes": 0,
+      "total_uses": 0
+    },
+    "window_days": 90
+  }
+}

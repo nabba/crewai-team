@@ -32,6 +32,7 @@ import { ArchitectureRequestsCard } from './ArchitectureRequestsCard';
 import { InlineEvolveCard } from './InlineEvolveCard';
 import { TravelCard } from './TravelCard';
 import { BrowseIngestionCard } from './BrowseIngestionCard';
+import { SourceLedgerCard } from './SourceLedgerCard';
 
 // Note: POST to /config/runtime_settings requires a gateway bearer secret.
 // The dashboard server (server.mjs) injects `Authorization: Bearer
@@ -97,6 +98,11 @@ export function SettingsPage() {
         onSettingsChange={() => settingsQ.refetch()}
       />
       <BrowseIngestionCard />
+      <SourceLedgerCard
+        settings={settingsQ.data}
+        onSettingsChange={() => settingsQ.refetch()}
+      />
+      <CloudHardeningCard settings={settingsQ.data} />
       <WebPushCard />
     </div>
   );
@@ -1762,3 +1768,285 @@ function StructuredDiagnosisCard({ settings }: { settings: RuntimeSettings }) {
     </div>
   );
 }
+
+function CloudHardeningCard({ settings }: { settings: RuntimeSettings }) {
+  const update = useUpdateRuntimeSettings();
+  const [pendingBootstrap, setPendingBootstrap] = useState<boolean | null>(null);
+  const [bootstrapPhrase, setBootstrapPhrase] = useState('');
+  const [pendingEnforce, setPendingEnforce] = useState(false);
+  const [enforcePhrase, setEnforcePhrase] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const bootstrapEnabled = Boolean(settings.gcp_bootstrap_enabled);
+  const hardeningProfile = (settings.hardening_profile as string) ?? 'strict';
+  const binauthzMode = (settings.binauthz_mode as string) ?? 'AUDIT';
+
+  const setProfile = async (next: 'off' | 'basic' | 'strict') => {
+    if (update.isPending || next === hardeningProfile) return;
+    await update.mutateAsync({ hardening_profile: next });
+    setSuccess(`Hardening profile set to ${next}`);
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const handleBootstrapClick = (next: boolean) => {
+    if (update.isPending || next === bootstrapEnabled) return;
+    if (!next) {
+      // OFF doesn't need a typed phrase — disabling is always safe.
+      void update.mutateAsync({ gcp_bootstrap_enabled: false }).then(() => {
+        setSuccess('GCP project-bootstrap disabled.');
+        setTimeout(() => setSuccess(''), 3000);
+      });
+      return;
+    }
+    setPendingBootstrap(true);
+    setBootstrapPhrase('');
+  };
+
+  const confirmBootstrap = async () => {
+    if (bootstrapPhrase !== 'ENABLE GCP BOOTSTRAP') return;
+    await update.mutateAsync({ gcp_bootstrap_enabled: true });
+    setPendingBootstrap(null);
+    setBootstrapPhrase('');
+    setSuccess('GCP project-bootstrap enabled. Stage 0a card will appear in the wizard when needed.');
+    setTimeout(() => setSuccess(''), 3500);
+  };
+
+  const handleBinauthzClick = (next: 'AUDIT' | 'ENFORCE') => {
+    if (update.isPending || next === binauthzMode) return;
+    if (next === 'AUDIT') {
+      // Demoting to AUDIT is safe — does not block deploys.
+      void update.mutateAsync({ binauthz_mode: 'AUDIT' }).then(() => {
+        setSuccess('Binary Authorization back to AUDIT mode.');
+        setTimeout(() => setSuccess(''), 3000);
+      });
+      return;
+    }
+    setPendingEnforce(true);
+    setEnforcePhrase('');
+  };
+
+  const confirmEnforce = async () => {
+    if (enforcePhrase !== 'ENFORCE BINAUTHZ') return;
+    await update.mutateAsync({ binauthz_mode: 'ENFORCE' });
+    setPendingEnforce(false);
+    setEnforcePhrase('');
+    setSuccess('Binary Authorization → ENFORCE. Unsigned images will now be rejected on the next deploy.');
+    setTimeout(() => setSuccess(''), 4000);
+  };
+
+  const error = update.error instanceof Error ? update.error.message : '';
+
+  return (
+    <div className="bg-[#111820] border border-[#1e2738] rounded-xl p-4 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-[#e2e8f0]">
+          Cloud hardening (GCP + AWS)
+        </h2>
+        <p className="text-xs text-[#7a8599] mt-1">
+          Profile applied by the migrate wizard. <code className="text-[#60a5fa]">strict</code>{' '}
+          ships Cloud Armor / Binary Authorization / master-authorized-networks /
+          CMEK / audit-log sinks / org policies on day one. Switch back to{' '}
+          <code className="text-[#60a5fa]">basic</code> for development clusters or{' '}
+          <code className="text-[#60a5fa]">off</code> for the pre-hardening behavior.
+          See <code className="text-[#60a5fa]">docs/CLOUD_LOCKOUT_RECOVERY.md</code>{' '}
+          for the lock-out break-glass.
+        </p>
+      </div>
+
+      {/* Profile selector */}
+      <div className="space-y-2">
+        <div className="text-[10px] uppercase tracking-wider text-[#7a8599]">
+          Profile
+        </div>
+        <div className="flex gap-2">
+          {(['off', 'basic', 'strict'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setProfile(p)}
+              disabled={update.isPending}
+              className={`px-3 py-1.5 rounded-md text-xs font-mono border transition-colors ${
+                hardeningProfile === p
+                  ? 'bg-[#60a5fa]/15 text-[#60a5fa] border-[#60a5fa]/40'
+                  : 'bg-[#0a0e14] text-[#cbd5e1] border-[#1e2738] hover:border-[#60a5fa]/30'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Binauthz mode */}
+      <div className="space-y-2">
+        <div className="text-[10px] uppercase tracking-wider text-[#7a8599]">
+          Binary Authorization mode (only when profile=strict)
+        </div>
+        <div className="flex gap-2">
+          {(['AUDIT', 'ENFORCE'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleBinauthzClick(m)}
+              disabled={update.isPending || hardeningProfile !== 'strict'}
+              className={`px-3 py-1.5 rounded-md text-xs font-mono border transition-colors disabled:opacity-40 ${
+                binauthzMode === m
+                  ? m === 'ENFORCE'
+                    ? 'bg-[#f87171]/15 text-[#f87171] border-[#f87171]/40'
+                    : 'bg-[#60a5fa]/15 text-[#60a5fa] border-[#60a5fa]/40'
+                  : 'bg-[#0a0e14] text-[#cbd5e1] border-[#1e2738] hover:border-[#60a5fa]/30'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-[#7a8599]">
+          AUDIT logs would-be-blocks; ENFORCE rejects unsigned images.
+          Promote to ENFORCE <strong>only</strong> after your image-signing
+          pipeline (cosign attestor) is wired and producing signed images.
+        </p>
+      </div>
+
+      {/* gcp_bootstrap_enabled toggle */}
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={bootstrapEnabled}
+          onChange={() => { /* controlled — handled by onClick */ }}
+          onClick={(e) => {
+            e.preventDefault();
+            if (update.isPending) return;
+            handleBootstrapClick(!bootstrapEnabled);
+          }}
+          disabled={update.isPending}
+          className="w-4 h-4 accent-[#60a5fa]"
+        />
+        <span className="text-sm text-[#e2e8f0]">
+          Allow wizard to bootstrap GCP projects (Stage 0a)
+        </span>
+        <span className="text-[10px] uppercase tracking-wider text-[#7a8599] ml-auto">
+          {bootstrapEnabled ? (
+            <span className="text-[#34d399]">ENABLED</span>
+          ) : (
+            <span className="text-[#7a8599]">OFF</span>
+          )}
+        </span>
+      </label>
+
+      {success && (
+        <div className="text-xs text-[#34d399]">{success}</div>
+      )}
+      {error && (
+        <div className="text-xs text-[#f87171]">{error}</div>
+      )}
+
+      {/* Confirmation modals */}
+      {pendingBootstrap !== null && (
+        <ConfirmModal
+          title="Enable GCP project-bootstrap?"
+          description={
+            <>
+              The wizard will be able to create new GCP projects via{' '}
+              <code className="text-[#60a5fa]">gcloud projects create</code>{' '}
+              + link a billing account. Each invocation still requires{' '}
+              <code className="font-mono">"CREATE GCP PROJECT"</code> typed-phrase
+              confirmation. Type{' '}
+              <code className="font-mono text-[#cbd5e1]">ENABLE GCP BOOTSTRAP</code>{' '}
+              below to authorize this capability.
+            </>
+          }
+          phrasePrompt="ENABLE GCP BOOTSTRAP"
+          phrase={bootstrapPhrase}
+          onPhraseChange={setBootstrapPhrase}
+          onCancel={() => { setPendingBootstrap(null); setBootstrapPhrase(''); }}
+          onConfirm={confirmBootstrap}
+          disabled={update.isPending}
+          confirmTone="primary"
+        />
+      )}
+      {pendingEnforce && (
+        <ConfirmModal
+          title="Promote Binary Authorization to ENFORCE?"
+          description={
+            <>
+              ENFORCE mode will reject every unsigned image at pod admission.
+              If your image-signing pipeline is not wired, the next deploy
+              will fail and pods will stop scheduling. Verify cosign/attestor
+              setup first. Type{' '}
+              <code className="font-mono text-[#cbd5e1]">ENFORCE BINAUTHZ</code>{' '}
+              below to authorize.
+            </>
+          }
+          phrasePrompt="ENFORCE BINAUTHZ"
+          phrase={enforcePhrase}
+          onPhraseChange={setEnforcePhrase}
+          onCancel={() => { setPendingEnforce(false); setEnforcePhrase(''); }}
+          onConfirm={confirmEnforce}
+          disabled={update.isPending}
+          confirmTone="danger"
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmModal({
+  title,
+  description,
+  phrasePrompt,
+  phrase,
+  onPhraseChange,
+  onCancel,
+  onConfirm,
+  disabled,
+  confirmTone,
+}: {
+  title: string;
+  description: React.ReactNode;
+  phrasePrompt: string;
+  phrase: string;
+  onPhraseChange: (v: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  disabled: boolean;
+  confirmTone: 'primary' | 'danger';
+}) {
+  const ok = phrase === phrasePrompt;
+  const tone = confirmTone === 'danger'
+    ? 'bg-[#f87171]/15 text-[#f87171] border-[#f87171]/40 hover:bg-[#f87171]/25'
+    : 'bg-[#60a5fa]/15 text-[#60a5fa] border-[#60a5fa]/40 hover:bg-[#60a5fa]/25';
+  return (
+    <div className="rounded-md border border-[#1e2738] bg-[#0a0e14] p-3 space-y-3">
+      <h3 className="text-sm font-semibold text-[#e2e8f0]">{title}</h3>
+      <p className="text-xs text-[#cbd5e1]">{description}</p>
+      <input
+        type="text"
+        value={phrase}
+        onChange={(e) => onPhraseChange(e.target.value)}
+        placeholder={phrasePrompt}
+        autoFocus
+        className={`w-full px-3 py-1.5 rounded-md bg-[#111820] border font-mono text-xs focus:outline-none ${
+          phrase && !ok
+            ? 'border-[#f87171]/50 text-[#f87171]'
+            : 'border-[#1e2738] text-[#e2e8f0] focus:border-[#60a5fa]/50'
+        }`}
+      />
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onCancel}
+          disabled={disabled}
+          className="px-3 py-1.5 rounded-md text-xs text-[#7a8599] hover:text-[#cbd5e1] hover:bg-[#1e2738]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={!ok || disabled}
+          className={`px-4 py-1.5 rounded-md text-xs font-medium border disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${tone}`}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  );
+}
+

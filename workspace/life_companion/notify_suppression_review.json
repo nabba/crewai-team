@@ -1,0 +1,12 @@
+{
+  "last_run_at": 1778960872.0740497,
+  "last_summary": {
+    "by_decision": {
+      "queue_for_digest": 7
+    },
+    "events": 7,
+    "today_suppression_rate": 0.0,
+    "top_sent_topics": [],
+    "top_suppressed_topics": []
+  }
+}

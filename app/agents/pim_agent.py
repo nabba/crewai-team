@@ -62,6 +62,16 @@ def create_pim_agent(force_tier: str | None = None) -> Agent:
         if photo_tools:
             tools.extend(photo_tools)
 
+    # Travel tools (TripIt snapshot via the Q9.3 idle job).  Without
+    # these, "what are my next flights?" routes to a crew with no tool
+    # and returns the generic "missing tool" error even though the
+    # travel monitor has the data on disk.
+    with optional_tool_group('pim', 'travel_tools'):
+        from app.tools.travel_tools import create_travel_tools
+        travel_tools = create_travel_tools("pim")
+        if travel_tools:
+            tools.extend(travel_tools)
+
     # Wiki tools
     with optional_tool_group('pim', 'wiki_tool_registry'):
         from app.tools.wiki_tool_registry import create_wiki_tools

@@ -50,6 +50,21 @@ def _critical_paths() -> list[Path]:
         root / "subia" / "integrity_manifest.json",
         root / "self_model" / "agreement_ledger.jsonl",
     ]
+    # PROGRAM §56 — include every KB's source ledger. These are
+    # identity-critical: they're the canonical source from which the
+    # ChromaDB KBs can be reconstructed. Bit-rot here = silent data
+    # loss that survives every other protection layer.
+    try:
+        for p in root.glob("*/.source_ledger.jsonl"):
+            # Same filter chromadb_integrity uses — skip quarantined
+            # snapshots so we don't false-alarm on intentionally
+            # frozen historical files.
+            parent = p.parent
+            if any(seg in parent.name for seg in ("corrupt_", "bak_", "_backup", ".backup")):
+                continue
+            candidates.append(p)
+    except Exception:
+        pass
     return [p for p in candidates if p.exists()]
 
 

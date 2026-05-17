@@ -32,6 +32,13 @@ IDLE_DELAY_SECONDS = 30
 # Pause between background job iterations (brief cooldown, then next job)
 INTER_JOB_PAUSE_SECONDS = 2  # Reduced from 5 — lightweight jobs don't need long pauses
 
+# Local fallback if the lifespan never calls boot_state.mark_boot_complete().
+# Set deliberately long: the realistic recovery scenario is a refactor that
+# accidentally drops the mark_boot_complete() call, which we want to surface
+# as a loud warning, not paper over with a quick auto-proceed. 10 minutes
+# gives an operator time to notice the absence in logs.
+IDLE_BOOT_FALLBACK_S = 600
+
 # Per-job failure handling (named so operators can tune without reading
 # the body of _run_single_job). Phase G4 — pre-existing literals lifted
 # to module constants. NO behavioural change.
@@ -54,6 +61,51 @@ TIME_CAPS = {
     JobWeight.HEAVY: 600,
 }
 
+
+def _substrate_defer_reason(weight: str) -> str | None:
+    """Productization plan T2.5 — consult the substrate resource policy.
+
+    Returns a defer_reason string if heavy/medium work should pause this
+    cycle (disk pressure, host_substrate alert, etc.), or None to proceed.
+    LIGHT jobs are never deferred — they're observability/reconciler work
+    that needs to keep running even under pressure.
+
+    Fail-safe: if the substrate package isn't importable, returns None
+    (run normally). The whole point of substrate is to be additive — a
+    broken policy module must never stall the system.
+    """
+    if weight == JobWeight.LIGHT:
+        return None
+    try:
+        from app.substrate.policy import should_defer_heavy_work
+        return should_defer_heavy_work()
+    except Exception:
+        logger.debug("idle_scheduler: substrate policy probe failed", exc_info=True)
+        return None
+
+
+def _publish_deferral(job_name: str, weight: str, reason: str) -> None:
+    """Emit a visible event when an idle job is deferred for resource posture.
+
+    Silent deferral is the failure mode the substrate policy exists to
+    prevent. Every defer fires through workspace_publish so the dashboard
+    + chronicle can render the operator-visible event.
+    """
+    logger.info(
+        "idle_scheduler: deferred %s (%s) — %s", job_name, weight, reason,
+    )
+    try:
+        from app.workspace_publish import publish_idle_outcome
+        publish_idle_outcome(
+            source="idle_scheduler",
+            signal_type="resource_pressure",
+            counts={"deferred": 1, "weight": weight},
+            salience_key="deferred",
+            content_template=f"idle_job_deferred: {job_name} ({weight}) — {reason}",
+        )
+    except Exception:
+        logger.debug("idle_scheduler: publish_deferral failed", exc_info=True)
+
 # Global state
 _last_task_end: float = 0.0  # monotonic timestamp of last user task completion
 _active_tasks: int = 0
@@ -62,6 +114,14 @@ _stop_event = threading.Event()
 _enabled = True  # kill switch — toggled from Firestore
 _enabled_lock = threading.Lock()
 _idle_thread: threading.Thread | None = None
+
+# Boot-gate state. _module_import_time anchors the IDLE_BOOT_FALLBACK_S
+# safety net for the case where boot_state.mark_boot_complete() is never
+# called (e.g. a refactor drops the call, or a test harness boots
+# subsystems out-of-band). _boot_fallback_warned ensures we log the
+# warning exactly once per process.
+_module_import_time: float = time.monotonic()
+_boot_fallback_warned: bool = False
 
 # Snapshot of the jobs passed to start(), exposed read-only via
 # list_jobs() so dashboards can publish the full registry alongside
@@ -85,14 +145,67 @@ def notify_task_end() -> None:
         _last_task_end = time.monotonic()
 
 
+def _boot_ready() -> bool:
+    """Boot-state gate with local fallback.
+
+    Returns True if either:
+      (a) ``boot_state.mark_boot_complete()`` has been called by the
+          lifespan (the normal path), or
+      (b) IDLE_BOOT_FALLBACK_S seconds have elapsed since this module
+          was imported and the signal still hasn't arrived (the safety
+          net for a missing call — logged loudly once).
+
+    Returns False during the normal boot window, which is what lets
+    ``is_idle()`` correctly suppress background work while the gateway
+    is still finishing its lifespan setup.
+    """
+    from app import boot_state
+    if boot_state.is_boot_complete():
+        return True
+    if time.monotonic() - _module_import_time >= IDLE_BOOT_FALLBACK_S:
+        global _boot_fallback_warned
+        if not _boot_fallback_warned:
+            logger.warning(
+                "idle_scheduler: boot_state.mark_boot_complete() not "
+                "called within %ds of module import — proceeding with "
+                "background work via local fallback. Investigate the "
+                "lifespan path in app/main.py.",
+                IDLE_BOOT_FALLBACK_S,
+            )
+            _boot_fallback_warned = True
+        return True
+    return False
+
+
 def is_idle() -> bool:
-    """Check if the system is idle (no active tasks + idle delay elapsed)."""
+    """Check if the system is idle.
+
+    The system is idle when all three hold:
+      1. Boot is complete (or the local fallback has elapsed) — so we
+         don't storm background work into a still-initializing gateway.
+      2. No user tasks are currently in flight.
+      3. At least ``IDLE_DELAY_SECONDS`` have elapsed since the last
+         user task ended (or since boot completion, if no user task
+         has run yet — giving the system a brief settle window).
+    """
+    if not _boot_ready():
+        return False
     with _lock:
         if _active_tasks > 0:
             return False
         if _last_task_end == 0:
-            # No tasks ever ran — consider idle after startup delay
-            return True
+            # No user task since boot. Use the boot-complete moment as
+            # the effective "last activity" and honour IDLE_DELAY_SECONDS
+            # so the first idle pass arrives after a short settle window,
+            # not the instant lifespan calls mark_boot_complete().
+            from app import boot_state
+            completed_at = boot_state.boot_completed_at()
+            if completed_at is None:
+                # Local fallback fired (else _boot_ready would have
+                # returned False). Use _module_import_time as the
+                # anchor, so the settle window still applies.
+                completed_at = _module_import_time
+            return (time.monotonic() - completed_at) >= IDLE_DELAY_SECONDS
         return (time.monotonic() - _last_task_end) >= IDLE_DELAY_SECONDS
 
 
@@ -396,6 +509,47 @@ def _run_single_job(name: str, fn: Callable, timeout_s: int = 60) -> bool:
         _currently_running_job = None
 
 
+def _drain_futures_with_timeout(
+    futures: dict, timeout_s: float,
+) -> None:
+    """Drain a futures dict, swallowing per-future errors AND iterator timeout.
+
+    PR 1 fix (2026-05-16): the previous inline code wrapped only
+    ``future.result()`` in ``try/except Exception``. ``as_completed``
+    itself raises ``concurrent.futures.TimeoutError`` at the *generator*
+    level when at least one future still hasn't completed within
+    ``timeout_s`` seconds — that exception escaped the for-loop and
+    killed the idle-scheduler daemon thread, so one stuck job would
+    silently stop ALL background work until the gateway restarted.
+
+    On iterator timeout we cancel still-pending futures so a single
+    stuck job doesn't permanently consume a slot in the calling pool.
+
+    Args:
+        futures: dict mapping ``Future`` → human-readable job name
+        timeout_s: total seconds to wait for the slowest future
+    """
+    import concurrent.futures as _cf
+    from concurrent.futures import as_completed
+    try:
+        for future in as_completed(futures, timeout=timeout_s):
+            try:
+                future.result()
+            except Exception:
+                pass
+    except _cf.TimeoutError:
+        stuck = [futures[f] for f in futures if not f.done()]
+        logger.warning(
+            "idle_scheduler: light-job phase timed out with %d "
+            "futures still pending (%s) — cancelling",
+            len(stuck),
+            ", ".join(stuck[:5]) + ("…" if len(stuck) > 5 else ""),
+        )
+        for f in futures:
+            if not f.done():
+                f.cancel()
+
+
 def _run_idle_loop(jobs) -> None:
     """Main idle loop — dual-queue architecture with parallel lightweight execution.
 
@@ -455,13 +609,10 @@ def _run_idle_loop(jobs) -> None:
                 if _stop_event.is_set() or not is_idle():
                     break
                 futures[light_pool.submit(_run_single_job, name, fn, TIME_CAPS[JobWeight.LIGHT])] = name
-            # Wait for all lightweight jobs (bounded by their time caps)
-            from concurrent.futures import as_completed
-            for future in as_completed(futures, timeout=TIME_CAPS[JobWeight.LIGHT] + 10):
-                try:
-                    future.result()
-                except Exception:
-                    pass
+            # Wait for all lightweight jobs (bounded by their time caps).
+            _drain_futures_with_timeout(
+                futures, TIME_CAPS[JobWeight.LIGHT] + 10,
+            )
 
         if _stop_event.is_set() or not is_idle():
             continue
@@ -470,7 +621,14 @@ def _run_idle_loop(jobs) -> None:
         if medium_jobs:
             name, fn = medium_jobs[medium_idx % len(medium_jobs)]
             medium_idx += 1
-            _run_single_job(name, fn, TIME_CAPS[JobWeight.MEDIUM])
+            # Productization plan T2.5 — consult substrate resource policy.
+            # Heavy/medium work defers under disk pressure or host alerts;
+            # the deferral is published as a visible event (no silent skip).
+            defer_reason = _substrate_defer_reason(JobWeight.MEDIUM)
+            if defer_reason:
+                _publish_deferral(name, JobWeight.MEDIUM, defer_reason)
+            else:
+                _run_single_job(name, fn, TIME_CAPS[JobWeight.MEDIUM])
 
         if _stop_event.is_set() or not is_idle():
             continue
@@ -486,7 +644,12 @@ def _run_idle_loop(jobs) -> None:
                     continue  # Skip: ran less than 1 hour ago
                 _last_training_run = time.monotonic()
 
-            _run_single_job(name, fn, _heavy_cap)
+            # Substrate resource policy — productization plan T2.5.
+            defer_reason = _substrate_defer_reason(JobWeight.HEAVY)
+            if defer_reason:
+                _publish_deferral(name, JobWeight.HEAVY, defer_reason)
+            else:
+                _run_single_job(name, fn, _heavy_cap)
 
         # Brief pause between cycles
         for _ in range(INTER_JOB_PAUSE_SECONDS):
@@ -1753,6 +1916,12 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
                             if oldest and oldest.get("ids"):
                                 col.delete(ids=oldest["ids"])
                                 pruned[f"chromadb:{col_name}"] = len(oldest["ids"])
+                                # PROGRAM §56 iter-2 — ledger tombstone
+                                try:
+                                    from app.memory.source_ledger import hook_collection_delete
+                                    hook_collection_delete("memory", col_name, list(oldest["ids"]))
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 # Sentience-critical (NOT pruned): scope_beliefs, self_reports,

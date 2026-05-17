@@ -1,0 +1,21 @@
+{
+  "reflection_id": "cogito_20260517_173039",
+  "timestamp": "2026-05-17T17:30:39.967292+00:00",
+  "self_model_stale": false,
+  "discrepancies": [],
+  "failure_patterns": [],
+  "observations": [
+    "Agent 'concierge' has no versioned prompt",
+    "Agent 'desktop' has no versioned prompt",
+    "Agent 'devops' has no versioned prompt",
+    "Agent 'financial_analyst' has no versioned prompt",
+    "Agent 'pim' has no versioned prompt",
+    "Agent 'reasoning_methods' has no versioned prompt",
+    "Agent 'repo_analyst' has no versioned prompt",
+    "Agent 'introspector' has no versioned prompt",
+    "Empty ChromaDB collections: reflections_coder, episteme, evo_successes, evo_failures, introspector, scope_tech_radar, skill_records, reflections_critic, self_reports, unresolved_tensions, tensions, scope_team, scope_world_model, aesthetics, reflections_writer, aesthetic_patterns, commander, experiential, experiential_journal, result_cache, scope_predictions, reflections_researcher, episteme_research, team_shared"
+  ],
+  "improvement_proposals": [],
+  "overall_health": "healthy",
+  "narrative": ""
+}

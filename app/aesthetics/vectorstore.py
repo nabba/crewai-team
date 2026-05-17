@@ -91,6 +91,15 @@ class AestheticStore:
                 embeddings=[embed(text)],
                 ids=[pattern_id],
             )
+            # PROGRAM §56 — source ledger dual-write.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add(
+                    "aesthetics", self.collection_name,
+                    [pattern_id], [text], [metadata],
+                )
+            except Exception:
+                logger.debug("AestheticsStore: source_ledger hook failed", exc_info=True)
             return True
         except Exception as e:
             logger.error("Failed to add aesthetic pattern: %s", e)

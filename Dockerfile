@@ -20,7 +20,17 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade 'chromadb>=1.5.8,<2.0.0'
+# ChromaDB force-upgrade above: crewai's metadata pins chromadb~=1.1.0
+# which pip's resolver refuses to override when requirements.txt asks for
+# >=1.5.8. So we let pip resolve crewai+chromadb normally first (gets
+# 1.1.x), then upgrade chromadb in a second step. Empirically safe — see
+# commit 4ee78423 (May 2026) which validated all 14 chromadb modules
+# crewai imports against 1.5.x. The 1.1.x → 1.5.x downgrade direction
+# IS where the panic-on-read occurs (2026-05-17 incident: KBs written
+# by 1.5.8 are unreadable by 1.1.x; "range start index 10 out of range
+# for slice of length 9").
 
 # Install ShinkaEvolve separately (--no-deps avoids httpx version
 # conflict with crewai — shinka declares httpx==0.27, crewai needs

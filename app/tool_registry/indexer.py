@@ -145,7 +145,14 @@ def index_tools(specs: list["ToolSpec"]) -> tuple[int, int]:
         stale = set(existing_hashes) - {s.name for s in specs}
         if stale:
             try:
-                col.delete(ids=list(stale))
+                stale_list = list(stale)
+                col.delete(ids=stale_list)
+                # PROGRAM §56 iter-2 — ledger tombstone
+                try:
+                    from app.memory.source_ledger import hook_collection_delete
+                    hook_collection_delete("memory", _COLLECTION_NAME, stale_list)
+                except Exception:
+                    pass
                 logger.info(
                     "tool_registry indexer: removed %d stale entries: %s",
                     len(stale), sorted(stale),
@@ -173,7 +180,14 @@ def index_tools(specs: list["ToolSpec"]) -> tuple[int, int]:
     stale = set(existing_hashes) - {s.name for s in specs}
     if stale:
         try:
-            col.delete(ids=list(stale))
+            stale_list = list(stale)
+            col.delete(ids=stale_list)
+            # PROGRAM §56 iter-2 — ledger tombstone
+            try:
+                from app.memory.source_ledger import hook_collection_delete
+                hook_collection_delete("memory", _COLLECTION_NAME, stale_list)
+            except Exception:
+                pass
         except Exception as exc:
             logger.debug("tool_registry indexer: stale delete failed: %s", exc)
 

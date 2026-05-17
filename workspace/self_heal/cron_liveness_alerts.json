@@ -1,0 +1,16 @@
+{
+  "jobs": {
+    "error_resolution": {
+      "last_alert_at": 1779049937.4915078,
+      "stale_jobs": [
+        {
+          "age_s": 5537,
+          "expected_interval_s": 1800,
+          "footprint": "workspace/error_tracker.json",
+          "name": "error_resolution",
+          "threshold_s": 5400
+        }
+      ]
+    }
+  }
+}

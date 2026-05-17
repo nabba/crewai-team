@@ -1,0 +1,792 @@
+{
+  "started_at": "2026-05-17T14:13:48.543649+00:00",
+  "completed_at": "2026-05-17T14:13:48.795317+00:00",
+  "duration_s": 0.252,
+  "tarball": "/app/workspace/backups/dr/dr_dryrun-2026-05-17_20260517T140706Z.tar.gz",
+  "target_dir": "/tmp/dr_drill_78d37wla",
+  "target_kept": false,
+  "fresh_export": false,
+  "chromadb_results": [
+    {
+      "kb": "aesthetics",
+      "collection": "aesthetic_patterns",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "knowledge",
+      "collection": "biz_kb_archibal",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "knowledge",
+      "collection": "biz_kb_kaicart",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "knowledge",
+      "collection": "biz_kb_plg",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "reflections_critic",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "reflections_coder",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "unresolved_tensions",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "philosophy_texts",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "companion_sources",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "devops",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "critic",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "experiential",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "fiction_inspiration",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "commander",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "episteme",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "tensions",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "companion_ideas",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "memory",
+      "collection": "reflections_researcher",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    },
+    {
+      "kb": "tensions",
+      "collection": "unresolved_tensions",
+      "expected_rows": 0,
+      "observed_rows": 0,
+      "peek_dim": null,
+      "smoke_retrieve_ok": false,
+      "error": "peek failed: The truth value of an empty array is ambiguous. Use `array.size > 0` to check that an array is not empty.",
+      "ok": false
+    }
+  ],
+  "ledger_files_restored": 94,
+  "ledger_bytes_restored": 4239425,
+  "ledger_hash_checks": [
+    {
+      "rel_path": "affect/.trace.jsonl.rotation_lock",
+      "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/calibration.json",
+      "expected_sha256": "0747084e4bcdba8f04563133cb7d756fae32e2e27aceb2327c1c59327dd8bf16",
+      "observed_sha256": "0747084e4bcdba8f04563133cb7d756fae32e2e27aceb2327c1c59327dd8bf16",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/.salience.jsonl.rotation_lock",
+      "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/phase5_gate.jsonl",
+      "expected_sha256": "18f8a40b19e55310f5264f5fd24f4cbc0e6fec198fa5fcc845cbd527844ebe2c",
+      "observed_sha256": "18f8a40b19e55310f5264f5fd24f4cbc0e6fec198fa5fcc845cbd527844ebe2c",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/episodes_last_flush.txt",
+      "expected_sha256": "df70224601585370f38fd65211f0516cf68256ddc8cd592bb3edbf5ab723ea0d",
+      "observed_sha256": "df70224601585370f38fd65211f0516cf68256ddc8cd592bb3edbf5ab723ea0d",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/setpoints.json",
+      "expected_sha256": "3d1ae8fbab620218b4fa3996f3665d71082c472cb571a302c22970c20e9dffc4",
+      "observed_sha256": "3d1ae8fbab620218b4fa3996f3665d71082c472cb571a302c22970c20e9dffc4",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/episode_affect_tags.jsonl",
+      "expected_sha256": "aaddab92ec0f9d8e959aa9d2e704005c08fb9a9524527fc8e43a3e8aa4728df2",
+      "observed_sha256": "aaddab92ec0f9d8e959aa9d2e704005c08fb9a9524527fc8e43a3e8aa4728df2",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/salience.jsonl",
+      "expected_sha256": "8a17cbe03c1d178828000a4144b9ce207af48e74510dcd0bf9f74af1874be374",
+      "observed_sha256": "8a17cbe03c1d178828000a4144b9ce207af48e74510dcd0bf9f74af1874be374",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/trace.jsonl",
+      "expected_sha256": "b3f67f2061566c20fd86ae654f6aa206927d00436216a6b932eef175b4b553ff",
+      "observed_sha256": "b3f67f2061566c20fd86ae654f6aa206927d00436216a6b932eef175b4b553ff",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/identity_claims.json",
+      "expected_sha256": "c1e4abc4f53c146f30f792995733efc89ba0fde67b8386f8cdcf61392fb97f81",
+      "observed_sha256": "c1e4abc4f53c146f30f792995733efc89ba0fde67b8386f8cdcf61392fb97f81",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/l9_snapshots.jsonl",
+      "expected_sha256": "6e9554b600c69a517d77cbaa832fcfbc5a029c04824ecd526c162061792e8fda",
+      "observed_sha256": "6e9554b600c69a517d77cbaa832fcfbc5a029c04824ecd526c162061792e8fda",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/chapters_audit.jsonl",
+      "expected_sha256": "5be1dcb516c788780b74eed850e461f9a51fda681f1fcbb1b64b0de9b46b3888",
+      "observed_sha256": "5be1dcb516c788780b74eed850e461f9a51fda681f1fcbb1b64b0de9b46b3888",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/welfare_audit.jsonl",
+      "expected_sha256": "432126dd4c200e924f272f5374c66d502a430a3f64085628db3a3e6c135510ab",
+      "observed_sha256": "432126dd4c200e924f272f5374c66d502a430a3f64085628db3a3e6c135510ab",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-14.json",
+      "expected_sha256": "4891eae4174c99c9b06da2c48eb6845d3f2d8d7f8fd17edfc01ad5240600354a",
+      "observed_sha256": "4891eae4174c99c9b06da2c48eb6845d3f2d8d7f8fd17edfc01ad5240600354a",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-02.json",
+      "expected_sha256": "8d3263697eca0f1e50a9110bc3646e447c9366a26c7ed5c6b71b16227a2ccf8c",
+      "observed_sha256": "8d3263697eca0f1e50a9110bc3646e447c9366a26c7ed5c6b71b16227a2ccf8c",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-03.json",
+      "expected_sha256": "9451d24f94ae3010cdf44af135e7098a3814227664d495c9d07752ecaf93f103",
+      "observed_sha256": "9451d24f94ae3010cdf44af135e7098a3814227664d495c9d07752ecaf93f103",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-15.json",
+      "expected_sha256": "3c18ee79b4fffce1c506e56295c3d36005d9588f06d3021e58abcafca58dcbdc",
+      "observed_sha256": "3c18ee79b4fffce1c506e56295c3d36005d9588f06d3021e58abcafca58dcbdc",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-08.json",
+      "expected_sha256": "95139600ed5315779455ba5163dd67184e0efe058e18bf2c2c0e2cfd2fa009fe",
+      "observed_sha256": "95139600ed5315779455ba5163dd67184e0efe058e18bf2c2c0e2cfd2fa009fe",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-12.json",
+      "expected_sha256": "2452ed443c982c4f3178b2324f44f35efda87187596ea74ba60cde4682d17bfa",
+      "observed_sha256": "2452ed443c982c4f3178b2324f44f35efda87187596ea74ba60cde4682d17bfa",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-04-29.json",
+      "expected_sha256": "06d7813c5e6d64fc29e244ed9dc3f302c8c90a95d74becea6c07866f0cb19ee5",
+      "observed_sha256": "06d7813c5e6d64fc29e244ed9dc3f302c8c90a95d74becea6c07866f0cb19ee5",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-04.json",
+      "expected_sha256": "73e483bf8d73f4cf6bbfe2f68ae611a38da382068aa948061e65074e06c9d2a1",
+      "observed_sha256": "73e483bf8d73f4cf6bbfe2f68ae611a38da382068aa948061e65074e06c9d2a1",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-05.json",
+      "expected_sha256": "6fb843e2c3a66dbe01c6f264e4e7dff7914609d3104769d6d55e9d605a5e4cf7",
+      "observed_sha256": "6fb843e2c3a66dbe01c6f264e4e7dff7914609d3104769d6d55e9d605a5e4cf7",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-13.json",
+      "expected_sha256": "35718d92b795fa3e110863bc9d05ad6dd3c12ebf21f259542ee60ebbab3f531e",
+      "observed_sha256": "35718d92b795fa3e110863bc9d05ad6dd3c12ebf21f259542ee60ebbab3f531e",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-09.json",
+      "expected_sha256": "29ac199de5a98e975b177b23d49b97f6494a99d42916311e4f6470716ca1c2f1",
+      "observed_sha256": "29ac199de5a98e975b177b23d49b97f6494a99d42916311e4f6470716ca1c2f1",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-06.json",
+      "expected_sha256": "dfa05f5f0a8ddc7ac2de9864e152b512b48c9173001275fe523cbf83bbb05810",
+      "observed_sha256": "dfa05f5f0a8ddc7ac2de9864e152b512b48c9173001275fe523cbf83bbb05810",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-10.json",
+      "expected_sha256": "07c5847e08df5740d16ee1f7774bfa9730c8cdf7bb6513a55d38cd7bc6e90400",
+      "observed_sha256": "07c5847e08df5740d16ee1f7774bfa9730c8cdf7bb6513a55d38cd7bc6e90400",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-11.json",
+      "expected_sha256": "1899a6329f80fb1858dfdd76003442c1477265bcdf8f87863d34092f724d67df",
+      "observed_sha256": "1899a6329f80fb1858dfdd76003442c1477265bcdf8f87863d34092f724d67df",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-07.json",
+      "expected_sha256": "3fef3e40470616a407fa40ff748bbece12e3cca79e3e76009a661dec6032bc15",
+      "observed_sha256": "3fef3e40470616a407fa40ff748bbece12e3cca79e3e76009a661dec6032bc15",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-16.json",
+      "expected_sha256": "e69adcbeb3b95a4008c0259c2f0049b242bb5fd40bea7f8aa647ccc03db8b93e",
+      "observed_sha256": "e69adcbeb3b95a4008c0259c2f0049b242bb5fd40bea7f8aa647ccc03db8b93e",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-17.json",
+      "expected_sha256": "9a521b2534bbad8764b749727a1eac3fe3e4609b0898123e41d865fece0c2333",
+      "observed_sha256": "9a521b2534bbad8764b749727a1eac3fe3e4609b0898123e41d865fece0c2333",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/reflections/2026-05-01.json",
+      "expected_sha256": "1866b6e6fca8a4d278ee4cf291ed9f004dde63efee178ecb0a46e3818880f84d",
+      "observed_sha256": "1866b6e6fca8a4d278ee4cf291ed9f004dde63efee178ecb0a46e3818880f84d",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-02.json",
+      "expected_sha256": "2c1829fd353af1772617433b01000081c961294ee69ac698e65266307bdd5a74",
+      "observed_sha256": "2c1829fd353af1772617433b01000081c961294ee69ac698e65266307bdd5a74",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-03.json",
+      "expected_sha256": "6941baceb834fa06bb9c5f119c5a665c06daea3e6bf935420c6182733df1e9e1",
+      "observed_sha256": "6941baceb834fa06bb9c5f119c5a665c06daea3e6bf935420c6182733df1e9e1",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-15.json",
+      "expected_sha256": "fd09a24e8defe87aac5eec642ff5dff7903b618f60ef4bb48ab80281b43e98e1",
+      "observed_sha256": "fd09a24e8defe87aac5eec642ff5dff7903b618f60ef4bb48ab80281b43e98e1",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-08.json",
+      "expected_sha256": "e3ac508e4994b45f834999087f2e2c4de8f1fe91b60969b61e475a434aac68b8",
+      "observed_sha256": "e3ac508e4994b45f834999087f2e2c4de8f1fe91b60969b61e475a434aac68b8",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-04.json",
+      "expected_sha256": "945fefa860678b6f41b3c2a7be655846c959163a855c64e64b982efd5a34c930",
+      "observed_sha256": "945fefa860678b6f41b3c2a7be655846c959163a855c64e64b982efd5a34c930",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-05.json",
+      "expected_sha256": "fc2b4e3fbaa4c2c15fc883c3b115013ea0d72f5e4287c5cd902be54d69d219a1",
+      "observed_sha256": "fc2b4e3fbaa4c2c15fc883c3b115013ea0d72f5e4287c5cd902be54d69d219a1",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-09.json",
+      "expected_sha256": "3cde542582f8a61ea89163f71fec01a4f3306a74106230d7d7f6894ff559edaf",
+      "observed_sha256": "3cde542582f8a61ea89163f71fec01a4f3306a74106230d7d7f6894ff559edaf",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-06.json",
+      "expected_sha256": "fa6010430e0b1f8a0dd06d97a810d132ff0bed7d31e5e967963c7ba8153a6454",
+      "observed_sha256": "fa6010430e0b1f8a0dd06d97a810d132ff0bed7d31e5e967963c7ba8153a6454",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-10.json",
+      "expected_sha256": "9d5162dcc533bd98b32e0d0c0d8d0aa529364700f646c1e9231f2faaa2d8fad5",
+      "observed_sha256": "9d5162dcc533bd98b32e0d0c0d8d0aa529364700f646c1e9231f2faaa2d8fad5",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-11.json",
+      "expected_sha256": "1f0875665e7317b35a75314929b8e075c4dfbe755a08136ca52fed2101772196",
+      "observed_sha256": "1f0875665e7317b35a75314929b8e075c4dfbe755a08136ca52fed2101772196",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-16.json",
+      "expected_sha256": "8862d49e3874a8195326f5d5cdc1ed084c53272fc53cb142ff69a6180aeeb8df",
+      "observed_sha256": "8862d49e3874a8195326f5d5cdc1ed084c53272fc53cb142ff69a6180aeeb8df",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/decentered/2026-05-17.json",
+      "expected_sha256": "1d4be1cfb72d9005bc5f668022e31252db6c6fa5b69b2f49b8d0d25fae7de9e7",
+      "observed_sha256": "1d4be1cfb72d9005bc5f668022e31252db6c6fa5b69b2f49b8d0d25fae7de9e7",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/trace_archive/2026-04.jsonl.gz",
+      "expected_sha256": "e8a259100c2de47ce3a12dffc5bbd1d4ebc810253215826be3e6fdf51472ea19",
+      "observed_sha256": "e8a259100c2de47ce3a12dffc5bbd1d4ebc810253215826be3e6fdf51472ea19",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/trace_archive/2026-05.jsonl.gz",
+      "expected_sha256": "054c96bb75e15c266f78cd56117f9b44a72155757b4d48e80525a75f8ca70c62",
+      "observed_sha256": "054c96bb75e15c266f78cd56117f9b44a72155757b4d48e80525a75f8ca70c62",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/user_qos_answer_regression.json",
+      "expected_sha256": "ebf2314d2a9267c669a3964a361b8859b6cf2af7975b933054e9209d815a24c2",
+      "observed_sha256": "ebf2314d2a9267c669a3964a361b8859b6cf2af7975b933054e9209d815a24c2",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/user_+3725100500.json",
+      "expected_sha256": "ae447f29a9e060abda03d70c7daf3d7a89fbc0e5cb8c6874659b3c7dc57e3253",
+      "observed_sha256": "ae447f29a9e060abda03d70c7daf3d7a89fbc0e5cb8c6874659b3c7dc57e3253",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/check_in_candidates.jsonl",
+      "expected_sha256": "095f9642012da46d163217886dd97b0652d605dce637110f6b3d07a0f71722d6",
+      "observed_sha256": "095f9642012da46d163217886dd97b0652d605dce637110f6b3d07a0f71722d6",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/user_andrus.json",
+      "expected_sha256": "4af6201fdacf49674c34f1e7866aaafe7776181914a4b4788c43587e7044e68f",
+      "observed_sha256": "4af6201fdacf49674c34f1e7866aaafe7776181914a4b4788c43587e7044e68f",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/health_checks/2026-05-12.md",
+      "expected_sha256": "548f8807dfc4aff7dd4020503f81fa729e1c0ad1f6ccc4e95f107a54f0c7286f",
+      "observed_sha256": "548f8807dfc4aff7dd4020503f81fa729e1c0ad1f6ccc4e95f107a54f0c7286f",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/financial.json",
+      "expected_sha256": "4e44286871292b6e773caa18cf707de2402692ce5aacb2092fa1628f3de8a493",
+      "observed_sha256": "4e44286871292b6e773caa18cf707de2402692ce5aacb2092fa1628f3de8a493",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/devops.json",
+      "expected_sha256": "a035b69c242bef591e3e3f83439fd5563b43f99c7941602ddec34813287839b2",
+      "observed_sha256": "a035b69c242bef591e3e3f83439fd5563b43f99c7941602ddec34813287839b2",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/pim.json",
+      "expected_sha256": "80d888b1a8cede02e146073bf6334606ba7e555fa718041c9040c147eec50c96",
+      "observed_sha256": "80d888b1a8cede02e146073bf6334606ba7e555fa718041c9040c147eec50c96",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/writing.json",
+      "expected_sha256": "88a92c3285f174c88bd0fdb95d055ed7b800aa1bb8a9fa4f55bebfe955e19791",
+      "observed_sha256": "88a92c3285f174c88bd0fdb95d055ed7b800aa1bb8a9fa4f55bebfe955e19791",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/research.json",
+      "expected_sha256": "84f17443009bf64c22ae1b28462975e6c847babea6b8333655232168e3d562da",
+      "observed_sha256": "84f17443009bf64c22ae1b28462975e6c847babea6b8333655232168e3d562da",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/creative.json",
+      "expected_sha256": "c2a8ee0cb6c761cc57ff1760bb83a10d4dd030b332d856c2da1b9803e048db74",
+      "observed_sha256": "c2a8ee0cb6c761cc57ff1760bb83a10d4dd030b332d856c2da1b9803e048db74",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/coding.json",
+      "expected_sha256": "5302c6e9a3e2223b865c6b148af8c51656835f71bf67fb50009f4e4862505fe2",
+      "observed_sha256": "5302c6e9a3e2223b865c6b148af8c51656835f71bf67fb50009f4e4862505fe2",
+      "ok": true
+    },
+    {
+      "rel_path": "affect/attachments/peers/desktop.json",
+      "expected_sha256": "d0ec4033470f9b45c6c48232b30f32da4e6e07de8ef089b91e42318f6254f0ff",
+      "observed_sha256": "d0ec4033470f9b45c6c48232b30f32da4e6e07de8ef089b91e42318f6254f0ff",
+      "ok": true
+    },
+    {
+      "rel_path": "identity/identity_drift_digest_latest.json",
+      "expected_sha256": "eb1c4a9a01fa1b084183fc4c3a7f24f7ed95f32fdbab298a01fd7f4f17fb4e59",
+      "observed_sha256": "eb1c4a9a01fa1b084183fc4c3a7f24f7ed95f32fdbab298a01fd7f4f17fb4e59",
+      "ok": true
+    },
+    {
+      "rel_path": "identity/continuity_ledger.jsonl",
+      "expected_sha256": "a0a5d6066de28075ae23755002fbdf3b37ce902f54c8a6d472fa2fec5a48b2e4",
+      "observed_sha256": "a0a5d6066de28075ae23755002fbdf3b37ce902f54c8a6d472fa2fec5a48b2e4",
+      "ok": true
+    },
+    {
+      "rel_path": "identity/identity_drift_digest_state.json",
+      "expected_sha256": "77e1a6ee7f1e9c7ca71fb35ca45f8b12b084e52edf4cc1cb6f43b4e3b645b460",
+      "observed_sha256": "77e1a6ee7f1e9c7ca71fb35ca45f8b12b084e52edf4cc1cb6f43b4e3b645b460",
+      "ok": true
+    },
+    {
+      "rel_path": "audit_journal/.lock",
+      "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ok": true
+    },
+    {
+      "rel_path": "audit_journal/INDEX.json",
+      "expected_sha256": "02e55c5bda1b291ec5b6a5e27e174fdafe1eab43d5c133a4279acb6aeb45ac30",
+      "observed_sha256": "02e55c5bda1b291ec5b6a5e27e174fdafe1eab43d5c133a4279acb6aeb45ac30",
+      "ok": true
+    },
+    {
+      "rel_path": "audit_journal/current.jsonl",
+      "expected_sha256": "326ccf698c503df528019eb80a2187e312fed2322062e61bc8ffbc1321308b39",
+      "observed_sha256": "326ccf698c503df528019eb80a2187e312fed2322062e61bc8ffbc1321308b39",
+      "ok": true
+    },
+    {
+      "rel_path": "audit.log",
+      "expected_sha256": "72074d98226352cefc1ab2095c09d185cb0288756937e7c7f15214c49958fd91",
+      "observed_sha256": "72074d98226352cefc1ab2095c09d185cb0288756937e7c7f15214c49958fd91",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/runbook_stats.json",
+      "expected_sha256": "ba161c8214f35952ce9db8a125c5e4df92de1436dff0004781d91064bb5ae499",
+      "observed_sha256": "ba161c8214f35952ce9db8a125c5e4df92de1436dff0004781d91064bb5ae499",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/paper_pipeline.json",
+      "expected_sha256": "30dcdb05c4ba4c3124f8d8d4b0afb72c5ecd7c12a90e5269aa8cb6b260ba24aa",
+      "observed_sha256": "30dcdb05c4ba4c3124f8d8d4b0afb72c5ecd7c12a90e5269aa8cb6b260ba24aa",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/crypto_rotation_drill_monitor.json",
+      "expected_sha256": "20e35b905059774d21676fb53d32d79f080f6141f6ffe77119e2aba55279bbf9",
+      "observed_sha256": "20e35b905059774d21676fb53d32d79f080f6141f6ffe77119e2aba55279bbf9",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/llm_output_drift.json",
+      "expected_sha256": "b8fb6c54dd1d81678aaf5f75434c6cc84756fe45ccf6be32627bff563cee9fca",
+      "observed_sha256": "b8fb6c54dd1d81678aaf5f75434c6cc84756fe45ccf6be32627bff563cee9fca",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/lessons_learned.json",
+      "expected_sha256": "04b47b75848e08db7ba0bc5da5a09463ee7721eab02d6ef16ebefd3c2bcc7fa0",
+      "observed_sha256": "04b47b75848e08db7ba0bc5da5a09463ee7721eab02d6ef16ebefd3c2bcc7fa0",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/adapter_performance.json",
+      "expected_sha256": "b5f33a8f779ca85044f02cc667f2a1e086b7990fe2ce54afafcb01c164dab7b4",
+      "observed_sha256": "b5f33a8f779ca85044f02cc667f2a1e086b7990fe2ce54afafcb01c164dab7b4",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/vendor_sunset.json",
+      "expected_sha256": "01e99cd447ddc310685c0d7171f3a24f3718644221589c4790aa395fc93077a2",
+      "observed_sha256": "01e99cd447ddc310685c0d7171f3a24f3718644221589c4790aa395fc93077a2",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/tension_detector.json",
+      "expected_sha256": "c1e54705b4a4e76b6d64a41fae5c318e67aa27e4771b041464cac8bd7f17ce40",
+      "observed_sha256": "c1e54705b4a4e76b6d64a41fae5c318e67aa27e4771b041464cac8bd7f17ce40",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/restore_drill_monitor.json",
+      "expected_sha256": "0d0c14fd473380a9d115e14840c6562ad15575369e7054c68c18a2ce02340392",
+      "observed_sha256": "0d0c14fd473380a9d115e14840c6562ad15575369e7054c68c18a2ce02340392",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/library_trial_runner.json",
+      "expected_sha256": "4aff25642714a936ca40fb1061f984a9976e787ee9c075a46f92f3e5fd619eee",
+      "observed_sha256": "4aff25642714a936ca40fb1061f984a9976e787ee9c075a46f92f3e5fd619eee",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/silent_regression_alerts.json",
+      "expected_sha256": "ed1ace0bd2772e2caf593cf8217a3a352709f0be7612dc7b74c6bf6f078b510a",
+      "observed_sha256": "ed1ace0bd2772e2caf593cf8217a3a352709f0be7612dc7b74c6bf6f078b510a",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/migration_drill_monitor.json",
+      "expected_sha256": "676744b8ac2499a16d7a1f6187ec6c82937217289500d7b57c3c2f692d64b89b",
+      "observed_sha256": "676744b8ac2499a16d7a1f6187ec6c82937217289500d7b57c3c2f692d64b89b",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/listener_heartbeat_alerts.json",
+      "expected_sha256": "5f84d31df21e84ff3962d59e9d8f8385a2d7ef72f0425ac77d45710654585cc4",
+      "observed_sha256": "5f84d31df21e84ff3962d59e9d8f8385a2d7ef72f0425ac77d45710654585cc4",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/runbook_settings.json",
+      "expected_sha256": "ea27786416b01a2a41c30f9e3b8a372c277a56cd209ee4a9003021144f658c3c",
+      "observed_sha256": "ea27786416b01a2a41c30f9e3b8a372c277a56cd209ee4a9003021144f658c3c",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/governance_auto_propose.json",
+      "expected_sha256": "87b4b307892f76fcfa5a23dd1345b3f70d6f2247c94dfc1d95b204cd1703fdfa",
+      "observed_sha256": "87b4b307892f76fcfa5a23dd1345b3f70d6f2247c94dfc1d95b204cd1703fdfa",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/db_backup_monitor.json",
+      "expected_sha256": "f34587b8496498ed54ab4917c3eda5bc8bb7b6f5444813cff86b11bff6331d4b",
+      "observed_sha256": "f34587b8496498ed54ab4917c3eda5bc8bb7b6f5444813cff86b11bff6331d4b",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/pattern_learner.json",
+      "expected_sha256": "d2e710a32dbcd2c757220ef6592b4800254385b5c97f3e9096299c61d67b2b05",
+      "observed_sha256": "d2e710a32dbcd2c757220ef6592b4800254385b5c97f3e9096299c61d67b2b05",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/signal_keepalive.json",
+      "expected_sha256": "c5c8bd118e3fcffb3ad87367d8a869adedaa497873cd8d2efa69a29a11d0067f",
+      "observed_sha256": "c5c8bd118e3fcffb3ad87367d8a869adedaa497873cd8d2efa69a29a11d0067f",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/goodhart_enforcing_proposer.json",
+      "expected_sha256": "deca24bc3d7ec52a1eaa28ff61193563b5ae2e2376f7124fae70d2bfcaf7d89c",
+      "observed_sha256": "deca24bc3d7ec52a1eaa28ff61193563b5ae2e2376f7124fae70d2bfcaf7d89c",
+      "ok": true
+    },
+    {
+      "rel_path": "self_heal/version_upgrade_drill_monitor.json",
+      "expected_sha256": "d89ad85e0d50b0c4d651c372dc303ffb1492cbead41098c57018b8dbe8a8c45b",
+      "observed_sha256": "d89ad85e0d50b0c4d651c372dc303ffb1492cbead41098c57018b8dbe8a8c45b",
+      "ok": true
+    },
+    {
+      "rel_path": "resilience/drill_audit.jsonl",
+      "expected_sha256": "e489d3dde0aade47aa918519d4635d19144cdafd32f28868c74c30687cb3d55f",
+      "observed_sha256": "e489d3dde0aade47aa918519d4635d19144cdafd32f28868c74c30687cb3d55f",
+      "ok": true
+    },
+    {
+      "rel_path": "resilience/.local_only.lock",
+      "expected_sha256": "b449dd68c01d61a03903f84642e5c6134f78b57375c7a65eb87181da56f3efa4",
+      "observed_sha256": "b449dd68c01d61a03903f84642e5c6134f78b57375c7a65eb87181da56f3efa4",
+      "ok": true
+    },
+    {
+      "rel_path": "resilience/local_only/2026-05-16.json",
+      "expected_sha256": "7b33440b72859cb5bc18d6bfe865b763c3daf15e587e90a33056f61590e76b20",
+      "observed_sha256": "7b33440b72859cb5bc18d6bfe865b763c3daf15e587e90a33056f61590e76b20",
+      "ok": true
+    },
+    {
+      "rel_path": "resilience/local_only/2026-05-17.json",
+      "expected_sha256": "983677b9a832249f0e703f1b695dd9219a1359e73f6d4729a894eb8d9e69482b",
+      "observed_sha256": "983677b9a832249f0e703f1b695dd9219a1359e73f6d4729a894eb8d9e69482b",
+      "ok": true
+    },
+    {
+      "rel_path": "subia/workspace/hot.md",
+      "expected_sha256": "5b8e590e84686e21c965fb9a65d2971911a6842901cc6a78a9a8f99ff86851f6",
+      "observed_sha256": "5b8e590e84686e21c965fb9a65d2971911a6842901cc6a78a9a8f99ff86851f6",
+      "ok": true
+    },
+    {
+      "rel_path": "subia/self/self-narrative-audit.jsonl",
+      "expected_sha256": "09462402a6fddac1798282dac91025c2553ced2a83d9d2bd7c2b86b1ee7b935e",
+      "observed_sha256": "09462402a6fddac1798282dac91025c2553ced2a83d9d2bd7c2b86b1ee7b935e",
+      "ok": true
+    },
+    {
+      "rel_path": "subia/self/kernel-state.md",
+      "expected_sha256": "38ced76184ab8f77a9470feeea1bf99909daaaacc6bfa04c3e2b7ae969266b01",
+      "observed_sha256": "38ced76184ab8f77a9470feeea1bf99909daaaacc6bfa04c3e2b7ae969266b01",
+      "ok": true
+    },
+    {
+      "rel_path": "subia/self/consciousness-state.md",
+      "expected_sha256": "3832e5abfea2cdeed22450cd8a4d3c5eea35d7974b2de482e0953e5c34abb3cf",
+      "observed_sha256": "3832e5abfea2cdeed22450cd8a4d3c5eea35d7974b2de482e0953e5c34abb3cf",
+      "ok": true
+    },
+    {
+      "rel_path": "runtime_settings.json",
+      "expected_sha256": "5a20732048b7539f5e2fd17f31045f7e829e2d561dd8926492f8cc9cb5874b24",
+      "observed_sha256": "5a20732048b7539f5e2fd17f31045f7e829e2d561dd8926492f8cc9cb5874b24",
+      "ok": true
+    }
+  ],
+  "ledger_hash_mismatches": 0,
+  "subia_continuity": {
+    "manifest_snapshot": {
+      "ok": false,
+      "has_drift": true,
+      "n_files": 164,
+      "n_mismatched": 1,
+      "n_extra": 2,
+      "n_missing": 0
+    },
+    "restored_paths": [
+      "workspace_ledgers/subia",
+      "workspace_ledgers/runtime_settings.json",
+      "workspace_ledgers/identity",
+      "workspace_ledgers/affect"
+    ],
+    "missing_paths": [
+      "workspace_ledgers/.subia_integrity.json"
+    ],
+    "warning": "SubIA had integrity drift at export time (mismatched=1, extra=2, missing=0)"
+  },
+  "overall_ok": false,
+  "errors": []
+}

@@ -118,11 +118,20 @@ class PostgresSnapshotStore:
     _ensured: bool = False
 
     def _ensure_table(self) -> None:
+        # PR 1 fix (2026-05-16): the previous implementation called
+        # ``execute()`` (optional semantics — swallows exceptions and
+        # returns None). If the CREATE TABLE silently failed (pool
+        # unavailable, permission denied, SQL error against a
+        # half-migrated schema), ``_ensured`` was still set to True and
+        # every subsequent put/latest/recent call also silently failed
+        # against a non-existent table. Switching to ``execute_required``
+        # means a CREATE failure now raises — we catch and stay
+        # ``_ensured=False`` so the next ``put()`` retries.
         if self.__class__._ensured:
             return
         try:
-            from app.control_plane.db import execute
-            execute(
+            from app.control_plane.db import execute_required
+            execute_required(
                 """
                 CREATE TABLE IF NOT EXISTS observability_snapshots (
                     id         BIGSERIAL PRIMARY KEY,

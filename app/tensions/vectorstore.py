@@ -92,6 +92,15 @@ class TensionStore:
                 embeddings=[embed(text)],
                 ids=[tension_id],
             )
+            # PROGRAM §56 — source ledger dual-write.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add(
+                    "tensions", self.collection_name,
+                    [tension_id], [text], [metadata],
+                )
+            except Exception:
+                logger.debug("TensionsStore: source_ledger hook failed", exc_info=True)
             return True
         except Exception as e:
             logger.error("Failed to add tension: %s", e)

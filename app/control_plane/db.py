@@ -16,6 +16,24 @@ successful pool creation.
 Connect-timeout: ``CONTROL_PLANE_CONNECT_TIMEOUT_S`` (default 8 s) —
 appended to the DSN if not already specified, so a stuck DNS/network
 lookup can't block the gateway boot indefinitely.
+
+PR 1 (2026-05-16) — required vs optional helper families. Until now,
+every helper (``execute`` / ``execute_one`` / ``execute_scalar``)
+swallowed all failures and returned ``None`` / ``[]``, which meant a
+missing table or a dropped pool looked exactly like "query returned
+no rows". The new ``execute_required`` / ``execute_one_required`` /
+``execute_scalar_required`` family raises on any failure — use for
+correctness-critical operations (schema CREATE, audit log writes,
+governance state transitions). The existing optional helpers are
+refactored to share the same private inner loop, so the two families
+cannot drift apart. A new ``DBUnavailable`` exception covers the
+specific case of ``get_pool() → None`` (not configured, breaker open).
+
+Pool diagnostics: see ``get_pool_diagnostics()``. Thread-safe counters
+that surface concurrent borrows, peak borrows, and per-failure-kind
+counts. Hooked into both families so we can finally see what's behind
+the "connection pool exhausted" volume in errors.jsonl — observational
+only, never changes pool behavior.
 """
 import logging
 import os
@@ -30,6 +48,87 @@ logger = logging.getLogger(__name__)
 
 _pool: pg_pool.ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
+
+
+class DBUnavailable(Exception):
+    """Control-plane DB pool is unavailable.
+
+    Raised by the ``*_required`` family when ``get_pool()`` returns
+    ``None`` — the pool is not configured, the circuit breaker is open,
+    or the pool was never successfully created. Distinct from
+    ``psycopg2.pool.PoolError`` (which is raised when the pool exists
+    but a connection cannot currently be borrowed).
+    """
+
+
+# ── Pool diagnostics ──────────────────────────────────────────────────
+#
+# Lightweight thread-safe counters. The goal is to finally answer the
+# question "what is happening when 'connection pool exhausted' fires
+# tens of thousands of times" without changing pool behavior. We track:
+#   * total acquires, slow acquires (> _SLOW_ACQUIRE_THRESHOLD_S)
+#   * concurrent borrows (current + peak) — surfaces leak signatures
+#   * failures by kind — distinguishes pool_exhausted from
+#     connection_error from pool_unavailable
+#
+# Counters are intentionally cheap (single lock, integer increments) so
+# the hot path overhead is negligible. Diagnostics are observational —
+# they NEVER change query routing or retry behavior.
+
+_diag_lock = threading.Lock()
+_diag: dict[str, float | int] = {
+    "acquires_total": 0,
+    "acquires_slow": 0,
+    "failures_pool_unavailable": 0,
+    "failures_pool_exhausted": 0,
+    "failures_pool_other": 0,
+    "failures_connection_error": 0,
+    "current_borrows": 0,
+    "peak_borrows": 0,
+    "last_exhaust_ts": 0.0,
+    "last_slow_acquire_ms": 0,
+}
+_SLOW_ACQUIRE_THRESHOLD_S = 0.5
+
+
+def get_pool_diagnostics() -> dict:
+    """Read pool diagnostics. Thread-safe snapshot."""
+    with _diag_lock:
+        return dict(_diag)
+
+
+def reset_pool_diagnostics() -> None:
+    """Test-only: zero the counters."""
+    with _diag_lock:
+        for k in _diag:
+            _diag[k] = 0
+
+
+def _diag_record_acquire(duration_s: float) -> None:
+    with _diag_lock:
+        _diag["acquires_total"] += 1
+        if duration_s > _SLOW_ACQUIRE_THRESHOLD_S:
+            _diag["acquires_slow"] += 1
+            _diag["last_slow_acquire_ms"] = int(duration_s * 1000)
+        _diag["current_borrows"] += 1
+        if _diag["current_borrows"] > _diag["peak_borrows"]:
+            _diag["peak_borrows"] = _diag["current_borrows"]
+
+
+def _diag_record_release() -> None:
+    with _diag_lock:
+        if _diag["current_borrows"] > 0:
+            _diag["current_borrows"] -= 1
+
+
+def _diag_record_failure(kind: str) -> None:
+    """kind: 'pool_unavailable' | 'pool_exhausted' | 'pool_other' | 'connection_error'"""
+    key = f"failures_{kind}"
+    with _diag_lock:
+        if key in _diag:
+            _diag[key] += 1
+        if kind == "pool_exhausted":
+            _diag["last_exhaust_ts"] = time.time()
 
 # ── Startup circuit breaker (Phase D #1) ─────────────────────────────────
 _STARTUP_RETRY_ATTEMPTS = 3
@@ -164,85 +263,160 @@ def _reset_pool() -> None:
                 pass
             _pool = None
 
-def execute(query: str, params: tuple = (), fetch: bool = False) -> list | None:
-    """Execute a query using the pool. Returns rows if fetch=True.
+# ── Private execution helpers ────────────────────────────────────────
 
-    Validates connection health before use. Resets pool on persistent failures.
+
+def _checkout(p: pg_pool.ThreadedConnectionPool):
+    """Borrow a connection, retrying once on stale-connection InterfaceError.
+
+    Records acquire timing into the diagnostics counters. Caller is
+    responsible for calling ``p.putconn()`` AND ``_diag_record_release()``.
+
+    Raises ``psycopg2.pool.PoolError`` if the pool is exhausted; records
+    the failure kind into diagnostics before re-raising.
+    """
+    t0 = time.monotonic()
+    try:
+        conn = p.getconn()
+    except pg_pool.PoolError as exc:
+        kind = "pool_exhausted" if "exhausted" in str(exc).lower() else "pool_other"
+        _diag_record_failure(kind)
+        raise
+    try:
+        conn.autocommit = True
+    except (psycopg2.InterfaceError, psycopg2.OperationalError):
+        # Stale connection — close and get fresh one
+        try:
+            p.putconn(conn, close=True)
+        except Exception:
+            pass
+        try:
+            conn = p.getconn()
+        except pg_pool.PoolError as exc:
+            kind = "pool_exhausted" if "exhausted" in str(exc).lower() else "pool_other"
+            _diag_record_failure(kind)
+            raise
+        conn.autocommit = True
+    _diag_record_acquire(time.monotonic() - t0)
+    return conn
+
+
+def _run_query(conn, query: str, params: tuple, fetch: bool) -> list:
+    """Run the query on an already-borrowed connection.
+
+    Returns dict-row results when fetch=True; empty list when fetch=False.
+    Lets psycopg2 errors propagate to the caller.
+    """
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        if fetch:
+            cols = [d[0] for d in cur.description] if cur.description else []
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return []
+
+
+# ── Required helpers (raise on failure) ──────────────────────────────
+
+
+def execute_required(
+    query: str, params: tuple = (), fetch: bool = False,
+) -> list:
+    """Execute a query that MUST succeed. Raises on any failure.
+
+    Use for operations where silent failure would corrupt state:
+    schema CREATE TABLE, audit log writes, governance request
+    transitions, error_anomalies inserts, etc.
+
+    Returns:
+        list of dict rows when fetch=True (possibly empty)
+        empty list when fetch=False
+
+    Raises:
+        DBUnavailable: ``get_pool()`` returned None (pool not configured
+            or circuit breaker open)
+        psycopg2.pool.PoolError: pool exhausted or otherwise unusable
+        psycopg2.InterfaceError / OperationalError: connection failure
+            (pool is reset as a side effect)
+        psycopg2.Error: SQL error (missing table/column, syntax, etc.)
     """
     p = get_pool()
     if not p:
-        return None
+        _diag_record_failure("pool_unavailable")
+        raise DBUnavailable("control_plane pool is not available")
     conn = None
     try:
-        conn = p.getconn()
-        # Validate connection is alive before use
-        try:
-            conn.autocommit = True
-        except (psycopg2.InterfaceError, psycopg2.OperationalError):
-            # Stale connection — close and get fresh one
-            try:
-                p.putconn(conn, close=True)
-            except Exception:
-                pass
-            conn = p.getconn()
-            conn.autocommit = True
-
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            if fetch:
-                cols = [d[0] for d in cur.description] if cur.description else []
-                return [dict(zip(cols, row)) for row in cur.fetchall()]
-            return []
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-        logger.warning(f"control_plane: connection error, resetting pool: {e}")
+        conn = _checkout(p)
+        return _run_query(conn, query, params, fetch)
+    except (psycopg2.InterfaceError, psycopg2.OperationalError):
+        _diag_record_failure("connection_error")
         _reset_pool()
-        return None
-    except Exception as e:
-        logger.error(f"control_plane SQL error: {e}")
-        return None
+        raise
     finally:
         if conn:
             try:
                 p.putconn(conn)
+                _diag_record_release()
             except Exception:
                 pass
 
+
+def execute_one_required(query: str, params: tuple = ()) -> dict | None:
+    """Required variant of ``execute_one``. Returns first row or None on empty result."""
+    rows = execute_required(query, params, fetch=True)
+    return rows[0] if rows else None
+
+
+def execute_scalar_required(query: str, params: tuple = ()):
+    """Required variant of ``execute_scalar``. Returns first column of first row, or None on empty result."""
+    rows = execute_required(query, params, fetch=True)
+    if not rows:
+        return None
+    row = rows[0]
+    return next(iter(row.values())) if row else None
+
+
+# ── Optional helpers (return None on failure) ────────────────────────
+
+
+def execute(query: str, params: tuple = (), fetch: bool = False) -> list | None:
+    """Execute a query with OPTIONAL semantics. Returns None on failure.
+
+    Use for observational / non-critical writes where silent failure is
+    acceptable. For correctness-critical operations use ``execute_required()``.
+    """
+    try:
+        return execute_required(query, params, fetch)
+    except DBUnavailable:
+        return None
+    except pg_pool.PoolError as e:
+        logger.warning(f"control_plane: pool error: {e}")
+        return None
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+        logger.warning(f"control_plane: connection error, resetting pool: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"control_plane SQL error: {e}")
+        return None
+
+
 def execute_one(query: str, params: tuple = ()) -> dict | None:
-    """Execute and return a single row."""
+    """Optional variant. Execute and return a single row, or None on failure/empty."""
     rows = execute(query, params, fetch=True)
     return rows[0] if rows else None
 
+
 def execute_scalar(query: str, params: tuple = ()):
-    """Execute and return a single value."""
-    p = get_pool()
-    if not p:
-        return None
-    conn = None
+    """Optional variant. Execute and return a single value, or None on failure/empty."""
     try:
-        conn = p.getconn()
-        try:
-            conn.autocommit = True
-        except (psycopg2.InterfaceError, psycopg2.OperationalError):
-            try:
-                p.putconn(conn, close=True)
-            except Exception:
-                pass
-            conn = p.getconn()
-            conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            row = cur.fetchone()
-            return row[0] if row else None
+        return execute_scalar_required(query, params)
+    except DBUnavailable:
+        return None
+    except pg_pool.PoolError as e:
+        logger.warning(f"control_plane: pool error in scalar: {e}")
+        return None
     except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
         logger.warning(f"control_plane: connection error in scalar, resetting pool: {e}")
-        _reset_pool()
         return None
     except Exception as e:
         logger.error(f"control_plane SQL error: {e}")
         return None
-    finally:
-        if conn:
-            try:
-                p.putconn(conn)
-            except Exception:
-                pass

@@ -265,6 +265,22 @@ def store_memory(
         _bump_error_counter()
         return None
 
+# ── PROGRAM §56 iter-2 (2026-05-17) — Mem0 ledger note ──────────────────────
+#
+# Mem0's vector_store.provider is pgvector (Postgres) — see _get_config.
+# Mem0 facts persist in the public.crewai_memories table; chromadb is
+# NOT in Mem0's write path at all.
+#
+# Therefore: Mem0 writes do not need a source_ledger hook. The recovery
+# path for Mem0 data is replay_from_postgres (see chromadb_integrity.py
+# §55). The source ledger handles chromadb-native writes (everything
+# that does NOT go through Mem0); the postgres mirror handles Mem0.
+#
+# Verification: the 2026-05-17 quarantine event lost the chromadb
+# memory/ KB, and replay_from_postgres recovered 160 Mem0 rows from
+# crewai_memories. None of those rows were ever in the source ledger
+# because Mem0 didn't write them to chromadb in the first place.
+
 # ── Stage 5.4: async writes — move Mem0 fact extraction off critical path ──
 # Mem0's `.add()` calls an LLM to extract facts; this can take 1-3 s per call.
 # Most callers don't consume the return value — they fire-and-forget — yet

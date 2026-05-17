@@ -73,17 +73,30 @@ def execute_code(language: str, code: str) -> str:
         host_path = pathlib.Path(f.name)
 
     container_path = f"/sandbox/{host_path.name}"
-    # timeout= sets the HTTP socket timeout for the Docker daemon connection itself,
-    # distinct from the container execution timeout below
-    client = docker.from_env(timeout=10)
+    # HTTP socket timeout for the Docker daemon API. Must cover the
+    # longest sandbox run we permit plus buffer for log+remove calls
+    # made after container.wait() returns.
+    #
+    # PR 1 fix (2026-05-16): previously this was hard-coded to 10s and
+    # the ``containers.run()`` call below passed
+    # ``timeout=settings.sandbox_timeout_seconds`` as a kwarg — but the
+    # Docker SDK does not accept a ``timeout`` kwarg on ``run()``, so it
+    # was silently ignored. The effective wall-clock cap was the 10s
+    # HTTP timeout, not the documented ``sandbox_timeout_seconds``
+    # (default 30s). Wall-clock enforcement now happens via
+    # ``detach=True`` + ``container.wait()`` + ``container.kill()`` on
+    # timeout, which guarantees the container is actually terminated.
+    client = docker.from_env(timeout=settings.sandbox_timeout_seconds + 10)
 
     # Docker daemon runs on the HOST — bind-mount paths must be host
     # paths, not gateway-internal paths.  _to_host_path() handles the
     # translation using WORKSPACE_HOST_PATH from the environment.
     sandbox_mount_host = _to_host_path(str(SANDBOX_TMPDIR))
 
+    container = None
+    output = ""
     try:
-        result = client.containers.run(
+        container = client.containers.run(
             settings.sandbox_image,
             command=[*cmd_parts, container_path],  # List form avoids shell injection
             volumes={sandbox_mount_host: {"bind": "/sandbox", "mode": "ro"}},
@@ -93,12 +106,38 @@ def execute_code(language: str, code: str) -> str:
             nano_cpus=int(settings.sandbox_cpu_limit * 1e9),
             cap_drop=["ALL"],  # Drop all Linux capabilities
             security_opt=["no-new-privileges:true"],
-            remove=True,  # Auto-remove after run
-            timeout=settings.sandbox_timeout_seconds,
-            stdout=True,
-            stderr=True,
+            detach=True,  # Required for wait+kill timeout enforcement
         )
-        output = result.decode("utf-8", errors="replace")
+        try:
+            wait_result = container.wait(
+                timeout=settings.sandbox_timeout_seconds,
+            )
+            # Container exited within the wall-clock cap — fetch logs
+            logs = container.logs(stdout=True, stderr=True)
+            output = logs.decode("utf-8", errors="replace")
+            status = (
+                wait_result.get("StatusCode", 0)
+                if isinstance(wait_result, dict) else 0
+            )
+            if status != 0 and not output:
+                output = f"Runtime error: container exited with status {status}"
+        except Exception as wait_exc:
+            # Most common case: the underlying HTTP wait timed out
+            # because the container is still running past our
+            # wall-clock cap. Kill it explicitly so it doesn't linger
+            # on the host after this call returns.
+            logger.info(
+                "code_executor: sandbox wait failed (%s) — killing container",
+                type(wait_exc).__name__,
+            )
+            try:
+                container.kill()
+            except Exception:
+                pass
+            output = (
+                f"Execution error: sandbox exceeded "
+                f"{settings.sandbox_timeout_seconds}s wall-clock limit"
+            )
     except docker.errors.ContainerError as e:
         output = f"Runtime error:\n{e.stderr.decode('utf-8', errors='replace')}"
     except Exception as exc:
@@ -114,6 +153,11 @@ def execute_code(language: str, code: str) -> str:
             f"({type(exc).__name__}: {str(exc)[:300]})"
         )
     finally:
+        if container is not None:
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
         try:
             host_path.unlink()
         except Exception:

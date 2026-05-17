@@ -647,7 +647,14 @@ def _process_experiential(action: str, data: dict) -> dict:
         if not entry_id:
             raise ValueError("No entry_id")
         from app.experiential.vectorstore import get_store
-        get_store()._collection.delete(ids=[entry_id])
+        store = get_store()
+        store._collection.delete(ids=[entry_id])
+        # PROGRAM §56 iter-2 — ledger tombstone
+        try:
+            from app.memory.source_ledger import hook_collection_delete
+            hook_collection_delete("experiential", store.collection_name, [entry_id])
+        except Exception:
+            pass
         return {"deleted": entry_id}
     else:
         text = data.get("content", data.get("text", ""))
@@ -672,7 +679,14 @@ def _process_aesthetics(action: str, data: dict) -> dict:
         if not pattern_id:
             raise ValueError("No pattern_id")
         from app.aesthetics.vectorstore import get_store
-        get_store()._collection.delete(ids=[pattern_id])
+        store = get_store()
+        store._collection.delete(ids=[pattern_id])
+        # PROGRAM §56 iter-2 — ledger tombstone
+        try:
+            from app.memory.source_ledger import hook_collection_delete
+            hook_collection_delete("aesthetics", store.collection_name, [pattern_id])
+        except Exception:
+            pass
         return {"deleted": pattern_id}
     else:
         text = data.get("content", data.get("text", ""))
@@ -702,7 +716,14 @@ def _process_tensions(action: str, data: dict) -> dict:
         if not tension_id:
             raise ValueError("No tension_id")
         from app.tensions.vectorstore import get_store
-        get_store()._collection.delete(ids=[tension_id])
+        store = get_store()
+        store._collection.delete(ids=[tension_id])
+        # PROGRAM §56 iter-2 — ledger tombstone
+        try:
+            from app.memory.source_ledger import hook_collection_delete
+            hook_collection_delete("tensions", store.collection_name, [tension_id])
+        except Exception:
+            pass
         return {"deleted": tension_id}
     else:
         pole_a = data.get("pole_a", "")

@@ -11,7 +11,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from app.control_plane.db import execute, execute_one
+from app.control_plane.db import execute, execute_one, execute_required
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +30,22 @@ class AuditTrail:
         cost_usd: float = None,
         tokens: int = None,
     ) -> None:
-        """Write an immutable audit entry. Fire-and-forget."""
+        """Write an immutable audit entry. Fire-and-forget *to the caller*
+        but loud about failure in the logs.
+
+        PR 3 (2026-05-16): switched the inner call from ``execute`` to
+        ``execute_required``. The previous code wrapped ``execute`` in
+        ``try/except Exception`` intending to log + swallow — but
+        ``execute`` was already silently returning None on every
+        failure, so the prominent ``AUDIT WRITE FAILED`` log never
+        fired. Audit rows simply went missing without any signal.
+        Using ``execute_required`` makes the exception path real,
+        which keeps the fire-and-forget contract for callers (the
+        except still swallows after logging) while finally surfacing
+        the failure in operator-visible logs.
+        """
         try:
-            execute(
+            execute_required(
                 """INSERT INTO control_plane.audit_log
                    (project_id, actor, action, resource_type, resource_id,
                     detail_json, cost_usd, tokens)

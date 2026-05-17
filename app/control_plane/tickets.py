@@ -8,7 +8,10 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from app.control_plane.db import execute, execute_one, execute_scalar
+from app.control_plane.db import (
+    execute, execute_one, execute_scalar,
+    execute_required, execute_one_required,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +80,11 @@ class TicketManager:
             )
             return existing
 
-        row = execute_one(
+        # PR 3 (2026-05-16): INSERT is required — silent failure here
+        # means the user's Signal message was acknowledged but no
+        # ticket actually exists. The inbound-queue handler retries
+        # on exception (replay path), so propagating is correct.
+        row = execute_one_required(
             """INSERT INTO control_plane.tickets
                (project_id, title, description, source, difficulty, priority)
                VALUES (%s, %s, %s, 'signal', %s, %s)
@@ -101,8 +108,13 @@ class TicketManager:
         priority: int = 5,
         source: str = "dashboard",
     ) -> dict:
-        """Create a ticket manually (from dashboard or command)."""
-        row = execute_one(
+        """Create a ticket manually (from dashboard or command).
+
+        PR 3 (2026-05-16): INSERT is required — the dashboard expects
+        the new ticket back, callers that get an empty dict silently
+        cannot distinguish that from "DB unavailable".
+        """
+        row = execute_one_required(
             """INSERT INTO control_plane.tickets
                (project_id, title, description, source, priority)
                VALUES (%s, %s, %s, %s, %s)
@@ -119,8 +131,13 @@ class TicketManager:
         return row or {}
 
     def assign_to_crew(self, ticket_id: str, crew: str, agent: str) -> None:
-        """Assign ticket to a crew/agent and transition to in_progress."""
-        execute(
+        """Assign ticket to a crew/agent and transition to in_progress.
+
+        PR 3 (2026-05-16): state transition is required — without the
+        UPDATE landing the ticket stays 'todo' and the crew is about
+        to do work that won't show up in the dashboard.
+        """
+        execute_required(
             """UPDATE control_plane.tickets
                SET assigned_crew = %s, assigned_agent = %s,
                    status = 'in_progress', started_at = NOW(), updated_at = NOW()
@@ -158,7 +175,11 @@ class TicketManager:
                 project_id = str(pid) if pid is not None else None
         except Exception:
             pass
-        execute(
+        # PR 3 (2026-05-16): completing a ticket carries cost telemetry —
+        # silent failure means the spend isn't recorded against the
+        # project budget, which downstream budget enforcement reads
+        # from this row.
+        execute_required(
             """UPDATE control_plane.tickets
                SET status = 'done', result_summary = %s,
                    cost_usd = %s, tokens_used = %s,
@@ -207,7 +228,11 @@ class TicketManager:
         from_project_id = existing.get("project_id") if isinstance(existing, dict) else existing[1]
         from_project_id_str = str(from_project_id) if from_project_id is not None else None
 
-        row = execute_one(
+        # PR 3 (2026-05-16): cross-project moves are state transitions —
+        # silent failure would leave the ticket in the source project
+        # while the caller (Signal cp_move_ticket tool or dashboard)
+        # confirms a successful move to the user.
+        row = execute_one_required(
             """UPDATE control_plane.tickets
                   SET project_id = %s, updated_at = NOW()
                 WHERE id = %s
@@ -229,8 +254,14 @@ class TicketManager:
         return row
 
     def fail(self, ticket_id: str, error: str) -> None:
-        """Mark ticket as failed."""
-        execute(
+        """Mark ticket as failed.
+
+        PR 3 (2026-05-16): terminal-state transition is required — a
+        silently-failed UPDATE leaves the ticket in 'in_progress'
+        forever and the janitor sweep (``fail_stuck_in_progress``)
+        eventually catches it, but the original error context is lost.
+        """
+        execute_required(
             """UPDATE control_plane.tickets
                SET status = 'failed', result_summary = %s,
                    completed_at = NOW(), updated_at = NOW()
@@ -244,8 +275,13 @@ class TicketManager:
         )
 
     def close(self, ticket_id: str) -> None:
-        """Mark ticket done (manual close by user)."""
-        execute(
+        """Mark ticket done (manual close by user).
+
+        PR 3 (2026-05-16): terminal-state transition is required —
+        silent failure would tell the user "closed" while the ticket
+        stays open.
+        """
+        execute_required(
             """UPDATE control_plane.tickets
                SET status = 'done', completed_at = NOW(), updated_at = NOW()
                WHERE id = %s""",

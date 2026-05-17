@@ -104,6 +104,12 @@ class EpistemeStore:
                 documents=bc, metadatas=bm, embeddings=be, ids=bi,
             )
             total_added += len(bc)
+            # PROGRAM §56 — source ledger dual-write. Failure-isolated.
+            try:
+                from app.memory.source_ledger import hook_collection_add
+                hook_collection_add("episteme", self.collection_name, bi, bc, bm)
+            except Exception:
+                logger.debug("EpistemeStore: source_ledger hook failed", exc_info=True)
 
         logger.info("Ingested %d chunks. Total: %d", total_added, self._collection.count())
         return total_added
@@ -174,6 +180,12 @@ class EpistemeStore:
             if existing and existing["ids"]:
                 self._collection.delete(ids=existing["ids"])
                 count = len(existing["ids"])
+                # PROGRAM §56 iter-2 — ledger tombstone
+                try:
+                    from app.memory.source_ledger import hook_collection_delete
+                    hook_collection_delete("episteme", self.collection_name, list(existing["ids"]))
+                except Exception:
+                    logger.debug("EpistemeStore: ledger delete hook failed", exc_info=True)
                 logger.info("Removed %d chunks from '%s'", count, source_file)
                 return count
         except Exception as e:

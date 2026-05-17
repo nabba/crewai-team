@@ -1,0 +1,19 @@
+{
+  "accelerated_kinds": [
+    "resilience_drill"
+  ],
+  "aggregate_acceleration": 0.0,
+  "by_kind_30d": {
+    "resilience_drill": 4,
+    "schema_migration_drill": 1
+  },
+  "by_kind_365d": {
+    "resilience_drill": 4,
+    "schema_migration_drill": 1
+  },
+  "counts_30d": 5,
+  "counts_365d": 5,
+  "counts_90d": 5,
+  "generated_at": "2026-05-16T19:47:53.048788+00:00",
+  "landmark_fired": false
+}

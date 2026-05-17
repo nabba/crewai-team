@@ -143,12 +143,24 @@ class KnowledgeStore:
             pass  # where clause may fail if no docs exist yet
 
         from app.memory.chromadb_manager import embed
+        chunk_ids = [c.chunk_id for c in chunks]
+        chunk_docs = [c.text for c in chunks]
+        chunk_metas = [c.metadata for c in chunks]
         self._collection.add(
-            ids=[c.chunk_id for c in chunks],
-            documents=[c.text for c in chunks],
-            embeddings=[embed(c.text) for c in chunks],
-            metadatas=[c.metadata for c in chunks],
+            ids=chunk_ids,
+            documents=chunk_docs,
+            embeddings=[embed(t) for t in chunk_docs],
+            metadatas=chunk_metas,
         )
+        # PROGRAM §56 — source ledger dual-write.
+        try:
+            from app.memory.source_ledger import hook_collection_add
+            hook_collection_add(
+                "knowledge", self._collection.name,
+                chunk_ids, chunk_docs, chunk_metas,
+            )
+        except Exception:
+            logger.debug("KnowledgeBase: source_ledger hook failed", exc_info=True)
 
         logger.info(f"Added {len(chunks)} chunks from '{result.source}'")
         return result
@@ -191,12 +203,24 @@ class KnowledgeStore:
             chunks.append(DocumentChunk(text=chunk_content, metadata=metadata))
 
         from app.memory.chromadb_manager import embed
+        chunk_ids = [c.chunk_id for c in chunks]
+        chunk_docs = [c.text for c in chunks]
+        chunk_metas = [c.metadata for c in chunks]
         self._collection.add(
-            ids=[c.chunk_id for c in chunks],
-            documents=[c.text for c in chunks],
-            embeddings=[embed(c.text) for c in chunks],
-            metadatas=[c.metadata for c in chunks],
+            ids=chunk_ids,
+            documents=chunk_docs,
+            embeddings=[embed(t) for t in chunk_docs],
+            metadatas=chunk_metas,
         )
+        # PROGRAM §56 — source ledger dual-write.
+        try:
+            from app.memory.source_ledger import hook_collection_add
+            hook_collection_add(
+                "knowledge", self._collection.name,
+                chunk_ids, chunk_docs, chunk_metas,
+            )
+        except Exception:
+            logger.debug("KnowledgeBase.add_text: source_ledger hook failed", exc_info=True)
 
         return IngestionResult(
             source=source_name,
@@ -213,6 +237,14 @@ class KnowledgeStore:
             if existing and existing["ids"]:
                 self._collection.delete(ids=existing["ids"])
                 count = len(existing["ids"])
+                # PROGRAM §56 iter-2 — ledger tombstone
+                try:
+                    from app.memory.source_ledger import hook_collection_delete
+                    hook_collection_delete(
+                        "knowledge", self._collection.name, list(existing["ids"]),
+                    )
+                except Exception:
+                    pass
                 logger.info(f"Removed {count} chunks from '{source_path}'")
                 return count
         except Exception as e:

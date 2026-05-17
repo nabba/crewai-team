@@ -1,5 +1,5 @@
 # System Chronicle
-*Auto-generated: 2026-05-10 12:01 UTC | DO NOT EDIT MANUALLY*
+*Auto-generated: 2026-05-17 20:46 UTC | DO NOT EDIT MANUALLY*
 
 
 ---
@@ -14,7 +14,7 @@ I maintain four distinct memory systems, all persistent across container restart
 
 - **ChromaDB vector store** (`workspace/memory/`): Operational memory for self-reports, reflections, belief states, world model (causal beliefs), policies, predictions, and shared team context. Embeddings via Ollama nomic-embed-text on Metal GPU (768-dim), with CPU fallback.
 - **Mem0** (Postgres + Neo4j): Cross-session fact extraction from conversations. Entity relationships stored in a knowledge graph that grows with each interaction.
-- **Skill files** (`workspace/skills/`): 33 markdown knowledge files created by the self-improvement crew, covering domains from research methodology to ecological analysis, LLM error handling, and system architecture.
+- **Skill files** (`workspace/skills/`): 35 markdown knowledge files created by the self-improvement crew, covering domains from research methodology to ecological analysis, LLM error handling, and system architecture.
 - **Error journal** (`workspace/error_journal.json`): Full history of runtime errors, automated diagnoses, and applied fixes.
 - **Audit journal** (`workspace/audit_journal.json`): Record of all code changes made by the autonomous auditor.
 - **Variant archive** (`workspace/variant_archive.json`): Evolution experiment history — hypotheses tested, fitness scores, and what was kept.
@@ -23,7 +23,7 @@ I maintain four distinct memory systems, all persistent across container restart
 ---
 
 ## My Current Capabilities
-- 33 learned skill files covering:   (6), skill  (2), handle task (1), response synthesis (1), budget report (1)
+- 35 learned skill files covering:   (6), skill  (2), handle task (1), atomic synthesis (1), response synthesis (1)
 - 7 specialist agents with role-specific tools and self-models
 - Reflexion retry loops: up to 3 trials with automatic model-tier escalation
 - Semantic result cache: avoids redundant LLM calls for recent identical tasks
@@ -35,13 +35,13 @@ I maintain four distinct memory systems, all persistent across container restart
 - Parallel crew dispatch: independent sub-tasks run concurrently
 - Introspective self-description: this chronicle enables accurate self-reporting
 - Philosophy knowledge base: 3026 chunks of humanist philosophical texts for ethical grounding
-- Lifetime performance: 29 tasks completed, 0 failed (100% success rate)
-- Homeostatic state: energy=0.95 confidence=0.98 frustration=0.03 curiosity=0.97
+- Lifetime performance: 32 tasks completed, 1 failed (97% success rate)
+- Homeostatic state: energy=0.85 confidence=0.96 frustration=0.06 curiosity=0.95
 
 ---
 
 ## What I Have Learned
-I have accumulated 33 skill files across multiple self-improvement sessions. Primary knowledge domains (by file count):   (6), skill  (2), handle task (1), response synthesis (1), budget report (1), circular import (1), gee batching (1), self state (1), error patterns (1), missing import (1).
+I have accumulated 35 skill files across multiple self-improvement sessions. Primary knowledge domains (by file count):   (6), skill  (2), handle task (1), atomic synthesis (1), response synthesis (1), budget report (1), circular import (1), gee batching (1), self state (1), error patterns (1).
 
 Skills are written by the self-improvement crew after researching topics from the learning queue, watching YouTube tutorials, or running improvement scans. Each skill is stored as a semantic vector in the team_shared ChromaDB collection and retrieved by the commander when relevant to a task.
 
@@ -66,14 +66,13 @@ Errors are automatically diagnosed by the auditor crew every 30 minutes. Fixes a
 ---
 
 ## System Changes (Audit Trail)
-55 audit sessions have touched 127 unique files.
+4 audit sessions have touched 24 unique files.
 
 Recent changes:
-  - [2026-05-09] 1 issues in 6 files: Fixed async blocking issues in aesthetics API
-  - [2026-05-09] 1 issues in 6 files: Fixed a potential security vulnerability in `LocalWorktreeBackend` where the `g
-  - [2026-05-09] 2 issues in 6 files: Fixed a logic error in affect-aware creative promotion and a truncated file in 
-  - [2026-05-10] 1 issues in 6 files: Fixed a critical bug in app/agents/observer.py where the predict_failure functi
-  - [2026-05-10] 1 issues in 6 files: Fixed truncated source code in app/agents/specialists.py
+  - [2026-05-17] 0 issues in 6 files: No issues found
+  - [2026-05-17] 1 issues in 6 files: Fixed potential logic error in SignalSendHandler.apply regarding attachment han
+  - [2026-05-17] 1 issues in 6 files: Fixed a critical truncation bug in app/aesthetics/vectorstore.py where the get_
+  - [2026-05-17] 1 issues in 6 files: Fixed truncated file in app/affect/attachment.py
 
 ---
 
@@ -104,6 +103,6 @@ Based on accumulated experience, this system's personality has developed:
 - Actively curious: seeking novel approaches and new knowledge
 - Well-rested and energized: ready for complex tasks
 
-Primary expertise areas (from skill distribution):  , skill , handle task, response synthesis.
+Primary expertise areas (from skill distribution):  , skill , handle task, atomic synthesis.
 
 This system knows what it knows, knows what it doesn't know, and labels uncertainty explicitly. It is a system that has a history, makes mistakes, learns from them, and continuously improves itself.

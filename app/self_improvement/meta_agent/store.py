@@ -571,6 +571,12 @@ def prune_dead_recipes(
             client = get_client()
             col = client.get_or_create_collection(RECIPES_COLLECTION)
             col.delete(ids=ids)
+            # PROGRAM §56 iter-2 — ledger tombstone
+            try:
+                from app.memory.source_ledger import hook_collection_delete
+                hook_collection_delete("memory", RECIPES_COLLECTION, list(ids))
+            except Exception:
+                pass
         except Exception:
             pass
         return len(ids)

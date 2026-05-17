@@ -594,11 +594,38 @@ export interface RuntimeSettings {
   architecture_adoption_monitor_enabled?: boolean;
   // Q7.4 — per-coding-session ShinkaEvolve master switch (PROGRAM §45.4)
   shinka_inline_evolve_enabled?: boolean;
+  // §55 — ChromaDB integrity protection
+  chromadb_wal_enforcement_enabled?: boolean;
+  chromadb_boot_integrity_check_enabled?: boolean;
+  chromadb_integrity_monitor_enabled?: boolean;
+  chromadb_daily_snapshot_enabled?: boolean;
+  chromadb_auto_replay_enabled?: boolean;
+  // §56 — Source ledger (10-year resiliency)
+  chromadb_source_ledger_enabled?: boolean;
+  chromadb_ledger_bootstrap_enabled?: boolean;
+  chromadb_ledger_drift_replay_enabled?: boolean;
+  chromadb_ledger_compaction_enabled?: boolean;
+  chromadb_ledger_s3_upload_enabled?: boolean;
+  chromadb_ledger_gdrive_upload_enabled?: boolean;
+  drill_source_ledger_replay_enabled?: boolean;
+  drill_embedding_rotation_enabled?: boolean;
   // Q9.3 — Travel monitor configuration (PROGRAM §46.6)
   tripit_ical_url?: string;
   aviationstack_api_key?: string;
   // Q11.1 — Analogy-index populator (PROGRAM §46.18)
   analogy_index_populator_enabled?: boolean;
+  // Productization plan WP D — cloud-migrate execute-gate. The single
+  // operator-toggleable bool that decides whether `botarmy migrate`
+  // actually spends money or just produces a dry-shell report.
+  migrate_live_execute?: boolean;
+  // Cloud-migrate hardening (2026-05-17 extension):
+  //   gcp_bootstrap_enabled — surfaces the Stage 0a "Create project" card
+  //     in the wizard. Default OFF.
+  //   hardening_profile — 'off' | 'basic' | 'strict'. Default 'strict'.
+  //   binauthz_mode — 'AUDIT' | 'ENFORCE'. Default 'AUDIT'.
+  gcp_bootstrap_enabled?: boolean;
+  hardening_profile?: string;
+  binauthz_mode?: string;
 }
 
 export function useRuntimeSettingsQuery() {

@@ -1,0 +1,103 @@
+{
+  "alerted_corruption": {},
+  "last_run_at": 1779038028.959582,
+  "last_summary": {
+    "bytes_snapshotted": 147877888,
+    "kbs": 7,
+    "new_quarantines": [],
+    "per_kb": [
+      {
+        "integrity": "ok",
+        "name": "episteme",
+        "path": "/app/workspace/episteme/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 21565440,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/episteme/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/episteme/.sqlite_snapshots/20260517T171349Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "memory",
+        "path": "/app/workspace/memory/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 7778304,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/memory/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/memory/.sqlite_snapshots/20260517T171350Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "experiential",
+        "path": "/app/workspace/experiential/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 3682304,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/experiential/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/experiential/.sqlite_snapshots/20260517T171351Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "knowledge",
+        "path": "/app/workspace/knowledge/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 26824704,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/knowledge/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/knowledge/.sqlite_snapshots/20260517T171352Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "philosophy",
+        "path": "/app/workspace/philosophy/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 87642112,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/philosophy/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/philosophy/.sqlite_snapshots/20260517T171354Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "tensions",
+        "path": "/app/workspace/tensions/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 192512,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/tensions/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/tensions/.sqlite_snapshots/20260517T171355Z.db"
+        }
+      },
+      {
+        "integrity": "ok",
+        "name": "aesthetics",
+        "path": "/app/workspace/aesthetics/chroma.sqlite3",
+        "snapshot": {
+          "bytes": 192512,
+          "error": null,
+          "ok": true,
+          "path": "/app/workspace/aesthetics/chroma.sqlite3",
+          "removed": [],
+          "snapshot_path": "/app/workspace/aesthetics/.sqlite_snapshots/20260517T171355Z.db"
+        }
+      }
+    ],
+    "snapshot_failures_count": 0
+  }
+}

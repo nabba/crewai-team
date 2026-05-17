@@ -296,9 +296,16 @@ def _record_anomaly(
     sig: str, sample: str, anomaly_type: str,
     hourly_rate: float, baseline: float, severity: str,
 ) -> None:
+    # PR 3 (2026-05-16): INSERT uses ``execute_required`` so a DB
+    # failure now fires the WARNING log (was DEBUG/silent under the
+    # old ``execute`` which swallowed exceptions). Without this, an
+    # anomaly that fires the runbook below could leave no row in
+    # ``error_anomalies`` — operators inspecting the table would
+    # see "nothing wrong" while the runbook had already attempted
+    # remediation.
     try:
-        from app.control_plane.db import execute
-        execute(
+        from app.control_plane.db import execute_required
+        execute_required(
             """
             INSERT INTO control_plane.error_anomalies
                 (pattern_signature, pattern_sample, anomaly_type,
@@ -313,7 +320,7 @@ def _record_anomaly(
             anomaly_type, severity, sig, hourly_rate, baseline,
         )
     except Exception as exc:
-        logger.debug(f"error_monitor: anomaly insert failed: {exc}")
+        logger.warning(f"error_monitor: anomaly insert failed: {exc}")
 
     # Hook: dispatch a runbook if one is registered for this signature.
     # No-op when ``ERROR_RUNBOOKS_ENABLED`` is unset. Wrapped so a
@@ -551,11 +558,17 @@ def snapshot() -> dict:
 
 def acknowledge(anomaly_id: str) -> bool:
     """Mark an open anomaly as acknowledged (manual silence; preserves
-    history). Returns True on success.
+    history). Returns True on success, False on DB failure.
+
+    PR 3 (2026-05-16): UPDATE uses ``execute_required`` so a DB
+    failure now returns False (was previously returning True
+    because ``execute`` silently swallowed exceptions). The operator
+    clicking "acknowledge" now actually gets the right answer when
+    the DB is unreachable.
     """
     try:
-        from app.control_plane.db import execute
-        execute(
+        from app.control_plane.db import execute_required
+        execute_required(
             "UPDATE control_plane.error_anomalies "
             "SET status='acknowledged' "
             "WHERE id = %s::uuid AND status='open'",

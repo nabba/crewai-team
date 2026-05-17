@@ -13,7 +13,9 @@ import logging
 import threading
 from datetime import datetime, timezone, timedelta
 
-from app.control_plane.db import execute, execute_one, execute_scalar
+from app.control_plane.db import (
+    execute, execute_one, execute_scalar, execute_one_required,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +52,18 @@ class GovernanceGate:
         detail: dict = None,
         expires_hours: int = 24,
     ) -> dict:
-        """Create an approval request. Returns the request record."""
+        """Create an approval request. Returns the request record.
+
+        PR 3 (2026-05-16): switched the INSERT to ``execute_one_required``
+        so a DB failure raises instead of silently returning ``{}``. The
+        caller would otherwise proceed as if the approval was queued
+        when nothing actually landed in the queue. Callers in
+        ``llm_discovery`` already wrap this in ``try/except Exception``
+        for fire-and-forget; the dashboard API call site doesn't go
+        through here (operators approve/reject existing rows).
+        """
         expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
-        row = execute_one(
+        row = execute_one_required(
             """INSERT INTO control_plane.governance_requests
                (project_id, request_type, requested_by, title, detail_json, expires_at)
                VALUES (%s, %s, %s, %s, %s, %s)
@@ -74,8 +85,16 @@ class GovernanceGate:
         concrete configuration change (currently ``model_id_remap`` and
         ``model_retired``), the corresponding persistent override is
         written so the change survives container restarts.
+
+        PR 3 (2026-05-16): switched the UPDATE to ``execute_one_required``
+        so a DB error raises instead of silently returning False.
+        Returning False is now reserved for the legitimate
+        "no pending request matched" case — distinct from
+        "DB couldn't be reached". The dashboard handler wraps this
+        and surfaces 500 on DB failure; without this fix a DB outage
+        looked like a stale request to the operator.
         """
-        result = execute_one(
+        result = execute_one_required(
             """UPDATE control_plane.governance_requests
                SET status = 'approved', reviewed_by = %s, reviewed_at = NOW()
                WHERE id = %s AND status = 'pending'
@@ -126,8 +145,13 @@ class GovernanceGate:
 
     def reject(self, request_id: str, reviewer: str = "user",
                reason: str = None) -> bool:
-        """Reject a pending request."""
-        result = execute_one(
+        """Reject a pending request.
+
+        PR 3 (2026-05-16): mirror of ``approve`` — UPDATE uses
+        ``execute_one_required`` so DB error raises instead of
+        silently returning False.
+        """
+        result = execute_one_required(
             """UPDATE control_plane.governance_requests
                SET status = 'rejected', reviewed_by = %s, reviewed_at = NOW()
                WHERE id = %s AND status = 'pending'

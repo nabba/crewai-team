@@ -1,0 +1,12 @@
+{
+  "id": "d4ab5c774557",
+  "created_at": "2026-05-16T19:15:56.486511+00:00",
+  "requestor": "local_only_drill",
+  "path": "docs/RESILIENCE_DRILLS.md",
+  "new_content": "",
+  "old_content": "",
+  "reason": "LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nIf Anthropic + OpenRouter become unavailable simultaneously, the\nsystem has below 50% structural readiness on fallback providers.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format_ok=True\n  \u2717 minimax      env=False socket_ok=None format_ok=None\n  \u2717 ollama       env=None socket_ok=False format_ok=None\n\nSuggested actions:\n  * Verify Ollama is running and has at least one model pulled.\n  * Set the GROQ_API_KEY / GEMINI_API_KEY env vars if absent.\n  * Re-run drill: `python -m app.resilience_drills run local_only`.",
+  "diff": "",
+  "status": "pending",
+  "risk_class": "standard"
+}
