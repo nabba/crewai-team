@@ -69,3 +69,8 @@ workspace/proposals/*/status.json
 workspace/companion/
 workspace/knowledge_compactor_log.json
 workspace/evolution_roi.json
+
+# PROGRAM §55 — chromadb backup tarballs from host LaunchAgent exceed
+# GitHub's 100 MB per-file limit. The tarballs are runtime artifacts
+# regenerated daily and replicated via Q17.1 warm-spare; no need in git.
+workspace/backups/chromadb/*.tar.gz
