@@ -199,6 +199,34 @@ From now on, every time the gateway notifies the dashboard about a
 completed task, an error, or a Signal-routed event, it will ping
 your iPhone via Web Push — even if the PWA isn't open.
 
+### 3.5 Dual-device links in Signal approval alerts
+
+Approval-flow Signal alerts (auto-deploy governance requests, Tier-3
+amendments) include two clickable links so you can tap the right
+one for the device you're holding:
+
+```
+📱 iPhone: https://<funnel-host>/cp/...
+💻 Mac:    http://<tailnet-host>:3100/cp/...
+```
+
+Defaults derive from the Tailscale Funnel hostname that
+`app/middleware.py` already trusts in its CORS allowlist, so the
+links are clickable out-of-the-box. Override with env vars when
+needed:
+
+```bash
+export DASHBOARD_PUBLIC_URL="https://andrusai.tail5b289b.ts.net"
+export DASHBOARD_MAC_URL="http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100"
+```
+
+Set these in `.env` if your Funnel hostname differs from the default
+or your Mac runs the Vite dev server on a non-3100 port.
+
+Same module (`app/dashboard_links.py`) is used for both auto-deploy
+alerts and Tier-3 amendment alerts — set once, propagates
+everywhere.
+
 ---
 
 ## Troubleshooting
