@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "partner_target": "andrus.raudsalu@andrus-macbook-pro-16.tail5b289b.ts.net:~/andrusai-mirror/",
+  "activated_at": "2026-05-16T19:20:00+00:00",
+  "note": "Q17.1 activation marker — survives gateway runtime_settings.json regeneration. Read by scripts/warm_spare_sync.sh."
+}

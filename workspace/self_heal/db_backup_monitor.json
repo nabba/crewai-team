@@ -1,0 +1,12 @@
+{
+  "last_fail_alert_at": 0.0,
+  "last_run_at": 1778960813.1044264,
+  "last_run_summary": {
+    "all_ok": true,
+    "chromadb_ok": true,
+    "duration_s": 27.57,
+    "neo4j_ok": true,
+    "postgres_ok": true
+  },
+  "last_stale_alert_at": 1778960813.1044264
+}

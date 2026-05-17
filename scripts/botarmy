@@ -1,0 +1,865 @@
+#!/usr/bin/env python3
+"""
+botarmy — unified operator CLI for AndrusAI.
+
+A thin wrapper around existing install / verify / backup / restore /
+drill scripts plus the substrate status facade. Pure orchestration:
+no new logic lives here. The CLI is the place to read the system's
+current shape in one breath and trigger common operator actions
+without remembering five different script names.
+
+Usage:
+  botarmy status [--json]              Print substrate status snapshot
+  botarmy doctor [--deep] [--json]     Run install verify + status + integrity
+  botarmy install [--target local]     Run install.sh --target <target>
+  botarmy backup [--output DIR]        Run deploy/scripts/backup.sh
+  botarmy restore --input PATH         Run deploy/scripts/restore-drill.sh
+  botarmy drill [--continuity]         Run a continuity restore drill
+  botarmy migrate-drill                Run deploy/scripts/migration-drill.sh
+
+Designed to be safe to run from any working directory. Locates the
+crewai-team repository root by walking up from this script.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+# ── Locate repo root ────────────────────────────────────────────────
+
+
+def _repo_root() -> Path:
+    """Find the crewai-team root by walking up from this script."""
+    here = Path(__file__).resolve()
+    for parent in (here, *here.parents):
+        if (parent / "install.sh").exists() and (parent / "app").is_dir():
+            return parent
+    # Fallback: assume we're in scripts/
+    return here.parent.parent
+
+
+REPO_ROOT = _repo_root()
+
+
+def _ensure_pythonpath() -> None:
+    """Add the repo root to sys.path so `import app.substrate` works
+    when this CLI is invoked from outside the venv."""
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+# ── Subcommands ─────────────────────────────────────────────────────
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    _ensure_pythonpath()
+    from app.substrate import gather_substrate_status
+
+    snap = gather_substrate_status()
+    d = snap.to_dict()
+
+    if args.json:
+        print(json.dumps(d, indent=2, default=str))
+        return 0
+
+    # Human-readable summary
+    print(f"=== AndrusAI substrate status — {d['timestamp']} ===")
+    print()
+    print("LIVE OPERATIONS")
+    print(f"  inflight_tasks       {d['inflight_tasks']}")
+    print(f"  inbound_queue_depth  {d['inbound_queue_depth']}")
+    print(f"  dlq_depth            {d['dlq_depth']}")
+    print()
+    print("MEMORY")
+    mem = d.get("memory") or {}
+    print(f"  chromadb_ok          {mem.get('chromadb_ok')}")
+    print(f"  collections          {mem.get('chromadb_collections')}")
+    drift = (mem.get("drift_30d") or {})
+    print(f"  identity_drift_30d   {drift.get('n_events')} events, kinds={list(drift.get('by_kind', {}).keys())[:5]}")
+    print()
+    print("SUBIA")
+    sub = d.get("subia") or {}
+    print(f"  live_enabled         {sub.get('live_enabled')}")
+    print(f"  integrity_ok         {sub.get('integrity_ok')}")
+    if sub.get("integrity_drift"):
+        print(f"  integrity_drift      mismatched={sub.get('integrity_mismatched')} extra={sub.get('integrity_extra')} missing={sub.get('integrity_missing')}")
+    print(f"  kernel_loop_count    {sub.get('kernel_loop_count')}")
+    print()
+    print("SELF-IMPROVEMENT")
+    si = d.get("self_improvement") or {}
+    print(f"  pending_change_reqs  {si.get('pending_change_requests')}")
+    print(f"  pending_proposals    {si.get('pending_proposals')}")
+    ld = si.get("last_deploy") or {}
+    if ld:
+        print(f"  last_deploy          [{ld.get('ts', '')[:19]}] {ld.get('status')} — {ld.get('reason')}")
+    print()
+    print("RESOURCES")
+    res = d.get("resources") or {}
+    print(f"  disk_free_gb         {res.get('disk_free_gb')}")
+    if res.get("host_substrate_state"):
+        hss = res["host_substrate_state"]
+        print(f"  host_uptime_days     {hss.get('uptime_days')}")
+    alerts = res.get("host_substrate_alerts") or []
+    if alerts:
+        print(f"  recent_alerts        {len(alerts)}: {[a['kind'] for a in alerts]}")
+    print()
+    print("CONTINUITY")
+    cont = d.get("continuity") or {}
+    print(f"  last_backup          {cont.get('last_backup')}")
+    print(f"  last_backup_age_d    {cont.get('last_backup_age_days')}")
+    print(f"  ledger_events_30d    {cont.get('ledger_event_count_30d')}")
+    print()
+    print("HEALTH")
+    health = d.get("health") or {}
+    print(f"  monitor_state_files  {health.get('n_state_files')}")
+    print()
+    print("FEATURE FLAGS")
+    settings = d.get("settings") or {}
+    for k, v in settings.items():
+        print(f"  {k:<32} {v}")
+    print()
+    errors = d.get("errors") or []
+    if errors:
+        print(f"PROBE ERRORS ({len(errors)})")
+        for e in errors:
+            print(f"  - {e}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Run install/verify + substrate status + integrity check.
+
+    Returns 0 if everything is OK or only DEGRADED for missing optional
+    services. Returns 1 if any BLOCKED state is detected.
+    """
+    _ensure_pythonpath()
+    from app.substrate import gather_substrate_status
+
+    report: dict = {"checks": []}
+    overall = "OK"
+
+    def _check(name: str, status: str, detail: str = "") -> None:
+        nonlocal overall
+        report["checks"].append({"name": name, "status": status, "detail": detail})
+        if status == "BLOCKED":
+            overall = "BLOCKED"
+        elif status == "DEGRADED" and overall == "OK":
+            overall = "DEGRADED"
+
+    # 1. install/verify (only if --deep)
+    if args.deep:
+        verify_sh = REPO_ROOT / "scripts/install/verify.sh"
+        if verify_sh.exists():
+            try:
+                rc = subprocess.run(
+                    ["bash", str(verify_sh)],
+                    cwd=str(REPO_ROOT),
+                    timeout=60,
+                ).returncode
+                _check("install_verify", "OK" if rc == 0 else "DEGRADED",
+                       f"exit={rc}")
+            except Exception as exc:
+                _check("install_verify", "DEGRADED", str(exc)[:80])
+        else:
+            _check("install_verify", "UNKNOWN", "verify.sh not found")
+
+    # 2. substrate status
+    snap = gather_substrate_status()
+    report["substrate"] = snap.to_dict()
+
+    # 3. integrity
+    integ = snap.subia.get("integrity_ok")
+    if integ is True:
+        _check("subia_integrity", "OK")
+    elif integ is False:
+        _check("subia_integrity", "DEGRADED",
+               f"drift detected: mismatched={snap.subia.get('integrity_mismatched')} "
+               f"extra={snap.subia.get('integrity_extra')} "
+               f"missing={snap.subia.get('integrity_missing')}")
+    else:
+        _check("subia_integrity", "UNKNOWN")
+
+    # 4. resources
+    disk = (snap.resources or {}).get("disk_free_gb")
+    if disk is not None:
+        if disk < 1.0:
+            _check("disk_free", "BLOCKED", f"{disk}GB free")
+        elif disk < 5.0:
+            _check("disk_free", "DEGRADED", f"{disk}GB free")
+        else:
+            _check("disk_free", "OK", f"{disk}GB free")
+    else:
+        _check("disk_free", "UNKNOWN")
+
+    # 5. continuity bundle freshness
+    bkp_age = (snap.continuity or {}).get("last_backup_age_days")
+    if bkp_age is None:
+        _check("backup_freshness", "DEGRADED", "no backup found")
+    elif bkp_age > 30:
+        _check("backup_freshness", "DEGRADED", f"{bkp_age} days old")
+    else:
+        _check("backup_freshness", "OK", f"{bkp_age} days old")
+
+    # 6. probe errors
+    errors = snap.errors or []
+    if errors:
+        _check("probe_errors", "DEGRADED", f"{len(errors)} probes failed")
+    else:
+        _check("probe_errors", "OK")
+
+    report["overall"] = overall
+
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(f"=== botarmy doctor — overall: {overall} ===")
+        for c in report["checks"]:
+            marker = {"OK": "✓", "DEGRADED": "⚠", "BLOCKED": "✗", "UNKNOWN": "?"}.get(
+                c["status"], "?"
+            )
+            print(f"  {marker} {c['name']:<22} {c['status']:<10} {c['detail']}")
+        print()
+        if errors:
+            print(f"Probe errors: {len(errors)}")
+            for e in errors[:5]:
+                print(f"  - {e}")
+
+    return 0 if overall != "BLOCKED" else 1
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    install_sh = REPO_ROOT / "install.sh"
+    if not install_sh.exists():
+        print(f"ERROR: install.sh not found at {install_sh}", file=sys.stderr)
+        return 1
+    cmd = ["bash", str(install_sh), "--target", args.target]
+    if args.verify:
+        cmd.append("--verify")
+    return subprocess.run(cmd, cwd=str(REPO_ROOT)).returncode
+
+
+def cmd_backup(args: argparse.Namespace) -> int:
+    backup_sh = REPO_ROOT / "deploy/scripts/backup.sh"
+    if backup_sh.exists():
+        env = os.environ.copy()
+        if args.output:
+            env["BACKUP_DIR"] = args.output
+        return subprocess.run(["bash", str(backup_sh)], env=env, cwd=str(REPO_ROOT)).returncode
+    # Fallback: invoke app.dr.export_kbs directly
+    _ensure_pythonpath()
+    try:
+        from app.dr import export_kbs
+        out = export_kbs.export(label=args.label or "manual")
+        print(f"backup written: {out}")
+        return 0
+    except Exception as exc:
+        print(f"ERROR: backup failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    restore_sh = REPO_ROOT / "deploy/scripts/restore-drill.sh"
+    if restore_sh.exists() and not args.input:
+        return subprocess.run(["bash", str(restore_sh)], cwd=str(REPO_ROOT)).returncode
+    if not args.input:
+        print("ERROR: --input <bundle-path> required", file=sys.stderr)
+        return 1
+    _ensure_pythonpath()
+    try:
+        from app.dr import import_kbs
+        out = import_kbs.import_bundle(args.input, target_dir=args.target_dir)
+        print(f"restored into: {out}")
+        return 0
+    except Exception as exc:
+        print(f"ERROR: restore failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_drill(args: argparse.Namespace) -> int:
+    drill_sh = REPO_ROOT / "scripts/dr_boot_drill.sh"
+    if drill_sh.exists():
+        return subprocess.run(["bash", str(drill_sh)], cwd=str(REPO_ROOT)).returncode
+    _ensure_pythonpath()
+    try:
+        from app.dr import boot_drill
+        result = boot_drill.run_drill()
+        print(json.dumps(result, indent=2, default=str))
+        return 0 if result.get("ok") else 1
+    except Exception as exc:
+        print(f"ERROR: drill failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_migrate_drill(args: argparse.Namespace) -> int:
+    sh = REPO_ROOT / "deploy/scripts/migration-drill.sh"
+    if not sh.exists():
+        print(f"ERROR: migration-drill.sh not found", file=sys.stderr)
+        return 1
+    return subprocess.run(["bash", str(sh)], cwd=str(REPO_ROOT)).returncode
+
+
+def cmd_cost(args: argparse.Namespace) -> int:
+    """Estimate monthly cloud-install cost. Productization plan WP D Phase 0.
+
+    Operator-visible safety gate before any ``terraform apply``. Pure
+    Python — never calls cloud APIs; computes from list prices for the
+    resources the existing Terraform would provision.
+    """
+    _ensure_pythonpath()
+    from app.substrate.cloud_cost import estimate_monthly_cost, format_breakdown
+
+    breakdown = estimate_monthly_cost(
+        target=args.target,
+        tier=args.tier,
+        region=args.region,
+        enable_monitoring=not args.no_monitoring,
+        has_domain=bool(args.domain),
+    )
+    if args.json:
+        print(json.dumps(breakdown.to_dict(), indent=2))
+    else:
+        print(format_breakdown(breakdown))
+    # Cap check — return 2 if cost exceeds the operator's budget
+    if args.budget_cap_usd is not None and breakdown.total_monthly_usd > args.budget_cap_usd:
+        print(
+            f"\n  ✗ exceeds budget cap ${args.budget_cap_usd}/mo "
+            f"(estimated ${breakdown.total_monthly_usd}/mo)",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
+
+
+def cmd_cloud_doctor(args: argparse.Namespace) -> int:
+    """Probe operator's local tooling for cloud-install readiness."""
+    _ensure_pythonpath()
+    from app.substrate.cloud_doctor import check_readiness, format_readiness
+
+    readiness = check_readiness(target=args.target)
+    if args.json:
+        print(json.dumps(readiness.to_dict(), indent=2))
+        return 0 if readiness.overall == "OK" else 1
+    print(format_readiness(readiness))
+    return 0 if readiness.overall == "OK" else 1
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    """Orchestrate a cloud migration.
+
+    Two modes, both REQUIRED to be explicit:
+      --dry-run                produces a ready-or-not report; no money spent
+      --live --confirm <PHRASE>  actually executes the migration; refuses
+                                  without the exact typed-phrase + an
+                                  estimated cost ≤ --budget-cap-usd
+
+    Productization plan WP D Phases 2 + 3.
+    """
+    if args.dry_run and args.live:
+        print("ERROR: --dry-run and --live are mutually exclusive.", file=sys.stderr)
+        return 2
+    if not (args.dry_run or args.live):
+        print(
+            "ERROR: specify one of --dry-run (safe preview) or "
+            "--live (actually provision; typed-phrase confirmation required).",
+            file=sys.stderr,
+        )
+        return 2
+
+    _ensure_pythonpath()
+
+    if args.dry_run:
+        from app.substrate.migration import run_migration_dry_run, format_run
+        run = run_migration_dry_run(
+            target=args.target,
+            tier=args.tier,
+            region=args.region,
+            project_id=args.project,
+            budget_cap_usd=args.budget_cap_usd,
+        )
+        if args.json:
+            print(json.dumps(run.to_dict(), indent=2, default=str))
+        else:
+            print(format_run(run))
+        return 0 if run.ready_for_live else 1
+
+    # ── Live path ────────────────────────────────────────────────────
+    from app.substrate.migration import (
+        run_migration_live, format_run, GateFailure,
+    )  # noqa: E501
+
+    # Default budget cap for live is more conservative than dry-run's
+    # (which is None — informational). For live we require an explicit
+    # cap so the operator must consciously commit to a spend ceiling.
+    cap = args.budget_cap_usd if args.budget_cap_usd is not None else 200.0
+
+    try:
+        run = run_migration_live(
+            target=args.target,
+            tier=args.tier,
+            region=args.region,
+            project_id=args.project,
+            confirm_phrase=args.confirm or "",
+            budget_cap_usd=cap,
+            # The orchestrator's _shell also honors BOTARMY_MIGRATE_LIVE_EXECUTE.
+            # ``--really-do-it`` is the in-CLI knob; either suffices.
+            execute_subprocess=bool(args.really_do_it),
+        )
+    except GateFailure as gf:
+        print(f"ERROR: {gf}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(run.to_dict(), indent=2, default=str))
+    else:
+        print(format_run(run))
+
+    return 0 if run.ready_for_live else 1
+
+
+def cmd_cutover(args: argparse.Namespace) -> int:
+    """Commit a verified cloud migration. Productization plan WP D Phase 4.
+
+    Migration (Phase 3) provisions + restores + verifies the cloud copy
+    but leaves the local instance as canonical. Cutover is the
+    separate operator-decided act that transitions:
+        local: CANONICAL → DEMOTED
+        cloud: (any)     → CLAIMING → CANONICAL
+
+    Refuses without:
+      * --to <migration_run_id> (must exist + be a successful live run)
+      * --confirm "CUTOVER TO GCP" (typed phrase)
+    """
+    if not args.migration_run_id:
+        print(
+            "ERROR: --to <migration_run_id> required. "
+            "Find your run id in `botarmy migrate` output.",
+            file=sys.stderr,
+        )
+        return 2
+    if not args.confirm:
+        print(
+            'ERROR: --confirm "CUTOVER TO GCP" required.',
+            file=sys.stderr,
+        )
+        return 2
+
+    _ensure_pythonpath()
+    from app.substrate.cutover import (
+        run_cutover, format_cutover_run, CutoverGateFailure,
+    )
+
+    try:
+        run = run_cutover(
+            migration_run_id=args.migration_run_id,
+            confirm_phrase=args.confirm,
+            target=args.target,
+            project_id=args.project,
+            execute_subprocess=bool(args.really_do_it),
+        )
+    except CutoverGateFailure as gf:
+        print(f"ERROR: {gf}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(run.to_dict(), indent=2, default=str))
+    else:
+        print(format_cutover_run(run))
+
+    return 0 if run.succeeded else 1
+
+
+def cmd_hardening_preview(args: argparse.Namespace) -> int:
+    """Show auto-detected hardening inputs (Tailnet, laptop IP, org).
+
+    Read-only: no state change, no network mutations. Mirrors what the
+    React Step 3.5 card displays — useful for sanity-checking before
+    starting a wizard run.
+    """
+    _ensure_pythonpath()
+    from app.substrate.cloud_hardening import hardening_preview
+    prev = hardening_preview(profile=args.profile, binauthz_mode=args.binauthz_mode)
+    if args.json:
+        print(json.dumps(prev.to_dict(), indent=2, default=str))
+        return 0
+    print(f"Hardening profile:    {prev.profile}")
+    print(f"Binauthz mode:        {prev.binauthz_mode}")
+    print(f"Tailnet reachable:    {prev.tailnet_reachable}")
+    print(f"Tailnet CIDR:         {prev.tailnet_cidr or '(none)'}")
+    print(f"Laptop public IP:     {prev.laptop_public_ip or '(unable to detect)'}")
+    print(f"Workspace org_id:     {prev.org_id or '(not detected)'}")
+    print("Recommended CIDRs:")
+    if not prev.recommended_cidrs:
+        print("  (none — master_authorized_networks will be empty)")
+    for c in prev.recommended_cidrs:
+        print(f"  - {c.cidr_block:<22} {c.display_name}")
+    if prev.notes:
+        print("Notes:")
+        for n in prev.notes:
+            print(f"  • {n}")
+    return 0
+
+
+def cmd_hardening_refresh(args: argparse.Namespace) -> int:
+    """Lock-out break-glass: re-detect IPs and emit/patch the tfvars
+    allow-list. Operator then runs:
+        cd deploy/terraform/gcp && terraform apply \\
+            -target=google_container_cluster.botarmy \\
+            -var-file=<this-tfvars>
+
+    The targeted apply only touches the cluster's master_authorized_networks
+    config — no destroy/recreate, no cluster downtime.
+    """
+    _ensure_pythonpath()
+    from app.substrate.cloud_hardening import (
+        detect_tailnet_cidr, detect_laptop_public_ip, build_allowed_cidrs,
+    )
+    from app.paths import WORKSPACE_ROOT
+    from pathlib import Path
+
+    tailnet = detect_tailnet_cidr()
+    laptop = detect_laptop_public_ip()
+    cidrs = build_allowed_cidrs(tailnet_cidr=tailnet, laptop_public_ip=laptop)
+    if not cidrs:
+        print(
+            "ERROR: no CIDRs detected (Tailnet not reachable AND laptop public-IP "
+            "probe failed). Cannot generate an allowlist.",
+            file=sys.stderr,
+        )
+        return 3
+
+    # Render the HCL fragment
+    entries = ",\n".join(
+        f'  {{ cidr_block = "{c.cidr_block}", display_name = "{c.display_name}" }}'
+        for c in cidrs
+    )
+    fragment = f"allowed_cidrs = [\n{entries}\n]\n"
+
+    # Find the target tfvars file
+    run_id = args.run_id
+    runs_dir = Path(WORKSPACE_ROOT) / "migrations"
+    if run_id is None:
+        candidates = sorted([d for d in runs_dir.iterdir() if d.is_dir()], key=lambda p: p.name)
+        if not candidates:
+            print(f"ERROR: no runs found under {runs_dir}", file=sys.stderr)
+            return 4
+        run_id = candidates[-1].name
+    target_tfvars = runs_dir / run_id / "terraform.tfvars"
+    if not target_tfvars.is_file():
+        print(f"ERROR: tfvars not found at {target_tfvars}", file=sys.stderr)
+        return 4
+
+    if args.write:
+        text = target_tfvars.read_text()
+        # Replace the existing allowed_cidrs block. The renderer writes it
+        # either as a single-line empty list or as a multi-line list — handle both.
+        import re
+        pattern = re.compile(r"allowed_cidrs\s*=\s*\[[^\]]*\]\s*\n?", re.DOTALL)
+        if pattern.search(text):
+            new_text = pattern.sub(fragment, text, count=1)
+        else:
+            # No block — append at the end.
+            new_text = text.rstrip() + "\n\n# ── refreshed by `botarmy hardening refresh-allowed-cidrs`\n" + fragment
+        target_tfvars.write_text(new_text)
+        result = {"run_id": run_id, "tfvars": str(target_tfvars), "wrote": True, "cidrs": [c.to_dict() for c in cidrs]}
+    else:
+        result = {"run_id": run_id, "tfvars": str(target_tfvars), "wrote": False, "fragment": fragment, "cidrs": [c.to_dict() for c in cidrs]}
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    print(f"Run: {run_id}")
+    print(f"Tfvars: {target_tfvars}")
+    print("Detected CIDRs:")
+    for c in cidrs:
+        print(f"  - {c.cidr_block:<22} {c.display_name}")
+    if args.write:
+        print(f"\nWrote allowed_cidrs into {target_tfvars}")
+        print("Apply the targeted change with:")
+        print(
+            f"  cd deploy/terraform/gcp && terraform apply "
+            f"-target=google_container_cluster.botarmy "
+            f"-var-file={target_tfvars}"
+        )
+    else:
+        print("\nFragment (pass --write to update the tfvars file in place):")
+        print(fragment)
+    return 0
+
+
+def cmd_hardening_sign_image(args: argparse.Namespace) -> int:
+    """Sign a container image with cosign + create the Binary Authorization
+    attestation in one go.
+
+    Both steps must succeed for ENFORCE mode to accept the image:
+      1. ``cosign sign --key cosign.key <image>`` — adds the OCI signature
+         layer so other tooling (Sigstore policy controller, etc.) can verify.
+      2. ``gcloud container binauthz attestations sign-and-create`` — records
+         the attestation against the configured attestor; this is the bit
+         the GKE admission webhook actually consults.
+    """
+    _ensure_pythonpath()
+    import os, shutil, subprocess
+    from pathlib import Path
+
+    repo = _repo_root()
+    key_path = args.key or str(repo / "deploy" / "k8s" / "binauthz" / "cosign.key")
+    if not Path(key_path).is_file():
+        print(
+            f"ERROR: cosign.key not found at {key_path}. "
+            "Run `scripts/install/cosign_setup.sh --project-id <id> --confirm \"SET UP COSIGN\"` first.",
+            file=sys.stderr,
+        )
+        return 4
+
+    if not shutil.which("cosign"):
+        print("ERROR: cosign binary not on PATH. Install: https://docs.sigstore.dev/cosign/installation/",
+              file=sys.stderr)
+        return 4
+    if not shutil.which("gcloud"):
+        print("ERROR: gcloud not on PATH.", file=sys.stderr)
+        return 4
+
+    # Refuse image refs lacking a digest — cosign signatures bind to digests,
+    # not mutable tags, and gcloud's attestation create requires a digest.
+    if "@sha256:" not in args.image:
+        print(
+            "ERROR: image ref must include a sha256 digest (e.g. .../gateway@sha256:abc...). "
+            "Resolve the tag to a digest with `gcloud artifacts docker images describe`.",
+            file=sys.stderr,
+        )
+        return 3
+
+    env = dict(os.environ)
+    # Forward COSIGN_PASSWORD if set so cosign doesn't prompt
+    print(f"Signing image: {args.image}")
+    print(f"  using key: {key_path}")
+    sign_rc = subprocess.call(
+        ["cosign", "sign", "--key", key_path, "--yes", args.image],
+        env=env,
+    )
+    if sign_rc != 0:
+        print(f"ERROR: cosign sign failed (rc={sign_rc})", file=sys.stderr)
+        return sign_rc
+
+    print(f"Creating Binary Authorization attestation against attestor {args.attestor_name}...")
+    attest_rc = subprocess.call(
+        [
+            "gcloud", "container", "binauthz", "attestations", "sign-and-create",
+            "--artifact-url", args.image,
+            "--attestor", args.attestor_name,
+            "--attestor-project", args.project_id,
+            "--keyversion-project", args.project_id,
+            "--keyversion-location", "global",
+            # PKIX key matches what cosign_setup.sh uploaded
+            # (ECDSA_P256_SHA256). The attestor short-circuits to PKIX
+            # mode automatically when the public key is PKIX.
+            "--public-key-id-override", f"//cosign.pub:{args.attestor_name}",
+            "--pgp-key-fingerprint", "",  # unused for PKIX
+        ],
+        env=env,
+    )
+    # ^ sign-and-create requires a KMS key, not a local cosign key. Fall
+    # back to the file-based "create" flow when the KMS path fails: cosign
+    # already produced the signature so we just need to attach it.
+    if attest_rc != 0:
+        print("sign-and-create needs a KMS key; using local-signature attach flow instead.")
+        # cosign-signed images carry the signature in OCI; gcloud's
+        # attestations create reads the signature from the registry.
+        attest_rc = subprocess.call(
+            [
+                "gcloud", "container", "binauthz", "attestations", "create",
+                "--artifact-url", args.image,
+                "--attestor", args.attestor_name,
+                "--attestor-project", args.project_id,
+                "--signature-file", "/dev/stdin",
+                "--public-key-id", f"//{args.attestor_name}",
+            ],
+            env=env,
+        )
+    if attest_rc != 0:
+        print(f"ERROR: attestation create failed (rc={attest_rc})", file=sys.stderr)
+        return attest_rc
+
+    print(f"Signed + attested {args.image}")
+    return 0
+
+
+# ── Argument parsing ────────────────────────────────────────────────
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="botarmy",
+        description="Unified operator CLI for AndrusAI.",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("status", help="Print substrate status snapshot")
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_status)
+
+    s = sub.add_parser("doctor", help="Run readiness checks")
+    s.add_argument("--deep", action="store_true", help="Include install verify")
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_doctor)
+
+    s = sub.add_parser("install", help="Run install.sh")
+    s.add_argument("--target", default="local",
+                   choices=["local", "k8s", "gcp", "aws"])
+    s.add_argument("--verify", action="store_true")
+    s.set_defaults(func=cmd_install)
+
+    s = sub.add_parser("backup", help="Create a DR backup")
+    s.add_argument("--output", help="Override BACKUP_DIR")
+    s.add_argument("--label", default="", help="Label for export bundle")
+    s.set_defaults(func=cmd_backup)
+
+    s = sub.add_parser("restore", help="Restore from a DR bundle")
+    s.add_argument("--input", help="Bundle path")
+    s.add_argument("--target-dir", help="Restore into this dir instead of live workspace")
+    s.set_defaults(func=cmd_restore)
+
+    s = sub.add_parser("drill", help="Run continuity restore drill")
+    s.add_argument("--continuity", action="store_true",
+                   help="(reserved; current drill always covers continuity)")
+    s.set_defaults(func=cmd_drill)
+
+    s = sub.add_parser("migrate-drill", help="Run schema-migration drill")
+    s.set_defaults(func=cmd_migrate_drill)
+
+    # ── Cloud cost + readiness (productization WP D Phase 0+1) ─────────
+    s = sub.add_parser("cost", help="Estimate monthly cost for a cloud install")
+    s.add_argument("--target", default="gcp", choices=["gcp", "aws"])
+    s.add_argument("--tier", default="cheapest", choices=["cheapest", "prod"])
+    s.add_argument("--region", default=None,
+                   help="Cloud region; default = Helsinki-closest (europe-north1 / eu-north-1)")
+    s.add_argument("--no-monitoring", action="store_true",
+                   help="Estimate without kube-prometheus-stack")
+    s.add_argument("--domain", default=None,
+                   help="Include load balancer + cert costs (provide any non-empty domain)")
+    s.add_argument("--budget-cap-usd", type=float, default=None,
+                   help="Return non-zero if estimate exceeds this cap")
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_cost)
+
+    s = sub.add_parser("cloud-doctor", help="Check local tooling for cloud-install readiness")
+    s.add_argument("--target", default="gcp", choices=["gcp", "aws"])
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_cloud_doctor)
+
+    s = sub.add_parser(
+        "migrate",
+        help="Orchestrate a cloud migration (dry-run or live)",
+    )
+    s.add_argument("--to", dest="target", default="gcp", choices=["gcp", "aws"],
+                   help="Cloud target (default: gcp)")
+    s.add_argument("--tier", default="cheapest", choices=["cheapest", "prod"])
+    s.add_argument("--region", default=None,
+                   help="Cloud region; default = Helsinki-closest")
+    s.add_argument("--project", default=None,
+                   help="GCP project id (required for --to gcp)")
+    s.add_argument("--budget-cap-usd", type=float, default=None,
+                   help="Refuse if estimated monthly cost exceeds this cap. "
+                        "Default for --live is $200.")
+    s.add_argument("--dry-run", action="store_true",
+                   help="Safe preview — produces report only, no apply, no money spent")
+    s.add_argument("--live", action="store_true",
+                   help="Execute the migration. Requires --confirm with the exact typed phrase.")
+    s.add_argument("--confirm", default=None,
+                   help='Typed-phrase confirmation, e.g. --confirm "MIGRATE TO GCP". '
+                        "Required for --live; refused otherwise.")
+    s.add_argument("--really-do-it", action="store_true",
+                   help="Second-layer guard alongside --confirm. Without this OR "
+                        "BOTARMY_MIGRATE_LIVE_EXECUTE=1, --live runs the orchestrator "
+                        "but every subprocess returns a <dry: ...> placeholder.")
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_migrate)
+
+    s = sub.add_parser(
+        "cutover",
+        help="Commit a verified cloud migration (Phase 4 — operator-decided)",
+    )
+    s.add_argument("--to", dest="migration_run_id", default=None,
+                   help="Migration run id from `botarmy migrate --live`")
+    s.add_argument("--target", default="gcp", choices=["gcp", "aws"],
+                   help="Cloud target (default: gcp)")
+    s.add_argument("--project", default=None,
+                   help="GCP project id (default: read from migration report)")
+    s.add_argument("--confirm", default=None,
+                   help='Typed-phrase confirmation: --confirm "CUTOVER TO GCP"')
+    s.add_argument("--really-do-it", action="store_true",
+                   help="Second-layer guard. Without this OR "
+                        "BOTARMY_MIGRATE_LIVE_EXECUTE=1, kubectl invocations "
+                        "return <dry: ...> placeholders.")
+    s.add_argument("--json", action="store_true", help="Output JSON")
+    s.set_defaults(func=cmd_cutover)
+
+    # ── Cloud hardening (2026-05-17) ────────────────────────────────
+    s = sub.add_parser(
+        "hardening",
+        help="Cloud-hardening operator surface (preview, refresh-allowed-cidrs)",
+    )
+    sh_sub = s.add_subparsers(dest="subcmd", required=True)
+
+    sh_preview = sh_sub.add_parser(
+        "preview",
+        help="Show auto-detected hardening inputs (Tailnet, laptop IP, org)",
+    )
+    sh_preview.add_argument("--profile", default="strict",
+                            choices=["off", "basic", "strict"])
+    sh_preview.add_argument("--binauthz-mode", default="AUDIT",
+                            choices=["AUDIT", "ENFORCE"])
+    sh_preview.add_argument("--json", action="store_true", help="Output JSON")
+    sh_preview.set_defaults(func=cmd_hardening_preview)
+
+    sh_refresh = sh_sub.add_parser(
+        "refresh-allowed-cidrs",
+        help=(
+            "Re-detect Tailnet + laptop IP and emit a tfvars fragment for the "
+            "GKE master allowlist. Targeted lock-out break-glass: apply with "
+            "`terraform apply -target=google_container_cluster.botarmy "
+            "-var-file=<fragment>` (no full migration needed)."
+        ),
+    )
+    sh_refresh.add_argument("--run-id", default=None,
+                            help="Migration run id whose tfvars to patch (default: latest)")
+    sh_refresh.add_argument("--write", action="store_true",
+                            help="Write the new allowed_cidrs block into the tfvars file in place")
+    sh_refresh.add_argument("--json", action="store_true", help="Output JSON")
+    sh_refresh.set_defaults(func=cmd_hardening_refresh)
+
+    sh_sign = sh_sub.add_parser(
+        "sign-image",
+        help=(
+            "Sign a container image with the cosign keypair from "
+            "deploy/k8s/binauthz/. Required before flipping binauthz_mode "
+            "to ENFORCE. The signature lands as an OCI artifact "
+            "alongside the image AND as an attestation against the "
+            "configured Binary Authorization attestor."
+        ),
+    )
+    sh_sign.add_argument("image", help="Full image ref including digest, e.g. europe-north1-docker.pkg.dev/botarmy-495107/botarmy-gateway/gateway@sha256:...")
+    sh_sign.add_argument("--project-id", required=True,
+                         help="GCP project id where the attestor lives")
+    sh_sign.add_argument("--attestor-name", default="botarmy-attestor",
+                         help="Binary Authorization attestor short name")
+    sh_sign.add_argument("--key", default=None,
+                         help="Path to cosign.key (default: deploy/k8s/binauthz/cosign.key)")
+    sh_sign.set_defaults(func=cmd_hardening_sign_image)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

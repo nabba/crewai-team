@@ -1,0 +1,4000 @@
+{
+  "entries": [
+    {
+      "mtime": 1778949947.960268,
+      "note": "",
+      "path": "aesthetics/chroma.sqlite3",
+      "prefix_sha256": "900be16da3185f37cff02cffd63d8cafadac056e4e49a917e15d019321e282be",
+      "sha256": "900be16da3185f37cff02cffd63d8cafadac056e4e49a917e15d019321e282be",
+      "size": 167936
+    },
+    {
+      "mtime": 1778955797.67933,
+      "note": "",
+      "path": "affect/trace.jsonl",
+      "prefix_sha256": "7344886ad3109d3bfaff1718b5016cbd954676df5d0dfd9a4f3abc47c5a38cb7",
+      "sha256": "7344886ad3109d3bfaff1718b5016cbd954676df5d0dfd9a4f3abc47c5a38cb7",
+      "size": 56047
+    },
+    {
+      "mtime": 1778955889.549256,
+      "note": "",
+      "path": "audit.log",
+      "prefix_sha256": "c43d829813485770a507a23e9ba5077f19ce4403c5fc81aa11a2d96f7d8f29af",
+      "sha256": "c43d829813485770a507a23e9ba5077f19ce4403c5fc81aa11a2d96f7d8f29af",
+      "size": 275370
+    },
+    {
+      "mtime": 1778419374.0356283,
+      "note": "",
+      "path": "change_requests/archive/2026-05-10_wiki_validation_failed/MANIFEST.md",
+      "prefix_sha256": "e9415ae7ee2b0d52285c428cc2d578aef4ecd60d9c265c7ac58d2f8743151e9a",
+      "sha256": "e9415ae7ee2b0d52285c428cc2d578aef4ecd60d9c265c7ac58d2f8743151e9a",
+      "size": 2446
+    },
+    {
+      "mtime": 1778958956.487501,
+      "note": "",
+      "path": "change_requests/audit.jsonl",
+      "prefix_sha256": "d18d617c4eba62ffca1e5988131dd25497cf0680a73cc7008bc9911c7f8719be",
+      "sha256": "d18d617c4eba62ffca1e5988131dd25497cf0680a73cc7008bc9911c7f8719be",
+      "size": 268
+    },
+    {
+      "mtime": 1778958956.487501,
+      "note": "",
+      "path": "change_requests/d4ab5c774557.json",
+      "prefix_sha256": "3caefdd64f430cfe2691a637ce9d883ddd89c64dee961bbcff788afe94fefff8",
+      "sha256": "3caefdd64f430cfe2691a637ce9d883ddd89c64dee961bbcff788afe94fefff8",
+      "size": 1088
+    },
+    {
+      "mtime": 1778958405.026452,
+      "note": "",
+      "path": "companion/events/4636ae27-9632-4faf-804d-39cc49f9ac43.jsonl",
+      "prefix_sha256": "782105cc3698271912b7b061871f0666738d568cd469e1c8a3317ac5b512fa0a",
+      "sha256": "782105cc3698271912b7b061871f0666738d568cd469e1c8a3317ac5b512fa0a",
+      "size": 729
+    },
+    {
+      "mtime": 1778398701.546496,
+      "note": "",
+      "path": "companion/events/55c7c5b2-d9d0-4fda-8ed1-e021c6fd9211.jsonl",
+      "prefix_sha256": "a3843fe78cf0a1845f44f867121d87853cff54e94b3e8a5b5087dfd0b5fe52bf",
+      "sha256": "a3843fe78cf0a1845f44f867121d87853cff54e94b3e8a5b5087dfd0b5fe52bf",
+      "size": 712
+    },
+    {
+      "mtime": 1778499513.695844,
+      "note": "",
+      "path": "companion/events/86fea299-d09a-452f-b5f2-ef6a5e4bc521.jsonl",
+      "prefix_sha256": "e982ca9f016adc86798df1c14eb767f70d4b8b7ad0b64033c651c4f96bff6b98",
+      "sha256": "e982ca9f016adc86798df1c14eb767f70d4b8b7ad0b64033c651c4f96bff6b98",
+      "size": 666
+    },
+    {
+      "mtime": 1778502113.115593,
+      "note": "",
+      "path": "companion/events/969f4a48-866c-42dc-b0a3-6d17b5dd304d.jsonl",
+      "prefix_sha256": "a523cac6678e519332f7cddfd0e7b33c80ff35238655206074bd125b2b26dd47",
+      "sha256": "a523cac6678e519332f7cddfd0e7b33c80ff35238655206074bd125b2b26dd47",
+      "size": 672
+    },
+    {
+      "mtime": 1778958956.171501,
+      "note": "",
+      "path": "companion/feedback_router_state.json",
+      "prefix_sha256": "e790f4847e27028c9277ebfec0b4dfaf9d33382976919f9320fd9f0c6dd800c1",
+      "sha256": "e790f4847e27028c9277ebfec0b4dfaf9d33382976919f9320fd9f0c6dd800c1",
+      "size": 117
+    },
+    {
+      "mtime": 1778955889.567256,
+      "note": "",
+      "path": "companion/goal_progress_state.json",
+      "prefix_sha256": "213106361334e2fc10dba8e67bb4a3688f45fed9ec33d87850946910d3eaab31",
+      "sha256": "213106361334e2fc10dba8e67bb4a3688f45fed9ec33d87850946910d3eaab31",
+      "size": 92
+    },
+    {
+      "mtime": 1778314293.4002964,
+      "note": "",
+      "path": "companion/ideas/ws-1.jsonl",
+      "prefix_sha256": "fb9a1aa52a77ea4ad3948a725fcf22913fa72e6bed1a848c13340b98997e4889",
+      "sha256": "fb9a1aa52a77ea4ad3948a725fcf22913fa72e6bed1a848c13340b98997e4889",
+      "size": 30026
+    },
+    {
+      "mtime": 1778944788.250459,
+      "note": "",
+      "path": "companion/interest_history.jsonl",
+      "prefix_sha256": "6250cf3ae98c9bcf73a3e414b06c0a10b964c720f1897902c6a04b9bc79f32d0",
+      "sha256": "6250cf3ae98c9bcf73a3e414b06c0a10b964c720f1897902c6a04b9bc79f32d0",
+      "size": 726
+    },
+    {
+      "mtime": 1778958956.180501,
+      "note": "",
+      "path": "companion/interest_profile.json",
+      "prefix_sha256": "7c1bcd41a5ef15317ae758016c1e3651ac6b857adb4fccfe2cc4212ce22e8d9b",
+      "sha256": "7c1bcd41a5ef15317ae758016c1e3651ac6b857adb4fccfe2cc4212ce22e8d9b",
+      "size": 95
+    },
+    {
+      "mtime": 1778366914.524739,
+      "note": "",
+      "path": "companion/lessons_learned.json",
+      "prefix_sha256": "cc61ecd849eec5da218071d18f43da3a157a41ab7d7114171cfa93baf1085896",
+      "sha256": "cc61ecd849eec5da218071d18f43da3a157a41ab7d7114171cfa93baf1085896",
+      "size": 9187
+    },
+    {
+      "mtime": 1778958405.263452,
+      "note": "",
+      "path": "companion/state/4636ae27-9632-4faf-804d-39cc49f9ac43.json",
+      "prefix_sha256": "882f282c455e03ae22e2aab87a21af1b48ffff7b2a0ad7c6e7a44f3e97c8ddef",
+      "sha256": "882f282c455e03ae22e2aab87a21af1b48ffff7b2a0ad7c6e7a44f3e97c8ddef",
+      "size": 231
+    },
+    {
+      "mtime": 1778398702.088496,
+      "note": "",
+      "path": "companion/state/55c7c5b2-d9d0-4fda-8ed1-e021c6fd9211.json",
+      "prefix_sha256": "3b0beb3404ff39a5dc8e9e552050198fe9752c71216171c01435f0ca907b4e0b",
+      "sha256": "3b0beb3404ff39a5dc8e9e552050198fe9752c71216171c01435f0ca907b4e0b",
+      "size": 230
+    },
+    {
+      "mtime": 1778353461.694376,
+      "note": "",
+      "path": "companion/state/676a8f70-d369-44bd-b3a4-76ff0635657a.json",
+      "prefix_sha256": "87a7d343a0a4771b762567f434f1b3cc543f16e8fd4ce85e8164de3b9ef2fb1e",
+      "sha256": "87a7d343a0a4771b762567f434f1b3cc543f16e8fd4ce85e8164de3b9ef2fb1e",
+      "size": 216
+    },
+    {
+      "mtime": 1778499513.942844,
+      "note": "",
+      "path": "companion/state/86fea299-d09a-452f-b5f2-ef6a5e4bc521.json",
+      "prefix_sha256": "e66254e6616348a8266b68331b85eba3de696ba672f8d7c9a708c63f9d14f068",
+      "sha256": "e66254e6616348a8266b68331b85eba3de696ba672f8d7c9a708c63f9d14f068",
+      "size": 231
+    },
+    {
+      "mtime": 1778502113.413593,
+      "note": "",
+      "path": "companion/state/969f4a48-866c-42dc-b0a3-6d17b5dd304d.json",
+      "prefix_sha256": "136394d00bb39256bb19ce7f6f052a21ecdbe964f74f2d48e1a6399a7d40a27f",
+      "sha256": "136394d00bb39256bb19ce7f6f052a21ecdbe964f74f2d48e1a6399a7d40a27f",
+      "size": 231
+    },
+    {
+      "mtime": 1777199876.062277,
+      "note": "",
+      "path": "episteme/cc838fcc-73e6-4e3d-8fa5-6b8bcfada836/data_level0.bin",
+      "prefix_sha256": "3b6808569f5580281329ef8eca9bf682e10ea63b2aa63dc7c8428e0fea240942",
+      "sha256": "070de42088e5185d1bd461edf13904bb019733818b533f221c911fc6207fb6e7",
+      "size": 16503256
+    },
+    {
+      "mtime": 1777199876.057277,
+      "note": "",
+      "path": "episteme/cc838fcc-73e6-4e3d-8fa5-6b8bcfada836/header.bin",
+      "prefix_sha256": "92fb6204687a9266957d21aa61b06c83520d26f03902a2a7bbb240c196af6e86",
+      "sha256": "92fb6204687a9266957d21aa61b06c83520d26f03902a2a7bbb240c196af6e86",
+      "size": 100
+    },
+    {
+      "mtime": 1777199876.073277,
+      "note": "",
+      "path": "episteme/cc838fcc-73e6-4e3d-8fa5-6b8bcfada836/index_metadata.pickle",
+      "prefix_sha256": "3ba20de7781e469ece560787de6df029b7b67af6104faa18ebe31fda4d79a835",
+      "sha256": "3ba20de7781e469ece560787de6df029b7b67af6104faa18ebe31fda4d79a835",
+      "size": 176238
+    },
+    {
+      "mtime": 1777199876.062277,
+      "note": "",
+      "path": "episteme/cc838fcc-73e6-4e3d-8fa5-6b8bcfada836/length.bin",
+      "prefix_sha256": "830c29a3c5f84b93dc5d683e74912515cb2a4405c97977029a5a6fe2795a6eff",
+      "sha256": "830c29a3c5f84b93dc5d683e74912515cb2a4405c97977029a5a6fe2795a6eff",
+      "size": 20552
+    },
+    {
+      "mtime": 1777199876.064277,
+      "note": "",
+      "path": "episteme/cc838fcc-73e6-4e3d-8fa5-6b8bcfada836/link_lists.bin",
+      "prefix_sha256": "47d6ca39c72681407bf9fe5fb11f655382d62d1a09dee8ea486eaad0cd91b3e9",
+      "sha256": "47d6ca39c72681407bf9fe5fb11f655382d62d1a09dee8ea486eaad0cd91b3e9",
+      "size": 46052
+    },
+    {
+      "mtime": 1778958714.880238,
+      "note": "",
+      "path": "episteme/chroma.sqlite3",
+      "prefix_sha256": "adb334c1c89e312592ce008436cd2034a31d20c6e3c8ed509b6429f225e8ff0c",
+      "sha256": "db89ed12be91cc6b6478923868c366d7b891c79f6778ee3116a21a7921e3fb4e",
+      "size": 21598208
+    },
+    {
+      "mtime": 1778958972.011162,
+      "note": "",
+      "path": "episteme/papers_seen.json",
+      "prefix_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "size": 2
+    },
+    {
+      "mtime": 1777199455.458272,
+      "note": "",
+      "path": "episteme/texts/AndrusAI-Codebase-Analysis.md",
+      "prefix_sha256": "1d37033204de7d5bbad02d8588814e4afca18576f0c07e20c47a78a0f3abed11",
+      "sha256": "1d37033204de7d5bbad02d8588814e4afca18576f0c07e20c47a78a0f3abed11",
+      "size": 221560
+    },
+    {
+      "mtime": 1777199500.945009,
+      "note": "",
+      "path": "episteme/texts/AndrusAI_Deep_Technical_Addendum.md",
+      "prefix_sha256": "010a265310ee0ec2ea1c40e016b1f3cb8d5aa1f60680f76409580692515f727a",
+      "sha256": "010a265310ee0ec2ea1c40e016b1f3cb8d5aa1f60680f76409580692515f727a",
+      "size": 22444
+    },
+    {
+      "mtime": 1777199473.040272,
+      "note": "",
+      "path": "episteme/texts/AndrusAI_Hermes_ideas_Spec_v2_Unrestricted.md",
+      "prefix_sha256": "5b41b00795d3884185e66df84de0112bcab18fca8f8cd507bbc631efbd36f377",
+      "sha256": "5b41b00795d3884185e66df84de0112bcab18fca8f8cd507bbc631efbd36f377",
+      "size": 63182
+    },
+    {
+      "mtime": 1777199488.104009,
+      "note": "",
+      "path": "episteme/texts/AndrusAI_Self_Improvement_Analysis.md",
+      "prefix_sha256": "50f5a3d5e5a5ded6d9318003cda49e745d6ac0a343c5d26c30899fb851a34226",
+      "sha256": "50f5a3d5e5a5ded6d9318003cda49e745d6ac0a343c5d26c30899fb851a34226",
+      "size": 26875
+    },
+    {
+      "mtime": 1777199669.720545,
+      "note": "",
+      "path": "episteme/texts/Subjectivity-Kernel.md",
+      "prefix_sha256": "4d91ce1e91f6dffea144fbe20bf986a33c4d1f06e18cba0cdb73b36e0f5b7a4b",
+      "sha256": "4d91ce1e91f6dffea144fbe20bf986a33c4d1f06e18cba0cdb73b36e0f5b7a4b",
+      "size": 16631
+    },
+    {
+      "mtime": 1777199869.249277,
+      "note": "",
+      "path": "episteme/texts/andrusai-controlplane-spec.md",
+      "prefix_sha256": "eb7606f82ea9cb6a083e1e1e3dfa090e3a0a1f91be0e871c53fad0cb9502ad8b",
+      "sha256": "eb7606f82ea9cb6a083e1e1e3dfa090e3a0a1f91be0e871c53fad0cb9502ad8b",
+      "size": 44914
+    },
+    {
+      "mtime": 1777199711.604004,
+      "note": "",
+      "path": "episteme/texts/andrusai-llm-wiki-implementation.md",
+      "prefix_sha256": "04ae1e2c4833e4b12cf8d2626d9e0132e1126bc4929b76337048e7fe34254c99",
+      "sha256": "04ae1e2c4833e4b12cf8d2626d9e0132e1126bc4929b76337048e7fe34254c99",
+      "size": 82800
+    },
+    {
+      "mtime": 1777199792.814431,
+      "note": "",
+      "path": "episteme/texts/andrusai-sentience-addendum-phases-7-12.md",
+      "prefix_sha256": "9d1adce9653787d529fd1d2f1420ee59136b9d2a0ec905eb34b894ae310ca000",
+      "sha256": "9d1adce9653787d529fd1d2f1420ee59136b9d2a0ec905eb34b894ae310ca000",
+      "size": 113797
+    },
+    {
+      "mtime": 1777199811.819195,
+      "note": "",
+      "path": "episteme/texts/andrusai-sentience-additions-spec.md",
+      "prefix_sha256": "fae4badb04e707a72a982b83bbbe5f7e6f3b0e2127e3c46966e14846fa399a67",
+      "sha256": "fae4badb04e707a72a982b83bbbe5f7e6f3b0e2127e3c46966e14846fa399a67",
+      "size": 81338
+    },
+    {
+      "mtime": 1777199697.275004,
+      "note": "",
+      "path": "episteme/texts/andrusai-sentience-architecture-analysis.md",
+      "prefix_sha256": "2a7cf8edb7068eb75780cf3ab5264304060a8212abc3c5cc93f006d54df25d3e",
+      "sha256": "2a7cf8edb7068eb75780cf3ab5264304060a8212abc3c5cc93f006d54df25d3e",
+      "size": 41396
+    },
+    {
+      "mtime": 1777199779.490431,
+      "note": "",
+      "path": "episteme/texts/andrusai-sentience-verdict.md",
+      "prefix_sha256": "70e61721cbc18bf904b0c5a81b132fcad58680017793649106a13a39d72f91a1",
+      "sha256": "70e61721cbc18bf904b0c5a81b132fcad58680017793649106a13a39d72f91a1",
+      "size": 7910
+    },
+    {
+      "mtime": 1777199763.479853,
+      "note": "",
+      "path": "episteme/texts/andrusai-sentience-verdict.pdf.md",
+      "prefix_sha256": "3e1fc487d40b1ba139854933b136206c7da7eb33f223d83976bb017bc5620111",
+      "sha256": "3e1fc487d40b1ba139854933b136206c7da7eb33f223d83976bb017bc5620111",
+      "size": 10018
+    },
+    {
+      "mtime": 1777199748.300853,
+      "note": "",
+      "path": "episteme/texts/consciousness_indicators_implementation_plan.md",
+      "prefix_sha256": "12a00ed8c773fcb5c633b539132e217da4bd175ee40690b95e585503cdcbe786",
+      "sha256": "12a00ed8c773fcb5c633b539132e217da4bd175ee40690b95e585503cdcbe786",
+      "size": 59017
+    },
+    {
+      "mtime": 1777199731.515205,
+      "note": "",
+      "path": "episteme/texts/consciousness_indicators_implementation_plan_v1.1.md",
+      "prefix_sha256": "cf2fca19713053ac70e63f5821e3f5d51df295409052d50ce2fb9504c40684de",
+      "sha256": "cf2fca19713053ac70e63f5821e3f5d51df295409052d50ce2fb9504c40684de",
+      "size": 80627
+    },
+    {
+      "mtime": 1777199527.729499,
+      "note": "",
+      "path": "episteme/texts/creativity-synthesis.md",
+      "prefix_sha256": "63644cede6a9bfd4ba35dac790b8da075d7b4f4fc4b8e9655f491ac236c4a535",
+      "sha256": "63644cede6a9bfd4ba35dac790b8da075d7b4f4fc4b8e9655f491ac236c4a535",
+      "size": 23194
+    },
+    {
+      "mtime": 1777199827.5481951,
+      "note": "",
+      "path": "episteme/texts/firecrawl-integration-plan.md",
+      "prefix_sha256": "be8091d8409b2dce2d70ed27dc65b20b55e5d22842b489df33a02dc8a05c213a",
+      "sha256": "be8091d8409b2dce2d70ed27dc65b20b55e5d22842b489df33a02dc8a05c213a",
+      "size": 37009
+    },
+    {
+      "mtime": 1777199514.187499,
+      "note": "",
+      "path": "episteme/texts/research-synthesis.md",
+      "prefix_sha256": "2959154b87d6e1b53735e517316cf12c09bcf48add7f818bc63e1fd271d4aa05",
+      "sha256": "2959154b87d6e1b53735e517316cf12c09bcf48add7f818bc63e1fd271d4aa05",
+      "size": 26989
+    },
+    {
+      "mtime": 1777199685.572545,
+      "note": "",
+      "path": "episteme/texts/sia-part-ii-emergence-and-consciousness-gradient.md",
+      "prefix_sha256": "c377057fe6597fb520932b927f1bea626fb29ddd13b2fc369af0bbf8f426f951",
+      "sha256": "c377057fe6597fb520932b927f1bea626fb29ddd13b2fc369af0bbf8f426f951",
+      "size": 36649
+    },
+    {
+      "mtime": 1777199600.169406,
+      "note": "",
+      "path": "episteme/texts/six-proposals-deeper-sentience.md",
+      "prefix_sha256": "0d97c8e3872dc7fbda1952629b7688aeb4e921fa36d0f32acad309f9a17371f2",
+      "sha256": "0d97c8e3872dc7fbda1952629b7688aeb4e921fa36d0f32acad309f9a17371f2",
+      "size": 33500
+    },
+    {
+      "mtime": 1777199587.665249,
+      "note": "",
+      "path": "episteme/texts/six-proposals-subia-impact-analysis.md",
+      "prefix_sha256": "0428e003249f8a6807c3182a5fbead26435f06d0f843729552a280f188bb824b",
+      "sha256": "0428e003249f8a6807c3182a5fbead26435f06d0f843729552a280f188bb824b",
+      "size": 22067
+    },
+    {
+      "mtime": 1777199572.905249,
+      "note": "",
+      "path": "episteme/texts/six-proposals-wiring-specification.md",
+      "prefix_sha256": "2842efeb7c8b04115cb14770955a6a6a1635e47f3c44f1b45d4d53c676848abd",
+      "sha256": "2842efeb7c8b04115cb14770955a6a6a1635e47f3c44f1b45d4d53c676848abd",
+      "size": 37529
+    },
+    {
+      "mtime": 1777199630.158434,
+      "note": "",
+      "path": "episteme/texts/subia-amendment-three-mitigations.md",
+      "prefix_sha256": "ca626a904c8775fe90fae6d1f06f81bc8b52af6dfcde131b8f9b6dafc5136978",
+      "sha256": "ca626a904c8775fe90fae6d1f06f81bc8b52af6dfcde131b8f9b6dafc5136978",
+      "size": 41496
+    },
+    {
+      "mtime": 1777199645.139434,
+      "note": "",
+      "path": "episteme/texts/subia-unified-implementation-spec-part-ii.md",
+      "prefix_sha256": "be29418f8c4ff1331b607f72c3ad0eceaa56024adc575cc1db6faed13d37a26e",
+      "sha256": "be29418f8c4ff1331b607f72c3ad0eceaa56024adc575cc1db6faed13d37a26e",
+      "size": 46449
+    },
+    {
+      "mtime": 1777199613.261406,
+      "note": "",
+      "path": "episteme/texts/subia-unified-implementation-spec.md",
+      "prefix_sha256": "b8104505342284db9a0a7a7ebba145b15640067d81641e9950b66ff185adc7f9",
+      "sha256": "b8104505342284db9a0a7a7ebba145b15640067d81641e9950b66ff185adc7f9",
+      "size": 66108
+    },
+    {
+      "mtime": 1777199657.037545,
+      "note": "",
+      "path": "episteme/texts/subjectivity-kernel-analysis.md",
+      "prefix_sha256": "a38514b757e8850fd5957136653317162a4f6b2e1439075939950194c0ed61c5",
+      "sha256": "a38514b757e8850fd5957136653317162a4f6b2e1439075939950194c0ed61c5",
+      "size": 26683
+    },
+    {
+      "mtime": 1777199540.498791,
+      "note": "",
+      "path": "episteme/texts/temporal-synchronization-and-sentience.md",
+      "prefix_sha256": "52d99f11bda590401fe20720e352f5ad8d2b0b59f443422a0d3a3572a77ac0cd",
+      "sha256": "52d99f11bda590401fe20720e352f5ad8d2b0b59f443422a0d3a3572a77ac0cd",
+      "size": 29870
+    },
+    {
+      "mtime": 1777199552.816791,
+      "note": "",
+      "path": "episteme/texts/tsal-technical-self-awareness-spec.md",
+      "prefix_sha256": "df2f3aaa99a95ee1c4a7a8858b2f44ebb640ecff733493b521de90b9e3afd4f5",
+      "sha256": "df2f3aaa99a95ee1c4a7a8858b2f44ebb640ecff733493b521de90b9e3afd4f5",
+      "size": 53233
+    },
+    {
+      "mtime": 1778958956.489501,
+      "note": "",
+      "path": "identity/continuity_ledger.jsonl",
+      "prefix_sha256": "03b49e44b427ffa162683ecceb5aa448ed25a0aebbcbeeb8f803557b8cf75ec2",
+      "sha256": "03b49e44b427ffa162683ecceb5aa448ed25a0aebbcbeeb8f803557b8cf75ec2",
+      "size": 1619
+    },
+    {
+      "mtime": 1778280019.816152,
+      "note": "",
+      "path": "output/Estonian_Forests_Essay.md",
+      "prefix_sha256": "c6f09c912ebf493f6b74d05f246127fb02d74f39ddafdd259428e472dfa8b37b",
+      "sha256": "c6f09c912ebf493f6b74d05f246127fb02d74f39ddafdd259428e472dfa8b37b",
+      "size": 11783
+    },
+    {
+      "mtime": 1777675472.904916,
+      "note": "",
+      "path": "output/README.md",
+      "prefix_sha256": "059d67e806618fed23c6a420247844f3c590c72229aad381dbfa4388a51e3ff1",
+      "sha256": "059d67e806618fed23c6a420247844f3c590c72229aad381dbfa4388a51e3ff1",
+      "size": 9910
+    },
+    {
+      "mtime": 1777675887.245474,
+      "note": "",
+      "path": "output/README_instructions.md",
+      "prefix_sha256": "76fd6ebb8658937673eddb528f568dfa985a23db21bab51ec059176b03272834",
+      "sha256": "76fd6ebb8658937673eddb528f568dfa985a23db21bab51ec059176b03272834",
+      "size": 11787
+    },
+    {
+      "mtime": 1777675488.254916,
+      "note": "",
+      "path": "output/_quarantine/Estonia_Forest_Statistics_2012_2025.csv",
+      "prefix_sha256": "51f9ed4b3e93d562b89e8a12e8a0114fa3fbf48bb702b54a4d3ea43a9114a113",
+      "sha256": "51f9ed4b3e93d562b89e8a12e8a0114fa3fbf48bb702b54a4d3ea43a9114a113",
+      "size": 413
+    },
+    {
+      "mtime": 1777753839.833401,
+      "note": "",
+      "path": "output/_quarantine/README_EstoniaForestMaps.md",
+      "prefix_sha256": "47ae0785afe633530150d520434005abd261552cdb8bfcdf93c2088d9b6a22a2",
+      "sha256": "47ae0785afe633530150d520434005abd261552cdb8bfcdf93c2088d9b6a22a2",
+      "size": 4990
+    },
+    {
+      "mtime": 1777761324.080783,
+      "note": "",
+      "path": "output/_quarantine/create_estonia_forest_age_table.py",
+      "prefix_sha256": "67d93d3891d14386854d235144b3ab0595c159591b9a4466d95692496b4977fe",
+      "sha256": "67d93d3891d14386854d235144b3ab0595c159591b9a4466d95692496b4977fe",
+      "size": 12406
+    },
+    {
+      "mtime": 1777675799.879519,
+      "note": "",
+      "path": "output/_quarantine/ee_estonia_deforestation_annual.js",
+      "prefix_sha256": "e3158bf3883abbfa14f84c80f84fbdf026f7634c2d5cc8ecb0afaa9d694c87a6",
+      "sha256": "e3158bf3883abbfa14f84c80f84fbdf026f7634c2d5cc8ecb0afaa9d694c87a6",
+      "size": 3331
+    },
+    {
+      "mtime": 1777675799.884519,
+      "note": "",
+      "path": "output/_quarantine/ee_estonia_forest_age_annual.js",
+      "prefix_sha256": "853ff828e3ceef990d25257521b3f404862a38ddb3f8b78927d91060fbf9a8e5",
+      "sha256": "853ff828e3ceef990d25257521b3f404862a38ddb3f8b78927d91060fbf9a8e5",
+      "size": 4263
+    },
+    {
+      "mtime": 1777752545.334418,
+      "note": "",
+      "path": "output/_quarantine/ee_estonia_forest_maps.js",
+      "prefix_sha256": "0890132ec33f272ca598a18e219df3dd551440fac1b7b406de352b4dfb303049",
+      "sha256": "0890132ec33f272ca598a18e219df3dd551440fac1b7b406de352b4dfb303049",
+      "size": 10217
+    },
+    {
+      "mtime": 1777675799.879519,
+      "note": "",
+      "path": "output/_quarantine/ee_estonia_statistics_export.js",
+      "prefix_sha256": "f8ea5f50d6e51d4019419ab496d636de619b90d191742a85813739c9e99dfe66",
+      "sha256": "f8ea5f50d6e51d4019419ab496d636de619b90d191742a85813739c9e99dfe66",
+      "size": 4750
+    },
+    {
+      "mtime": 1777755755.672659,
+      "note": "",
+      "path": "output/_quarantine/estonia_age_distribution.py",
+      "prefix_sha256": "1416b515b97ef07d3c8d6c7bae4847bf667024404ff1955001a2b5e1ce41ce8a",
+      "sha256": "1416b515b97ef07d3c8d6c7bae4847bf667024404ff1955001a2b5e1ce41ce8a",
+      "size": 9278
+    },
+    {
+      "mtime": 1777761158.899908,
+      "note": "",
+      "path": "output/_quarantine/estonia_age_report.py",
+      "prefix_sha256": "b5313a3be765aa7da38f5153917413c82e9d6d42be3633ce6d198c4013220e94",
+      "sha256": "b5313a3be765aa7da38f5153917413c82e9d6d42be3633ce6d198c4013220e94",
+      "size": 11247
+    },
+    {
+      "mtime": 1777750583.381448,
+      "note": "",
+      "path": "output/_quarantine/estonia_age_results.json",
+      "prefix_sha256": "9b8dc576c9ebf2f92250fb9601b59904c78198fd1e3fe825982537aa5e318d70",
+      "sha256": "9b8dc576c9ebf2f92250fb9601b59904c78198fd1e3fe825982537aa5e318d70",
+      "size": 4197
+    },
+    {
+      "mtime": 1776681969.4113832,
+      "note": "",
+      "path": "output/_quarantine/estonia_deforestation.py",
+      "prefix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mtime": 1777750056.174326,
+      "note": "",
+      "path": "output/_quarantine/estonia_deforestation_annual.py",
+      "prefix_sha256": "3b205257c1a48f792606f928bc82d19f4aa4c704f2ee84e747bd743559406e93",
+      "sha256": "3b205257c1a48f792606f928bc82d19f4aa4c704f2ee84e747bd743559406e93",
+      "size": 2612
+    },
+    {
+      "mtime": 1777750564.973634,
+      "note": "",
+      "path": "output/_quarantine/estonia_deforestation_results.json",
+      "prefix_sha256": "d0449cce0cc39bc74202fa6a721c6ac021aac323bcab9a3158a9443f3e90a664",
+      "sha256": "d0449cce0cc39bc74202fa6a721c6ac021aac323bcab9a3158a9443f3e90a664",
+      "size": 3120
+    },
+    {
+      "mtime": 1777758937.245652,
+      "note": "",
+      "path": "output/_quarantine/estonia_deforestation_script.py",
+      "prefix_sha256": "30c6793762549225ebe23fcf40f87e022a534aeb338821b5212dfe5ce54e89fa",
+      "sha256": "30c6793762549225ebe23fcf40f87e022a534aeb338821b5212dfe5ce54e89fa",
+      "size": 2140
+    },
+    {
+      "mtime": 1777761336.682783,
+      "note": "",
+      "path": "output/_quarantine/estonia_forest_age_by_year.csv",
+      "prefix_sha256": "3f7c0bfbdd9284d053444c63033ca4e4efb7dce0141875c81f69a33dfd8cc760",
+      "sha256": "3f7c0bfbdd9284d053444c63033ca4e4efb7dce0141875c81f69a33dfd8cc760",
+      "size": 298
+    },
+    {
+      "mtime": 1777764219.909706,
+      "note": "",
+      "path": "output/agent_demo_estonia.pdf",
+      "prefix_sha256": "a2d5dfbb014cc55e733e029f27a19bbe90cbf58e186f48e315aa5a0ca4f56be9",
+      "sha256": "a2d5dfbb014cc55e733e029f27a19bbe90cbf58e186f48e315aa5a0ca4f56be9",
+      "size": 1693
+    },
+    {
+      "mtime": 1774944120.891766,
+      "note": "",
+      "path": "output/agent_state_fixed.py",
+      "prefix_sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "size": 3
+    },
+    {
+      "mtime": 1774175640.7341523,
+      "note": "",
+      "path": "output/agent_utils.py",
+      "prefix_sha256": "c0227545bcf015f04a078e89f3c8971c169c589f974f372eb7ecc9bcde59bd07",
+      "sha256": "c0227545bcf015f04a078e89f3c8971c169c589f974f372eb7ecc9bcde59bd07",
+      "size": 488
+    },
+    {
+      "mtime": 1777262623.430246,
+      "note": "",
+      "path": "output/anomaly_detector.py",
+      "prefix_sha256": "1c5884ce94413a59af6b7efcdc7ba1e39b9e50b5b60436759ebaa780c09e51a5",
+      "sha256": "1c5884ce94413a59af6b7efcdc7ba1e39b9e50b5b60436759ebaa780c09e51a5",
+      "size": 7994
+    },
+    {
+      "mtime": 1774886525.7701464,
+      "note": "",
+      "path": "output/anomaly_detector_fixed.py",
+      "prefix_sha256": "68080b89417d945edf3fcdcd96a23f19bcf4e3b3d793d5e4ddc2afba891f0416",
+      "sha256": "68080b89417d945edf3fcdcd96a23f19bcf4e3b3d793d5e4ddc2afba891f0416",
+      "size": 29
+    },
+    {
+      "mtime": 1778457661.154859,
+      "note": "",
+      "path": "output/app/action_requests/store.py",
+      "prefix_sha256": "14ac1459577d3f4da325aec52b03c074661f385a911f65eedba1dc3d190c35bf",
+      "sha256": "14ac1459577d3f4da325aec52b03c074661f385a911f65eedba1dc3d190c35bf",
+      "size": 2790
+    },
+    {
+      "mtime": 1777248111.66995,
+      "note": "",
+      "path": "output/app/aesthetics/api.py",
+      "prefix_sha256": "4de2cf63d5c071babd5649e222fa00d167aa3e04db31d77914d8d58831859f80",
+      "sha256": "4de2cf63d5c071babd5649e222fa00d167aa3e04db31d77914d8d58831859f80",
+      "size": 3926
+    },
+    {
+      "mtime": 1776845195.0866568,
+      "note": "",
+      "path": "output/app/agents/desktop_agent.py",
+      "prefix_sha256": "5b42d425f137304344e90dd33e4feb9fc43e36bcc6d9470d1d531d67c19ca1ef",
+      "sha256": "5b42d425f137304344e90dd33e4feb9fc43e36bcc6d9470d1d531d67c19ca1ef",
+      "size": 2428
+    },
+    {
+      "mtime": 1776845315.9106908,
+      "note": "",
+      "path": "output/app/agents/devops_agent.py",
+      "prefix_sha256": "9024e1229cfdddc0260ca41057d74d8ae063b20d2e05e081f9f393ab0841bf8d",
+      "sha256": "9024e1229cfdddc0260ca41057d74d8ae063b20d2e05e081f9f393ab0841bf8d",
+      "size": 2967
+    },
+    {
+      "mtime": 1776845315.910845,
+      "note": "",
+      "path": "output/app/agents/financial_analyst.py",
+      "prefix_sha256": "01d830c144bbed646073896c3db6d322b3a4092df0d08a475d0aaaa3a7736d37",
+      "sha256": "01d830c144bbed646073896c3db6d322b3a4092df0d08a475d0aaaa3a7736d37",
+      "size": 2727
+    },
+    {
+      "mtime": 1776845315.9124177,
+      "note": "",
+      "path": "output/app/agents/repo_analyst.py",
+      "prefix_sha256": "64d529c831367e31fe3f6c27a3ab971eb035bba07fc3e7452e473ba2ef5ac4dd",
+      "sha256": "64d529c831367e31fe3f6c27a3ab971eb035bba07fc3e7452e473ba2ef5ac4dd",
+      "size": 2358
+    },
+    {
+      "mtime": 1776845315.914005,
+      "note": "",
+      "path": "output/app/api/workspace_api.py",
+      "prefix_sha256": "68d9a39d3253ddc1ea870ae634bc28445356e210f52cc3e295e1bcb36f064aed",
+      "sha256": "68d9a39d3253ddc1ea870ae634bc28445356e210f52cc3e295e1bcb36f064aed",
+      "size": 8569
+    },
+    {
+      "mtime": 1778284905.859173,
+      "note": "",
+      "path": "output/app/bridge_client.py",
+      "prefix_sha256": "784492414d7e60ab4eddcc50523ebf84248a88fe3143ded306dd8f0c90d58c2b",
+      "sha256": "784492414d7e60ab4eddcc50523ebf84248a88fe3143ded306dd8f0c90d58c2b",
+      "size": 9278
+    },
+    {
+      "mtime": 1776903146.1851456,
+      "note": "",
+      "path": "output/app/consciousness/config.py",
+      "prefix_sha256": "bbbf52f9f9fde952824fe9fa1820c4e250c3a392683c80ae2766f5e38abf7ac7",
+      "sha256": "bbbf52f9f9fde952824fe9fa1820c4e250c3a392683c80ae2766f5e38abf7ac7",
+      "size": 5930
+    },
+    {
+      "mtime": 1777147304.873462,
+      "note": "",
+      "path": "output/app/control_plane/db.py",
+      "prefix_sha256": "5137cc71ac5caad640e41f6f63840ae928489c19ca37fe661e4fb3716433168c",
+      "sha256": "5137cc71ac5caad640e41f6f63840ae928489c19ca37fe661e4fb3716433168c",
+      "size": 4656
+    },
+    {
+      "mtime": 1777161979.98433,
+      "note": "",
+      "path": "output/app/conversation_store.py",
+      "prefix_sha256": "c92c5c4fcc2ecd8381acc717344241a97af49258db43bcb142a9176a8c4f8230",
+      "sha256": "c92c5c4fcc2ecd8381acc717344241a97af49258db43bcb142a9176a8c4f8230",
+      "size": 21642
+    },
+    {
+      "mtime": 1774785637.7274764,
+      "note": "",
+      "path": "output/app/main.py",
+      "prefix_sha256": "35367b367db74ee3c69f79fd2c233fa38ea677da3fbb1d8e6356be01968b382b",
+      "sha256": "35367b367db74ee3c69f79fd2c233fa38ea677da3fbb1d8e6356be01968b382b",
+      "size": 28
+    },
+    {
+      "mtime": 1774785641.583849,
+      "note": "",
+      "path": "output/app/memory/chromadb_manager.py",
+      "prefix_sha256": "35367b367db74ee3c69f79fd2c233fa38ea677da3fbb1d8e6356be01968b382b",
+      "sha256": "35367b367db74ee3c69f79fd2c233fa38ea677da3fbb1d8e6356be01968b382b",
+      "size": 28
+    },
+    {
+      "mtime": 1777766536.107723,
+      "note": "",
+      "path": "output/app_aesthetics_api_fixed.py",
+      "prefix_sha256": "f0890e54af369d6027ca4196a65519d2ae0d8c4d0b0e5fdbaee6b47dcbb096c4",
+      "sha256": "f0890e54af369d6027ca4196a65519d2ae0d8c4d0b0e5fdbaee6b47dcbb096c4",
+      "size": 4442
+    },
+    {
+      "mtime": 1775995415.2709508,
+      "note": "",
+      "path": "output/attention_schema_fixed.py",
+      "prefix_sha256": "301b1c3cff38be44e9a75ab137b0f96672b543e476a6b6dffda800acd201f6de",
+      "sha256": "301b1c3cff38be44e9a75ab137b0f96672b543e476a6b6dffda800acd201f6de",
+      "size": 13940
+    },
+    {
+      "mtime": 1774101430.27253,
+      "note": "",
+      "path": "output/bottleneck_report.md",
+      "prefix_sha256": "18a973a66740d873e7342cf914e434e70c1a524b3c43acafe8128129d80d2f7f",
+      "sha256": "18a973a66740d873e7342cf914e434e70c1a524b3c43acafe8128129d80d2f7f",
+      "size": 14485
+    },
+    {
+      "mtime": 1778278099.342384,
+      "note": "",
+      "path": "output/brainstorm/5e0bf54cf96d.md",
+      "prefix_sha256": "42116a7584a28d70e36016dd00515ea8fae48bb1041fa09c5f279f356a24f031",
+      "sha256": "42116a7584a28d70e36016dd00515ea8fae48bb1041fa09c5f279f356a24f031",
+      "size": 13048
+    },
+    {
+      "mtime": 1775347884.4375315,
+      "note": "",
+      "path": "output/bug_report_template.md",
+      "prefix_sha256": "75c8a274f57aa730786d8bb77368345cd38e77761f9a85a12f398f2945badaa1",
+      "sha256": "75c8a274f57aa730786d8bb77368345cd38e77761f9a85a12f398f2945badaa1",
+      "size": 802
+    },
+    {
+      "mtime": 1778594515.545491,
+      "note": "",
+      "path": "output/check_gateway.py",
+      "prefix_sha256": "a57878cd46f527157f95ac6e7e65bfd966dda0a5647ba17f74f3b71a68994cc5",
+      "sha256": "a57878cd46f527157f95ac6e7e65bfd966dda0a5647ba17f74f3b71a68994cc5",
+      "size": 957
+    },
+    {
+      "mtime": 1776787272.2417364,
+      "note": "",
+      "path": "output/circuit_breaker.py",
+      "prefix_sha256": "705de0bba079edfd3d0467790ced0f307269b2221ce02f2261ee47edf4efbfcb",
+      "sha256": "705de0bba079edfd3d0467790ced0f307269b2221ce02f2261ee47edf4efbfcb",
+      "size": 3962
+    },
+    {
+      "mtime": 1776457599.8012824,
+      "note": "",
+      "path": "output/cnn_headlines.py",
+      "prefix_sha256": "48df2b0a587baf1324ac5ac7cb54cb3a2c371908f86e28964d895291448832d9",
+      "sha256": "48df2b0a587baf1324ac5ac7cb54cb3a2c371908f86e28964d895291448832d9",
+      "size": 2446
+    },
+    {
+      "mtime": 1774425829.0673513,
+      "note": "",
+      "path": "output/commander_fixed.py",
+      "prefix_sha256": "d289e70fb2d9e0a320011e55a1edbc3f7e351a7b1901e37e3603395333f0ef92",
+      "sha256": "d289e70fb2d9e0a320011e55a1edbc3f7e351a7b1901e37e3603395333f0ef92",
+      "size": 27
+    },
+    {
+      "mtime": 1775390702.5211442,
+      "note": "",
+      "path": "output/competence_tracker.py",
+      "prefix_sha256": "8f5d99beaefaf2d28ea3342ca8768159483bf0ec9f716daf3541d7ca406ca41e",
+      "sha256": "8f5d99beaefaf2d28ea3342ca8768159483bf0ec9f716daf3541d7ca406ca41e",
+      "size": 11485
+    },
+    {
+      "mtime": 1775145879.950843,
+      "note": "",
+      "path": "output/competence_tracker_fixed.py",
+      "prefix_sha256": "3ee06b696bbc928f06dd7bfec72153c4fee35ec4a01999243378b10f06def942",
+      "sha256": "3ee06b696bbc928f06dd7bfec72153c4fee35ec4a01999243378b10f06def942",
+      "size": 11687
+    },
+    {
+      "mtime": 1778513208.134726,
+      "note": "",
+      "path": "output/create_forest_age_chart.py",
+      "prefix_sha256": "ca61b0bc6e0d8144fe42e95982d34c10d7e3a7c5df856fd9537dcca230d17d7a",
+      "sha256": "ca61b0bc6e0d8144fe42e95982d34c10d7e3a7c5df856fd9537dcca230d17d7a",
+      "size": 2845
+    },
+    {
+      "mtime": 1775250091.2390997,
+      "note": "",
+      "path": "output/docs/data_20260403_210131.xlsx",
+      "prefix_sha256": "acca6261f424ab625d018026f595f69006d3d1a9ada72dd52ff0f43997c5e08a",
+      "sha256": "acca6261f424ab625d018026f595f69006d3d1a9ada72dd52ff0f43997c5e08a",
+      "size": 4901
+    },
+    {
+      "mtime": 1775250091.239474,
+      "note": "",
+      "path": "output/docs/page_20260403_210131.html",
+      "prefix_sha256": "7ca7363a4def5bc4e1005719c63c2a45f94daddb79562030b820f4824a9255bd",
+      "sha256": "7ca7363a4def5bc4e1005719c63c2a45f94daddb79562030b820f4824a9255bd",
+      "size": 2008
+    },
+    {
+      "mtime": 1775250983.4476635,
+      "note": "",
+      "path": "output/docs/page_20260403_211623.html",
+      "prefix_sha256": "6b07473403b4e669ddb6f967316e3b183129fa6859aff3ef9e4edea1148752b4",
+      "sha256": "6b07473403b4e669ddb6f967316e3b183129fa6859aff3ef9e4edea1148752b4",
+      "size": 1924
+    },
+    {
+      "mtime": 1775250091.0279715,
+      "note": "",
+      "path": "output/docs/report_20260403_210131.docx",
+      "prefix_sha256": "35c8ee4dcb32e8017dc1de5f7f7e2a167addd517ce976fa5d85764de03fcdff5",
+      "sha256": "35c8ee4dcb32e8017dc1de5f7f7e2a167addd517ce976fa5d85764de03fcdff5",
+      "size": 36735
+    },
+    {
+      "mtime": 1775250983.379457,
+      "note": "",
+      "path": "output/docs/report_20260403_211623.pdf",
+      "prefix_sha256": "14e2c2978881020b2706a6b14c7ecafb29f2728e61e5eca40beeed48c3866770",
+      "sha256": "14e2c2978881020b2706a6b14c7ecafb29f2728e61e5eca40beeed48c3866770",
+      "size": 2031
+    },
+    {
+      "mtime": 1776681415.7635586,
+      "note": "",
+      "path": "output/ecological_data_viz.py",
+      "prefix_sha256": "c22e4cbcb1cf9be566e75985566fb1ac0f08f64278d50911549d8355d8a2de4b",
+      "sha256": "c22e4cbcb1cf9be566e75985566fb1ac0f08f64278d50911549d8355d8a2de4b",
+      "size": 7638
+    },
+    {
+      "mtime": 1778310907.191134,
+      "note": "",
+      "path": "output/eesti_mets/estonia_forest_age_distribution.py",
+      "prefix_sha256": "1b0b4ffbf31d1805ec0bf2c1a582fcb32a273962093f2161ef1b0b46228fe503",
+      "sha256": "1b0b4ffbf31d1805ec0bf2c1a582fcb32a273962093f2161ef1b0b46228fe503",
+      "size": 16573
+    },
+    {
+      "mtime": 1778310949.965135,
+      "note": "",
+      "path": "output/eesti_mets/estonia_forest_age_distribution_estonia.csv",
+      "prefix_sha256": "37619ea48e7f920b17828f8ba78fa052e2fe08fcc510efb171cea58ad72aa784",
+      "sha256": "37619ea48e7f920b17828f8ba78fa052e2fe08fcc510efb171cea58ad72aa784",
+      "size": 807
+    },
+    {
+      "mtime": 1778310950.830135,
+      "note": "",
+      "path": "output/eesti_mets/estonia_forest_age_distribution_estonia.png",
+      "prefix_sha256": "4110454859e8043833697e08c4c642ce4d455b0f4b06ba65bce16a7fc8c896b3",
+      "sha256": "4110454859e8043833697e08c4c642ce4d455b0f4b06ba65bce16a7fc8c896b3",
+      "size": 263633
+    },
+    {
+      "mtime": 1778310914.442134,
+      "note": "",
+      "path": "output/eesti_mets/estonia_loss_histogram_estonia.json",
+      "prefix_sha256": "88ea86fa382486e68b2cd8803c1b5ea2e830faf91fabb613d4b671de24fb93f8",
+      "sha256": "88ea86fa382486e68b2cd8803c1b5ea2e830faf91fabb613d4b671de24fb93f8",
+      "size": 1539
+    },
+    {
+      "mtime": 1777844931.752618,
+      "note": "",
+      "path": "output/estonia_deforestation_annual.py",
+      "prefix_sha256": "39379c1d6022c609109cdc9b95a47bae08d8b3f814f15a9fc0d8029139b46fe0",
+      "sha256": "39379c1d6022c609109cdc9b95a47bae08d8b3f814f15a9fc0d8029139b46fe0",
+      "size": 2824
+    },
+    {
+      "mtime": 1778411051.313562,
+      "note": "",
+      "path": "output/estonia_forest_age.py",
+      "prefix_sha256": "77b9f7289f57d441af0efd006eeb9605e95dc7d55fd2cffb8afe3bc1bd177619",
+      "sha256": "77b9f7289f57d441af0efd006eeb9605e95dc7d55fd2cffb8afe3bc1bd177619",
+      "size": 4312
+    },
+    {
+      "mtime": 1778410216.817511,
+      "note": "",
+      "path": "output/estonia_forest_age_analysis.py",
+      "prefix_sha256": "1918f995d6b585c5f882a0d1fcd571b88682856bd5ec21d855e82a0778646622",
+      "sha256": "1918f995d6b585c5f882a0d1fcd571b88682856bd5ec21d855e82a0778646622",
+      "size": 10026
+    },
+    {
+      "mtime": 1778479779.359679,
+      "note": "",
+      "path": "output/estonia_forest_age_baseline_2018.csv",
+      "prefix_sha256": "7f2418005d9f538a4d3d37e4e712655d31b36ab0f5d75bcf3ec767a2d3111605",
+      "sha256": "7f2418005d9f538a4d3d37e4e712655d31b36ab0f5d75bcf3ec767a2d3111605",
+      "size": 947
+    },
+    {
+      "mtime": 1778497106.1906204,
+      "note": "",
+      "path": "output/estonia_forest_age_baseline_2020.csv",
+      "prefix_sha256": "17311633074fa5eb0af538a99a3d4aaf9c300384de04f9d9d2312f686f71a9bd",
+      "sha256": "17311633074fa5eb0af538a99a3d4aaf9c300384de04f9d9d2312f686f71a9bd",
+      "size": 1202
+    },
+    {
+      "mtime": 1777763385.985483,
+      "note": "",
+      "path": "output/estonia_forest_age_cohorts.csv",
+      "prefix_sha256": "f6199fd5f76beb7a9c8aff1d614b4aa77b2df377949dc47637d0dfa9e1882fe2",
+      "sha256": "f6199fd5f76beb7a9c8aff1d614b4aa77b2df377949dc47637d0dfa9e1882fe2",
+      "size": 274
+    },
+    {
+      "mtime": 1778374342.275262,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution.csv",
+      "prefix_sha256": "914dbe6521271f7e31c12334ee6760e2842bdc2de9efa76314891e6b0144eda3",
+      "sha256": "914dbe6521271f7e31c12334ee6760e2842bdc2de9efa76314891e6b0144eda3",
+      "size": 821
+    },
+    {
+      "mtime": 1778513364.173275,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution.png",
+      "prefix_sha256": "713cac1c70c909bb6e2c1f2bc2a9850f0198d3779515134f854f10d9bb890c0d",
+      "sha256": "713cac1c70c909bb6e2c1f2bc2a9850f0198d3779515134f854f10d9bb890c0d",
+      "size": 172594
+    },
+    {
+      "mtime": 1778408979.695801,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution.py",
+      "prefix_sha256": "e9fcb0239e0286e083db8b56078a095b6eb3941757f6054ad079f2d533e5eeef",
+      "sha256": "e9fcb0239e0286e083db8b56078a095b6eb3941757f6054ad079f2d533e5eeef",
+      "size": 7059
+    },
+    {
+      "mtime": 1778305924.057481,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution/estonia_forest_age_proxy_by_year.csv",
+      "prefix_sha256": "29f552451dc18d3072a19962314715df44e3834209f266c74eaacece33fa13a1",
+      "sha256": "29f552451dc18d3072a19962314715df44e3834209f266c74eaacece33fa13a1",
+      "size": 576
+    },
+    {
+      "mtime": 1778305924.310481,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution/estonia_forest_age_proxy_stacked.pdf",
+      "prefix_sha256": "1449d06b91ea1cef9db2065b13ff1ab75e7b70690aea0bbaf1fb9cfc236951cd",
+      "sha256": "1449d06b91ea1cef9db2065b13ff1ab75e7b70690aea0bbaf1fb9cfc236951cd",
+      "size": 20535
+    },
+    {
+      "mtime": 1778305924.206481,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution/estonia_forest_age_proxy_stacked.png",
+      "prefix_sha256": "4f41ca25fbed526568bbfd5e642012354b6470c8893d81523c0832e3c3eb44da",
+      "sha256": "4f41ca25fbed526568bbfd5e642012354b6470c8893d81523c0832e3c3eb44da",
+      "size": 215952
+    },
+    {
+      "mtime": 1778374343.7652621,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_2000-2022.png",
+      "prefix_sha256": "c9edb6318de2b5b9517baca22373e41cdc64140d221e6c63e88b40ac14cc48bc",
+      "sha256": "c9edb6318de2b5b9517baca22373e41cdc64140d221e6c63e88b40ac14cc48bc",
+      "size": 288878
+    },
+    {
+      "mtime": 1778497119.008981,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_2000_2024.png",
+      "prefix_sha256": "d902fe5800144095bbcbd4ffdb1136cafbf72950f7d5bd20508976e89436e4d9",
+      "sha256": "d902fe5800144095bbcbd4ffdb1136cafbf72950f7d5bd20508976e89436e4d9",
+      "size": 131028
+    },
+    {
+      "mtime": 1778305921.239481,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_chart.py",
+      "prefix_sha256": "9952ca127fc605ec5c24240ebafb3d92b346fa411b00d6748366085a1c75fd0b",
+      "sha256": "9952ca127fc605ec5c24240ebafb3d92b346fa411b00d6748366085a1c75fd0b",
+      "size": 12297
+    },
+    {
+      "mtime": 1778305453.064813,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_estonia.csv",
+      "prefix_sha256": "b93a1b0413e376e683bfb38f1ae734c773c23f025b1531325420d823c0fc0ed7",
+      "sha256": "b93a1b0413e376e683bfb38f1ae734c773c23f025b1531325420d823c0fc0ed7",
+      "size": 832
+    },
+    {
+      "mtime": 1778305455.085813,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_estonia.pdf",
+      "prefix_sha256": "6073dc6fdc4ecfe42888241c73cf33e03a388f211e3926383606cf7a9796a3a7",
+      "sha256": "6073dc6fdc4ecfe42888241c73cf33e03a388f211e3926383606cf7a9796a3a7",
+      "size": 20353
+    },
+    {
+      "mtime": 1778305454.660813,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_estonia.png",
+      "prefix_sha256": "0f4b6729a93a571c36b9facd8eac051e9d2ddf9f4be5663ec0ae57d95ac06197",
+      "sha256": "0f4b6729a93a571c36b9facd8eac051e9d2ddf9f4be5663ec0ae57d95ac06197",
+      "size": 255590
+    },
+    {
+      "mtime": 1778479797.805507,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_fused.png",
+      "prefix_sha256": "9cd3d86d1c30772a9f6687a9dd0975812a5c07b0b95e02925d909c0096892e8f",
+      "sha256": "9cd3d86d1c30772a9f6687a9dd0975812a5c07b0b95e02925d909c0096892e8f",
+      "size": 118226
+    },
+    {
+      "mtime": 1778373630.53487,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_hansen.csv",
+      "prefix_sha256": "ab6514ef7d1478591d4eee47926b6058218382064e3e14ed5b65300d207c1c8b",
+      "sha256": "ab6514ef7d1478591d4eee47926b6058218382064e3e14ed5b65300d207c1c8b",
+      "size": 287
+    },
+    {
+      "mtime": 1778373630.53287,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_hansen.png",
+      "prefix_sha256": "f81a2050db3c505e85585abbb93dd344f88bbc1233f9cf9ffad304788e2309ed",
+      "sha256": "f81a2050db3c505e85585abbb93dd344f88bbc1233f9cf9ffad304788e2309ed",
+      "size": 101182
+    },
+    {
+      "mtime": 1778373584.630755,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_hansen.py",
+      "prefix_sha256": "e53d624f7541ac886f4f85f1afdfa6dcf70dd695aa8a2912cd5c44aa06b3c114",
+      "sha256": "e53d624f7541ac886f4f85f1afdfa6dcf70dd695aa8a2912cd5c44aa06b3c114",
+      "size": 6715
+    },
+    {
+      "mtime": 1778447711.998157,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_v2.png",
+      "prefix_sha256": "55f3ec63ebae79be162c24ff41d3b9cc3ddc04734d6c9bf36d4c3b1147d114a4",
+      "sha256": "55f3ec63ebae79be162c24ff41d3b9cc3ddc04734d6c9bf36d4c3b1147d114a4",
+      "size": 120406
+    },
+    {
+      "mtime": 1778479756.494974,
+      "note": "",
+      "path": "output/estonia_forest_age_distribution_v3.png",
+      "prefix_sha256": "72592b501720ace8ede008c32639d13638df60617d000d62e570e6cbdbb868af",
+      "sha256": "72592b501720ace8ede008c32639d13638df60617d000d62e570e6cbdbb868af",
+      "size": 120977
+    },
+    {
+      "mtime": 1778350080.073793,
+      "note": "",
+      "path": "output/estonia_forest_age_final.py",
+      "prefix_sha256": "8879eda3e0d94a31cbcf4f70310b0cebb6457ab70aa6226637fa2f22be44f9ea",
+      "sha256": "8879eda3e0d94a31cbcf4f70310b0cebb6457ab70aa6226637fa2f22be44f9ea",
+      "size": 6796
+    },
+    {
+      "mtime": 1777750071.134599,
+      "note": "",
+      "path": "output/estonia_forest_age_map.py",
+      "prefix_sha256": "9e085ef56f0aada0acf62e4cdd33cf3ff847d13908989497ac643fbed79f02fc",
+      "sha256": "9e085ef56f0aada0acf62e4cdd33cf3ff847d13908989497ac643fbed79f02fc",
+      "size": 3471
+    },
+    {
+      "mtime": 1777752382.408576,
+      "note": "",
+      "path": "output/estonia_forest_analysis.py",
+      "prefix_sha256": "bcfc2bc9e162102b2126f415a4b8224d68fef10ae71a749a9f8d71c00cd4e0b9",
+      "sha256": "bcfc2bc9e162102b2126f415a4b8224d68fef10ae71a749a9f8d71c00cd4e0b9",
+      "size": 12508
+    },
+    {
+      "mtime": 1778410080.410848,
+      "note": "",
+      "path": "output/estonia_forest_avg_age.py",
+      "prefix_sha256": "18f008dd3114f4948bd242bf9a28041a8ed1c56119a69b0ac0a6270db6875ba9",
+      "sha256": "18f008dd3114f4948bd242bf9a28041a8ed1c56119a69b0ac0a6270db6875ba9",
+      "size": 10659
+    },
+    {
+      "mtime": 1778411058.679562,
+      "note": "",
+      "path": "output/estonia_forest_avg_age_2000_2024.png",
+      "prefix_sha256": "7ae04ebb63f2d88670cffc9576e3f7c8936e8df24e57760589ecb5e900b98b7b",
+      "sha256": "7ae04ebb63f2d88670cffc9576e3f7c8936e8df24e57760589ecb5e900b98b7b",
+      "size": 77253
+    },
+    {
+      "mtime": 1777763385.985483,
+      "note": "",
+      "path": "output/estonia_forest_loss_per_year.csv",
+      "prefix_sha256": "e59e666bca413f96135dbeb4bce543c5b2da2676d11520b86a403ce210b6e28b",
+      "sha256": "e59e666bca413f96135dbeb4bce543c5b2da2676d11520b86a403ce210b6e28b",
+      "size": 319
+    },
+    {
+      "mtime": 1777923519.956239,
+      "note": "",
+      "path": "output/estonia_forest_maps.py",
+      "prefix_sha256": "bd5c037d8526871d388f30caec83dd8d5aa142b75734a1c5d1d58627dabc8b1f",
+      "sha256": "bd5c037d8526871d388f30caec83dd8d5aa142b75734a1c5d1d58627dabc8b1f",
+      "size": 2410
+    },
+    {
+      "mtime": 1777752482.907281,
+      "note": "",
+      "path": "output/estonia_forest_maps_complete.py",
+      "prefix_sha256": "2bbc167fba929cf7917cfb7fcc777620d2d76522aceeccdb5b03a26b00ebd733",
+      "sha256": "2bbc167fba929cf7917cfb7fcc777620d2d76522aceeccdb5b03a26b00ebd733",
+      "size": 12388
+    },
+    {
+      "mtime": 1777719446.3611372,
+      "note": "",
+      "path": "output/estonia_forest_report.md",
+      "prefix_sha256": "3beccaa0e77f864599abec7684455924586e046d0873d7608d78648f618010dd",
+      "sha256": "3beccaa0e77f864599abec7684455924586e046d0873d7608d78648f618010dd",
+      "size": 4528
+    },
+    {
+      "mtime": 1777763386.216483,
+      "note": "",
+      "path": "output/estonia_forest_report.pdf",
+      "prefix_sha256": "4309105b119f4ff5d5c960af67d6c7d89cda332d40771f9caaeeb3eaa96aca9f",
+      "sha256": "4309105b119f4ff5d5c960af67d6c7d89cda332d40771f9caaeeb3eaa96aca9f",
+      "size": 48083
+    },
+    {
+      "mtime": 1777762182.162128,
+      "note": "",
+      "path": "output/estonia_forest_report_2012_2025.py",
+      "prefix_sha256": "a1b899e041c52d53e247b38146315c25d806e70931ddaa122e45248f8ec9fa51",
+      "sha256": "a1b899e041c52d53e247b38146315c25d806e70931ddaa122e45248f8ec9fa51",
+      "size": 5970
+    },
+    {
+      "mtime": 1777759333.443656,
+      "note": "",
+      "path": "output/estonia_forest_stats.csv",
+      "prefix_sha256": "72cc2e584aa823c632d3e78b4d0ee26a8025ea0073709cd94b4bb98a3d1bcd5c",
+      "sha256": "72cc2e584aa823c632d3e78b4d0ee26a8025ea0073709cd94b4bb98a3d1bcd5c",
+      "size": 613
+    },
+    {
+      "mtime": 1777753814.483958,
+      "note": "",
+      "path": "output/estonia_forest_summary.csv",
+      "prefix_sha256": "10f1590c106b2fb2524a12814fa8b4da3b4a4b39ec11eee8989ca064e1a8092f",
+      "sha256": "10f1590c106b2fb2524a12814fa8b4da3b4a4b39ec11eee8989ca064e1a8092f",
+      "size": 1097
+    },
+    {
+      "mtime": 1777725055.514424,
+      "note": "",
+      "path": "output/estonia_gfc/README.md",
+      "prefix_sha256": "2a36c21ab4a0542c3a6ad18cacec38b22cc0b524036e631c54f4416cc661d659",
+      "sha256": "2a36c21ab4a0542c3a6ad18cacec38b22cc0b524036e631c54f4416cc661d659",
+      "size": 3142
+    },
+    {
+      "mtime": 1777724938.399551,
+      "note": "",
+      "path": "output/estonia_gfc/requirements.txt",
+      "prefix_sha256": "c74bac5e5f94b5311b59757ada80da25fd41e8c58d6c314fdd400eacf69d6e69",
+      "sha256": "c74bac5e5f94b5311b59757ada80da25fd41e8c58d6c314fdd400eacf69d6e69",
+      "size": 65
+    },
+    {
+      "mtime": 1777725040.668424,
+      "note": "",
+      "path": "output/estonia_gfc/run.py",
+      "prefix_sha256": "cca3400d3aa8cddb8aaff753e9868e022bf0f2afd854ee87e537d48b273364a8",
+      "sha256": "cca3400d3aa8cddb8aaff753e9868e022bf0f2afd854ee87e537d48b273364a8",
+      "size": 5764
+    },
+    {
+      "mtime": 1777720328.353644,
+      "note": "",
+      "path": "output/estonia_gfc/src/boundary.py",
+      "prefix_sha256": "2cfbff80209135538f22199daf6b4d6ea495b9e4a69f05bec7ba1ff929b3fab4",
+      "sha256": "2cfbff80209135538f22199daf6b4d6ea495b9e4a69f05bec7ba1ff929b3fab4",
+      "size": 1169
+    },
+    {
+      "mtime": 1777720301.157997,
+      "note": "",
+      "path": "output/estonia_gfc/src/config.py",
+      "prefix_sha256": "78354b78ad5506ffcaac3b789cdda650b79ccfae96e6910cde28f3e5af89e015",
+      "sha256": "78354b78ad5506ffcaac3b789cdda650b79ccfae96e6910cde28f3e5af89e015",
+      "size": 799
+    },
+    {
+      "mtime": 1777720323.0889971,
+      "note": "",
+      "path": "output/estonia_gfc/src/download.py",
+      "prefix_sha256": "fe658de1a9b207786e140bb3babca5a2b9e5b0418760497a23839f5710da7a07",
+      "sha256": "fe658de1a9b207786e140bb3babca5a2b9e5b0418760497a23839f5710da7a07",
+      "size": 4276
+    },
+    {
+      "mtime": 1777724938.401551,
+      "note": "",
+      "path": "output/estonia_gfc/src/hansen.py",
+      "prefix_sha256": "189f93bf8b0778bfde8623f02f718a5733e02d39fb9725439356c8dd06f52dae",
+      "sha256": "189f93bf8b0778bfde8623f02f718a5733e02d39fb9725439356c8dd06f52dae",
+      "size": 4164
+    },
+    {
+      "mtime": 1777724938.401551,
+      "note": "",
+      "path": "output/estonia_gfc/src/io.py",
+      "prefix_sha256": "eb4a70143748f5384e4cae051c9c462b542e1863511fa3623e642db49556342b",
+      "sha256": "eb4a70143748f5384e4cae051c9c462b542e1863511fa3623e642db49556342b",
+      "size": 2540
+    },
+    {
+      "mtime": 1777725022.575242,
+      "note": "",
+      "path": "output/estonia_gfc/src/processing.py",
+      "prefix_sha256": "04d08c238aba9a3c88cacec6d972e0dcb5ef4e25bc4880377d0b0969bd29527c",
+      "sha256": "04d08c238aba9a3c88cacec6d972e0dcb5ef4e25bc4880377d0b0969bd29527c",
+      "size": 5662
+    },
+    {
+      "mtime": 1777720305.457997,
+      "note": "",
+      "path": "output/estonia_gfc/src/utils.py",
+      "prefix_sha256": "8f95a9a68ce442c68f602d2e2ec4a46162e662fd06fc9677682af75060dcfa72",
+      "sha256": "8f95a9a68ce442c68f602d2e2ec4a46162e662fd06fc9677682af75060dcfa72",
+      "size": 822
+    },
+    {
+      "mtime": 1777721154.052212,
+      "note": "",
+      "path": "output/estonia_hansen/requirements.txt",
+      "prefix_sha256": "d7acaf1812d2cd21fef975ffd950b4a6dfa1c9eb0aa8bb84cabe0da7dc9e89bf",
+      "sha256": "d7acaf1812d2cd21fef975ffd950b4a6dfa1c9eb0aa8bb84cabe0da7dc9e89bf",
+      "size": 138
+    },
+    {
+      "mtime": 1778447065.8670945,
+      "note": "",
+      "path": "output/estonia_hansen_loss_2001_2024.csv",
+      "prefix_sha256": "f3091947032447d6b8e97eaa0521280c81c84134e2e8cb9bc53214c56fe273d3",
+      "sha256": "f3091947032447d6b8e97eaa0521280c81c84134e2e8cb9bc53214c56fe273d3",
+      "size": 1272
+    },
+    {
+      "mtime": 1778305826.594452,
+      "note": "",
+      "path": "output/estonia_hansen_loss_histogram.json",
+      "prefix_sha256": "41212a3ee0d87b94651c194d001252c9dcc43d0106f84275f65063cbce185f19",
+      "sha256": "41212a3ee0d87b94651c194d001252c9dcc43d0106f84275f65063cbce185f19",
+      "size": 1410
+    },
+    {
+      "mtime": 1778374165.503021,
+      "note": "",
+      "path": "output/estonia_loss_histogram_estonia.json",
+      "prefix_sha256": "09eff1e68df8b55e0016a8211e8f927c8b5906de7f7b4b566f0ca9e03ad8597b",
+      "sha256": "09eff1e68df8b55e0016a8211e8f927c8b5906de7f7b4b566f0ca9e03ad8597b",
+      "size": 1796
+    },
+    {
+      "mtime": 1777752607.544957,
+      "note": "",
+      "path": "output/estonia_results.json",
+      "prefix_sha256": "955f8ffafc539aa4708063b4a7ac15b729a4b09b81b373586cb165a1d4b6162d",
+      "sha256": "955f8ffafc539aa4708063b4a7ac15b729a4b09b81b373586cb165a1d4b6162d",
+      "size": 562
+    },
+    {
+      "mtime": 1777764508.49496,
+      "note": "",
+      "path": "output/estonia_smoke_test.pdf",
+      "prefix_sha256": "150cae329b48e0e6234272a0d72e652b0c98095a80201fa7f00a20dadef8c45c",
+      "sha256": "150cae329b48e0e6234272a0d72e652b0c98095a80201fa7f00a20dadef8c45c",
+      "size": 11256
+    },
+    {
+      "mtime": 1775325644.0208137,
+      "note": "",
+      "path": "output/estonian_forests_chromadb.py",
+      "prefix_sha256": "ec9941dd9be8f2ab0c2fb5f71df15ddf776c777c0802d3002db58aa33f264ee9",
+      "sha256": "ec9941dd9be8f2ab0c2fb5f71df15ddf776c777c0802d3002db58aa33f264ee9",
+      "size": 9334
+    },
+    {
+      "mtime": 1775325518.6217961,
+      "note": "",
+      "path": "output/estonian_forests_kb.py",
+      "prefix_sha256": "d867d2785c03992684d05b8556999a304e1be21ad4bccc749633dad38bd02662",
+      "sha256": "d867d2785c03992684d05b8556999a304e1be21ad4bccc749633dad38bd02662",
+      "size": 5938
+    },
+    {
+      "mtime": 1775325773.8322651,
+      "note": "",
+      "path": "output/estonian_forests_simple.py",
+      "prefix_sha256": "3882b678e9980ad38ed7361d9351aaa88db66bc69489ba8c469764ff959914c8",
+      "sha256": "3882b678e9980ad38ed7361d9351aaa88db66bc69489ba8c469764ff959914c8",
+      "size": 6420
+    },
+    {
+      "mtime": 1777752662.079048,
+      "note": "",
+      "path": "output/execution_summary.md",
+      "prefix_sha256": "7c46bc71f02449475c83d789c2e38b916f0c96d53d44b8ef381b18eab47a7dfe",
+      "sha256": "7c46bc71f02449475c83d789c2e38b916f0c96d53d44b8ef381b18eab47a7dfe",
+      "size": 5016
+    },
+    {
+      "mtime": 1775448212.2891738,
+      "note": "",
+      "path": "output/experiment_runner.py",
+      "prefix_sha256": "409bed4b41a7068c1d8bcb94d35bd769f93de3e9de7e281f0aa7482bd915dc24",
+      "sha256": "409bed4b41a7068c1d8bcb94d35bd769f93de3e9de7e281f0aa7482bd915dc24",
+      "size": 13784
+    },
+    {
+      "mtime": 1773950482.5402923,
+      "note": "",
+      "path": "output/fixed_commander.py",
+      "prefix_sha256": "6f4709f59ab3d14325dc71a9e42d3de4887aedfaeca43be46db16a9ecd761f4a",
+      "sha256": "6f4709f59ab3d14325dc71a9e42d3de4887aedfaeca43be46db16a9ecd761f4a",
+      "size": 15
+    },
+    {
+      "mtime": 1774828814.6261249,
+      "note": "",
+      "path": "output/fixed_idle_scheduler.py",
+      "prefix_sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "size": 3
+    },
+    {
+      "mtime": 1774828817.570258,
+      "note": "",
+      "path": "output/fixed_trigger_scanner.py",
+      "prefix_sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "size": 3
+    },
+    {
+      "mtime": 1778409812.447174,
+      "note": "",
+      "path": "output/forest_age_analysis.py",
+      "prefix_sha256": "d460d98139d94f3c559d45f772b091d84687613007490f0a022b143a29046499",
+      "sha256": "d460d98139d94f3c559d45f772b091d84687613007490f0a022b143a29046499",
+      "size": 6536
+    },
+    {
+      "mtime": 1777675275.344098,
+      "note": "",
+      "path": "output/gee_deforestation_annual.js",
+      "prefix_sha256": "c0eba707f72d291daa561c2742bbba4bf5cd617a34ca150b022de0959f3f653f",
+      "sha256": "c0eba707f72d291daa561c2742bbba4bf5cd617a34ca150b022de0959f3f653f",
+      "size": 6089
+    },
+    {
+      "mtime": 1777675298.453398,
+      "note": "",
+      "path": "output/gee_forest_age_annual.js",
+      "prefix_sha256": "c462350b305282b161a82e73576fc844d91f4877f091d43d8f4b6501bedf0f78",
+      "sha256": "c462350b305282b161a82e73576fc844d91f4877f091d43d8f4b6501bedf0f78",
+      "size": 10681
+    },
+    {
+      "mtime": 1777675324.980172,
+      "note": "",
+      "path": "output/gee_statistics_export.js",
+      "prefix_sha256": "40b2716a3e75a0b37fe249057861e601170694a7463bf61604a6ecd6cadbfc24",
+      "sha256": "40b2716a3e75a0b37fe249057861e601170694a7463bf61604a6ecd6cadbfc24",
+      "size": 9919
+    },
+    {
+      "mtime": 1778513834.751893,
+      "note": "",
+      "path": "output/generate_estonia_age_chart.py",
+      "prefix_sha256": "ce0692059b787e07eecaa934fcc7db9d87bfed41ae06f365c7d13f4ee7129cba",
+      "sha256": "ce0692059b787e07eecaa934fcc7db9d87bfed41ae06f365c7d13f4ee7129cba",
+      "size": 2615
+    },
+    {
+      "mtime": 1778479755.526974,
+      "note": "",
+      "path": "output/hansen_loss_est.csv",
+      "prefix_sha256": "b65a8bc51d9522c427e5045784ab961d58e01c893a3221a71285123c3275f4cd",
+      "sha256": "b65a8bc51d9522c427e5045784ab961d58e01c893a3221a71285123c3275f4cd",
+      "size": 690
+    },
+    {
+      "mtime": 1776189764.3746037,
+      "note": "",
+      "path": "output/incident_postmortem_db_outage.md",
+      "prefix_sha256": "c3f7a77b842ec9def6bb1bd72f53fcfcf1799ed0144087573efee89c4931c6da",
+      "sha256": "c3f7a77b842ec9def6bb1bd72f53fcfcf1799ed0144087573efee89c4931c6da",
+      "size": 2898
+    },
+    {
+      "mtime": 1778432273.84408,
+      "note": "",
+      "path": "output/kadane_implementation.py",
+      "prefix_sha256": "04722eaca5c6809eda937d71266b8dbf58527774caa1e349524bf378d7cb6eaf",
+      "sha256": "04722eaca5c6809eda937d71266b8dbf58527774caa1e349524bf378d7cb6eaf",
+      "size": 1509
+    },
+    {
+      "mtime": 1775390702.5207932,
+      "note": "",
+      "path": "output/learning_planner.py",
+      "prefix_sha256": "c05e1fc418c4ad8ae7f5360cb8dfb418ba4f0e258e9a87910482d9863db07c83",
+      "sha256": "c05e1fc418c4ad8ae7f5360cb8dfb418ba4f0e258e9a87910482d9863db07c83",
+      "size": 17606
+    },
+    {
+      "mtime": 1774714672.0873964,
+      "note": "",
+      "path": "output/llm_benchmarks_fix.py",
+      "prefix_sha256": "df041a59b467f92cd287e570cb0a181b0e4d8dcc911b8efd49a4e9cf48395450",
+      "sha256": "df041a59b467f92cd287e570cb0a181b0e4d8dcc911b8efd49a4e9cf48395450",
+      "size": 4754
+    },
+    {
+      "mtime": 1774022498.6883368,
+      "note": "",
+      "path": "output/llm_task_clarity_report.md",
+      "prefix_sha256": "3c015de67fcb6d7baa0eecb3ef2c759873e01a3773a4d7330a739c401504fd93",
+      "sha256": "3c015de67fcb6d7baa0eecb3ef2c759873e01a3773a4d7330a739c401504fd93",
+      "size": 2877
+    },
+    {
+      "mtime": 1775145442.5706873,
+      "note": "",
+      "path": "output/llm_tool_config.py",
+      "prefix_sha256": "85da1a881f391dada9d810d9869060b8d36b58be4cdb05c3fe268638d26d77db",
+      "sha256": "85da1a881f391dada9d810d9869060b8d36b58be4cdb05c3fe268638d26d77db",
+      "size": 8816
+    },
+    {
+      "mtime": 1777758986.144471,
+      "note": "",
+      "path": "output/maps/20260502T215621_estonia_loss_2012_2024.png",
+      "prefix_sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "size": 79751
+    },
+    {
+      "mtime": 1777758997.139471,
+      "note": "",
+      "path": "output/maps/20260502T215631_estonia_age_2024.png",
+      "prefix_sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "size": 31622
+    },
+    {
+      "mtime": 1777759049.106483,
+      "note": "",
+      "path": "output/maps/20260502T215721_estonia_loss_2012_2024.png",
+      "prefix_sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "size": 79751
+    },
+    {
+      "mtime": 1777759062.113483,
+      "note": "",
+      "path": "output/maps/20260502T215736_estonia_age_2024.png",
+      "prefix_sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "size": 31622
+    },
+    {
+      "mtime": 1777759167.832267,
+      "note": "",
+      "path": "output/maps/20260502T215918_estonia_loss_2012_2024.png",
+      "prefix_sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "size": 79751
+    },
+    {
+      "mtime": 1777759180.296267,
+      "note": "",
+      "path": "output/maps/20260502T215934_estonia_age_2024.png",
+      "prefix_sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "size": 31622
+    },
+    {
+      "mtime": 1777759205.743632,
+      "note": "",
+      "path": "output/maps/20260502T215959_estonia_loss_2012_2024.png",
+      "prefix_sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "size": 79751
+    },
+    {
+      "mtime": 1777759220.97697,
+      "note": "",
+      "path": "output/maps/20260502T220013_estonia_age_2024.png",
+      "prefix_sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "size": 31622
+    },
+    {
+      "mtime": 1777759282.523847,
+      "note": "",
+      "path": "output/maps/20260502T220116_estonia_loss_2012_2024.png",
+      "prefix_sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "sha256": "465f1e53216e6a4c7aa1d28bf936850260a968e63679959319408c639a0d48e0",
+      "size": 79751
+    },
+    {
+      "mtime": 1777759292.662847,
+      "note": "",
+      "path": "output/maps/20260502T220129_estonia_age_2024.png",
+      "prefix_sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "sha256": "bbe3691d541cee2cdc4fb678d1b1a7b8fec8637b83238e52b8a27b5761d8c49d",
+      "size": 31622
+    },
+    {
+      "mtime": 1777845033.7662401,
+      "note": "",
+      "path": "output/maps/20260503T215028_estonia_loss_2012.png",
+      "prefix_sha256": "3223a5822b2fe8ddec97bb267af0b62f56669f4dd6afcd0450d03a8d435eda84",
+      "sha256": "3223a5822b2fe8ddec97bb267af0b62f56669f4dd6afcd0450d03a8d435eda84",
+      "size": 6945
+    },
+    {
+      "mtime": 1777845045.02424,
+      "note": "",
+      "path": "output/maps/20260503T215038_estonia_age_2012.png",
+      "prefix_sha256": "a0202f28667a817597a50fe68abdece20c5005a41ec228232a2db3bf27b95604",
+      "sha256": "a0202f28667a817597a50fe68abdece20c5005a41ec228232a2db3bf27b95604",
+      "size": 30987
+    },
+    {
+      "mtime": 1777845055.74824,
+      "note": "",
+      "path": "output/maps/20260503T215052_estonia_loss_2013.png",
+      "prefix_sha256": "c39526d02dab98c10c7b4593713730ae3504b442d43dc9131297c81865510122",
+      "sha256": "c39526d02dab98c10c7b4593713730ae3504b442d43dc9131297c81865510122",
+      "size": 7601
+    },
+    {
+      "mtime": 1777845065.232538,
+      "note": "",
+      "path": "output/maps/20260503T215100_estonia_age_2013.png",
+      "prefix_sha256": "d835fdba2db34b334b86cf390efbeddbc8b3215b2d0d2e15b85f681599b5dd4b",
+      "sha256": "d835fdba2db34b334b86cf390efbeddbc8b3215b2d0d2e15b85f681599b5dd4b",
+      "size": 34644
+    },
+    {
+      "mtime": 1777845076.544538,
+      "note": "",
+      "path": "output/maps/20260503T215109_estonia_loss_2014.png",
+      "prefix_sha256": "c0662c0712509fec1326b5ef4754a1c877df6935ffd3a6f0176e48d597659300",
+      "sha256": "c0662c0712509fec1326b5ef4754a1c877df6935ffd3a6f0176e48d597659300",
+      "size": 8294
+    },
+    {
+      "mtime": 1777845088.008721,
+      "note": "",
+      "path": "output/maps/20260503T215121_estonia_age_2014.png",
+      "prefix_sha256": "aa30aec218a8b9454162111ef70e6bd61bb57c29ef444df69f6c6c259ad161a3",
+      "sha256": "aa30aec218a8b9454162111ef70e6bd61bb57c29ef444df69f6c6c259ad161a3",
+      "size": 38561
+    },
+    {
+      "mtime": 1777845096.689721,
+      "note": "",
+      "path": "output/maps/20260503T215133_estonia_loss_2015.png",
+      "prefix_sha256": "92321de8b25bc3edb5d84cc7180aa9bb2767892e1aa1ef74a42119bb3f1c6862",
+      "sha256": "92321de8b25bc3edb5d84cc7180aa9bb2767892e1aa1ef74a42119bb3f1c6862",
+      "size": 8815
+    },
+    {
+      "mtime": 1777845110.863721,
+      "note": "",
+      "path": "output/maps/20260503T215144_estonia_age_2015.png",
+      "prefix_sha256": "57c41ca27f4860afdaf2f45ea35b9bc34e45604f38b80599c94a12b749fd4c91",
+      "sha256": "57c41ca27f4860afdaf2f45ea35b9bc34e45604f38b80599c94a12b749fd4c91",
+      "size": 42646
+    },
+    {
+      "mtime": 1777845123.773752,
+      "note": "",
+      "path": "output/maps/20260503T215156_estonia_loss_2016.png",
+      "prefix_sha256": "e1b0318f7a2c78e16e7367a1cd97f23657114ff4048eef312b7790de5b74d733",
+      "sha256": "e1b0318f7a2c78e16e7367a1cd97f23657114ff4048eef312b7790de5b74d733",
+      "size": 11714
+    },
+    {
+      "mtime": 1777845133.658752,
+      "note": "",
+      "path": "output/maps/20260503T215208_estonia_age_2016.png",
+      "prefix_sha256": "ff751e65f94a19f6a8b16a8df2cec6b8164d627a76853d1acc179445ca189d5d",
+      "sha256": "ff751e65f94a19f6a8b16a8df2cec6b8164d627a76853d1acc179445ca189d5d",
+      "size": 47844
+    },
+    {
+      "mtime": 1777845149.299414,
+      "note": "",
+      "path": "output/maps/20260503T215221_estonia_loss_2017.png",
+      "prefix_sha256": "4a1f27470dd8fbeb99c75a7d579f6d2b0184943cf18fc002b87c4bf8946e5f72",
+      "sha256": "4a1f27470dd8fbeb99c75a7d579f6d2b0184943cf18fc002b87c4bf8946e5f72",
+      "size": 12905
+    },
+    {
+      "mtime": 1777845163.186414,
+      "note": "",
+      "path": "output/maps/20260503T215238_estonia_age_2017.png",
+      "prefix_sha256": "8e8c3adcd9d79718bcde04c1fb903f7bae9509ed82e6969373fcd75baec2a827",
+      "sha256": "8e8c3adcd9d79718bcde04c1fb903f7bae9509ed82e6969373fcd75baec2a827",
+      "size": 52878
+    },
+    {
+      "mtime": 1777845172.848414,
+      "note": "",
+      "path": "output/maps/20260503T215247_estonia_loss_2018.png",
+      "prefix_sha256": "c37955dd8253de97c41a7a037f50434e297908ab860cf155dedc38db751ebade",
+      "sha256": "c37955dd8253de97c41a7a037f50434e297908ab860cf155dedc38db751ebade",
+      "size": 12592
+    },
+    {
+      "mtime": 1777845184.47727,
+      "note": "",
+      "path": "output/maps/20260503T215257_estonia_age_2018.png",
+      "prefix_sha256": "50b340c2ab513d692feeca5e812fde415d49b0dedcb576ab9c4cd1455c6aa681",
+      "sha256": "50b340c2ab513d692feeca5e812fde415d49b0dedcb576ab9c4cd1455c6aa681",
+      "size": 58216
+    },
+    {
+      "mtime": 1777845196.21227,
+      "note": "",
+      "path": "output/maps/20260503T215310_estonia_loss_2019.png",
+      "prefix_sha256": "389a805e1b657f0ef42ccd7cf5e9ce769f772eab0a6a9bb7196793099ed460db",
+      "sha256": "389a805e1b657f0ef42ccd7cf5e9ce769f772eab0a6a9bb7196793099ed460db",
+      "size": 14473
+    },
+    {
+      "mtime": 1777845210.342545,
+      "note": "",
+      "path": "output/maps/20260503T215322_estonia_age_2019.png",
+      "prefix_sha256": "3c2ad1c02ac9318a0ff9606433861cbca7f3cabd9fe51c849329a27f5c6ee5c2",
+      "sha256": "3c2ad1c02ac9318a0ff9606433861cbca7f3cabd9fe51c849329a27f5c6ee5c2",
+      "size": 63660
+    },
+    {
+      "mtime": 1777845223.318545,
+      "note": "",
+      "path": "output/maps/20260503T215336_estonia_loss_2020.png",
+      "prefix_sha256": "a00c8aa669e74d7cda1392f0367bad2ea62b53d8c2903b795c7205b4caeb2d6a",
+      "sha256": "a00c8aa669e74d7cda1392f0367bad2ea62b53d8c2903b795c7205b4caeb2d6a",
+      "size": 12154
+    },
+    {
+      "mtime": 1777845238.278386,
+      "note": "",
+      "path": "output/maps/20260503T215351_estonia_age_2020.png",
+      "prefix_sha256": "6327e024db10815990ee5703a72f716d812cea6682c7373403a14e1e871b617b",
+      "sha256": "6327e024db10815990ee5703a72f716d812cea6682c7373403a14e1e871b617b",
+      "size": 67823
+    },
+    {
+      "mtime": 1777845249.124386,
+      "note": "",
+      "path": "output/maps/20260503T215404_estonia_loss_2021.png",
+      "prefix_sha256": "0bf0958bf955f8b471bf2f6e792489f6adb8adf73ccf94edd1e9ed5c92c8b7c3",
+      "sha256": "0bf0958bf955f8b471bf2f6e792489f6adb8adf73ccf94edd1e9ed5c92c8b7c3",
+      "size": 11850
+    },
+    {
+      "mtime": 1777845266.428386,
+      "note": "",
+      "path": "output/maps/20260503T215417_estonia_age_2021.png",
+      "prefix_sha256": "83daec053142da3723c9feafe533fcb863aff9026239a18fb34465963a7c45e3",
+      "sha256": "83daec053142da3723c9feafe533fcb863aff9026239a18fb34465963a7c45e3",
+      "size": 71784
+    },
+    {
+      "mtime": 1777845280.405782,
+      "note": "",
+      "path": "output/maps/20260503T215431_estonia_loss_2022.png",
+      "prefix_sha256": "002df21722cc60a6c7744c435a5b9b8fe5f801c0b31b237a988019a9e0086307",
+      "sha256": "002df21722cc60a6c7744c435a5b9b8fe5f801c0b31b237a988019a9e0086307",
+      "size": 12890
+    },
+    {
+      "mtime": 1777845319.929464,
+      "note": "",
+      "path": "output/maps/20260503T215455_estonia_age_2022.png",
+      "prefix_sha256": "a1c1cd77b2518df6f01bd928de0ab993c9b5755a45f1b6796435d26285d2646a",
+      "sha256": "a1c1cd77b2518df6f01bd928de0ab993c9b5755a45f1b6796435d26285d2646a",
+      "size": 75645
+    },
+    {
+      "mtime": 1777845362.739243,
+      "note": "",
+      "path": "output/maps/20260503T215553_estonia_loss_2023.png",
+      "prefix_sha256": "9ad977e3296f6789e6ec8487eec7e2006350197164b45fba4aecc4392e45d13c",
+      "sha256": "9ad977e3296f6789e6ec8487eec7e2006350197164b45fba4aecc4392e45d13c",
+      "size": 11890
+    },
+    {
+      "mtime": 1777845387.859243,
+      "note": "",
+      "path": "output/maps/20260503T215617_estonia_age_2023.png",
+      "prefix_sha256": "5e006d6bf4de2d5771410feb82d0b0a8337cce00c7d7673cb7b1dbed65adbb7e",
+      "sha256": "5e006d6bf4de2d5771410feb82d0b0a8337cce00c7d7673cb7b1dbed65adbb7e",
+      "size": 78502
+    },
+    {
+      "mtime": 1777845413.052047,
+      "note": "",
+      "path": "output/maps/20260503T215639_estonia_loss_2024.png",
+      "prefix_sha256": "6af5ce4bd5880eb88569df8c03f6a6cf66a28f1bba3942a732b46fec44042ca1",
+      "sha256": "6af5ce4bd5880eb88569df8c03f6a6cf66a28f1bba3942a732b46fec44042ca1",
+      "size": 11223
+    },
+    {
+      "mtime": 1777845436.256028,
+      "note": "",
+      "path": "output/maps/20260503T215659_estonia_age_2024.png",
+      "prefix_sha256": "bd111709a55b3cd886b10b676665c4358bc91548128b904d75aa99a250a4490f",
+      "sha256": "bd111709a55b3cd886b10b676665c4358bc91548128b904d75aa99a250a4490f",
+      "size": 81034
+    },
+    {
+      "mtime": 1777923617.201033,
+      "note": "",
+      "path": "output/maps/20260504T194013_estonia_deforestation_2012.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923647.432063,
+      "note": "",
+      "path": "output/maps/20260504T194038_estonia_deforestation_2012.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923661.917063,
+      "note": "",
+      "path": "output/maps/20260504T194053_estonia_forest_age_2012.png",
+      "prefix_sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "size": 34967
+    },
+    {
+      "mtime": 1777923669.534063,
+      "note": "",
+      "path": "output/maps/20260504T194106_estonia_deforestation_2013.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923678.648745,
+      "note": "",
+      "path": "output/maps/20260504T194113_estonia_forest_age_2013.png",
+      "prefix_sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "size": 35053
+    },
+    {
+      "mtime": 1777923690.001745,
+      "note": "",
+      "path": "output/maps/20260504T194126_estonia_deforestation_2014.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923698.489745,
+      "note": "",
+      "path": "output/maps/20260504T194135_estonia_forest_age_2014.png",
+      "prefix_sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "size": 35241
+    },
+    {
+      "mtime": 1777923712.858544,
+      "note": "",
+      "path": "output/maps/20260504T194147_estonia_deforestation_2015.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923725.153544,
+      "note": "",
+      "path": "output/maps/20260504T194200_estonia_forest_age_2015.png",
+      "prefix_sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "size": 35711
+    },
+    {
+      "mtime": 1777923744.119139,
+      "note": "",
+      "path": "output/maps/20260504T194216_estonia_deforestation_2016.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923758.763139,
+      "note": "",
+      "path": "output/maps/20260504T194229_estonia_deforestation_2012.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923752.841139,
+      "note": "",
+      "path": "output/maps/20260504T194229_estonia_forest_age_2016.png",
+      "prefix_sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "size": 35513
+    },
+    {
+      "mtime": 1777923762.771139,
+      "note": "",
+      "path": "output/maps/20260504T194238_estonia_deforestation_2017.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923772.047133,
+      "note": "",
+      "path": "output/maps/20260504T194244_estonia_forest_age_2012.png",
+      "prefix_sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "size": 34967
+    },
+    {
+      "mtime": 1777923778.874133,
+      "note": "",
+      "path": "output/maps/20260504T194251_estonia_forest_age_2017.png",
+      "prefix_sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "size": 35521
+    },
+    {
+      "mtime": 1777923789.997133,
+      "note": "",
+      "path": "output/maps/20260504T194300_estonia_deforestation_2013.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923789.130133,
+      "note": "",
+      "path": "output/maps/20260504T194304_estonia_deforestation_2018.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923801.903639,
+      "note": "",
+      "path": "output/maps/20260504T194315_estonia_forest_age_2013.png",
+      "prefix_sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "size": 35053
+    },
+    {
+      "mtime": 1777923804.690639,
+      "note": "",
+      "path": "output/maps/20260504T194315_estonia_forest_age_2018.png",
+      "prefix_sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "size": 35321
+    },
+    {
+      "mtime": 1777923815.891639,
+      "note": "",
+      "path": "output/maps/20260504T194331_estonia_deforestation_2014.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923822.295639,
+      "note": "",
+      "path": "output/maps/20260504T194335_estonia_deforestation_2019.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923831.57784,
+      "note": "",
+      "path": "output/maps/20260504T194345_estonia_forest_age_2014.png",
+      "prefix_sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "size": 35241
+    },
+    {
+      "mtime": 1777923838.49684,
+      "note": "",
+      "path": "output/maps/20260504T194351_estonia_forest_age_2019.png",
+      "prefix_sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "size": 34702
+    },
+    {
+      "mtime": 1777923844.91784,
+      "note": "",
+      "path": "output/maps/20260504T194358_estonia_deforestation_2015.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923847.06184,
+      "note": "",
+      "path": "output/maps/20260504T194402_estonia_deforestation_2020.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923857.649377,
+      "note": "",
+      "path": "output/maps/20260504T194411_estonia_forest_age_2015.png",
+      "prefix_sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "size": 35711
+    },
+    {
+      "mtime": 1777923867.678377,
+      "note": "",
+      "path": "output/maps/20260504T194417_estonia_forest_age_2020.png",
+      "prefix_sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "size": 33978
+    },
+    {
+      "mtime": 1777923871.752377,
+      "note": "",
+      "path": "output/maps/20260504T194424_estonia_deforestation_2016.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923882.388377,
+      "note": "",
+      "path": "output/maps/20260504T194436_estonia_deforestation_2021.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923882.0043771,
+      "note": "",
+      "path": "output/maps/20260504T194437_estonia_forest_age_2016.png",
+      "prefix_sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "size": 35513
+    },
+    {
+      "mtime": 1777923896.969377,
+      "note": "",
+      "path": "output/maps/20260504T194448_estonia_forest_age_2021.png",
+      "prefix_sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "size": 33072
+    },
+    {
+      "mtime": 1777923897.087377,
+      "note": "",
+      "path": "output/maps/20260504T194451_estonia_deforestation_2017.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923905.307377,
+      "note": "",
+      "path": "output/maps/20260504T194501_estonia_deforestation_2022.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923911.279377,
+      "note": "",
+      "path": "output/maps/20260504T194503_estonia_forest_age_2017.png",
+      "prefix_sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "size": 35521
+    },
+    {
+      "mtime": 1777923923.262246,
+      "note": "",
+      "path": "output/maps/20260504T194514_estonia_forest_age_2022.png",
+      "prefix_sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "size": 31677
+    },
+    {
+      "mtime": 1777923930.020246,
+      "note": "",
+      "path": "output/maps/20260504T194523_estonia_deforestation_2018.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923935.797246,
+      "note": "",
+      "path": "output/maps/20260504T194529_estonia_deforestation_2023.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923939.344246,
+      "note": "",
+      "path": "output/maps/20260504T194536_estonia_forest_age_2018.png",
+      "prefix_sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "size": 35321
+    },
+    {
+      "mtime": 1777923945.560246,
+      "note": "",
+      "path": "output/maps/20260504T194542_estonia_deforestation_2012.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923948.245361,
+      "note": "",
+      "path": "output/maps/20260504T194543_estonia_forest_age_2023.png",
+      "prefix_sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "size": 29714
+    },
+    {
+      "mtime": 1777923951.680361,
+      "note": "",
+      "path": "output/maps/20260504T194546_estonia_deforestation_2019.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923959.792361,
+      "note": "",
+      "path": "output/maps/20260504T194551_estonia_forest_age_2012.png",
+      "prefix_sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "sha256": "519dfa39dc260563f6283c98849c2a4c5ec3d457d2d9e48165e5931d9c1f6734",
+      "size": 34967
+    },
+    {
+      "mtime": 1777923963.364361,
+      "note": "",
+      "path": "output/maps/20260504T194559_estonia_deforestation_2024.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923965.662361,
+      "note": "",
+      "path": "output/maps/20260504T194559_estonia_forest_age_2019.png",
+      "prefix_sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "size": 34702
+    },
+    {
+      "mtime": 1777923971.896361,
+      "note": "",
+      "path": "output/maps/20260504T194603_estonia_deforestation_2013.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923977.835633,
+      "note": "",
+      "path": "output/maps/20260504T194611_estonia_deforestation_2020.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777923977.832633,
+      "note": "",
+      "path": "output/maps/20260504T194612_estonia_forest_age_2024.png",
+      "prefix_sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "size": 26274
+    },
+    {
+      "mtime": 1777923983.514633,
+      "note": "",
+      "path": "output/maps/20260504T194618_estonia_forest_age_2013.png",
+      "prefix_sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "sha256": "aa8d42d278e2c10edd141f22d4e60ae9a583743113e576475a315484dc612d68",
+      "size": 35053
+    },
+    {
+      "mtime": 1777923989.283633,
+      "note": "",
+      "path": "output/maps/20260504T194624_estonia_forest_age_2020.png",
+      "prefix_sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "size": 33978
+    },
+    {
+      "mtime": 1777923997.715633,
+      "note": "",
+      "path": "output/maps/20260504T194631_estonia_deforestation_2014.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924004.356633,
+      "note": "",
+      "path": "output/maps/20260504T194638_estonia_deforestation_2021.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924009.193146,
+      "note": "",
+      "path": "output/maps/20260504T194641_estonia_forest_age_2014.png",
+      "prefix_sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "sha256": "d5718cf24f7898ed353c08d592aa6add3ce969ee194919f2b8c59a4a6b2b79d2",
+      "size": 35241
+    },
+    {
+      "mtime": 1777924016.838146,
+      "note": "",
+      "path": "output/maps/20260504T194648_estonia_forest_age_2021.png",
+      "prefix_sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "size": 33072
+    },
+    {
+      "mtime": 1777924028.907146,
+      "note": "",
+      "path": "output/maps/20260504T194703_estonia_deforestation_2022.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924040.794299,
+      "note": "",
+      "path": "output/maps/20260504T194717_estonia_forest_age_2022.png",
+      "prefix_sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "size": 31677
+    },
+    {
+      "mtime": 1777924052.031299,
+      "note": "",
+      "path": "output/maps/20260504T194722_estonia_deforestation_2015.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924049.531299,
+      "note": "",
+      "path": "output/maps/20260504T194724_estonia_deforestation_2023.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924064.804299,
+      "note": "",
+      "path": "output/maps/20260504T194734_estonia_forest_age_2023.png",
+      "prefix_sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "size": 29714
+    },
+    {
+      "mtime": 1777924071.060137,
+      "note": "",
+      "path": "output/maps/20260504T194747_estonia_deforestation_2015.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924075.639137,
+      "note": "",
+      "path": "output/maps/20260504T194748_estonia_deforestation_2024.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924079.314137,
+      "note": "",
+      "path": "output/maps/20260504T194756_estonia_forest_age_2015.png",
+      "prefix_sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "sha256": "a43457af07035b471df9f7182478a02201b7d91b4d9f9e9e5eaba2ed6d6f765a",
+      "size": 35711
+    },
+    {
+      "mtime": 1777924086.551137,
+      "note": "",
+      "path": "output/maps/20260504T194759_estonia_forest_age_2024.png",
+      "prefix_sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "size": 26274
+    },
+    {
+      "mtime": 1777924089.453137,
+      "note": "",
+      "path": "output/maps/20260504T194804_estonia_deforestation_2016.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924106.428186,
+      "note": "",
+      "path": "output/maps/20260504T194819_estonia_forest_age_2016.png",
+      "prefix_sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "sha256": "1cc6bbc17fa0cba6911ef151389cc9710e92dc337fc71205210c6ab3060fc476",
+      "size": 35513
+    },
+    {
+      "mtime": 1777924116.960186,
+      "note": "",
+      "path": "output/maps/20260504T194833_estonia_deforestation_2017.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924127.459566,
+      "note": "",
+      "path": "output/maps/20260504T194842_estonia_forest_age_2017.png",
+      "prefix_sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "sha256": "6af854a0cffa1864be036b12298c6f5f1aa50392cdf50b23b60db6673285be76",
+      "size": 35521
+    },
+    {
+      "mtime": 1777924139.942566,
+      "note": "",
+      "path": "output/maps/20260504T194852_estonia_deforestation_2018.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924155.3015661,
+      "note": "",
+      "path": "output/maps/20260504T194909_estonia_forest_age_2018.png",
+      "prefix_sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "sha256": "c8c438f0e7e7b9ebfc02c27505fd2e28a4460875446914c14ce3a21e0f04ca9d",
+      "size": 35321
+    },
+    {
+      "mtime": 1777924169.705374,
+      "note": "",
+      "path": "output/maps/20260504T194921_estonia_deforestation_2019.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924179.412374,
+      "note": "",
+      "path": "output/maps/20260504T194935_estonia_forest_age_2019.png",
+      "prefix_sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "sha256": "13f1cc20268c2f916ea78851d7725b87b8a7f6308fcb78a41f41e32875f42852",
+      "size": 34702
+    },
+    {
+      "mtime": 1777924196.01057,
+      "note": "",
+      "path": "output/maps/20260504T194952_estonia_deforestation_2020.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924614.9119291,
+      "note": "",
+      "path": "output/maps/20260504T195649_estonia_forest_age_2020.png",
+      "prefix_sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "size": 33978
+    },
+    {
+      "mtime": 1777924624.927748,
+      "note": "",
+      "path": "output/maps/20260504T195701_estonia_deforestation_2021.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924638.686748,
+      "note": "",
+      "path": "output/maps/20260504T195714_estonia_forest_age_2021.png",
+      "prefix_sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "size": 33072
+    },
+    {
+      "mtime": 1777924650.60315,
+      "note": "",
+      "path": "output/maps/20260504T195723_estonia_deforestation_2020.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924652.66115,
+      "note": "",
+      "path": "output/maps/20260504T195725_estonia_deforestation_2022.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924660.82115,
+      "note": "",
+      "path": "output/maps/20260504T195736_estonia_forest_age_2020.png",
+      "prefix_sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "sha256": "41ddfc0bf8729cd10a2dba4cde0c0dbe9a00dcbca141a44e9e7c131b905061bd",
+      "size": 33978
+    },
+    {
+      "mtime": 1777924661.24915,
+      "note": "",
+      "path": "output/maps/20260504T195737_estonia_forest_age_2022.png",
+      "prefix_sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "size": 31677
+    },
+    {
+      "mtime": 1777924674.34015,
+      "note": "",
+      "path": "output/maps/20260504T195746_estonia_deforestation_2023.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924671.55115,
+      "note": "",
+      "path": "output/maps/20260504T195748_estonia_deforestation_2021.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924687.128889,
+      "note": "",
+      "path": "output/maps/20260504T195759_estonia_forest_age_2023.png",
+      "prefix_sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "size": 29714
+    },
+    {
+      "mtime": 1777924686.753889,
+      "note": "",
+      "path": "output/maps/20260504T195800_estonia_forest_age_2021.png",
+      "prefix_sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "sha256": "950043c689989831e5e7e9bf9a1cee6d0f8eb8e1f41b5469a227c144d5fb9cd4",
+      "size": 33072
+    },
+    {
+      "mtime": 1777924701.037889,
+      "note": "",
+      "path": "output/maps/20260504T195814_estonia_deforestation_2022.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924699.284889,
+      "note": "",
+      "path": "output/maps/20260504T195816_estonia_deforestation_2024.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924712.712199,
+      "note": "",
+      "path": "output/maps/20260504T195823_estonia_forest_age_2024.png",
+      "prefix_sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "size": 26274
+    },
+    {
+      "mtime": 1777924715.7331991,
+      "note": "",
+      "path": "output/maps/20260504T195830_estonia_forest_age_2022.png",
+      "prefix_sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "sha256": "338f5212bf790f7d9c4b692395f4cc58432adad4c87ded8ad38af132ec2bb90e",
+      "size": 31677
+    },
+    {
+      "mtime": 1777924736.380199,
+      "note": "",
+      "path": "output/maps/20260504T195850_estonia_deforestation_2023.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924748.789368,
+      "note": "",
+      "path": "output/maps/20260504T195903_estonia_forest_age_2023.png",
+      "prefix_sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "sha256": "ad712c7a487cd2ba295e7bb27ba495eb1c63937a4f09ae3305e7adca5a1567c8",
+      "size": 29714
+    },
+    {
+      "mtime": 1777924762.879368,
+      "note": "",
+      "path": "output/maps/20260504T195915_estonia_deforestation_2024.png",
+      "prefix_sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "sha256": "0d893080d17546001262600232e23b10f64e19076d45c0d9128487db2aadc9ed",
+      "size": 30558
+    },
+    {
+      "mtime": 1777924777.271142,
+      "note": "",
+      "path": "output/maps/20260504T195931_estonia_forest_age_2024.png",
+      "prefix_sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "sha256": "f2c775051cbf087044fd96474222cd9dfc09eea9bd08ded5e0e0d57d05edcf04",
+      "size": 26274
+    },
+    {
+      "mtime": 1777925100.970208,
+      "note": "",
+      "path": "output/maps/20260504T200459_estonia_deforestation_2012.png",
+      "prefix_sha256": "7fa54f1ec38bf9a8c77e0e75b79ff244f8bd4a8bd03870a291dbc3080f7579c0",
+      "sha256": "7fa54f1ec38bf9a8c77e0e75b79ff244f8bd4a8bd03870a291dbc3080f7579c0",
+      "size": 7332
+    },
+    {
+      "mtime": 1777925105.416208,
+      "note": "",
+      "path": "output/maps/20260504T200503_estonia_deforestation_2013.png",
+      "prefix_sha256": "030a93bec5c91ff0a9aab91b1abe2fc5b530a821ad777962e486ed535c331d02",
+      "sha256": "030a93bec5c91ff0a9aab91b1abe2fc5b530a821ad777962e486ed535c331d02",
+      "size": 8021
+    },
+    {
+      "mtime": 1777925108.989208,
+      "note": "",
+      "path": "output/maps/20260504T200507_estonia_deforestation_2014.png",
+      "prefix_sha256": "40b0b9d8646e7b5e6f96cbaf8c568c1a38a0f21838ec3688643c1d2d412f9112",
+      "sha256": "40b0b9d8646e7b5e6f96cbaf8c568c1a38a0f21838ec3688643c1d2d412f9112",
+      "size": 8830
+    },
+    {
+      "mtime": 1777925114.349208,
+      "note": "",
+      "path": "output/maps/20260504T200511_estonia_deforestation_2015.png",
+      "prefix_sha256": "fe5633facf87415a8d88a783e7a51e837aefca2fb4780316489a5fc9623a1529",
+      "sha256": "fe5633facf87415a8d88a783e7a51e837aefca2fb4780316489a5fc9623a1529",
+      "size": 9253
+    },
+    {
+      "mtime": 1777925118.567208,
+      "note": "",
+      "path": "output/maps/20260504T200516_estonia_deforestation_2016.png",
+      "prefix_sha256": "8a92489fc04eb6d30aa2c109e5744c63feeb5c46dc68111f1789e0f58fb3f5e1",
+      "sha256": "8a92489fc04eb6d30aa2c109e5744c63feeb5c46dc68111f1789e0f58fb3f5e1",
+      "size": 12392
+    },
+    {
+      "mtime": 1777925122.746208,
+      "note": "",
+      "path": "output/maps/20260504T200521_estonia_deforestation_2017.png",
+      "prefix_sha256": "d24fa937b89b59d5b8e1869a0297570399eaffb277b3c7fb7aff066582c65902",
+      "sha256": "d24fa937b89b59d5b8e1869a0297570399eaffb277b3c7fb7aff066582c65902",
+      "size": 13568
+    },
+    {
+      "mtime": 1777925127.647208,
+      "note": "",
+      "path": "output/maps/20260504T200526_estonia_deforestation_2018.png",
+      "prefix_sha256": "c90b8d106b4d549c66411535c82f338cd177197c214e7e3128fc7ff7dd2770c5",
+      "sha256": "c90b8d106b4d549c66411535c82f338cd177197c214e7e3128fc7ff7dd2770c5",
+      "size": 13268
+    },
+    {
+      "mtime": 1777925131.752569,
+      "note": "",
+      "path": "output/maps/20260504T200530_estonia_deforestation_2019.png",
+      "prefix_sha256": "c22e4743573ab7ec5cc34ed7f2eee76f100d720117488fa94fdf449a361ec84e",
+      "sha256": "c22e4743573ab7ec5cc34ed7f2eee76f100d720117488fa94fdf449a361ec84e",
+      "size": 15045
+    },
+    {
+      "mtime": 1777925136.870569,
+      "note": "",
+      "path": "output/maps/20260504T200533_estonia_deforestation_2020.png",
+      "prefix_sha256": "b8c051ada09b8e9c69bce32806a8833a4329c4a57c9ecd1b0052d3ea64be3e54",
+      "sha256": "b8c051ada09b8e9c69bce32806a8833a4329c4a57c9ecd1b0052d3ea64be3e54",
+      "size": 12796
+    },
+    {
+      "mtime": 1777925141.763569,
+      "note": "",
+      "path": "output/maps/20260504T200540_estonia_deforestation_2021.png",
+      "prefix_sha256": "dbef2e79b7b60e2ee8c406b64e48e3a1f0a7cae9696dd0058dc81f4dfab0ba2a",
+      "sha256": "dbef2e79b7b60e2ee8c406b64e48e3a1f0a7cae9696dd0058dc81f4dfab0ba2a",
+      "size": 12514
+    },
+    {
+      "mtime": 1777925146.112569,
+      "note": "",
+      "path": "output/maps/20260504T200544_estonia_deforestation_2022.png",
+      "prefix_sha256": "8027a04d17895e6067985a7d74619a095ea7e24f3e9e613d12ad827c5a6b16e3",
+      "sha256": "8027a04d17895e6067985a7d74619a095ea7e24f3e9e613d12ad827c5a6b16e3",
+      "size": 13530
+    },
+    {
+      "mtime": 1777925149.689569,
+      "note": "",
+      "path": "output/maps/20260504T200548_estonia_deforestation_2023.png",
+      "prefix_sha256": "25fbb39eb53a11bc9fc56bd09faf929dd5cd6b49721d1db8393468e686e4c933",
+      "sha256": "25fbb39eb53a11bc9fc56bd09faf929dd5cd6b49721d1db8393468e686e4c933",
+      "size": 12517
+    },
+    {
+      "mtime": 1773993697.0648527,
+      "note": "",
+      "path": "output/parallel_runner.py",
+      "prefix_sha256": "1e2261c0065e62039e66f896a88c5c185e86cfc7b26de3b0c0aa8deb2309f114",
+      "sha256": "1e2261c0065e62039e66f896a88c5c185e86cfc7b26de3b0c0aa8deb2309f114",
+      "size": 3967
+    },
+    {
+      "mtime": 1774915399.3393583,
+      "note": "",
+      "path": "output/philosophy_api_fix.py",
+      "prefix_sha256": "b9a1b72638c6c0196952fb2d5c5168666e95bc4563b36517099105a0ae8b0eca",
+      "sha256": "b9a1b72638c6c0196952fb2d5c5168666e95bc4563b36517099105a0ae8b0eca",
+      "size": 7273
+    },
+    {
+      "mtime": 1774915342.528281,
+      "note": "",
+      "path": "output/philosophy_ingestion_fix.py",
+      "prefix_sha256": "f18304a7fbca33b25fc97b099cc9dd59373414c813ba20b980f44340df317e94",
+      "sha256": "f18304a7fbca33b25fc97b099cc9dd59373414c813ba20b980f44340df317e94",
+      "size": 5691
+    },
+    {
+      "mtime": 1774944117.0724485,
+      "note": "",
+      "path": "output/philosophy_vectorstore_fixed.py",
+      "prefix_sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "sha256": "ab5df625bc76dbd4e163bed2dd888df828f90159bb93556525c31821b6541d46",
+      "size": 3
+    },
+    {
+      "mtime": 1777675834.983515,
+      "note": "",
+      "path": "output/postprocess_report.py",
+      "prefix_sha256": "3c16b1fe85715b063d31d89689efe208e89107449eae08e4a154d1ad548224d7",
+      "sha256": "3c16b1fe85715b063d31d89689efe208e89107449eae08e4a154d1ad548224d7",
+      "size": 8158
+    },
+    {
+      "mtime": 1778514466.174047,
+      "note": "",
+      "path": "output/process_and_plot.py",
+      "prefix_sha256": "bb4840eb5d159912a387715365ce9e0ec139eb35d9a9d320c44f9562fd022cd7",
+      "sha256": "bb4840eb5d159912a387715365ce9e0ec139eb35d9a9d320c44f9562fd022cd7",
+      "size": 6902
+    },
+    {
+      "mtime": 1777719710.865314,
+      "note": "",
+      "path": "output/project/README.md",
+      "prefix_sha256": "097402d3ec267ab2b9645c7a02834d69c51fe579039122f1483b8d37729a3f76",
+      "sha256": "097402d3ec267ab2b9645c7a02834d69c51fe579039122f1483b8d37729a3f76",
+      "size": 3189
+    },
+    {
+      "mtime": 1777719710.863314,
+      "note": "",
+      "path": "output/project/requirements.txt",
+      "prefix_sha256": "04f79868adb611a57d81eac62ace3e3e21cd69d6428b3fc6b973abfea19365d8",
+      "sha256": "04f79868adb611a57d81eac62ace3e3e21cd69d6428b3fc6b973abfea19365d8",
+      "size": 138
+    },
+    {
+      "mtime": 1777724429.292735,
+      "note": "",
+      "path": "output/project/run.py",
+      "prefix_sha256": "b2fe23b6f64408c38de92da1ca980940e7e31733cf6dc208dd96f0d7f72d6471",
+      "sha256": "b2fe23b6f64408c38de92da1ca980940e7e31733cf6dc208dd96f0d7f72d6471",
+      "size": 4612
+    },
+    {
+      "mtime": 1777719758.392883,
+      "note": "",
+      "path": "output/project/src/boundary.py",
+      "prefix_sha256": "58eecd56e07b31e46aa97f5bf2eeff81d7c5c97bc2ced2c495a17d16f2dab152",
+      "sha256": "58eecd56e07b31e46aa97f5bf2eeff81d7c5c97bc2ced2c495a17d16f2dab152",
+      "size": 2093
+    },
+    {
+      "mtime": 1777719710.866314,
+      "note": "",
+      "path": "output/project/src/config.py",
+      "prefix_sha256": "d2bf64354b8ab0887638371250a9e68bdcdc43883f45bf7bceae170d7cc9f2b3",
+      "sha256": "d2bf64354b8ab0887638371250a9e68bdcdc43883f45bf7bceae170d7cc9f2b3",
+      "size": 1270
+    },
+    {
+      "mtime": 1777719803.117642,
+      "note": "",
+      "path": "output/project/src/hansen.py",
+      "prefix_sha256": "62d445feb157fff2af2836cab33b1e307676842fba9fe1ebdbca27864baf9338",
+      "sha256": "62d445feb157fff2af2836cab33b1e307676842fba9fe1ebdbca27864baf9338",
+      "size": 7943
+    },
+    {
+      "mtime": 1777719819.574616,
+      "note": "",
+      "path": "output/project/src/products.py",
+      "prefix_sha256": "7c1eb019c3ce4edcd8ba0714b8df2e6648510aedb1db1253bf67e159bca12b98",
+      "sha256": "7c1eb019c3ce4edcd8ba0714b8df2e6648510aedb1db1253bf67e159bca12b98",
+      "size": 4415
+    },
+    {
+      "mtime": 1777719758.395883,
+      "note": "",
+      "path": "output/project/src/raster_ops.py",
+      "prefix_sha256": "72e53ced53ea3121f614f16278ba1732746b67b3dc78f92f259da219a33723bd",
+      "sha256": "72e53ced53ea3121f614f16278ba1732746b67b3dc78f92f259da219a33723bd",
+      "size": 1503
+    },
+    {
+      "mtime": 1777719758.393883,
+      "note": "",
+      "path": "output/project/src/utils.py",
+      "prefix_sha256": "2ae879ca2b8cde37e53dacccb6c5ef77fca9301d2f94f1fc4208f1bd62a99cbd",
+      "sha256": "2ae879ca2b8cde37e53dacccb6c5ef77fca9301d2f94f1fc4208f1bd62a99cbd",
+      "size": 477
+    },
+    {
+      "mtime": 1777724429.292735,
+      "note": "",
+      "path": "output/project/src/viz.py",
+      "prefix_sha256": "7ebc63a2db9a620e6711c6d66629a3edebd319ef57d40deea48351c7a11ac9d1",
+      "sha256": "7ebc63a2db9a620e6711c6d66629a3edebd319ef57d40deea48351c7a11ac9d1",
+      "size": 2087
+    },
+    {
+      "mtime": 1776778969.4159765,
+      "note": "",
+      "path": "output/project_manager.py",
+      "prefix_sha256": "3e67891300ac21ccc9b518f9bdfe54ac387cd831537391738f294b3ab540d363",
+      "sha256": "3e67891300ac21ccc9b518f9bdfe54ac387cd831537391738f294b3ab540d363",
+      "size": 4168
+    },
+    {
+      "mtime": 1776869883.7818873,
+      "note": "",
+      "path": "output/proposed_fix.md",
+      "prefix_sha256": "a4f0d3e4674557302e298efa3f37ef5d0f4732fd7f520ac2c46181a70200d897",
+      "sha256": "a4f0d3e4674557302e298efa3f37ef5d0f4732fd7f520ac2c46181a70200d897",
+      "size": 2124
+    },
+    {
+      "mtime": 1777030275.8878682,
+      "note": "",
+      "path": "output/psp_merge_enrich.py",
+      "prefix_sha256": "754856e4fcb3c8a62251b58e36edf13cb00a4ec0aca4afa7406af22affe609a8",
+      "sha256": "754856e4fcb3c8a62251b58e36edf13cb00a4ec0aca4afa7406af22affe609a8",
+      "size": 6174
+    },
+    {
+      "mtime": 1777145211.956151,
+      "note": "",
+      "path": "output/psp_sales_leaders.py",
+      "prefix_sha256": "99b1ce1b3a85c38b0833ccbad9ca311f51f295a845dcfc7d3cab19533343fdc2",
+      "sha256": "99b1ce1b3a85c38b0833ccbad9ca311f51f295a845dcfc7d3cab19533343fdc2",
+      "size": 6899
+    },
+    {
+      "mtime": 1777145561.040564,
+      "note": "",
+      "path": "output/psp_sales_leaders_scrape.py",
+      "prefix_sha256": "12118ac5171a6d98d24d5d2835e709060c4323135b0ad6fea5be710e183a275d",
+      "sha256": "12118ac5171a6d98d24d5d2835e709060c4323135b0ad6fea5be710e183a275d",
+      "size": 9271
+    },
+    {
+      "mtime": 1777675419.569936,
+      "note": "",
+      "path": "output/python_postprocessing.py",
+      "prefix_sha256": "63ee6292e955cc2cf73d1b25bc8997f4f61f0e6747fc748c6bff103ca9d46f2b",
+      "sha256": "63ee6292e955cc2cf73d1b25bc8997f4f61f0e6747fc748c6bff103ca9d46f2b",
+      "size": 13121
+    },
+    {
+      "mtime": 1777761038.905558,
+      "note": "",
+      "path": "output/responses/create_estonia_forest_age_table.py",
+      "prefix_sha256": "642a0e33fb326460e7c5d810d55901578f0f26f0c3becb2972081ce43356ad83",
+      "sha256": "642a0e33fb326460e7c5d810d55901578f0f26f0c3becb2972081ce43356ad83",
+      "size": 8557
+    },
+    {
+      "mtime": 1778305159.916953,
+      "note": "",
+      "path": "output/responses/estonia_forest_age_distribution_chart.py",
+      "prefix_sha256": "e4e1f70e7ae5a96719ea6a279192abe2ef1f304426dacc6f9d1257a08e044a18",
+      "sha256": "e4e1f70e7ae5a96719ea6a279192abe2ef1f304426dacc6f9d1257a08e044a18",
+      "size": 16224
+    },
+    {
+      "mtime": 1778594565.853449,
+      "note": "",
+      "path": "output/responses/healing_watchdog_diagnosis.md",
+      "prefix_sha256": "93851a199c9763f3b380c8c57da5945ada29cf86d1ed049921dfd01e3a035102",
+      "sha256": "93851a199c9763f3b380c8c57da5945ada29cf86d1ed049921dfd01e3a035102",
+      "size": 7305
+    },
+    {
+      "mtime": 1776459961.1398847,
+      "note": "",
+      "path": "output/responses/response_20260417_210601.md",
+      "prefix_sha256": "cbea52ba08ee37bc993f0035e5ded6da4db1e80d48f5678225d5e87c616dfccb",
+      "sha256": "cbea52ba08ee37bc993f0035e5ded6da4db1e80d48f5678225d5e87c616dfccb",
+      "size": 8308
+    },
+    {
+      "mtime": 1776487386.985482,
+      "note": "",
+      "path": "output/responses/response_20260418_044306.md",
+      "prefix_sha256": "ad5f001cab4685d127f87ed097f225d773fe3a9237d967da066ea12cf751ce50",
+      "sha256": "ad5f001cab4685d127f87ed097f225d773fe3a9237d967da066ea12cf751ce50",
+      "size": 10197
+    },
+    {
+      "mtime": 1776490614.960386,
+      "note": "",
+      "path": "output/responses/response_20260418_053654.md",
+      "prefix_sha256": "81abf4cf584fcc680218625d0db2d10a2598cee08b0dc29c87a0c2925113e3cd",
+      "sha256": "81abf4cf584fcc680218625d0db2d10a2598cee08b0dc29c87a0c2925113e3cd",
+      "size": 5874
+    },
+    {
+      "mtime": 1776493820.5429654,
+      "note": "",
+      "path": "output/responses/response_20260418_063020.md",
+      "prefix_sha256": "3a70d59a06cff94e525a3e03ab2e701e09c91cb122fc6971693c129d6ff37233",
+      "sha256": "3a70d59a06cff94e525a3e03ab2e701e09c91cb122fc6971693c129d6ff37233",
+      "size": 8161
+    },
+    {
+      "mtime": 1776519715.5629442,
+      "note": "",
+      "path": "output/responses/response_20260418_134155.md",
+      "prefix_sha256": "eeeffe8eaa65c32c43de651d0181e94437270d0cad79d187ba52731d9c777756",
+      "sha256": "eeeffe8eaa65c32c43de651d0181e94437270d0cad79d187ba52731d9c777756",
+      "size": 5185
+    },
+    {
+      "mtime": 1776528168.8020885,
+      "note": "",
+      "path": "output/responses/response_20260418_160248.md",
+      "prefix_sha256": "5457ccf6017994b7cc83693bd400e3531e44958757d6a66c302d3adce17d4cad",
+      "sha256": "5457ccf6017994b7cc83693bd400e3531e44958757d6a66c302d3adce17d4cad",
+      "size": 13178
+    },
+    {
+      "mtime": 1776535906.8934762,
+      "note": "",
+      "path": "output/responses/response_20260418_181146.md",
+      "prefix_sha256": "36dfe59c741501907367a00ad51f37a82ff2356286e2a52ef9bd4862d069749e",
+      "sha256": "36dfe59c741501907367a00ad51f37a82ff2356286e2a52ef9bd4862d069749e",
+      "size": 1531
+    },
+    {
+      "mtime": 1776626360.1885831,
+      "note": "",
+      "path": "output/responses/response_20260419_191920.md",
+      "prefix_sha256": "ef9ab849fa1516c5d59e75641a3752fc7ef45fca287aa9a3d412a64a60b429b0",
+      "sha256": "ef9ab849fa1516c5d59e75641a3752fc7ef45fca287aa9a3d412a64a60b429b0",
+      "size": 11003
+    },
+    {
+      "mtime": 1776636321.5036979,
+      "note": "",
+      "path": "output/responses/response_20260419_220521.md",
+      "prefix_sha256": "924f789d72ebaf1e1107064b9b1ac9ca03be73572c211e456ca3786f473ac64a",
+      "sha256": "924f789d72ebaf1e1107064b9b1ac9ca03be73572c211e456ca3786f473ac64a",
+      "size": 1515
+    },
+    {
+      "mtime": 1776636463.9322839,
+      "note": "",
+      "path": "output/responses/response_20260419_220743.md",
+      "prefix_sha256": "8da9c161126ebf3ca71f0368c4cd95e690f2391832b08c4ac4d608db8a038595",
+      "sha256": "8da9c161126ebf3ca71f0368c4cd95e690f2391832b08c4ac4d608db8a038595",
+      "size": 2301
+    },
+    {
+      "mtime": 1776661165.550246,
+      "note": "",
+      "path": "output/responses/response_20260420_045925.md",
+      "prefix_sha256": "ea3a6b2ca578352c978511a50a7b04f474a1a727760a89cfe4e226616b3bacdd",
+      "sha256": "ea3a6b2ca578352c978511a50a7b04f474a1a727760a89cfe4e226616b3bacdd",
+      "size": 3487
+    },
+    {
+      "mtime": 1776674676.347958,
+      "note": "",
+      "path": "output/responses/response_20260420_084436.md",
+      "prefix_sha256": "82bebeb8146702d290c2770dfe4986a5d9211389712ca21c6ff1c093b20de70d",
+      "sha256": "82bebeb8146702d290c2770dfe4986a5d9211389712ca21c6ff1c093b20de70d",
+      "size": 3433
+    },
+    {
+      "mtime": 1776685027.6532815,
+      "note": "",
+      "path": "output/responses/response_20260420_113707.md",
+      "prefix_sha256": "18000815c0fb3d6c90dd2686308d533e9d480d6342477990c1aec07db2f6b38f",
+      "sha256": "18000815c0fb3d6c90dd2686308d533e9d480d6342477990c1aec07db2f6b38f",
+      "size": 6994
+    },
+    {
+      "mtime": 1776690419.7707627,
+      "note": "",
+      "path": "output/responses/response_20260420_130659.md",
+      "prefix_sha256": "697c0a113ee799b4751c18fb1ede003da246d6a82ebbbe5e675a8e8bfc349404",
+      "sha256": "697c0a113ee799b4751c18fb1ede003da246d6a82ebbbe5e675a8e8bfc349404",
+      "size": 21473
+    },
+    {
+      "mtime": 1776718615.563033,
+      "note": "",
+      "path": "output/responses/response_20260420_205655.md",
+      "prefix_sha256": "9548c108fa7beae96e2b8b5b430392754381b3186f2bea07938624125d31423b",
+      "sha256": "9548c108fa7beae96e2b8b5b430392754381b3186f2bea07938624125d31423b",
+      "size": 7603
+    },
+    {
+      "mtime": 1777016809.42609,
+      "note": "",
+      "path": "output/responses/response_20260424_074649.md",
+      "prefix_sha256": "4720494919ae0d07fafb8ab7483be2a55e576c9ff5beae067bf915a1aaad34ed",
+      "sha256": "4720494919ae0d07fafb8ab7483be2a55e576c9ff5beae067bf915a1aaad34ed",
+      "size": 9633
+    },
+    {
+      "mtime": 1777017164.299517,
+      "note": "",
+      "path": "output/responses/response_20260424_075244.md",
+      "prefix_sha256": "226f45249b9b500962901448371d84ace135a667f428ed03cc47c02a27b1ded5",
+      "sha256": "226f45249b9b500962901448371d84ace135a667f428ed03cc47c02a27b1ded5",
+      "size": 3002
+    },
+    {
+      "mtime": 1777024743.6236892,
+      "note": "",
+      "path": "output/responses/response_20260424_095903.md",
+      "prefix_sha256": "f39dff40934cd39b36d3483457151b3d86f142d7913edb9a94dfadcfced5c08f",
+      "sha256": "f39dff40934cd39b36d3483457151b3d86f142d7913edb9a94dfadcfced5c08f",
+      "size": 9696
+    },
+    {
+      "mtime": 1777144743.502982,
+      "note": "",
+      "path": "output/responses/response_20260425_191903.md",
+      "prefix_sha256": "f4fc71dd06700ef1fd9df824b5297e7e3d6adc8d26f02825666a1fa181e26a65",
+      "sha256": "f4fc71dd06700ef1fd9df824b5297e7e3d6adc8d26f02825666a1fa181e26a65",
+      "size": 2918
+    },
+    {
+      "mtime": 1777145845.926626,
+      "note": "",
+      "path": "output/responses/response_20260425_193725.md",
+      "prefix_sha256": "80cf3a27f4db7dc185ad114b6fc2b61cac987803a459aa085ab3248174c54fcc",
+      "sha256": "80cf3a27f4db7dc185ad114b6fc2b61cac987803a459aa085ab3248174c54fcc",
+      "size": 7193
+    },
+    {
+      "mtime": 1777146978.544131,
+      "note": "",
+      "path": "output/responses/response_20260425_195618.md",
+      "prefix_sha256": "bec0d3b90bdc2c1c82074c262a2a7d6ed46dee5cf18a8e96cbdc7164db9c31cd",
+      "sha256": "bec0d3b90bdc2c1c82074c262a2a7d6ed46dee5cf18a8e96cbdc7164db9c31cd",
+      "size": 2500
+    },
+    {
+      "mtime": 1777238735.808094,
+      "note": "",
+      "path": "output/responses/response_20260426_212535.md",
+      "prefix_sha256": "374f63cc5dceefe706889929b0a1d582d45f721d8f54eb1c23251d720a4cc622",
+      "sha256": "374f63cc5dceefe706889929b0a1d582d45f721d8f54eb1c23251d720a4cc622",
+      "size": 5161
+    },
+    {
+      "mtime": 1777240648.302907,
+      "note": "",
+      "path": "output/responses/response_20260426_215728.md",
+      "prefix_sha256": "30d6be26ccefa13a01d420a13639b4bc9f34a96a9ca02852e11e612b79562848",
+      "sha256": "30d6be26ccefa13a01d420a13639b4bc9f34a96a9ca02852e11e612b79562848",
+      "size": 1646
+    },
+    {
+      "mtime": 1777241020.425026,
+      "note": "",
+      "path": "output/responses/response_20260426_220340.md",
+      "prefix_sha256": "c85cd7f2d831c81b319a4d714ae3006f8a2cc35fced38e3ae676e08d8ea45a0d",
+      "sha256": "c85cd7f2d831c81b319a4d714ae3006f8a2cc35fced38e3ae676e08d8ea45a0d",
+      "size": 1646
+    },
+    {
+      "mtime": 1777359370.502104,
+      "note": "",
+      "path": "output/responses/response_20260428_065610.md",
+      "prefix_sha256": "9f96a18a7fbc294e4ad0e04cb02ed4e7535b5db72902bd1c03a460a32011d83e",
+      "sha256": "9f96a18a7fbc294e4ad0e04cb02ed4e7535b5db72902bd1c03a460a32011d83e",
+      "size": 2867
+    },
+    {
+      "mtime": 1777589129.225633,
+      "note": "",
+      "path": "output/responses/response_20260430_224529.md",
+      "prefix_sha256": "69f3de434ebae4fd30edfcd58de91ddcde38b14d2c2b456121b5e75be2bd43ec",
+      "sha256": "69f3de434ebae4fd30edfcd58de91ddcde38b14d2c2b456121b5e75be2bd43ec",
+      "size": 1980
+    },
+    {
+      "mtime": 1777670895.044996,
+      "note": "",
+      "path": "output/responses/response_20260501_212815.md",
+      "prefix_sha256": "54340a30759fbb88bfc40c0aa585ad35bb334c76e0e42909882991855d4da22a",
+      "sha256": "54340a30759fbb88bfc40c0aa585ad35bb334c76e0e42909882991855d4da22a",
+      "size": 3783
+    },
+    {
+      "mtime": 1777671041.785826,
+      "note": "",
+      "path": "output/responses/response_20260501_213041.md",
+      "prefix_sha256": "425410e04d861ed7ae27fa8911bb788eba1862477eac09b7ae17db202fa26cff",
+      "sha256": "425410e04d861ed7ae27fa8911bb788eba1862477eac09b7ae17db202fa26cff",
+      "size": 2587
+    },
+    {
+      "mtime": 1777673520.715981,
+      "note": "",
+      "path": "output/responses/response_20260501_221200.md",
+      "prefix_sha256": "bf8269475628b01bb0910d07912f9f6e66287f0d55846d699a9d6a93cfeb8ff7",
+      "sha256": "bf8269475628b01bb0910d07912f9f6e66287f0d55846d699a9d6a93cfeb8ff7",
+      "size": 3008
+    },
+    {
+      "mtime": 1777675958.887612,
+      "note": "",
+      "path": "output/responses/response_20260501_225238.md",
+      "prefix_sha256": "006a8442345732078261700726e1f2c81523a477e57af6e04484d1d1bd43a596",
+      "sha256": "006a8442345732078261700726e1f2c81523a477e57af6e04484d1d1bd43a596",
+      "size": 17849
+    },
+    {
+      "mtime": 1777718979.926272,
+      "note": "",
+      "path": "output/responses/response_20260502_104939.md",
+      "prefix_sha256": "109b19a7ef2d273cecacb90a46c5a5f8a6e5ec630d2add7b7169021fe2b7bc97",
+      "sha256": "109b19a7ef2d273cecacb90a46c5a5f8a6e5ec630d2add7b7169021fe2b7bc97",
+      "size": 14174
+    },
+    {
+      "mtime": 1777730199.745791,
+      "note": "",
+      "path": "output/responses/response_20260502_135639.md",
+      "prefix_sha256": "0df97f0f301e7fd76abf8aab82b325a8e728e199b5ef3f753660067106a5fd4c",
+      "sha256": "0df97f0f301e7fd76abf8aab82b325a8e728e199b5ef3f753660067106a5fd4c",
+      "size": 6485
+    },
+    {
+      "mtime": 1777753961.911965,
+      "note": "",
+      "path": "output/responses/response_20260502_203241.md",
+      "prefix_sha256": "341ec6c95d473ea9dad674a867aa02d798c90fdeab3524c383640f36414153b7",
+      "sha256": "341ec6c95d473ea9dad674a867aa02d798c90fdeab3524c383640f36414153b7",
+      "size": 13562
+    },
+    {
+      "mtime": 1777759396.147544,
+      "note": "",
+      "path": "output/responses/response_20260502_220316.md",
+      "prefix_sha256": "70bf97758ebdc96b0015f4a0c698f9978144790748c4f1619cba52bf77be0ab6",
+      "sha256": "70bf97758ebdc96b0015f4a0c698f9978144790748c4f1619cba52bf77be0ab6",
+      "size": 2660
+    },
+    {
+      "mtime": 1777759418.109327,
+      "note": "",
+      "path": "output/responses/response_20260502_220338.md",
+      "prefix_sha256": "a9b56e8872f2edc56360b79497a87c34a5df668c3bedfde7f2f660cf4d92502c",
+      "sha256": "a9b56e8872f2edc56360b79497a87c34a5df668c3bedfde7f2f660cf4d92502c",
+      "size": 5265
+    },
+    {
+      "mtime": 1777760416.715504,
+      "note": "",
+      "path": "output/responses/response_20260502_222016.md",
+      "prefix_sha256": "a390351a4dccadc42cf4977fdf81f1ef06a6d38e09a6d97f3fc7471c84d691a5",
+      "sha256": "a390351a4dccadc42cf4977fdf81f1ef06a6d38e09a6d97f3fc7471c84d691a5",
+      "size": 5393
+    },
+    {
+      "mtime": 1777761870.094886,
+      "note": "",
+      "path": "output/responses/response_20260502_224430.md",
+      "prefix_sha256": "bf42d372350a6c1d44fc4519abd5209c347feab3316b97383680589ec6bef99d",
+      "sha256": "bf42d372350a6c1d44fc4519abd5209c347feab3316b97383680589ec6bef99d",
+      "size": 4943
+    },
+    {
+      "mtime": 1777762309.64223,
+      "note": "",
+      "path": "output/responses/response_20260502_225149.md",
+      "prefix_sha256": "d9db0f2ce2242f5f130e756bff89e1a21217a15282124198f23be79ce3d0f621",
+      "sha256": "d9db0f2ce2242f5f130e756bff89e1a21217a15282124198f23be79ce3d0f621",
+      "size": 2668
+    },
+    {
+      "mtime": 1777845199.51127,
+      "note": "",
+      "path": "output/responses/response_20260503_215319.md",
+      "prefix_sha256": "b42d4093be790ce578808566e3f37af1bc95cf84a5dec89cbfcc7e8f8653fe8a",
+      "sha256": "b42d4093be790ce578808566e3f37af1bc95cf84a5dec89cbfcc7e8f8653fe8a",
+      "size": 3403
+    },
+    {
+      "mtime": 1777906635.954401,
+      "note": "",
+      "path": "output/responses/response_20260504_145715.md",
+      "prefix_sha256": "5376d1012c41c8750d8afb5c67eb39c2b024131fd23e4fa27b876c79a6be9c0f",
+      "sha256": "5376d1012c41c8750d8afb5c67eb39c2b024131fd23e4fa27b876c79a6be9c0f",
+      "size": 2972
+    },
+    {
+      "mtime": 1777923095.626174,
+      "note": "",
+      "path": "output/responses/response_20260504_193135.md",
+      "prefix_sha256": "4de03c8ef37ab30e672fae0d7a4b0527c68d16cf284767fa01ca4d431b0873eb",
+      "sha256": "4de03c8ef37ab30e672fae0d7a4b0527c68d16cf284767fa01ca4d431b0873eb",
+      "size": 1824
+    },
+    {
+      "mtime": 1777978308.611226,
+      "note": "",
+      "path": "output/responses/response_20260505_105148.md",
+      "prefix_sha256": "de9d93b9ff0d5d507548001060fd56072c60debf49b77c3fa76668f61b4fd4c4",
+      "sha256": "de9d93b9ff0d5d507548001060fd56072c60debf49b77c3fa76668f61b4fd4c4",
+      "size": 6584
+    },
+    {
+      "mtime": 1777979581.459699,
+      "note": "",
+      "path": "output/responses/response_20260505_111301.md",
+      "prefix_sha256": "e199bad11197c223cd50479d9031ccf414e63edaf778f2461e2a476da631e7ab",
+      "sha256": "e199bad11197c223cd50479d9031ccf414e63edaf778f2461e2a476da631e7ab",
+      "size": 5158
+    },
+    {
+      "mtime": 1778013862.604766,
+      "note": "",
+      "path": "output/responses/response_20260505_204422.md",
+      "prefix_sha256": "0a404ccac95f4ce960e690aa2410a912bf80c896a73f63821caf9655af4ac9bb",
+      "sha256": "0a404ccac95f4ce960e690aa2410a912bf80c896a73f63821caf9655af4ac9bb",
+      "size": 2045
+    },
+    {
+      "mtime": 1778187747.163783,
+      "note": "",
+      "path": "output/responses/response_20260507_210227.md",
+      "prefix_sha256": "8e291ac637ff6282a7488576d080c54dadaf37cc771e59161c0acd7ad9fef406",
+      "sha256": "8e291ac637ff6282a7488576d080c54dadaf37cc771e59161c0acd7ad9fef406",
+      "size": 12948
+    },
+    {
+      "mtime": 1778280092.586204,
+      "note": "",
+      "path": "output/responses/response_20260508_224132.md",
+      "prefix_sha256": "40c05efaf1950ce3b61c4f14903b3719abf13a642d2d417850b38ade4ea7addb",
+      "sha256": "40c05efaf1950ce3b61c4f14903b3719abf13a642d2d417850b38ade4ea7addb",
+      "size": 6387
+    },
+    {
+      "mtime": 1778409330.470079,
+      "note": "",
+      "path": "output/responses/response_20260510_103530.md",
+      "prefix_sha256": "6ca62e1ef0b89a8868a5e02dc9fc473bb00274354d514d695dfeb4f9c409aae7",
+      "sha256": "6ca62e1ef0b89a8868a5e02dc9fc473bb00274354d514d695dfeb4f9c409aae7",
+      "size": 2340
+    },
+    {
+      "mtime": 1778592749.452547,
+      "note": "",
+      "path": "output/responses/response_20260512_133229.md",
+      "prefix_sha256": "b5098972c0ae1babc3f5aa65b721ec1d3dffb98e5604fb1ef91145d51894d4e6",
+      "sha256": "b5098972c0ae1babc3f5aa65b721ec1d3dffb98e5604fb1ef91145d51894d4e6",
+      "size": 2304
+    },
+    {
+      "mtime": 1778594664.701226,
+      "note": "",
+      "path": "output/responses/response_20260512_140424.md",
+      "prefix_sha256": "c56c9881b6a0d47e81b96553c92531bf154a8c2523abb00f1454581ecb32c385",
+      "sha256": "c56c9881b6a0d47e81b96553c92531bf154a8c2523abb00f1454581ecb32c385",
+      "size": 6468
+    },
+    {
+      "mtime": 1778950631.623899,
+      "note": "",
+      "path": "output/responses/response_20260516_165711.md",
+      "prefix_sha256": "555c98fb93bffd93a720bfd03d5b158c8a0c22f6271627cec72f3df051cc0662",
+      "sha256": "555c98fb93bffd93a720bfd03d5b158c8a0c22f6271627cec72f3df051cc0662",
+      "size": 13093
+    },
+    {
+      "mtime": 1778278058.2393,
+      "note": "",
+      "path": "output/responses/scamper_report.md",
+      "prefix_sha256": "676042b54bc45a93bf1e09975abcbd69b66d1c70c8e8db41834fed8b137b28b5",
+      "sha256": "676042b54bc45a93bf1e09975abcbd69b66d1c70c8e8db41834fed8b137b28b5",
+      "size": 13049
+    },
+    {
+      "mtime": 1777718149.720366,
+      "note": "",
+      "path": "output/responses/weather_forecast_report.md",
+      "prefix_sha256": "1768cedd4603b8f010b8c76b479f36d8ae949ea16afef9b0171546b6b5734b90",
+      "sha256": "1768cedd4603b8f010b8c76b479f36d8ae949ea16afef9b0171546b6b5734b90",
+      "size": 1454
+    },
+    {
+      "mtime": 1777719591.465049,
+      "note": "",
+      "path": "output/run.py",
+      "prefix_sha256": "77609dae86ac18dca52280dce1c351a7d6e3001e5bfb2a33fb65450bfc1ab7b0",
+      "sha256": "77609dae86ac18dca52280dce1c351a7d6e3001e5bfb2a33fb65450bfc1ab7b0",
+      "size": 3370
+    },
+    {
+      "mtime": 1778409827.983174,
+      "note": "",
+      "path": "output/run_analysis.py",
+      "prefix_sha256": "6ae5ef0b48b2b8fc9e3167ac28ab4f1e117ab3926594ffe511a72d7eae9a5e5b",
+      "sha256": "6ae5ef0b48b2b8fc9e3167ac28ab4f1e117ab3926594ffe511a72d7eae9a5e5b",
+      "size": 356
+    },
+    {
+      "mtime": 1778513345.858192,
+      "note": "",
+      "path": "output/run_chart.py",
+      "prefix_sha256": "989bf4357ec67f4648418bc274851079d0a01dd025afbe9870144ba4a58db86f",
+      "sha256": "989bf4357ec67f4648418bc274851079d0a01dd025afbe9870144ba4a58db86f",
+      "size": 2925
+    },
+    {
+      "mtime": 1777759295.560847,
+      "note": "",
+      "path": "output/run_estonia_age_table.py",
+      "prefix_sha256": "d886591d932bc2e0c92c914591de7be916cc411f826d09f49a4d3be561eee6fc",
+      "sha256": "d886591d932bc2e0c92c914591de7be916cc411f826d09f49a4d3be561eee6fc",
+      "size": 8134
+    },
+    {
+      "mtime": 1777750088.110599,
+      "note": "",
+      "path": "output/run_estonia_analysis.py",
+      "prefix_sha256": "b8a5924129ae33ccf992df4f8df070c0a21b3887cb9c40d24d31848ce68764d1",
+      "sha256": "b8a5924129ae33ccf992df4f8df070c0a21b3887cb9c40d24d31848ce68764d1",
+      "size": 5565
+    },
+    {
+      "mtime": 1777675521.476793,
+      "note": "",
+      "path": "output/run_postprocessing.sh",
+      "prefix_sha256": "e4320a69bd012529e4e29657093bb4fdc446a10cd80c29a2d2afabcf7323f734",
+      "sha256": "e4320a69bd012529e4e29657093bb4fdc446a10cd80c29a2d2afabcf7323f734",
+      "size": 91
+    },
+    {
+      "mtime": 1776779003.6056921,
+      "note": "",
+      "path": "output/run_test.sh",
+      "prefix_sha256": "5620ff8f70fca31642a2f7c0bf19e9c6c0345b85308c3124e62a3eeae8339881",
+      "sha256": "5620ff8f70fca31642a2f7c0bf19e9c6c0345b85308c3124e62a3eeae8339881",
+      "size": 75
+    },
+    {
+      "mtime": 1776458251.50195,
+      "note": "",
+      "path": "output/scrape_cnn.py",
+      "prefix_sha256": "9ecc67e124fadfea67cfc101a6ef3d3aa0f2f6b76a79ea271181480568daf670",
+      "sha256": "9ecc67e124fadfea67cfc101a6ef3d3aa0f2f6b76a79ea271181480568daf670",
+      "size": 1135
+    },
+    {
+      "mtime": 1778431707.75182,
+      "note": "",
+      "path": "output/scripts/estonia_forest_age_distribution.py",
+      "prefix_sha256": "fd072bc19d9e46f4855c380be8e398744319a42b5dab1851d8d05acacb2cebb3",
+      "sha256": "fd072bc19d9e46f4855c380be8e398744319a42b5dab1851d8d05acacb2cebb3",
+      "size": 7296
+    },
+    {
+      "mtime": 1778374145.850021,
+      "note": "",
+      "path": "output/scripts/hansen_offline_fetch.md",
+      "prefix_sha256": "e8de2faff865c9825729f3a51e1bafa1eda7b652d619f630393e668293a14c4d",
+      "sha256": "e8de2faff865c9825729f3a51e1bafa1eda7b652d619f630393e668293a14c4d",
+      "size": 1757
+    },
+    {
+      "mtime": 1778594417.59057,
+      "note": "",
+      "path": "output/search_watchdog.py",
+      "prefix_sha256": "d5d133779e972aa0de0ca7a93584d3b84d301a28e4b2fc4c9b39769d50739bc1",
+      "sha256": "d5d133779e972aa0de0ca7a93584d3b84d301a28e4b2fc4c9b39769d50739bc1",
+      "size": 949
+    },
+    {
+      "mtime": 1777744960.507076,
+      "note": "",
+      "path": "output/src/estonia_forest_maps/config.py",
+      "prefix_sha256": "1c5ce995546c175b3e92eb61c1ece6a4840de3b87de1953afa1ea23c219b813f",
+      "sha256": "1c5ce995546c175b3e92eb61c1ece6a4840de3b87de1953afa1ea23c219b813f",
+      "size": 2097
+    },
+    {
+      "mtime": 1777745075.819666,
+      "note": "",
+      "path": "output/src/estonia_forest_maps/gee_pipeline.py",
+      "prefix_sha256": "f19b0c3c4aaf61865b10708f31e12ee723a44d0bd85292ae37d7eb9779d2d980",
+      "sha256": "f19b0c3c4aaf61865b10708f31e12ee723a44d0bd85292ae37d7eb9779d2d980",
+      "size": 6466
+    },
+    {
+      "mtime": 1777745046.374671,
+      "note": "",
+      "path": "output/src/estonia_forest_maps/local_pipeline.py",
+      "prefix_sha256": "50134e4bf19c01901fa99d1342a20ae0f58357314b82de87df314a7e016f098c",
+      "sha256": "50134e4bf19c01901fa99d1342a20ae0f58357314b82de87df314a7e016f098c",
+      "size": 7599
+    },
+    {
+      "mtime": 1777744997.341316,
+      "note": "",
+      "path": "output/src/estonia_forest_maps/viz.py",
+      "prefix_sha256": "53913cad42ec35235218eeef4dadf7b277b5172fee01092186bb3ad2f7bb09cd",
+      "sha256": "53913cad42ec35235218eeef4dadf7b277b5172fee01092186bb3ad2f7bb09cd",
+      "size": 4529
+    },
+    {
+      "mtime": 1776454456.158478,
+      "note": "",
+      "path": "output/system_inspector.py",
+      "prefix_sha256": "dbe30bed6fd3badc297a3aeceebe24db818e3bc8993904ba8771b7290a251354",
+      "sha256": "dbe30bed6fd3badc297a3aeceebe24db818e3bc8993904ba8771b7290a251354",
+      "size": 3605
+    },
+    {
+      "mtime": 1776869825.1068633,
+      "note": "",
+      "path": "output/test.md",
+      "prefix_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "size": 4
+    },
+    {
+      "mtime": 1774037737.8196273,
+      "note": "",
+      "path": "output/test.py",
+      "prefix_sha256": "c52f834a4729b95bd32036783942aba829fc91cec503bc049ef2ed68d6a453f6",
+      "sha256": "c52f834a4729b95bd32036783942aba829fc91cec503bc049ef2ed68d6a453f6",
+      "size": 174
+    },
+    {
+      "mtime": 1776600040.7625546,
+      "note": "",
+      "path": "output/test.txt",
+      "prefix_sha256": "3a57e45307f9ebe781088ff9939cfa6c26a34d10b394a5c72d86c4165592ae06",
+      "sha256": "3a57e45307f9ebe781088ff9939cfa6c26a34d10b394a5c72d86c4165592ae06",
+      "size": 30
+    },
+    {
+      "mtime": 1775325600.6007552,
+      "note": "",
+      "path": "output/test_file.txt",
+      "prefix_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "size": 4
+    },
+    {
+      "mtime": 1775145505.8130484,
+      "note": "",
+      "path": "output/test_llm_config.py",
+      "prefix_sha256": "bab58eaffb89ab242475545c302bc9e1b974d639b0989fb810d2f60a08ac29f2",
+      "sha256": "bab58eaffb89ab242475545c302bc9e1b974d639b0989fb810d2f60a08ac29f2",
+      "size": 3055
+    },
+    {
+      "mtime": 1776778987.1760433,
+      "note": "",
+      "path": "output/test_project_switch.py",
+      "prefix_sha256": "21be121846c9d394d27d339605034570796d17e5f47fa5c39a44d3d270935d25",
+      "sha256": "21be121846c9d394d27d339605034570796d17e5f47fa5c39a44d3d270935d25",
+      "size": 3175
+    },
+    {
+      "mtime": 1777746461.327276,
+      "note": "",
+      "path": "output/test_script.py",
+      "prefix_sha256": "34d2351de9d02066419450721cd11a90c38be0720d5fca8543e3ed043f0ade50",
+      "sha256": "34d2351de9d02066419450721cd11a90c38be0720d5fca8543e3ed043f0ade50",
+      "size": 35
+    },
+    {
+      "mtime": 1778374151.255021,
+      "note": "",
+      "path": "output/tests/test_age_binning.py",
+      "prefix_sha256": "9dd46b1972a1379ea8e00aa805f92238d21a62baa78a635582447e02025cb1c1",
+      "sha256": "9dd46b1972a1379ea8e00aa805f92238d21a62baa78a635582447e02025cb1c1",
+      "size": 634
+    },
+    {
+      "mtime": 1774045041.4340572,
+      "note": "",
+      "path": "output/ticketing_system_architecture_memo.md",
+      "prefix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mtime": 1776859827.5514946,
+      "note": "",
+      "path": "output/two_sum.py",
+      "prefix_sha256": "a9abd60340127a300f89a6d14dfc20b78071101029f95d1606537d98f3ccf412",
+      "sha256": "a9abd60340127a300f89a6d14dfc20b78071101029f95d1606537d98f3ccf412",
+      "size": 768
+    },
+    {
+      "mtime": 1777238475.467453,
+      "note": "",
+      "path": "output/validate_weather_skill.py",
+      "prefix_sha256": "aa4ccfe7c5a95c22cb63004961474835c84ad147e253ed43bcfccd3be8b7574f",
+      "sha256": "aa4ccfe7c5a95c22cb63004961474835c84ad147e253ed43bcfccd3be8b7574f",
+      "size": 992
+    },
+    {
+      "mtime": 1774714630.4354148,
+      "note": "",
+      "path": "output/vectorstore_fix.py",
+      "prefix_sha256": "b3bb191afc20156a056ba393a521ece6d540a333951f6dddd2f7577171f9dd76",
+      "sha256": "b3bb191afc20156a056ba393a521ece6d540a333951f6dddd2f7577171f9dd76",
+      "size": 1919
+    },
+    {
+      "mtime": 1778514579.709243,
+      "note": "",
+      "path": "output/verify_final.py",
+      "prefix_sha256": "a08ae55e4a9747b95560fb78c647ee8b0abd4e21fcde64c1b36eed99416f5640",
+      "sha256": "a08ae55e4a9747b95560fb78c647ee8b0abd4e21fcde64c1b36eed99416f5640",
+      "size": 1698
+    },
+    {
+      "mtime": 1778514539.215814,
+      "note": "",
+      "path": "output/verify_output.py",
+      "prefix_sha256": "80b761ca4dc8cc3f67c521aefc66d5753403692083395bb82ac2d394adf1604a",
+      "sha256": "80b761ca4dc8cc3f67c521aefc66d5753403692083395bb82ac2d394adf1604a",
+      "size": 1097
+    },
+    {
+      "mtime": 1777718049.105149,
+      "note": "",
+      "path": "output/weather_executor.py",
+      "prefix_sha256": "47889e96b57847eda3102199e85edc3e4e786f5a9ccc8d60ada58ce5d58de38d",
+      "sha256": "47889e96b57847eda3102199e85edc3e4e786f5a9ccc8d60ada58ce5d58de38d",
+      "size": 11577
+    },
+    {
+      "mtime": 1777718878.7691,
+      "note": "",
+      "path": "output/weather_fetch.py",
+      "prefix_sha256": "6ab879740e01aad4d6cf2ef4f02c58364f4d1de1bfbcc487f5311c934b63b57e",
+      "sha256": "6ab879740e01aad4d6cf2ef4f02c58364f4d1de1bfbcc487f5311c934b63b57e",
+      "size": 4478
+    },
+    {
+      "mtime": 1775227745.575368,
+      "note": "",
+      "path": "personality/coder.json",
+      "prefix_sha256": "1815c6484ca7f0e3cc9df78ba315227ba9ad00981ed294c202acbd34c1d1e9f2",
+      "sha256": "1815c6484ca7f0e3cc9df78ba315227ba9ad00981ed294c202acbd34c1d1e9f2",
+      "size": 1068
+    },
+    {
+      "mtime": 1776450499.6317496,
+      "note": "",
+      "path": "personality/coding.json",
+      "prefix_sha256": "bcbe95a189dfb1016fb8fc7bd33ec90399ace12e4d2ebca625bee84b5c152b1f",
+      "sha256": "bcbe95a189dfb1016fb8fc7bd33ec90399ace12e4d2ebca625bee84b5c152b1f",
+      "size": 1069
+    },
+    {
+      "mtime": 1775326097.8635828,
+      "note": "",
+      "path": "personality/commander.json",
+      "prefix_sha256": "fab0ec3abee9252b5b39a85298fb108dc5d16dbba03d8094f2e6ba3cabef6dcd",
+      "sha256": "fab0ec3abee9252b5b39a85298fb108dc5d16dbba03d8094f2e6ba3cabef6dcd",
+      "size": 1072
+    },
+    {
+      "mtime": 1777818297.045674,
+      "note": "",
+      "path": "personality/creative.json",
+      "prefix_sha256": "07212b13a94f567ca591385b4da2618ddf19fb0e6fccef7ca2d4c8c92fcbde39",
+      "sha256": "07212b13a94f567ca591385b4da2618ddf19fb0e6fccef7ca2d4c8c92fcbde39",
+      "size": 1071
+    },
+    {
+      "mtime": 1777017059.5986533,
+      "note": "",
+      "path": "personality/desktop.json",
+      "prefix_sha256": "4ecb14e43638eff4b40ae285fd5440fe8db42f8f3130e4c6235253ac9fe720b2",
+      "sha256": "4ecb14e43638eff4b40ae285fd5440fe8db42f8f3130e4c6235253ac9fe720b2",
+      "size": 1070
+    },
+    {
+      "mtime": 1776487831.348096,
+      "note": "",
+      "path": "personality/financial.json",
+      "prefix_sha256": "6c4fb80df2e7d9ba537beaeb032e1cb22141e9a5c1a5c1da4bebebb231b4e015",
+      "sha256": "6c4fb80df2e7d9ba537beaeb032e1cb22141e9a5c1a5c1da4bebebb231b4e015",
+      "size": 1072
+    },
+    {
+      "mtime": 1776552285.8659976,
+      "note": "",
+      "path": "personality/media.json",
+      "prefix_sha256": "665111078478831fcf685f4cc222d0e3ebf7b07be79d96b58923f926b6c2ef75",
+      "sha256": "665111078478831fcf685f4cc222d0e3ebf7b07be79d96b58923f926b6c2ef75",
+      "size": 1068
+    },
+    {
+      "mtime": 1776532007.3260202,
+      "note": "",
+      "path": "personality/pim.json",
+      "prefix_sha256": "bef93f6bb8721aa1c25b27f83ae8ece3e43659f3933663dbc0e32ff57470579f",
+      "sha256": "bef93f6bb8721aa1c25b27f83ae8ece3e43659f3933663dbc0e32ff57470579f",
+      "size": 1066
+    },
+    {
+      "mtime": 1776032973.7892468,
+      "note": "",
+      "path": "personality/research.json",
+      "prefix_sha256": "26ac9016b45dd9b4137e20a682effb09dd491d6c4a44b858331f0470bce72268",
+      "sha256": "26ac9016b45dd9b4137e20a682effb09dd491d6c4a44b858331f0470bce72268",
+      "size": 1071
+    },
+    {
+      "mtime": 1775303787.6502054,
+      "note": "",
+      "path": "personality/researcher.json",
+      "prefix_sha256": "2ee603c45aa37fe378c3ee9e5f3628e0a1a70f264f8db083cc691f38d0fc252d",
+      "sha256": "2ee603c45aa37fe378c3ee9e5f3628e0a1a70f264f8db083cc691f38d0fc252d",
+      "size": 1073
+    },
+    {
+      "mtime": 1775228781.3450415,
+      "note": "",
+      "path": "personality/test_verify.json",
+      "prefix_sha256": "291527e7b40680dcf00cf8d80baff5e3eef7038e01b56820d90d2add737efd2f",
+      "sha256": "291527e7b40680dcf00cf8d80baff5e3eef7038e01b56820d90d2add737efd2f",
+      "size": 1087
+    },
+    {
+      "mtime": 1776244376.9786963,
+      "note": "",
+      "path": "personality/tom_research.json",
+      "prefix_sha256": "82453fbe4f0bdda110e405e8d30b8b166572146e7d77dcd986aaa76a3089c35e",
+      "sha256": "82453fbe4f0bdda110e405e8d30b8b166572146e7d77dcd986aaa76a3089c35e",
+      "size": 1075
+    },
+    {
+      "mtime": 1776661118.8641088,
+      "note": "",
+      "path": "personality/tom_test_research.json",
+      "prefix_sha256": "ab5576bea5204ba369edeefae33668530cab9e8a42b286f5420472df5a021fb8",
+      "sha256": "ab5576bea5204ba369edeefae33668530cab9e8a42b286f5420472df5a021fb8",
+      "size": 1080
+    },
+    {
+      "mtime": 1775293679.4688575,
+      "note": "",
+      "path": "personality/writer.json",
+      "prefix_sha256": "8b7bde77052ff1ea420579a708dd5e827fd9e6c2287269168d4fe727a3664355",
+      "sha256": "8b7bde77052ff1ea420579a708dd5e827fd9e6c2287269168d4fe727a3664355",
+      "size": 1069
+    },
+    {
+      "mtime": 1776189687.6672647,
+      "note": "",
+      "path": "personality/writing.json",
+      "prefix_sha256": "3fb881592cf51dbdaf7d0e82ffd4fe3472875cdf66222a4702fffd7c2a32b29b",
+      "sha256": "3fb881592cf51dbdaf7d0e82ffd4fe3472875cdf66222a4702fffd7c2a32b29b",
+      "size": 1070
+    },
+    {
+      "mtime": 1778958956.488501,
+      "note": "",
+      "path": "resilience/drill_audit.jsonl",
+      "prefix_sha256": "089ba4ea0ee628e411e83314e0bb86b98c91f6ead3e344d3d6f36aabc0f8f765",
+      "sha256": "089ba4ea0ee628e411e83314e0bb86b98c91f6ead3e344d3d6f36aabc0f8f765",
+      "size": 3755
+    },
+    {
+      "mtime": 1778957233.6029127,
+      "note": "",
+      "path": "runtime_settings.json",
+      "prefix_sha256": "ea48b93e4d9e7f86a5653acf8cc3d00472b819f32bce69f6098249e626d43541",
+      "sha256": "ea48b93e4d9e7f86a5653acf8cc3d00472b819f32bce69f6098249e626d43541",
+      "size": 381
+    },
+    {
+      "mtime": 1777818297.0667727,
+      "note": "",
+      "path": "skills/_quarantine/execute_weather.sh",
+      "prefix_sha256": "978f5dec564623a66938e1626cfa56c2120f5c95f3fcb1dd94d6691929a1ae9d",
+      "sha256": "978f5dec564623a66938e1626cfa56c2120f5c95f3fcb1dd94d6691929a1ae9d",
+      "size": 76
+    },
+    {
+      "mtime": 1777818297.0668454,
+      "note": "",
+      "path": "skills/_quarantine/run_weather_forecast.py",
+      "prefix_sha256": "bc180b37cb6851a34076d46af24e7f8a9e044d0340f141da7bd86337c3bd7c08",
+      "sha256": "bc180b37cb6851a34076d46af24e7f8a9e044d0340f141da7bd86337c3bd7c08",
+      "size": 5742
+    },
+    {
+      "mtime": 1777818297.0669105,
+      "note": "",
+      "path": "skills/_quarantine/simple_weather_fetch.py",
+      "prefix_sha256": "fd2e202c9cb0ea338b362e1c6bed6635d689e0d10be27934bf55067a7d51cc91",
+      "sha256": "fd2e202c9cb0ea338b362e1c6bed6635d689e0d10be27934bf55067a7d51cc91",
+      "size": 6032
+    },
+    {
+      "mtime": 1777818297.0669644,
+      "note": "",
+      "path": "skills/_quarantine/skill_weather_forecast_policy.md",
+      "prefix_sha256": "f4e7dea45e6137e19a3f6cee99807430dc6d102ea1cbfc7846f18d9c98e00eaa",
+      "sha256": "f4e7dea45e6137e19a3f6cee99807430dc6d102ea1cbfc7846f18d9c98e00eaa",
+      "size": 4669
+    },
+    {
+      "mtime": 1777818297.067063,
+      "note": "",
+      "path": "skills/_quarantine/weather_fetcher.py",
+      "prefix_sha256": "387be62d2ae0370f63cf623d06c6f765a6be16defa2bb328ddcccd327942358d",
+      "sha256": "387be62d2ae0370f63cf623d06c6f765a6be16defa2bb328ddcccd327942358d",
+      "size": 11804
+    },
+    {
+      "mtime": 1777818297.0671291,
+      "note": "",
+      "path": "skills/_quarantine/weather_reporter.py",
+      "prefix_sha256": "6d98661ab256eec1016b3a663f6effce9eff1eb1ae43709bc3c12c34a4b13d9e",
+      "sha256": "6d98661ab256eec1016b3a663f6effce9eff1eb1ae43709bc3c12c34a4b13d9e",
+      "size": 2620
+    },
+    {
+      "mtime": 1777818297.0672033,
+      "note": "",
+      "path": "skills/_quarantine/weather_retrieval_reliability_strategies__5fb26a75.md",
+      "prefix_sha256": "cdf0ab0568d37b395bc1035611fed475b34d031ebf5db4fbf3aec5c21bd62a41",
+      "sha256": "cdf0ab0568d37b395bc1035611fed475b34d031ebf5db4fbf3aec5c21bd62a41",
+      "size": 5166
+    },
+    {
+      "mtime": 1776531639.7982788,
+      "note": "",
+      "path": "skills/advanced_vector_database_optimization__retrieval_augmentation__ra__strategies__cd1d8f7a.md",
+      "prefix_sha256": "e48f7f87c488ea74154d275ce7e65fdb4f9aee8c54c81c3ba28ab023477b7643",
+      "sha256": "e48f7f87c488ea74154d275ce7e65fdb4f9aee8c54c81c3ba28ab023477b7643",
+      "size": 9642
+    },
+    {
+      "mtime": 1777033157.6150944,
+      "note": "",
+      "path": "skills/api_credit_management_and_quota_error_handling.md",
+      "prefix_sha256": "94a0947a0212428383ced1ee3e06f85e041f738f38e7c40d997e232bc9ca8e19",
+      "sha256": "94a0947a0212428383ced1ee3e06f85e041f738f38e7c40d997e232bc9ca8e19",
+      "size": 7067
+    },
+    {
+      "mtime": 1778432163.084193,
+      "note": "",
+      "path": "skills/atomic_synthesis_and_concise_reporting.md",
+      "prefix_sha256": "47f88560454b55fa8a9b424b2bbbf2e3968b34eca19b1209ae4e1e09dc3758db",
+      "sha256": "47f88560454b55fa8a9b424b2bbbf2e3968b34eca19b1209ae4e1e09dc3758db",
+      "size": 1729
+    },
+    {
+      "mtime": 1778479596.333616,
+      "note": "",
+      "path": "skills/automated_pdf_report_generation_with_graphics__7cea4e8a.md",
+      "prefix_sha256": "c98c38a1e4495ab4fc14927cc69d065dd44657ed395bc5126d081aed185a6f89",
+      "sha256": "c98c38a1e4495ab4fc14927cc69d065dd44657ed395bc5126d081aed185a6f89",
+      "size": 4624
+    },
+    {
+      "mtime": 1778479596.256616,
+      "note": "",
+      "path": "skills/budget_report_retrieval_protocols__621666f0.md",
+      "prefix_sha256": "b4d850ae014ba806a590ff4711c27e6717edcff28fd0839ee54da1c19ba198a2",
+      "sha256": "b4d850ae014ba806a590ff4711c27e6717edcff28fd0839ee54da1c19ba198a2",
+      "size": 4173
+    },
+    {
+      "mtime": 1776548177.695522,
+      "note": "",
+      "path": "skills/circular_import_resolution_patterns.md",
+      "prefix_sha256": "0fcc56bd6756c3073ec5be19a5fdc4ce25e166537a7d0233e5a7c44f715a8a35",
+      "sha256": "0fcc56bd6756c3073ec5be19a5fdc4ce25e166537a7d0233e5a7c44f715a8a35",
+      "size": 5267
+    },
+    {
+      "mtime": 1778479596.3256161,
+      "note": "",
+      "path": "skills/create_yearly_deforestation_maps_2012_2025__bc2e815c.md",
+      "prefix_sha256": "ffe15600fa63e27922b980f68fcf6ad8c2e02e6c061190f86bcbd437b066ba64",
+      "sha256": "ffe15600fa63e27922b980f68fcf6ad8c2e02e6c061190f86bcbd437b066ba64",
+      "size": 3662
+    },
+    {
+      "mtime": 1778479596.154616,
+      "note": "",
+      "path": "skills/email_inbox_retrieval_and_ranking_protocols__07e81df8.md",
+      "prefix_sha256": "e8adbb52ff56693e0f910ed1289a192737a63696273779765c0c9a37629f996e",
+      "sha256": "e8adbb52ff56693e0f910ed1289a192737a63696273779765c0c9a37629f996e",
+      "size": 4530
+    },
+    {
+      "mtime": 1778479596.308616,
+      "note": "",
+      "path": "skills/email_ranking_accuracy_improvement__fda3766d.md",
+      "prefix_sha256": "3b16d4cc0a998c67826cc4cdf4c11c2aee96901d90fb2e9f904443e9ef9d4616",
+      "sha256": "3b16d4cc0a998c67826cc4cdf4c11c2aee96901d90fb2e9f904443e9ef9d4616",
+      "size": 4683
+    },
+    {
+      "mtime": 1776902883.2992373,
+      "note": "",
+      "path": "skills/error_patterns_resolution.md",
+      "prefix_sha256": "667e5f4a7172c58c6b3ec80e6af7343ba3a24a4a76721d66a71b7325e94ec86d",
+      "sha256": "667e5f4a7172c58c6b3ec80e6af7343ba3a24a4a76721d66a71b7325e94ec86d",
+      "size": 1751
+    },
+    {
+      "mtime": 1777818297.0673084,
+      "note": "",
+      "path": "skills/estonia_forest_age_maps/README.md",
+      "prefix_sha256": "7234ebf6b9fe32ed957b67e7eaab605648df2d1520acf96af3314c8c29a25751",
+      "sha256": "7234ebf6b9fe32ed957b67e7eaab605648df2d1520acf96af3314c8c29a25751",
+      "size": 6196
+    },
+    {
+      "mtime": 1777818297.0673878,
+      "note": "",
+      "path": "skills/estonia_forest_age_maps/estonia_forest_age_maps.py",
+      "prefix_sha256": "b99372096830658bb2783b601209d305ed4585772b1a9f37ff64bdf4b29b0fe2",
+      "sha256": "b99372096830658bb2783b601209d305ed4585772b1a9f37ff64bdf4b29b0fe2",
+      "size": 7847
+    },
+    {
+      "mtime": 1777752589.889957,
+      "note": "",
+      "path": "skills/estonia_forest_maps.md",
+      "prefix_sha256": "79147f60ea5321502c5d2258972e758ef917e9a5c281b15f3b4a3119169232ba",
+      "sha256": "79147f60ea5321502c5d2258972e758ef917e9a5c281b15f3b4a3119169232ba",
+      "size": 5087
+    },
+    {
+      "mtime": 1774008124.0705807,
+      "note": "",
+      "path": "skills/experiment_runner_fixed.py",
+      "prefix_sha256": "a3748b1be50f75c67af4eda0891132149e59f5f34447fc1cc3e52b1b286e0210",
+      "sha256": "a3748b1be50f75c67af4eda0891132149e59f5f34447fc1cc3e52b1b286e0210",
+      "size": 36
+    },
+    {
+      "mtime": 1774008179.4508598,
+      "note": "",
+      "path": "skills/firebase_reporter_fixed.py",
+      "prefix_sha256": "0a49d94ef2e358ba39c994d759cdb3059d49a5215dc132377957e06ae5d0a917",
+      "sha256": "0a49d94ef2e358ba39c994d759cdb3059d49a5215dc132377957e06ae5d0a917",
+      "size": 2198
+    },
+    {
+      "mtime": 1778479596.322616,
+      "note": "",
+      "path": "skills/forest_report_pdf_generation__74283fcd.md",
+      "prefix_sha256": "b327a751d9760eb02be9b3742819dfeb1329982e30d822658c2bb518a16d1729",
+      "sha256": "b327a751d9760eb02be9b3742819dfeb1329982e30d822658c2bb518a16d1729",
+      "size": 4298
+    },
+    {
+      "mtime": 1777818159.1367927,
+      "note": "",
+      "path": "skills/gee_batching_pattern.md",
+      "prefix_sha256": "e5babcf6116278e3da2b7e1bc20a991c41703d281d5c8f5ed7424a4d4aff816f",
+      "sha256": "e5babcf6116278e3da2b7e1bc20a991c41703d281d5c8f5ed7424a4d4aff816f",
+      "size": 6841
+    },
+    {
+      "mtime": 1777818159.1368601,
+      "note": "",
+      "path": "skills/gee_forest_metric_semantics.md",
+      "prefix_sha256": "6bb6aa3aeefb33d0c8f13fda791e881dcdb4412e3f2248d6fecf4ba025546666",
+      "sha256": "6bb6aa3aeefb33d0c8f13fda791e881dcdb4412e3f2248d6fecf4ba025546666",
+      "size": 7155
+    },
+    {
+      "mtime": 1778479596.315616,
+      "note": "",
+      "path": "skills/google_earth_engine_scripting_estonian_forest_monitoring__4614fa6f.md",
+      "prefix_sha256": "caf825c24c22b6e545e2e4e06615aedec7a16945ab5bb400b502731df9f111a9",
+      "sha256": "caf825c24c22b6e545e2e4e06615aedec7a16945ab5bb400b502731df9f111a9",
+      "size": 5079
+    },
+    {
+      "mtime": 1776859674.3657734,
+      "note": "",
+      "path": "skills/handle_task_circular_import_immediate_fix.md",
+      "prefix_sha256": "3300f6fe88d5b90993d9be6d70b4adb0d5ee125573fb5beb6ea9a9800af57f05",
+      "sha256": "3300f6fe88d5b90993d9be6d70b4adb0d5ee125573fb5beb6ea9a9800af57f05",
+      "size": 6337
+    },
+    {
+      "mtime": 1776942496.1269097,
+      "note": "",
+      "path": "skills/import_error_systematic_resolution.md",
+      "prefix_sha256": "2dba4c2bdfaec89e7ad3ce89fc1e154153cb0ea425059f90e86101e6045b62e8",
+      "sha256": "2dba4c2bdfaec89e7ad3ce89fc1e154153cb0ea425059f90e86101e6045b62e8",
+      "size": 4576
+    },
+    {
+      "mtime": 1778283031.010207,
+      "note": "",
+      "path": "skills/learning_queue.md",
+      "prefix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "mtime": 1776541027.6740327,
+      "note": "",
+      "path": "skills/llm_capability_detection.md",
+      "prefix_sha256": "eb775d50678dccf2f12a1b29c5d550e0dcf0c1877ce027fe6507a0b524148e7c",
+      "sha256": "eb775d50678dccf2f12a1b29c5d550e0dcf0c1877ce027fe6507a0b524148e7c",
+      "size": 4480
+    },
+    {
+      "mtime": 1777031015.2700832,
+      "note": "",
+      "path": "skills/missing_import_detection_and_resolution.md",
+      "prefix_sha256": "155b2f4479f561e9e344b1d728971a3826eeb42e6109a07cd297ac370df6f7de",
+      "sha256": "155b2f4479f561e9e344b1d728971a3826eeb42e6109a07cd297ac370df6f7de",
+      "size": 3101
+    },
+    {
+      "mtime": 1776905762.0285726,
+      "note": "",
+      "path": "skills/model_capability_registry.py",
+      "prefix_sha256": "84a8f2467648e21b5628fbeffecbf853b1cfd4cf1cacf0c34c03e8d09ce4889a",
+      "sha256": "84a8f2467648e21b5628fbeffecbf853b1cfd4cf1cacf0c34c03e8d09ce4889a",
+      "size": 6124
+    },
+    {
+      "mtime": 1776859642.2898476,
+      "note": "",
+      "path": "skills/model_tool_support_and_capability_detection.md",
+      "prefix_sha256": "3a0657f329ee40fda2df46e56e08a96db9d1533ac3840dd1dd7c8f529a72f754",
+      "sha256": "3a0657f329ee40fda2df46e56e08a96db9d1533ac3840dd1dd7c8f529a72f754",
+      "size": 10475
+    },
+    {
+      "mtime": 1774814654.700503,
+      "note": "",
+      "path": "skills/ollama_fleet.py",
+      "prefix_sha256": "e06516592115227869c744cd658c8ba0cbfd422d03e6c6d417f6266b26424483",
+      "sha256": "e06516592115227869c744cd658c8ba0cbfd422d03e6c6d417f6266b26424483",
+      "size": 13263
+    },
+    {
+      "mtime": 1774814679.3947117,
+      "note": "",
+      "path": "skills/ollama_native.py",
+      "prefix_sha256": "7dd28f1486df63fe51a12b4ee3b842bc42e7e69d52ab1cff083651541a1c3794",
+      "sha256": "7dd28f1486df63fe51a12b4ee3b842bc42e7e69d52ab1cff083651541a1c3794",
+      "size": 1401
+    },
+    {
+      "mtime": 1777024771.1643512,
+      "note": "",
+      "path": "skills/openrouter_credit_management_and_cost_optimization.md",
+      "prefix_sha256": "e8bc9e1b026442191e7da2b16018615f912fb4e52feb51e49c409a8b964538ad",
+      "sha256": "e8bc9e1b026442191e7da2b16018615f912fb4e52feb51e49c409a8b964538ad",
+      "size": 3124
+    },
+    {
+      "mtime": 1776784781.2962961,
+      "note": "",
+      "path": "skills/response_synthesis_optimization.md",
+      "prefix_sha256": "ab178c5e1c2cff4a7ab7478d86d1136e130d4b928c564006b43732027fa55264",
+      "sha256": "ab178c5e1c2cff4a7ab7478d86d1136e130d4b928c564006b43732027fa55264",
+      "size": 1401
+    },
+    {
+      "mtime": 1778479596.318616,
+      "note": "",
+      "path": "skills/self-state_contextual_awareness__635ef455.md",
+      "prefix_sha256": "ebded5557681ad445e7ce2c00000c51cd00ea902a45fb11959055e42ab0563da",
+      "sha256": "ebded5557681ad445e7ce2c00000c51cd00ea902a45fb11959055e42ab0563da",
+      "size": 3745
+    },
+    {
+      "mtime": 1778479596.334616,
+      "note": "",
+      "path": "skills/signal_file_attachment_automation_macos__d2b6d66d.md",
+      "prefix_sha256": "14ba159a4b3099c42626bb67c34c1f002b0dc7ae7724c3d9f9f65656c5053b7e",
+      "sha256": "14ba159a4b3099c42626bb67c34c1f002b0dc7ae7724c3d9f9f65656c5053b7e",
+      "size": 4275
+    },
+    {
+      "mtime": 1778479597.208616,
+      "note": "",
+      "path": "skills/skill__validating_file_existence_before_automation_tasks__6bc96b93.md",
+      "prefix_sha256": "5cca43124379c03e70801726d21a5c6de3211ccb5f65f06e3c56f9683f84e4ea",
+      "sha256": "5cca43124379c03e70801726d21a5c6de3211ccb5f65f06e3c56f9683f84e4ea",
+      "size": 2160
+    },
+    {
+      "mtime": 1778479597.219616,
+      "note": "",
+      "path": "skills/skill__validating_file_existence_before_automation_tasks__c944503e.md",
+      "prefix_sha256": "543a805aa58157c7c6847c2ca012fc122f347da521d03ad2966bc699587572bc",
+      "sha256": "543a805aa58157c7c6847c2ca012fc122f347da521d03ad2966bc699587572bc",
+      "size": 2192
+    },
+    {
+      "mtime": 1776664558.887312,
+      "note": "",
+      "path": "skills/skill_faostat.py",
+      "prefix_sha256": "7a3eddda280d1953075d80e3f1fcc727bf25a04a9535a487157f30f19825e2f8",
+      "sha256": "7a3eddda280d1953075d80e3f1fcc727bf25a04a9535a487157f30f19825e2f8",
+      "size": 7749
+    },
+    {
+      "mtime": 1774052841.0,
+      "note": "",
+      "path": "skills/skills/data_visualization.md",
+      "prefix_sha256": "6152c22526382c9eceab65f5b82cac9509a87e7e9d7a4cb7b61f8d1efa4da1d8",
+      "sha256": "6152c22526382c9eceab65f5b82cac9509a87e7e9d7a4cb7b61f8d1efa4da1d8",
+      "size": 362
+    },
+    {
+      "mtime": 1776544322.8841338,
+      "note": "",
+      "path": "skills/task_config.py",
+      "prefix_sha256": "f6877bc817dabe1f88913a116d96f99ed4b10818433c068863606eb31721d7b9",
+      "sha256": "f6877bc817dabe1f88913a116d96f99ed4b10818433c068863606eb31721d7b9",
+      "size": 3368
+    },
+    {
+      "mtime": 1778479596.213616,
+      "note": "",
+      "path": "skills/time-aware__4290a73b.md",
+      "prefix_sha256": "17ddac2ce19441989e3d1e20d0ec10ffeaea1b3482569d0f32b96aa6bd0944b8",
+      "sha256": "17ddac2ce19441989e3d1e20d0ec10ffeaea1b3482569d0f32b96aa6bd0944b8",
+      "size": 4330
+    },
+    {
+      "mtime": 1778479596.297616,
+      "note": "",
+      "path": "skills/weather_retrieval_reliability_strategies__5fb26a75.md",
+      "prefix_sha256": "cdf0ab0568d37b395bc1035611fed475b34d031ebf5db4fbf3aec5c21bd62a41",
+      "sha256": "cdf0ab0568d37b395bc1035611fed475b34d031ebf5db4fbf3aec5c21bd62a41",
+      "size": 5166
+    },
+    {
+      "mtime": 1778955855.424375,
+      "note": "",
+      "path": "tensions/chroma.sqlite3",
+      "prefix_sha256": "2f2f96e4efb34371b0f77f393f9f4b918bb6b0e0a072e3a204f516612bfc34e0",
+      "sha256": "2f2f96e4efb34371b0f77f393f9f4b918bb6b0e0a072e3a204f516612bfc34e0",
+      "size": 167936
+    },
+    {
+      "mtime": 1778959373.069016,
+      "note": "",
+      "path": "warm_spare/activation.json",
+      "prefix_sha256": "565c505d1c8528f3a01604e6d35cd452bec730beaa6fe9cdd0473df6b19d13e2",
+      "sha256": "565c505d1c8528f3a01604e6d35cd452bec730beaa6fe9cdd0473df6b19d13e2",
+      "size": 297
+    }
+  ],
+  "n_files": 499,
+  "total_bytes": 48207360,
+  "ts": "2026-05-16T19:23:15.313273+00:00",
+  "workspace_root": "/Users/andrus/BotArmy/crewai-team/workspace"
+}

@@ -1,0 +1,506 @@
+[
+  {
+    "summary": "Bucharest (IAB)",
+    "location": "Bucharest\\, Romania",
+    "starts_at": "2026-03-02T00:00:00+00:00",
+    "ends_at": "2026-03-08T00:00:00+00:00",
+    "uid": "67ff1392-ce86-9000-0001-00001684b961@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-in: The Marmorosch Bucharest\\, Autograph Collection",
+    "location": "Strada Doamnei 2\\, 030053 Bucure\u0219ti\\, Romania",
+    "starts_at": "2026-03-02T13:00:00+00:00",
+    "ends_at": "2026-03-02T14:00:00+00:00",
+    "uid": "item-9c5a6e5a-fe58-9000-0003-00013dbc9859@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "LH883 TLL to FRA",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-03-02T16:05:00+00:00",
+    "ends_at": "2026-03-02T18:40:00+00:00",
+    "uid": "item-9d1885a0-3603-9000-0003-00013dbc8ebd@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH883"
+  },
+  {
+    "summary": "LH1422 FRA to OTP",
+    "location": "Frankfurt (FRA)",
+    "starts_at": "2026-03-02T19:30:00+00:00",
+    "ends_at": "2026-03-02T21:50:00+00:00",
+    "uid": "item-6a1877e3-acac-9000-0003-00013dbc9049@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH1422"
+  },
+  {
+    "summary": "Check-out: The Marmorosch Bucharest\\, Autograph Collection",
+    "location": "Strada Doamnei 2\\, 030053 Bucure\u0219ti\\, Romania",
+    "starts_at": "2026-03-04T09:00:00+00:00",
+    "ends_at": "2026-03-04T10:00:00+00:00",
+    "uid": "item-a823310d-232a-9000-0003-00013dbc985d@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "QS1011 OTP to PRG",
+    "location": "Bucharest (OTP)",
+    "starts_at": "2026-03-04T13:45:00+00:00",
+    "ends_at": "2026-03-04T15:45:00+00:00",
+    "uid": "item-1547383c-2265-9000-0003-00013de82999@tripit.com",
+    "kind": "flight",
+    "flight_number": "QS1011"
+  },
+  {
+    "summary": "Check-in: Falkensteiner Hotel Prague",
+    "location": "Falkensteiner Hotel Prague\\, Opletalova 1402/21\\, 110 00 New Town\\, Czechia",
+    "starts_at": "2026-03-04T17:00:00+00:00",
+    "ends_at": "2026-03-04T18:00:00+00:00",
+    "uid": "item-af9ca1bd-406b-9000-0003-00013de814d1@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-out: Falkensteiner Hotel Prague",
+    "location": "Falkensteiner Hotel Prague\\, Opletalova 1402/21\\, 110 00 New Town\\, Czechia",
+    "starts_at": "2026-03-06T10:00:00+00:00",
+    "ends_at": "2026-03-06T11:00:00+00:00",
+    "uid": "item-1f2f2fbf-d39c-9000-0003-00013de814d5@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1224 PRG to HEL",
+    "location": "Prague (PRG)",
+    "starts_at": "2026-03-06T18:35:00+00:00",
+    "ends_at": "2026-03-06T20:50:00+00:00",
+    "uid": "item-321b9105-add6-9000-0003-00013de81d25@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1224"
+  },
+  {
+    "summary": "AY1035 HEL to TLL",
+    "location": "Helsinki (HEL)",
+    "starts_at": "2026-03-06T21:50:00+00:00",
+    "ends_at": "2026-03-06T22:25:00+00:00",
+    "uid": "item-80d7ca70-c8e7-9000-0003-00013de81d29@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1035"
+  },
+  {
+    "summary": "Prague",
+    "location": "Prague\\, Czechia",
+    "starts_at": "2026-03-11T00:00:00+00:00",
+    "ends_at": "2026-03-15T00:00:00+00:00",
+    "uid": "4a234be0-6cc1-9000-0001-0000168e26d6@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1022 TLL to HEL",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-03-11T13:40:00+00:00",
+    "ends_at": "2026-03-11T14:15:00+00:00",
+    "uid": "item-513a8d5b-341a-9000-0003-00013eb51b61@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1022"
+  },
+  {
+    "summary": "AY1223 HEL to PRG",
+    "location": "Helsinki (HEL)",
+    "starts_at": "2026-03-11T15:35:00+00:00",
+    "ends_at": "2026-03-11T17:50:00+00:00",
+    "uid": "item-b41fd432-d8bb-9000-0003-00013eb51e2d@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1223"
+  },
+  {
+    "summary": "Check-in: Falkensteiner Hotel Prague",
+    "location": "Opletalova 1402/21\\, Nov\u00e9 M\u011bsto\\, 110 00 Praha-Praha 1\\, Czechia",
+    "starts_at": "2026-03-11T18:00:00+00:00",
+    "ends_at": "2026-03-11T19:00:00+00:00",
+    "uid": "item-bf31c9fa-5dd8-9000-0003-00013eb52d21@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-out: Falkensteiner Hotel Prague",
+    "location": "Opletalova 1402/21\\, Nov\u00e9 M\u011bsto\\, 110 00 Praha-Praha 1\\, Czechia",
+    "starts_at": "2026-03-13T10:00:00+00:00",
+    "ends_at": "2026-03-13T11:00:00+00:00",
+    "uid": "item-23f32a51-7d0a-9000-0003-00013eb52d25@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1224 PRG to HEL",
+    "location": "Prague (PRG)",
+    "starts_at": "2026-03-13T18:35:00+00:00",
+    "ends_at": "2026-03-13T20:50:00+00:00",
+    "uid": "item-8fe4a7c7-d34a-9000-0003-00013eb525bd@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1224"
+  },
+  {
+    "summary": "AY1035 HEL to TLL",
+    "location": "Helsinki (HEL)",
+    "starts_at": "2026-03-13T21:50:00+00:00",
+    "ends_at": "2026-03-13T22:25:00+00:00",
+    "uid": "item-3d17b271-1a4f-9000-0003-00013eb52775@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1035"
+  },
+  {
+    "summary": "Prague",
+    "location": "Prague\\, Czechia",
+    "starts_at": "2026-03-16T00:00:00+00:00",
+    "ends_at": "2026-03-19T00:00:00+00:00",
+    "uid": "22d05d58-4cab-9000-0001-0000169085b1@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "LO788 TLL to WAW",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-03-16T16:30:00+00:00",
+    "ends_at": "2026-03-16T18:10:00+00:00",
+    "uid": "item-d922d0fc-a39a-9000-0003-00013ef3ad95@tripit.com",
+    "kind": "flight",
+    "flight_number": "LO788"
+  },
+  {
+    "summary": "LO529 WAW to PRG",
+    "location": "Warsaw (WAW)",
+    "starts_at": "2026-03-16T19:25:00+00:00",
+    "ends_at": "2026-03-16T20:45:00+00:00",
+    "uid": "item-52838a5e-6fed-9000-0003-00013ef3afc9@tripit.com",
+    "kind": "flight",
+    "flight_number": "LO529"
+  },
+  {
+    "summary": "Check-in: Falkensteiner Hotel Prague",
+    "location": "Opletalova 1402/21\\, Nov\u00e9 M\u011bsto\\, 110 00 Praha-Praha 1\\, Czechia",
+    "starts_at": "2026-03-16T22:00:00+00:00",
+    "ends_at": "2026-03-16T23:00:00+00:00",
+    "uid": "item-c17fb016-8db7-9000-0003-00013ef3c8b1@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-out: Falkensteiner Hotel Prague",
+    "location": "Opletalova 1402/21\\, Nov\u00e9 M\u011bsto\\, 110 00 Praha-Praha 1\\, Czechia",
+    "starts_at": "2026-03-18T10:00:00+00:00",
+    "ends_at": "2026-03-18T11:00:00+00:00",
+    "uid": "item-0968034a-1a0d-9000-0003-00013ef3c8b5@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "BT482 PRG to RIX",
+    "location": "Prague (PRG)",
+    "starts_at": "2026-03-18T13:20:00+00:00",
+    "ends_at": "2026-03-18T15:05:00+00:00",
+    "uid": "item-1322a761-5d9d-9000-0003-00013ef3b6d5@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT482"
+  },
+  {
+    "summary": "BT317 RIX to TLL",
+    "location": "Riga (RIX)",
+    "starts_at": "2026-03-18T17:55:00+00:00",
+    "ends_at": "2026-03-18T18:45:00+00:00",
+    "uid": "item-c0efb30f-20a3-9000-0003-00013ef3b951@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT317"
+  },
+  {
+    "summary": "Baltics Trip",
+    "location": "Vilnius\\, Lithuania",
+    "starts_at": "2026-03-30T00:00:00+00:00",
+    "ends_at": "2026-04-03T00:00:00+00:00",
+    "uid": "ab691efc-8f19-9000-0001-0000169ad912@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "BT906 TLL to VNO",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-03-30T19:30:00+00:00",
+    "ends_at": "2026-03-30T20:40:00+00:00",
+    "uid": "item-44f85e01-cb48-9000-0003-0001400f3b85@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT906"
+  },
+  {
+    "summary": "BT348 VNO to RIX",
+    "location": "Vilnius (VNO)",
+    "starts_at": "2026-03-31T18:30:00+00:00",
+    "ends_at": "2026-03-31T19:20:00+00:00",
+    "uid": "item-1870965e-fc70-9000-0003-0001400f3d05@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT348"
+  },
+  {
+    "summary": "BT313 RIX to TLL",
+    "location": "Riga (RIX)",
+    "starts_at": "2026-04-02T09:30:00+00:00",
+    "ends_at": "2026-04-02T10:20:00+00:00",
+    "uid": "item-6e04ee57-c602-9000-0003-0001400f3ee5@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT313"
+  },
+  {
+    "summary": "Warsaw",
+    "location": "Warsaw\\, Poland",
+    "starts_at": "2026-04-07T00:00:00+00:00",
+    "ends_at": "2026-04-11T00:00:00+00:00",
+    "uid": "d1035c67-8a0f-9000-0001-0000169da6a7@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-in: Ibis Warszawa Stare Miasto",
+    "location": "Muranowska 2\\, 00-209 Warszawa\\, Poland",
+    "starts_at": "2026-04-07T13:00:00+00:00",
+    "ends_at": "2026-04-07T14:00:00+00:00",
+    "uid": "item-1e7db44d-1487-9000-0003-000140599ded@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "LO788 TLL to WAW",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-04-07T15:25:00+00:00",
+    "ends_at": "2026-04-07T17:05:00+00:00",
+    "uid": "item-01d70b2f-b8e7-9000-0003-000140594789@tripit.com",
+    "kind": "flight",
+    "flight_number": "LO788"
+  },
+  {
+    "summary": "Check-out: Ibis Warszawa Stare Miasto",
+    "location": "Muranowska 2\\, 00-209 Warszawa\\, Poland",
+    "starts_at": "2026-04-09T09:00:00+00:00",
+    "ends_at": "2026-04-09T10:00:00+00:00",
+    "uid": "item-8464a05a-547d-9000-0003-000140599df5@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "LO789 WAW to TLL",
+    "location": "Warsaw (WAW)",
+    "starts_at": "2026-04-09T19:25:00+00:00",
+    "ends_at": "2026-04-09T21:05:00+00:00",
+    "uid": "item-e3a0bd96-89fd-9000-0003-000140594a05@tripit.com",
+    "kind": "flight",
+    "flight_number": "LO789"
+  },
+  {
+    "summary": "Manchester - London",
+    "location": "Manchester\\, United Kingdom",
+    "starts_at": "2026-04-27T00:00:00+00:00",
+    "ends_at": "2026-05-01T00:00:00+00:00",
+    "uid": "3ead9a60-afb1-9000-0001-0000169daa30@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "SK1787 TLL to CPH",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-04-27T12:50:00+00:00",
+    "ends_at": "2026-04-27T14:25:00+00:00",
+    "uid": "item-17123076-7ac5-9000-0003-000141fc9d21@tripit.com",
+    "kind": "flight",
+    "flight_number": "SK1787"
+  },
+  {
+    "summary": "SK541 CPH to MAN",
+    "location": "Copenhagen (CPH)",
+    "starts_at": "2026-04-27T15:30:00+00:00",
+    "ends_at": "2026-04-27T17:30:00+00:00",
+    "uid": "item-4625218f-4d1e-9000-0003-000141fc9d25@tripit.com",
+    "kind": "flight",
+    "flight_number": "SK541"
+  },
+  {
+    "summary": "Check-in: The Edwardian Manchester Hotel",
+    "location": "Free Trade Hall\\, Peter St\\, Manchester M2 5GP\\, UK",
+    "starts_at": "2026-04-27T19:00:00+00:00",
+    "ends_at": "2026-04-27T20:00:00+00:00",
+    "uid": "item-3264024a-fe72-9000-0003-00014059714d@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-out: The Edwardian Manchester Hotel",
+    "location": "Free Trade Hall\\, Peter St\\, Manchester M2 5GP\\, UK",
+    "starts_at": "2026-04-28T10:00:00+00:00",
+    "ends_at": "2026-04-28T11:00:00+00:00",
+    "uid": "item-a4842c32-91c0-9000-0003-000140597159@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Avanti Westcoast - Manchester Piccadilly to Euston Station",
+    "location": "Manchester Piccadilly\\; Greater\\, Piccadilly Station Approach\\, Manchester M60 7RA\\, UK\\, Manchester Piccadilly",
+    "starts_at": "2026-04-28T20:14:00+00:00",
+    "ends_at": "2026-04-28T22:58:00+00:00",
+    "uid": "item-15a98c1e-976b-9000-0003-000141fcb361@tripit.com",
+    "kind": "flight",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-in: The Mayfair Townhouse",
+    "location": "27-41 Half Moon St\\, London W1J 7BG\\, UK",
+    "starts_at": "2026-04-28T22:59:00+00:00",
+    "ends_at": "2026-04-28T23:59:00+00:00",
+    "uid": "item-3ccffed9-52a9-9000-0003-000141fcb759@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "Check-out: The Mayfair Townhouse",
+    "location": "27-41 Half Moon St\\, London W1J 7BG\\, UK",
+    "starts_at": "2026-04-30T09:30:00+00:00",
+    "ends_at": "2026-04-30T10:30:00+00:00",
+    "uid": "item-1938b307-55db-9000-0003-000141fcb75d@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "BT872 LGW to TLL",
+    "location": "London (LGW)",
+    "starts_at": "2026-04-30T17:50:00+00:00",
+    "ends_at": "2026-04-30T20:35:00+00:00",
+    "uid": "item-4be10cfc-61bd-9000-0003-000141fcbaf1@tripit.com",
+    "kind": "flight",
+    "flight_number": "BT872"
+  },
+  {
+    "summary": "Bratislava",
+    "location": "Bratislava\\, Slovakia",
+    "starts_at": "2026-05-13T00:00:00+00:00",
+    "ends_at": "2026-05-16T00:00:00+00:00",
+    "uid": "daaa198e-5e2e-9000-0001-0000169da6de@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1018 TLL to HEL",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-05-13T12:00:00+00:00",
+    "ends_at": "2026-05-13T12:30:00+00:00",
+    "uid": "item-64a2702c-303f-9000-0003-000141fcc799@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1018"
+  },
+  {
+    "summary": "Check-in: Grand Hotel River Park\\, a Luxury Collection Hotel\\, Bratislava",
+    "location": "Dvo\u0159\u00e1kovo n\u00e1bre\u017eie 6\\, 811 02 Bratislava-Star\u00e9 Mesto\\, Slovakia",
+    "starts_at": "2026-05-13T13:00:00+00:00",
+    "ends_at": "2026-05-13T14:00:00+00:00",
+    "uid": "item-fb273f3b-c2a8-9000-0003-000140591f09@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1475 HEL to VIE",
+    "location": "Helsinki (HEL)",
+    "starts_at": "2026-05-13T13:55:00+00:00",
+    "ends_at": "2026-05-13T16:20:00+00:00",
+    "uid": "item-5674ef74-e0bd-9000-0003-000141fcc839@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1475"
+  },
+  {
+    "summary": "Check-out: Grand Hotel River Park\\, a Luxury Collection Hotel\\, Bratislava",
+    "location": "Dvo\u0159\u00e1kovo n\u00e1bre\u017eie 6\\, 811 02 Bratislava-Star\u00e9 Mesto\\, Slovakia",
+    "starts_at": "2026-05-15T09:00:00+00:00",
+    "ends_at": "2026-05-15T10:00:00+00:00",
+    "uid": "item-cfba27da-a3e6-9000-0003-000140591f11@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "AY1472 VIE to HEL",
+    "location": "Vienna (VIE)",
+    "starts_at": "2026-05-15T09:35:00+00:00",
+    "ends_at": "2026-05-15T12:00:00+00:00",
+    "uid": "item-83ab56f8-244b-9000-0003-000141fccde5@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1472"
+  },
+  {
+    "summary": "AY1019 HEL to TLL",
+    "location": "Helsinki (HEL)",
+    "starts_at": "2026-05-15T12:45:00+00:00",
+    "ends_at": "2026-05-15T13:15:00+00:00",
+    "uid": "item-91f58103-5ddd-9000-0003-000141fccebd@tripit.com",
+    "kind": "flight",
+    "flight_number": "AY1019"
+  },
+  {
+    "summary": "Bucharest - IaBilet",
+    "location": "Bucharest\\, Romania",
+    "starts_at": "2026-05-19T00:00:00+00:00",
+    "ends_at": "2026-05-23T00:00:00+00:00",
+    "uid": "9aabca75-4040-9000-0001-000016ba0b58@tripit.com",
+    "kind": "other",
+    "flight_number": ""
+  },
+  {
+    "summary": "LH881 TLL to FRA",
+    "location": "Tallinn (TLL)",
+    "starts_at": "2026-05-19T10:50:00+00:00",
+    "ends_at": "2026-05-19T13:20:00+00:00",
+    "uid": "item-21989ab0-c68e-9000-0003-00014366382d@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH881"
+  },
+  {
+    "summary": "Check-in: Radisson Blu Hotel Bucharest",
+    "location": "Calea Victoriei 63-81\\, 010065 Bucure\u0219ti\\, Romania",
+    "starts_at": "2026-05-19T12:00:00+00:00",
+    "ends_at": "2026-05-19T13:00:00+00:00",
+    "uid": "item-b85a405f-0612-9000-0003-000143663f89@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "LH1422 FRA to OTP",
+    "location": "Frankfurt (FRA)",
+    "starts_at": "2026-05-19T18:30:00+00:00",
+    "ends_at": "2026-05-19T20:50:00+00:00",
+    "uid": "item-d43747d6-a7e5-9000-0003-00014366390d@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH1422"
+  },
+  {
+    "summary": "Check-out: Radisson Blu Hotel Bucharest",
+    "location": "Calea Victoriei 63-81\\, 010065 Bucure\u0219ti\\, Romania",
+    "starts_at": "2026-05-21T08:00:00+00:00",
+    "ends_at": "2026-05-21T09:00:00+00:00",
+    "uid": "item-accf9d7e-c272-9000-0003-000143663f8d@tripit.com",
+    "kind": "hotel",
+    "flight_number": ""
+  },
+  {
+    "summary": "LH1417 OTP to FRA",
+    "location": "Bucharest (OTP)",
+    "starts_at": "2026-05-21T14:35:00+00:00",
+    "ends_at": "2026-05-21T17:10:00+00:00",
+    "uid": "item-1a2a7800-9aab-9000-0003-000143663b31@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH1417"
+  },
+  {
+    "summary": "LH884 FRA to TLL",
+    "location": "Frankfurt (FRA)",
+    "starts_at": "2026-05-21T18:50:00+00:00",
+    "ends_at": "2026-05-21T21:15:00+00:00",
+    "uid": "item-09a69dfc-71b1-9000-0003-000143663bfd@tripit.com",
+    "kind": "flight",
+    "flight_number": "LH884"
+  }
+]

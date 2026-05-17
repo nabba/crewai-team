@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "log_name": "audit_journal",
+  "segments": [],
+  "current_seg_id": 0,
+  "next_seq": 5
+}

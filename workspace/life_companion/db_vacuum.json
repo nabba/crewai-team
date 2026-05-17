@@ -1,0 +1,11 @@
+{
+  "consecutive_failures": 0,
+  "last_run_at": 1778960813.0256307,
+  "last_summary": {
+    "bytes_after": 1445888,
+    "bytes_before": 1445888,
+    "duration_s": 0.07,
+    "freed_bytes": 0,
+    "ok": true
+  }
+}

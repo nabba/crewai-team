@@ -1,0 +1,93 @@
+{
+  "last_updated_at": "2026-05-17T01:30:22+00:00",
+  "runs": [
+    {
+      "all_ok": true,
+      "chromadb": {
+        "bytes": 260489729,
+        "duration_s": 27.56,
+        "error": null,
+        "ok": true,
+        "path": "backups/chromadb/chromadb-20260516T194653Z.tar.gz"
+      },
+      "completed_at": "2026-05-16T19:47:20.690646+00:00",
+      "duration_s": 27.57,
+      "host_managed": true,
+      "neo4j": {
+        "bytes": 0,
+        "duration_s": 0.0,
+        "error": null,
+        "ok": true,
+        "path": null,
+        "skipped": true,
+        "skipped_reason": "host_managed"
+      },
+      "postgres": {
+        "bytes": 0,
+        "duration_s": 0.0,
+        "error": null,
+        "ok": true,
+        "path": null,
+        "skipped": true,
+        "skipped_reason": "host_managed"
+      },
+      "purge": {
+        "bytes_freed": 0,
+        "deleted": 0,
+        "errors": 0
+      },
+      "source": "gateway",
+      "started_at": "2026-05-16T19:46:53.121992+00:00"
+    },
+    {
+      "all_ok": true,
+      "chromadb": {
+        "bytes": 279864243,
+        "error": null,
+        "ok": true,
+        "path": "backups/chromadb/chromadb-20260517T000005Z.tar.gz"
+      },
+      "completed_at": "2026-05-17T00:00:38+00:00",
+      "neo4j": {
+        "bytes": 16984,
+        "error": null,
+        "ok": true,
+        "path": "backups/neo4j/neo4j-20260517T000005Z.dump"
+      },
+      "postgres": {
+        "bytes": 35156091,
+        "error": null,
+        "ok": true,
+        "path": "backups/postgres/postgres-20260517T000005Z.sql.gz"
+      },
+      "source": "operator_script",
+      "started_at": "2026-05-17T00:00:38+00:00"
+    },
+    {
+      "all_ok": true,
+      "chromadb": {
+        "bytes": 0,
+        "error": null,
+        "ok": true,
+        "path": null,
+        "skipped": true,
+        "skipped_reason": "operator_skipped"
+      },
+      "completed_at": "2026-05-17T01:30:22+00:00",
+      "neo4j": {
+        "bytes": 17032,
+        "error": null,
+        "ok": true,
+        "path": "backups/neo4j/neo4j-20260517T013005Z.dump"
+      },
+      "postgres": {
+        "bytes": 35378809,
+        "error": null,
+        "ok": true,
+        "path": "backups/postgres/postgres-20260517T013005Z.sql.gz"
+      },
+      "source": "operator_script",
+      "started_at": "2026-05-17T01:30:22+00:00"
+    }
+  ]
+}

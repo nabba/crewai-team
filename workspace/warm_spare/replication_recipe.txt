@@ -1,0 +1,13 @@
+# Warm-Spare replication recipe (Q17.1)
+#
+# OPERATOR-USE. Copy the command line below into your crontab
+# (or LaunchAgent, or systemd timer) on the canonical host.
+#
+# Configured partner target: andrus.raudsalu@andrus-macbook-pro-16.tail5b289b.ts.net:~/andrusai-mirror/
+# Excludes: 11 patterns
+#
+# Suggested crontab entry (hourly, top of hour):
+#
+#   0 * * * * rsync -av --update --partial --exclude=__pycache__/ --exclude=.cache/ --exclude=tmp/ --exclude=*.pyc --exclude=*.tmp --exclude=.env --exclude=.env.local --exclude=secrets/ --exclude=*.crt --exclude=*.key --exclude=*.pem /Users/andrus/BotArmy/crewai-team/workspace/ andrus.raudsalu@andrus-macbook-pro-16.tail5b289b.ts.net:~/andrusai-mirror/
+
+rsync -av --update --partial --exclude=__pycache__/ --exclude=.cache/ --exclude=tmp/ --exclude=*.pyc --exclude=*.tmp --exclude=.env --exclude=.env.local --exclude=secrets/ --exclude=*.crt --exclude=*.key --exclude=*.pem /Users/andrus/BotArmy/crewai-team/workspace/ andrus.raudsalu@andrus-macbook-pro-16.tail5b289b.ts.net:~/andrusai-mirror/

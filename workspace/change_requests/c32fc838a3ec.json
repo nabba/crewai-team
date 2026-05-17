@@ -1,0 +1,13 @@
+{
+  "id": "c32fc838a3ec",
+  "created_at": "2026-05-16T23:07:27.504796+00:00",
+  "requestor": "vendor_sunset_monitor",
+  "path": "workspace/healing/sunset_models.json",
+  "new_content": "{\n  \"sunset\": [\n    {\n      \"added_via\": \"vendor_sunset_monitor\",\n      \"first_missed_at\": 1778972847.483826,\n      \"model\": \"meituan/longcat-flash-chat\",\n      \"provider\": \"openrouter\"\n    }\n  ]\n}",
+  "old_content": "",
+  "reason": "Self-heal: vendor_sunset detected `meituan/longcat-flash-chat` (openrouter) is no longer listed by the provider's /v1/models API. Adding to the runtime blocklist so future calls fail-fast instead of erroring at the upstream.",
+  "diff": "--- a/workspace/healing/sunset_models.json\n+++ b/workspace/healing/sunset_models.json\n@@ -0,0 +1,10 @@\n+{\n+  \"sunset\": [\n+    {\n+      \"added_via\": \"vendor_sunset_monitor\",\n+      \"first_missed_at\": 1778972847.483826,\n+      \"model\": \"meituan/longcat-flash-chat\",\n+      \"provider\": \"openrouter\"\n+    }\n+  ]\n+}",
+  "status": "rejected",
+  "risk_class": "standard",
+  "decision_reason": "path 'workspace/healing/sunset_models.json' is outside the repo's allowed roots (['app/', 'dashboard-react/', 'deploy/', 'docs/', 'host_bridge/', 'scripts/', 'tests/', 'wiki/']); change-request flow only writes under those roots"
+}

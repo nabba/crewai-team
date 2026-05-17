@@ -32,6 +32,13 @@ IDLE_DELAY_SECONDS = 30
 # Pause between background job iterations (brief cooldown, then next job)
 INTER_JOB_PAUSE_SECONDS = 2  # Reduced from 5 — lightweight jobs don't need long pauses
 
+# Local fallback if the lifespan never calls boot_state.mark_boot_complete().
+# Set deliberately long: the realistic recovery scenario is a refactor that
+# accidentally drops the mark_boot_complete() call, which we want to surface
+# as a loud warning, not paper over with a quick auto-proceed. 10 minutes
+# gives an operator time to notice the absence in logs.
+IDLE_BOOT_FALLBACK_S = 600
+
 # Per-job failure handling (named so operators can tune without reading
 # the body of _run_single_job). Phase G4 — pre-existing literals lifted
 # to module constants. NO behavioural change.
@@ -108,6 +115,14 @@ _enabled = True  # kill switch — toggled from Firestore
 _enabled_lock = threading.Lock()
 _idle_thread: threading.Thread | None = None
 
+# Boot-gate state. _module_import_time anchors the IDLE_BOOT_FALLBACK_S
+# safety net for the case where boot_state.mark_boot_complete() is never
+# called (e.g. a refactor drops the call, or a test harness boots
+# subsystems out-of-band). _boot_fallback_warned ensures we log the
+# warning exactly once per process.
+_module_import_time: float = time.monotonic()
+_boot_fallback_warned: bool = False
+
 # Snapshot of the jobs passed to start(), exposed read-only via
 # list_jobs() so dashboards can publish the full registry alongside
 # APScheduler cron jobs. Stored as (name, weight) — the callable is
@@ -130,14 +145,67 @@ def notify_task_end() -> None:
         _last_task_end = time.monotonic()
 
 
+def _boot_ready() -> bool:
+    """Boot-state gate with local fallback.
+
+    Returns True if either:
+      (a) ``boot_state.mark_boot_complete()`` has been called by the
+          lifespan (the normal path), or
+      (b) IDLE_BOOT_FALLBACK_S seconds have elapsed since this module
+          was imported and the signal still hasn't arrived (the safety
+          net for a missing call — logged loudly once).
+
+    Returns False during the normal boot window, which is what lets
+    ``is_idle()`` correctly suppress background work while the gateway
+    is still finishing its lifespan setup.
+    """
+    from app import boot_state
+    if boot_state.is_boot_complete():
+        return True
+    if time.monotonic() - _module_import_time >= IDLE_BOOT_FALLBACK_S:
+        global _boot_fallback_warned
+        if not _boot_fallback_warned:
+            logger.warning(
+                "idle_scheduler: boot_state.mark_boot_complete() not "
+                "called within %ds of module import — proceeding with "
+                "background work via local fallback. Investigate the "
+                "lifespan path in app/main.py.",
+                IDLE_BOOT_FALLBACK_S,
+            )
+            _boot_fallback_warned = True
+        return True
+    return False
+
+
 def is_idle() -> bool:
-    """Check if the system is idle (no active tasks + idle delay elapsed)."""
+    """Check if the system is idle.
+
+    The system is idle when all three hold:
+      1. Boot is complete (or the local fallback has elapsed) — so we
+         don't storm background work into a still-initializing gateway.
+      2. No user tasks are currently in flight.
+      3. At least ``IDLE_DELAY_SECONDS`` have elapsed since the last
+         user task ended (or since boot completion, if no user task
+         has run yet — giving the system a brief settle window).
+    """
+    if not _boot_ready():
+        return False
     with _lock:
         if _active_tasks > 0:
             return False
         if _last_task_end == 0:
-            # No tasks ever ran — consider idle after startup delay
-            return True
+            # No user task since boot. Use the boot-complete moment as
+            # the effective "last activity" and honour IDLE_DELAY_SECONDS
+            # so the first idle pass arrives after a short settle window,
+            # not the instant lifespan calls mark_boot_complete().
+            from app import boot_state
+            completed_at = boot_state.boot_completed_at()
+            if completed_at is None:
+                # Local fallback fired (else _boot_ready would have
+                # returned False). Use _module_import_time as the
+                # anchor, so the settle window still applies.
+                completed_at = _module_import_time
+            return (time.monotonic() - completed_at) >= IDLE_DELAY_SECONDS
         return (time.monotonic() - _last_task_end) >= IDLE_DELAY_SECONDS
 
 

@@ -1,0 +1,2697 @@
+{
+  "choke_points": {
+    "app/agents/commander/orchestrator.py": {
+      "classes": [
+        "Commander"
+      ],
+      "exists": true,
+      "public_defs": []
+    },
+    "app/control_plane/dashboard_api.py": {
+      "classes": [],
+      "exists": true,
+      "public_defs": []
+    },
+    "app/crews/base_crew.py": {
+      "classes": [],
+      "exists": true,
+      "public_defs": [
+        "assemble_tools",
+        "get_all_crew_capabilities",
+        "get_crew_capabilities",
+        "get_plugin_tools",
+        "register_tool_factory",
+        "register_tool_plugin",
+        "run_single_agent_crew"
+      ]
+    },
+    "app/idle_scheduler.py": {
+      "classes": [
+        "JobWeight"
+      ],
+      "exists": true,
+      "public_defs": [
+        "get_job_snapshot",
+        "is_enabled",
+        "is_idle",
+        "list_jobs",
+        "notify_task_end",
+        "notify_task_start",
+        "read_background_enabled",
+        "set_enabled",
+        "should_yield",
+        "start",
+        "start_background_listener",
+        "stop",
+        "stop_listener"
+      ]
+    },
+    "app/main.py": {
+      "classes": [],
+      "exists": true,
+      "public_defs": [
+        "get_location",
+        "handle_task",
+        "lifespan",
+        "receive_signal",
+        "self_improvement_describe",
+        "self_improvement_health"
+      ]
+    }
+  },
+  "idle_jobs": [
+    {
+      "name": "adversarial-probes",
+      "weight": "heavy"
+    },
+    {
+      "name": "alignment-audit",
+      "weight": "medium"
+    },
+    {
+      "name": "analogy-populator",
+      "weight": "heavy"
+    },
+    {
+      "name": "atlas-competence-sync",
+      "weight": "light"
+    },
+    {
+      "name": "atlas-learning",
+      "weight": "heavy"
+    },
+    {
+      "name": "atlas-stale-check",
+      "weight": "light"
+    },
+    {
+      "name": "attention-slow-loop",
+      "weight": "medium"
+    },
+    {
+      "name": "backward-counterfactual-replay",
+      "weight": "light"
+    },
+    {
+      "name": "behavioral-assessment",
+      "weight": "medium"
+    },
+    {
+      "name": "belief-outbox-chroma",
+      "weight": "light"
+    },
+    {
+      "name": "belief-outbox-neo4j",
+      "weight": "light"
+    },
+    {
+      "name": "chaos-testing",
+      "weight": "heavy"
+    },
+    {
+      "name": "cogito-cycle",
+      "weight": "medium"
+    },
+    {
+      "name": "consciousness-probe",
+      "weight": "medium"
+    },
+    {
+      "name": "consciousness-slow-loop",
+      "weight": "medium"
+    },
+    {
+      "name": "consolidator",
+      "weight": "heavy"
+    },
+    {
+      "name": "data-retention",
+      "weight": "light"
+    },
+    {
+      "name": "dead-letter-retry",
+      "weight": "light"
+    },
+    {
+      "name": "decentered-pass",
+      "weight": "light"
+    },
+    {
+      "name": "discover-topics",
+      "weight": "light"
+    },
+    {
+      "name": "dlq-drain",
+      "weight": "light"
+    },
+    {
+      "name": "embedded-probe",
+      "weight": "medium"
+    },
+    {
+      "name": "emergent-infrastructure",
+      "weight": "light"
+    },
+    {
+      "name": "entropy-monitoring",
+      "weight": "light"
+    },
+    {
+      "name": "evaluator-sweep",
+      "weight": "light"
+    },
+    {
+      "name": "evolution",
+      "weight": "heavy"
+    },
+    {
+      "name": "feedback-aggregate",
+      "weight": "light"
+    },
+    {
+      "name": "fiction-ingest",
+      "weight": "light"
+    },
+    {
+      "name": "goodhart-check",
+      "weight": "medium"
+    },
+    {
+      "name": "health-evaluate",
+      "weight": "light"
+    },
+    {
+      "name": "heartbeat-cycle",
+      "weight": "light"
+    },
+    {
+      "name": "human-gate-expire",
+      "weight": "light"
+    },
+    {
+      "name": "improvement-narrative",
+      "weight": "light"
+    },
+    {
+      "name": "improvement-scan",
+      "weight": "medium"
+    },
+    {
+      "name": "island-evolution",
+      "weight": "heavy"
+    },
+    {
+      "name": "judge-eval-retention",
+      "weight": "light"
+    },
+    {
+      "name": "knowledge-compactor",
+      "weight": "heavy"
+    },
+    {
+      "name": "learn-queue",
+      "weight": "heavy"
+    },
+    {
+      "name": "llm-apply-promotions",
+      "weight": "light"
+    },
+    {
+      "name": "llm-discovery",
+      "weight": "medium"
+    },
+    {
+      "name": "llm-external-ranks",
+      "weight": "medium"
+    },
+    {
+      "name": "llm-rebenchmark-incumbents",
+      "weight": "heavy"
+    },
+    {
+      "name": "llm-refresh-catalog",
+      "weight": "light"
+    },
+    {
+      "name": "map-elites-maintain",
+      "weight": "light"
+    },
+    {
+      "name": "map-elites-migrate",
+      "weight": "light"
+    },
+    {
+      "name": "meta-evolution",
+      "weight": "heavy"
+    },
+    {
+      "name": "meta-workspace-promotion",
+      "weight": "light"
+    },
+    {
+      "name": "modification-engine",
+      "weight": "medium"
+    },
+    {
+      "name": "ollama-memory",
+      "weight": "light"
+    },
+    {
+      "name": "parallel-evolution",
+      "weight": "heavy"
+    },
+    {
+      "name": "pattern-library-extract",
+      "weight": "medium"
+    },
+    {
+      "name": "prediction-slow-loop",
+      "weight": "medium"
+    },
+    {
+      "name": "prosocial-learning",
+      "weight": "medium"
+    },
+    {
+      "name": "retrospective",
+      "weight": "heavy"
+    },
+    {
+      "name": "safety-health-check",
+      "weight": "light"
+    },
+    {
+      "name": "self-knowledge-ingest",
+      "weight": "medium"
+    },
+    {
+      "name": "self-model-refresh",
+      "weight": "light"
+    },
+    {
+      "name": "skill-index",
+      "weight": "light"
+    },
+    {
+      "name": "skills-mirror",
+      "weight": "light"
+    },
+    {
+      "name": "spans-retention",
+      "weight": "light"
+    },
+    {
+      "name": "spans-watchdog",
+      "weight": "light"
+    },
+    {
+      "name": "system-monitor",
+      "weight": "light"
+    },
+    {
+      "name": "tech-radar",
+      "weight": "heavy"
+    },
+    {
+      "name": "tier-graduation",
+      "weight": "light"
+    },
+    {
+      "name": "training-curate",
+      "weight": "light"
+    },
+    {
+      "name": "training-pipeline",
+      "weight": "heavy"
+    },
+    {
+      "name": "trajectory-tips",
+      "weight": "medium"
+    },
+    {
+      "name": "transfer-attribution",
+      "weight": "light"
+    },
+    {
+      "name": "transfer-compile",
+      "weight": "heavy"
+    },
+    {
+      "name": "transfer-promotion",
+      "weight": "medium"
+    },
+    {
+      "name": "valve-audit-replay",
+      "weight": "light"
+    },
+    {
+      "name": "version-snapshot",
+      "weight": "light"
+    },
+    {
+      "name": "viability-goal-emitter",
+      "weight": "light"
+    },
+    {
+      "name": "wiki-hot-cache",
+      "weight": "light"
+    },
+    {
+      "name": "wiki-index-reconciler",
+      "weight": "light"
+    },
+    {
+      "name": "wiki-lint",
+      "weight": "medium"
+    },
+    {
+      "name": "wiki-synthesis",
+      "weight": "medium"
+    }
+  ],
+  "routes": [
+    {
+      "handler": "delete_entry",
+      "method": "DELETE",
+      "module": "app/experiential/api.py",
+      "path": "/entries/{entry_id}"
+    },
+    {
+      "handler": "delete_pattern",
+      "method": "DELETE",
+      "module": "app/aesthetics/api.py",
+      "path": "/patterns/{pattern_id}"
+    },
+    {
+      "handler": "delete_session",
+      "method": "DELETE",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}"
+    },
+    {
+      "handler": "delete_workspace_source",
+      "method": "DELETE",
+      "module": "app/api/companion_api.py",
+      "path": "/sources/{workspace_id}/{source_id}"
+    },
+    {
+      "handler": "delete_tension",
+      "method": "DELETE",
+      "module": "app/tensions/api.py",
+      "path": "/tensions/{tension_id}"
+    },
+    {
+      "handler": "delete_philosophy_text",
+      "method": "DELETE",
+      "module": "app/philosophy/api.py",
+      "path": "/texts/{filename}"
+    },
+    {
+      "handler": "delete_skill_endpoint",
+      "method": "DELETE",
+      "module": "app/api/skills_api.py",
+      "path": "/{name}"
+    },
+    {
+      "handler": "delete_template",
+      "method": "DELETE",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/{template_id}"
+    },
+    {
+      "handler": "list_action_requests",
+      "method": "GET",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_architecture_requests",
+      "method": "GET",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_changes",
+      "method": "GET",
+      "module": "app/control_plane/changes_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_coding_sessions",
+      "method": "GET",
+      "module": "app/control_plane/coding_sessions_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_files_endpoint",
+      "method": "GET",
+      "module": "app/api/files_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_inquiries",
+      "method": "GET",
+      "module": "app/control_plane/inquiries_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_proposals",
+      "method": "GET",
+      "module": "app/control_plane/proposals_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_skills_endpoint",
+      "method": "GET",
+      "module": "app/api/skills_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_templates",
+      "method": "GET",
+      "module": "app/control_plane/workflows_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_threads",
+      "method": "GET",
+      "module": "app/control_plane/threads_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_tools",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": ""
+    },
+    {
+      "handler": "read_system_state",
+      "method": "GET",
+      "module": "app/control_plane/system_state_api.py",
+      "path": ""
+    },
+    {
+      "handler": "list_accounts",
+      "method": "GET",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/accounts"
+    },
+    {
+      "handler": "get_allowlist",
+      "method": "GET",
+      "module": "app/api/vacation_api.py",
+      "path": "/allowlist"
+    },
+    {
+      "handler": "recent_anomalies",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/anomalies"
+    },
+    {
+      "handler": "get_answer_regression",
+      "method": "GET",
+      "module": "app/api/qos_api.py",
+      "path": "/answer-regression"
+    },
+    {
+      "handler": "get_attachment",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/attachment"
+    },
+    {
+      "handler": "attachments",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/attachments"
+    },
+    {
+      "handler": "get_audit_log",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/audit"
+    },
+    {
+      "handler": "audit_log",
+      "method": "GET",
+      "module": "app/api/vacation_api.py",
+      "path": "/audit-log"
+    },
+    {
+      "handler": "get_audit_log_global",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/audit-log"
+    },
+    {
+      "handler": "get_audit_log_for_tool",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/audit-log/{tool_id}"
+    },
+    {
+      "handler": "audit_costs",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/audit/costs"
+    },
+    {
+      "handler": "get_background_tasks_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/background_tasks"
+    },
+    {
+      "handler": "epistemic_biases",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/biases"
+    },
+    {
+      "handler": "get_blocklist",
+      "method": "GET",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/blocklist"
+    },
+    {
+      "handler": "get_budgets",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/budgets"
+    },
+    {
+      "handler": "budgets_forecast",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/budgets/forecast"
+    },
+    {
+      "handler": "business_kb_status",
+      "method": "GET",
+      "module": "app/api/kb.py",
+      "path": "/business/{business_id}/status"
+    },
+    {
+      "handler": "list_business_kbs",
+      "method": "GET",
+      "module": "app/api/kb.py",
+      "path": "/businesses"
+    },
+    {
+      "handler": "calibration",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/calibration"
+    },
+    {
+      "handler": "calibration_history",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/calibration-history"
+    },
+    {
+      "handler": "list_capabilities",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": "/capabilities"
+    },
+    {
+      "handler": "care_ledger",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/care-ledger"
+    },
+    {
+      "handler": "get_categories",
+      "method": "GET",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/categories"
+    },
+    {
+      "handler": "chat_messages",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/chat/messages"
+    },
+    {
+      "handler": "check_in_candidates",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/check-in-candidates"
+    },
+    {
+      "handler": "epistemic_claim",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/claim/{claim_id}"
+    },
+    {
+      "handler": "companion_cross_modal_patterns",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/cross-modal-patterns"
+    },
+    {
+      "handler": "companion_people",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people"
+    },
+    {
+      "handler": "companion_people_centrality",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/centrality"
+    },
+    {
+      "handler": "companion_people_graph",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph"
+    },
+    {
+      "handler": "companion_people_graph_communities",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/communities"
+    },
+    {
+      "handler": "companion_people_graph_structural",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/structural"
+    },
+    {
+      "handler": "companion_people_suggestions",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/suggestions"
+    },
+    {
+      "handler": "companion_tensions",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/tensions"
+    },
+    {
+      "handler": "get_compositions",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/compositions"
+    },
+    {
+      "handler": "get_companion_config",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/config/{workspace_id}"
+    },
+    {
+      "handler": "consciousness_indicators",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/consciousness"
+    },
+    {
+      "handler": "consciousness_indicators",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/consciousness-indicators"
+    },
+    {
+      "handler": "costs_by_agent",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/costs/by-agent"
+    },
+    {
+      "handler": "costs_by_crew",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/costs/by-crew"
+    },
+    {
+      "handler": "costs_by_internal_agent",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/costs/by-internal-agent"
+    },
+    {
+      "handler": "costs_daily",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/costs/daily"
+    },
+    {
+      "handler": "costs_trends",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/costs/trends"
+    },
+    {
+      "handler": "get_creative_mode_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/creative_mode"
+    },
+    {
+      "handler": "credit_alerts",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/credit-alerts"
+    },
+    {
+      "handler": "serve_dashboard",
+      "method": "GET",
+      "module": "app/api/health.py",
+      "path": "/dashboard"
+    },
+    {
+      "handler": "get_delegation_settings",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/delegation"
+    },
+    {
+      "handler": "recent_deploys",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/deploys"
+    },
+    {
+      "handler": "list_digests",
+      "method": "GET",
+      "module": "app/api/vacation_api.py",
+      "path": "/digests"
+    },
+    {
+      "handler": "read_digest_endpoint",
+      "method": "GET",
+      "module": "app/api/vacation_api.py",
+      "path": "/digests/{name}"
+    },
+    {
+      "handler": "list_generated_docs",
+      "method": "GET",
+      "module": "app/api/health.py",
+      "path": "/docs"
+    },
+    {
+      "handler": "serve_generated_doc",
+      "method": "GET",
+      "module": "app/api/health.py",
+      "path": "/docs/{filename}"
+    },
+    {
+      "handler": "list_document_artifacts",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/document/{workspace_id}/{idea_id}"
+    },
+    {
+      "handler": "download_document_artifact",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/document/{workspace_id}/{idea_id}/{format}"
+    },
+    {
+      "handler": "fiction_documents",
+      "method": "GET",
+      "module": "app/api/fiction.py",
+      "path": "/documents"
+    },
+    {
+      "handler": "kb_documents",
+      "method": "GET",
+      "module": "app/api/kb.py",
+      "path": "/documents"
+    },
+    {
+      "handler": "list_documents",
+      "method": "GET",
+      "module": "app/experiential/api.py",
+      "path": "/documents"
+    },
+    {
+      "handler": "list_philosophy_texts",
+      "method": "GET",
+      "module": "app/philosophy/api.py",
+      "path": "/documents"
+    },
+    {
+      "handler": "list_texts",
+      "method": "GET",
+      "module": "app/episteme/api.py",
+      "path": "/documents"
+    },
+    {
+      "handler": "download_endpoint",
+      "method": "GET",
+      "module": "app/api/files_api.py",
+      "path": "/download"
+    },
+    {
+      "handler": "tool_drift",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": "/drift"
+    },
+    {
+      "handler": "drills_audit",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/drills/audit"
+    },
+    {
+      "handler": "drills_posture",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/drills/posture"
+    },
+    {
+      "handler": "drills_registry",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/drills/registry"
+    },
+    {
+      "handler": "ecological",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/ecological"
+    },
+    {
+      "handler": "embedding_migration_status",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/embedding-migration"
+    },
+    {
+      "handler": "get_engine_info",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/engine"
+    },
+    {
+      "handler": "error_audit",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/error_audit"
+    },
+    {
+      "handler": "recent_errors",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/errors"
+    },
+    {
+      "handler": "epistemic_feed",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/feed"
+    },
+    {
+      "handler": "get_file",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/file"
+    },
+    {
+      "handler": "tool_flags",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": "/flags"
+    },
+    {
+      "handler": "pending_governance",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/governance/pending"
+    },
+    {
+      "handler": "get_governance_ratchet_state",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/governance_ratchet/state"
+    },
+    {
+      "handler": "list_grand_task_proposals",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/grand-task/{workspace_id}/proposals"
+    },
+    {
+      "handler": "get_graph",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/graph"
+    },
+    {
+      "handler": "control_plane_health",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/health"
+    },
+    {
+      "handler": "health",
+      "method": "GET",
+      "module": "app/api/health.py",
+      "path": "/health"
+    },
+    {
+      "handler": "list_ideas",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/ideas/{workspace_id}"
+    },
+    {
+      "handler": "list_idle_jobs",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/idle/jobs"
+    },
+    {
+      "handler": "epistemic_incidents",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/incidents"
+    },
+    {
+      "handler": "epistemic_incident",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/incidents/{incident_id}"
+    },
+    {
+      "handler": "l9_snapshots",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/l9-snapshots"
+    },
+    {
+      "handler": "get_latency",
+      "method": "GET",
+      "module": "app/api/qos_api.py",
+      "path": "/latency"
+    },
+    {
+      "handler": "get_life_companion_state_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/life_companion"
+    },
+    {
+      "handler": "get_llm_mode_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/llm_mode"
+    },
+    {
+      "handler": "llm_catalog",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/catalog"
+    },
+    {
+      "handler": "llm_discovery_status",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/discovery"
+    },
+    {
+      "handler": "llm_judge_evaluations_endpoint",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/judge-evaluations"
+    },
+    {
+      "handler": "llm_judges_endpoint",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/judges"
+    },
+    {
+      "handler": "llm_pins_endpoint",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/pins"
+    },
+    {
+      "handler": "llm_promotions_endpoint",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/promotions"
+    },
+    {
+      "handler": "llm_role_assignments_endpoint",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/roles"
+    },
+    {
+      "handler": "get_location",
+      "method": "GET",
+      "module": "app/main.py",
+      "path": "/location"
+    },
+    {
+      "handler": "get_integrity",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/maintenance/integrity"
+    },
+    {
+      "handler": "get_meta_evolution_history",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/meta"
+    },
+    {
+      "handler": "get_meta_agent_settings",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/meta-agent"
+    },
+    {
+      "handler": "get_evolution_metrics",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/metrics"
+    },
+    {
+      "handler": "notify_fatigue",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/notify/fatigue"
+    },
+    {
+      "handler": "affect_now",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/now"
+    },
+    {
+      "handler": "epistemic_now",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/now"
+    },
+    {
+      "handler": "observability_snapshot_kinds",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/observability/snapshots"
+    },
+    {
+      "handler": "observability_snapshot_latest",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/observability/snapshots/{kind}/latest"
+    },
+    {
+      "handler": "observability_snapshot_recent",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/observability/snapshots/{kind}/recent"
+    },
+    {
+      "handler": "get_org_chart_api",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/org-chart"
+    },
+    {
+      "handler": "epistemic_overrides_recent",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/overrides/recent"
+    },
+    {
+      "handler": "epistemic_override_stats",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/overrides/stats"
+    },
+    {
+      "handler": "search_patterns",
+      "method": "GET",
+      "module": "app/aesthetics/api.py",
+      "path": "/patterns"
+    },
+    {
+      "handler": "epistemic_peer_reviews_recent",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/peer-reviews/recent"
+    },
+    {
+      "handler": "epistemic_peer_review_stats",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/peer-reviews/stats"
+    },
+    {
+      "handler": "phase5_proposals",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/phase5-proposals"
+    },
+    {
+      "handler": "pool_diagnostics",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/pool/diagnostics"
+    },
+    {
+      "handler": "get_preflight",
+      "method": "GET",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/preflight"
+    },
+    {
+      "handler": "list_projects",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/projects"
+    },
+    {
+      "handler": "get_project",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/projects/{project_id}"
+    },
+    {
+      "handler": "project_status",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/projects/{project_id}/status"
+    },
+    {
+      "handler": "epistemic_pushback_recent",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/pushback/recent"
+    },
+    {
+      "handler": "epistemic_pushback_stats",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/pushback/stats"
+    },
+    {
+      "handler": "list_questions",
+      "method": "GET",
+      "module": "app/control_plane/inquiries_api.py",
+      "path": "/questions"
+    },
+    {
+      "handler": "readiness",
+      "method": "GET",
+      "module": "app/api/health.py",
+      "path": "/ready"
+    },
+    {
+      "handler": "get_recent",
+      "method": "GET",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/recent"
+    },
+    {
+      "handler": "recent_entries",
+      "method": "GET",
+      "module": "app/experiential/api.py",
+      "path": "/recent"
+    },
+    {
+      "handler": "reference_panel",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/reference-panel"
+    },
+    {
+      "handler": "reflections_list",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/reflections"
+    },
+    {
+      "handler": "reflection_one",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/reflections/{date}"
+    },
+    {
+      "handler": "research_adapter_status",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/research/adapters"
+    },
+    {
+      "handler": "get_evolution_results",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/results"
+    },
+    {
+      "handler": "list_reviews",
+      "method": "GET",
+      "module": "app/control_plane/goals_api.py",
+      "path": "/reviews"
+    },
+    {
+      "handler": "list_roots",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/roots"
+    },
+    {
+      "handler": "get_rpt1_calibration",
+      "method": "GET",
+      "module": "app/api/qos_api.py",
+      "path": "/rpt1-calibration"
+    },
+    {
+      "handler": "get_runbook_settings_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/runbook_settings"
+    },
+    {
+      "handler": "get_runs",
+      "method": "GET",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/runs"
+    },
+    {
+      "handler": "list_all_runs",
+      "method": "GET",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/runs"
+    },
+    {
+      "handler": "get_run",
+      "method": "GET",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/runs/{run_id}"
+    },
+    {
+      "handler": "get_run_status",
+      "method": "GET",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/runs/{run_id}"
+    },
+    {
+      "handler": "get_runtime_settings_endpoint",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/runtime_settings"
+    },
+    {
+      "handler": "search_notes",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/search"
+    },
+    {
+      "handler": "self_improvement_describe",
+      "method": "GET",
+      "module": "app/main.py",
+      "path": "/self_improvement/describe"
+    },
+    {
+      "handler": "self_improvement_health",
+      "method": "GET",
+      "module": "app/main.py",
+      "path": "/self_improvement/health"
+    },
+    {
+      "handler": "sentience_ae2_associations",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/sentience/ae2/associations"
+    },
+    {
+      "handler": "sentience_hot1_patterns",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/sentience/hot1/patterns"
+    },
+    {
+      "handler": "sentience_hot4_flagged",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/sentience/hot4/flagged"
+    },
+    {
+      "handler": "sentience_rpt1_calibration",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/sentience/rpt1/calibration"
+    },
+    {
+      "handler": "sentience_scorecard_pinning",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/sentience/scorecard-pinning"
+    },
+    {
+      "handler": "list_sessions",
+      "method": "GET",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions"
+    },
+    {
+      "handler": "get_active_session",
+      "method": "GET",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/active"
+    },
+    {
+      "handler": "get_session",
+      "method": "GET",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}"
+    },
+    {
+      "handler": "get_settings",
+      "method": "GET",
+      "module": "app/control_plane/settings_alias_api.py",
+      "path": "/settings"
+    },
+    {
+      "handler": "signal_commands",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/signal-commands"
+    },
+    {
+      "handler": "get_snapshots",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/snapshots"
+    },
+    {
+      "handler": "list_workspace_sources",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/sources/{workspace_id}"
+    },
+    {
+      "handler": "get_source_suggestions",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/sources/{workspace_id}/suggestions"
+    },
+    {
+      "handler": "get_state",
+      "method": "GET",
+      "module": "app/api/vacation_api.py",
+      "path": "/state"
+    },
+    {
+      "handler": "get_state",
+      "method": "GET",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/state"
+    },
+    {
+      "handler": "get_state",
+      "method": "GET",
+      "module": "app/control_plane/goals_api.py",
+      "path": "/state"
+    },
+    {
+      "handler": "get_state",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/state"
+    },
+    {
+      "handler": "fiction_status",
+      "method": "GET",
+      "module": "app/api/fiction.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "get_stats",
+      "method": "GET",
+      "module": "app/aesthetics/api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "get_stats",
+      "method": "GET",
+      "module": "app/episteme/api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "get_stats",
+      "method": "GET",
+      "module": "app/experiential/api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "get_stats",
+      "method": "GET",
+      "module": "app/tensions/api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "kb_status",
+      "method": "GET",
+      "module": "app/api/kb.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "philosophy_status",
+      "method": "GET",
+      "module": "app/philosophy/api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "tool_stats",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": "/stats"
+    },
+    {
+      "handler": "fiction_status",
+      "method": "GET",
+      "module": "app/api/fiction.py",
+      "path": "/status"
+    },
+    {
+      "handler": "get_substrate_status",
+      "method": "GET",
+      "module": "app/control_plane/substrate_api.py",
+      "path": "/status"
+    },
+    {
+      "handler": "kb_status",
+      "method": "GET",
+      "module": "app/api/kb.py",
+      "path": "/status"
+    },
+    {
+      "handler": "philosophy_status",
+      "method": "GET",
+      "module": "app/philosophy/api.py",
+      "path": "/status"
+    },
+    {
+      "handler": "get_structured_diagnosis_state",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/structured_diagnosis/state"
+    },
+    {
+      "handler": "get_structured_diagnosis_telemetry",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/structured_diagnosis/telemetry"
+    },
+    {
+      "handler": "get_evolution_summary",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/summary"
+    },
+    {
+      "handler": "system_status",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/system-status"
+    },
+    {
+      "handler": "list_tags",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/tags"
+    },
+    {
+      "handler": "get_crew_tasks",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/tasks"
+    },
+    {
+      "handler": "get_task_timeline",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/tasks/{task_id}/timeline"
+    },
+    {
+      "handler": "tech_radar",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/tech-radar"
+    },
+    {
+      "handler": "list_techniques",
+      "method": "GET",
+      "module": "app/brainstorm/api.py",
+      "path": "/techniques"
+    },
+    {
+      "handler": "list_philosophy_texts",
+      "method": "GET",
+      "module": "app/philosophy/api.py",
+      "path": "/texts"
+    },
+    {
+      "handler": "list_texts",
+      "method": "GET",
+      "module": "app/episteme/api.py",
+      "path": "/texts"
+    },
+    {
+      "handler": "list_tickets",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets"
+    },
+    {
+      "handler": "ticket_board",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets/board"
+    },
+    {
+      "handler": "get_ticket",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets/{ticket_id}"
+    },
+    {
+      "handler": "token_usage",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/tokens"
+    },
+    {
+      "handler": "get_tools",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/tools"
+    },
+    {
+      "handler": "get_tool_detail",
+      "method": "GET",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}"
+    },
+    {
+      "handler": "affect_trace",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/trace"
+    },
+    {
+      "handler": "transfer_memory_by_source_kind",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/by-source-kind"
+    },
+    {
+      "handler": "transfer_memory_negative_transfer",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/negative-transfer"
+    },
+    {
+      "handler": "transfer_memory_overview",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/overview"
+    },
+    {
+      "handler": "transfer_memory_promotion_candidates",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/promotion-candidates"
+    },
+    {
+      "handler": "transfer_memory_recent",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/recent"
+    },
+    {
+      "handler": "transfer_memory_sanitizer_stats",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/sanitizer-stats"
+    },
+    {
+      "handler": "transfer_memory_source_target_matrix",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/source-target-matrix"
+    },
+    {
+      "handler": "transfer_memory_top",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/top-performers"
+    },
+    {
+      "handler": "transfer_memory_worst",
+      "method": "GET",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/worst-performers"
+    },
+    {
+      "handler": "get_tree",
+      "method": "GET",
+      "module": "app/api/notes_api.py",
+      "path": "/tree"
+    },
+    {
+      "handler": "epistemic_tuning_proposals",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/tuning/proposals"
+    },
+    {
+      "handler": "epistemic_tuning_proposal",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/tuning/proposals/{proposal_id}"
+    },
+    {
+      "handler": "get_supported_types",
+      "method": "GET",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": "/types"
+    },
+    {
+      "handler": "unresolved",
+      "method": "GET",
+      "module": "app/tensions/api.py",
+      "path": "/unresolved"
+    },
+    {
+      "handler": "get_vapid_public_key",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/vapid_public_key"
+    },
+    {
+      "handler": "get_variants",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/variants"
+    },
+    {
+      "handler": "get_variant_lineage",
+      "method": "GET",
+      "module": "app/api/evolution_api.py",
+      "path": "/variants/{variant_id}/lineage"
+    },
+    {
+      "handler": "get_velocity",
+      "method": "GET",
+      "module": "app/api/self_improvement_api.py",
+      "path": "/velocity"
+    },
+    {
+      "handler": "epistemic_verifiers",
+      "method": "GET",
+      "module": "app/epistemic/api.py",
+      "path": "/verifiers"
+    },
+    {
+      "handler": "web_push_list",
+      "method": "GET",
+      "module": "app/api/config_api.py",
+      "path": "/web_push/subscriptions"
+    },
+    {
+      "handler": "welfare_audit",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/welfare-audit"
+    },
+    {
+      "handler": "welfare_config",
+      "method": "GET",
+      "module": "app/affect/api.py",
+      "path": "/welfare-config"
+    },
+    {
+      "handler": "list_workspace_wiki",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/wiki/{workspace_id}"
+    },
+    {
+      "handler": "read_workspace_wiki_page",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/wiki/{workspace_id}/{idea_id}"
+    },
+    {
+      "handler": "list_workspaces",
+      "method": "GET",
+      "module": "app/api/workspace_api.py",
+      "path": "/workspaces"
+    },
+    {
+      "handler": "get_meta_workspace",
+      "method": "GET",
+      "module": "app/api/workspace_api.py",
+      "path": "/workspaces/meta"
+    },
+    {
+      "handler": "get_workspace_items",
+      "method": "GET",
+      "module": "app/api/workspace_api.py",
+      "path": "/workspaces/{project_id}/items"
+    },
+    {
+      "handler": "list_xworkspace_inbox",
+      "method": "GET",
+      "module": "app/api/companion_api.py",
+      "path": "/xworkspace/{workspace_id}/inbox"
+    },
+    {
+      "handler": "get_inquiry",
+      "method": "GET",
+      "module": "app/control_plane/inquiries_api.py",
+      "path": "/{filename}"
+    },
+    {
+      "handler": "get_proposal",
+      "method": "GET",
+      "module": "app/control_plane/proposals_api.py",
+      "path": "/{kind}/{name}"
+    },
+    {
+      "handler": "get_skill_endpoint",
+      "method": "GET",
+      "module": "app/api/skills_api.py",
+      "path": "/{name}"
+    },
+    {
+      "handler": "get_tool",
+      "method": "GET",
+      "module": "app/control_plane/tools_api.py",
+      "path": "/{name}"
+    },
+    {
+      "handler": "get_action_request",
+      "method": "GET",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": "/{request_id}"
+    },
+    {
+      "handler": "get_architecture_request",
+      "method": "GET",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}"
+    },
+    {
+      "handler": "get_change",
+      "method": "GET",
+      "module": "app/control_plane/changes_api.py",
+      "path": "/{request_id}"
+    },
+    {
+      "handler": "get_audit_entries",
+      "method": "GET",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/audit"
+    },
+    {
+      "handler": "get_scaffold_manifest",
+      "method": "GET",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/scaffold/manifest"
+    },
+    {
+      "handler": "get_coding_session",
+      "method": "GET",
+      "module": "app/control_plane/coding_sessions_api.py",
+      "path": "/{session_id}"
+    },
+    {
+      "handler": "get_session_evolution_runs",
+      "method": "GET",
+      "module": "app/control_plane/coding_sessions_api.py",
+      "path": "/{session_id}/evolution_runs"
+    },
+    {
+      "handler": "get_template",
+      "method": "GET",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/{template_id}"
+    },
+    {
+      "handler": "get_thread",
+      "method": "GET",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}"
+    },
+    {
+      "handler": "create",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": ""
+    },
+    {
+      "handler": "create_template",
+      "method": "POST",
+      "module": "app/control_plane/workflows_api.py",
+      "path": ""
+    },
+    {
+      "handler": "save_skill_endpoint",
+      "method": "POST",
+      "module": "app/api/skills_api.py",
+      "path": ""
+    },
+    {
+      "handler": "stage_allowlist_endpoint",
+      "method": "POST",
+      "module": "app/api/vacation_api.py",
+      "path": "/allowlist/stage"
+    },
+    {
+      "handler": "post_answer_regression_run",
+      "method": "POST",
+      "module": "app/api/qos_api.py",
+      "path": "/answer-regression/run"
+    },
+    {
+      "handler": "set_background_tasks_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/background_tasks"
+    },
+    {
+      "handler": "set_budget",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/budgets"
+    },
+    {
+      "handler": "override_budget",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/budgets/override"
+    },
+    {
+      "handler": "toggle_budget_pause",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/budgets/pause"
+    },
+    {
+      "handler": "business_kb_remove",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/business/{business_id}/remove"
+    },
+    {
+      "handler": "business_kb_reset",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/business/{business_id}/reset"
+    },
+    {
+      "handler": "business_kb_upload",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/business/{business_id}/upload"
+    },
+    {
+      "handler": "chat_send",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_ops_misc.py",
+      "path": "/chat/send"
+    },
+    {
+      "handler": "companion_people_forget",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/forget"
+    },
+    {
+      "handler": "companion_people_forget_all",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/forget-all"
+    },
+    {
+      "handler": "companion_people_graph_dissolve",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/dissolve-cluster"
+    },
+    {
+      "handler": "companion_people_graph_forget",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/forget"
+    },
+    {
+      "handler": "companion_people_graph_mute_pair",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/mute-pair"
+    },
+    {
+      "handler": "companion_people_graph_path",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/path"
+    },
+    {
+      "handler": "companion_people_graph_path_optout",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/graph/path-opt-out"
+    },
+    {
+      "handler": "companion_people_mute",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/mute"
+    },
+    {
+      "handler": "companion_people_mute_sug",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/mute-suggestions"
+    },
+    {
+      "handler": "companion_people_unmute",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/people/unmute"
+    },
+    {
+      "handler": "companion_tensions_create",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/tensions"
+    },
+    {
+      "handler": "companion_tensions_resolve",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_companion.py",
+      "path": "/companion/tensions/{tid}/resolve"
+    },
+    {
+      "handler": "composition_audit_endpoint",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/composition/audit"
+    },
+    {
+      "handler": "update_companion_config",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/config/{workspace_id}"
+    },
+    {
+      "handler": "post_cost",
+      "method": "POST",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/cost"
+    },
+    {
+      "handler": "set_creative_mode_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/creative_mode"
+    },
+    {
+      "handler": "creative_run_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/creative_run"
+    },
+    {
+      "handler": "dismiss_credit_alert",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_budgets_costs.py",
+      "path": "/credit-alerts/dismiss"
+    },
+    {
+      "handler": "set_delegation_setting",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/delegation/{crew}"
+    },
+    {
+      "handler": "disengage_endpoint",
+      "method": "POST",
+      "module": "app/api/vacation_api.py",
+      "path": "/disengage"
+    },
+    {
+      "handler": "drills_run",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_sentience_drills.py",
+      "path": "/drills/run/{name}"
+    },
+    {
+      "handler": "engage_endpoint",
+      "method": "POST",
+      "module": "app/api/vacation_api.py",
+      "path": "/engage"
+    },
+    {
+      "handler": "acknowledge_anomaly",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/error_audit/anomaly/{anomaly_id}/acknowledge"
+    },
+    {
+      "handler": "post_feedback",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/feedback"
+    },
+    {
+      "handler": "post_forget",
+      "method": "POST",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/forget"
+    },
+    {
+      "handler": "approve_governance",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/governance/{request_id}/approve"
+    },
+    {
+      "handler": "reject_governance",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/governance/{request_id}/reject"
+    },
+    {
+      "handler": "relax_governance_ratchet_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/governance_ratchet/relax"
+    },
+    {
+      "handler": "set_governance_ratchet_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/governance_ratchet/set"
+    },
+    {
+      "handler": "accept_grand_task",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/grand-task/{workspace_id}/{proposal_id}/accept"
+    },
+    {
+      "handler": "reject_grand_task",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/grand-task/{workspace_id}/{proposal_id}/reject"
+    },
+    {
+      "handler": "set_life_companion_feature_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/life_companion"
+    },
+    {
+      "handler": "set_llm_mode_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/llm_mode"
+    },
+    {
+      "handler": "llm_demote_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/demote"
+    },
+    {
+      "handler": "llm_discovery_run",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/discovery/run"
+    },
+    {
+      "handler": "llm_judges_pin_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/judges/pin"
+    },
+    {
+      "handler": "llm_judges_unpin_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/judges/unpin"
+    },
+    {
+      "handler": "llm_pin_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/pin"
+    },
+    {
+      "handler": "llm_promote_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/promote"
+    },
+    {
+      "handler": "llm_unpin_endpoint",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_llms.py",
+      "path": "/llms/unpin"
+    },
+    {
+      "handler": "run_maintenance",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/maintenance/run/{job}"
+    },
+    {
+      "handler": "set_meta_agent_setting",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/meta-agent/{crew}"
+    },
+    {
+      "handler": "post_mute",
+      "method": "POST",
+      "module": "app/control_plane/browse_api.py",
+      "path": "/mute"
+    },
+    {
+      "handler": "override_reset",
+      "method": "POST",
+      "module": "app/affect/api.py",
+      "path": "/override-reset"
+    },
+    {
+      "handler": "epistemic_record_override",
+      "method": "POST",
+      "module": "app/epistemic/api.py",
+      "path": "/overrides"
+    },
+    {
+      "handler": "review_phase5_proposal",
+      "method": "POST",
+      "module": "app/affect/api.py",
+      "path": "/phase5-proposals/{feature_name}/review"
+    },
+    {
+      "handler": "create_project",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/projects"
+    },
+    {
+      "handler": "promote_idea",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/promote/{workspace_id}/{idea_id}"
+    },
+    {
+      "handler": "apply_proposal_action",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_governance_ops.py",
+      "path": "/proposals/{proposal_id}/action"
+    },
+    {
+      "handler": "reingest",
+      "method": "POST",
+      "module": "app/episteme/api.py",
+      "path": "/reingest"
+    },
+    {
+      "handler": "reingest_all",
+      "method": "POST",
+      "module": "app/philosophy/api.py",
+      "path": "/reingest"
+    },
+    {
+      "handler": "reingest_fiction",
+      "method": "POST",
+      "module": "app/api/fiction.py",
+      "path": "/reingest"
+    },
+    {
+      "handler": "kb_remove",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/remove"
+    },
+    {
+      "handler": "kb_reset_endpoint",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/reset"
+    },
+    {
+      "handler": "resolve_tension",
+      "method": "POST",
+      "module": "app/tensions/api.py",
+      "path": "/resolve/{tension_id}"
+    },
+    {
+      "handler": "trigger_review",
+      "method": "POST",
+      "module": "app/control_plane/goals_api.py",
+      "path": "/review"
+    },
+    {
+      "handler": "set_runbook_settings_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/runbook_settings"
+    },
+    {
+      "handler": "cancel_run_route",
+      "method": "POST",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/runs/{run_id}/cancel"
+    },
+    {
+      "handler": "post_cancel",
+      "method": "POST",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/runs/{run_id}/cancel"
+    },
+    {
+      "handler": "set_runtime_settings_endpoint",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/runtime_settings"
+    },
+    {
+      "handler": "send_endpoint",
+      "method": "POST",
+      "module": "app/api/files_api.py",
+      "path": "/send"
+    },
+    {
+      "handler": "start_session",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions"
+    },
+    {
+      "handler": "cancel_session",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/cancel"
+    },
+    {
+      "handler": "finish_session",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/finish"
+    },
+    {
+      "handler": "pause_session",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/pause"
+    },
+    {
+      "handler": "respond",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/respond"
+    },
+    {
+      "handler": "resume_session",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/resume"
+    },
+    {
+      "handler": "skip_step",
+      "method": "POST",
+      "module": "app/brainstorm/api.py",
+      "path": "/sessions/{session_id}/skip"
+    },
+    {
+      "handler": "set_setpoints",
+      "method": "POST",
+      "module": "app/affect/api.py",
+      "path": "/setpoints"
+    },
+    {
+      "handler": "set_settings",
+      "method": "POST",
+      "module": "app/control_plane/settings_alias_api.py",
+      "path": "/settings"
+    },
+    {
+      "handler": "set_override",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/settings/override"
+    },
+    {
+      "handler": "receive_signal",
+      "method": "POST",
+      "module": "app/main.py",
+      "path": "/signal/inbound"
+    },
+    {
+      "handler": "add_workspace_source",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/sources/{workspace_id}"
+    },
+    {
+      "handler": "post_start",
+      "method": "POST",
+      "module": "app/control_plane/migrate_api.py",
+      "path": "/start"
+    },
+    {
+      "handler": "create_ticket",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets"
+    },
+    {
+      "handler": "add_comment",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets/{ticket_id}/comments"
+    },
+    {
+      "handler": "register_new_tool",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools"
+    },
+    {
+      "handler": "rerun_audit",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}/audit/rerun"
+    },
+    {
+      "handler": "demote_tool",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}/demote"
+    },
+    {
+      "handler": "invoke_endpoint",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}/invoke"
+    },
+    {
+      "handler": "kill_endpoint",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}/kill"
+    },
+    {
+      "handler": "promote_tool",
+      "method": "POST",
+      "module": "app/forge/api.py",
+      "path": "/tools/{tool_id}/promote"
+    },
+    {
+      "handler": "transfer_memory_promote",
+      "method": "POST",
+      "module": "app/control_plane/dashboard_routes_transfer_memory.py",
+      "path": "/transfer-memory/promote/{record_id}"
+    },
+    {
+      "handler": "epistemic_tuning_accept",
+      "method": "POST",
+      "module": "app/epistemic/api.py",
+      "path": "/tuning/proposals/{proposal_id}/accept"
+    },
+    {
+      "handler": "epistemic_tuning_reject",
+      "method": "POST",
+      "module": "app/epistemic/api.py",
+      "path": "/tuning/proposals/{proposal_id}/reject"
+    },
+    {
+      "handler": "epistemic_tuning_run",
+      "method": "POST",
+      "module": "app/epistemic/api.py",
+      "path": "/tuning/run"
+    },
+    {
+      "handler": "kb_upload",
+      "method": "POST",
+      "module": "app/api/kb.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_entry",
+      "method": "POST",
+      "module": "app/experiential/api.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_fiction_text",
+      "method": "POST",
+      "module": "app/api/fiction.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_pattern",
+      "method": "POST",
+      "module": "app/aesthetics/api.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_philosophy_text",
+      "method": "POST",
+      "module": "app/philosophy/api.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_tension",
+      "method": "POST",
+      "module": "app/tensions/api.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_texts",
+      "method": "POST",
+      "module": "app/episteme/api.py",
+      "path": "/upload"
+    },
+    {
+      "handler": "upload_philosophy_raw_text",
+      "method": "POST",
+      "module": "app/philosophy/api.py",
+      "path": "/upload-text"
+    },
+    {
+      "handler": "web_push_subscribe",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/web_push/subscribe"
+    },
+    {
+      "handler": "web_push_test",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/web_push/test"
+    },
+    {
+      "handler": "web_push_unsubscribe",
+      "method": "POST",
+      "module": "app/api/config_api.py",
+      "path": "/web_push/unsubscribe"
+    },
+    {
+      "handler": "create_workspace",
+      "method": "POST",
+      "module": "app/api/workspace_api.py",
+      "path": "/workspaces"
+    },
+    {
+      "handler": "dedup_workspace_registry",
+      "method": "POST",
+      "module": "app/api/workspace_api.py",
+      "path": "/workspaces/_dedup"
+    },
+    {
+      "handler": "accept_xworkspace_kernel",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/xworkspace/{workspace_id}/inbox/{kernel_id}/accept"
+    },
+    {
+      "handler": "dismiss_xworkspace_kernel",
+      "method": "POST",
+      "module": "app/api/companion_api.py",
+      "path": "/xworkspace/{workspace_id}/inbox/{kernel_id}/dismiss"
+    },
+    {
+      "handler": "run_skill_endpoint",
+      "method": "POST",
+      "module": "app/api/skills_api.py",
+      "path": "/{name}/run"
+    },
+    {
+      "handler": "abandon_architecture_request",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/abandon"
+    },
+    {
+      "handler": "approve_action_request",
+      "method": "POST",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": "/{request_id}/approve"
+    },
+    {
+      "handler": "approve_architecture_request",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/approve"
+    },
+    {
+      "handler": "approve_change",
+      "method": "POST",
+      "module": "app/control_plane/changes_api.py",
+      "path": "/{request_id}/approve"
+    },
+    {
+      "handler": "mark_arch_complete",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/mark-complete"
+    },
+    {
+      "handler": "record_child",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/record-child-cr"
+    },
+    {
+      "handler": "reject_action_request",
+      "method": "POST",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": "/{request_id}/reject"
+    },
+    {
+      "handler": "reject_architecture_request",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/reject"
+    },
+    {
+      "handler": "reject_change",
+      "method": "POST",
+      "module": "app/control_plane/changes_api.py",
+      "path": "/{request_id}/reject"
+    },
+    {
+      "handler": "retry_apply",
+      "method": "POST",
+      "module": "app/control_plane/action_requests_api.py",
+      "path": "/{request_id}/retry-apply"
+    },
+    {
+      "handler": "retry_apply",
+      "method": "POST",
+      "module": "app/control_plane/changes_api.py",
+      "path": "/{request_id}/retry-apply"
+    },
+    {
+      "handler": "rollback_route",
+      "method": "POST",
+      "module": "app/control_plane/changes_api.py",
+      "path": "/{request_id}/rollback"
+    },
+    {
+      "handler": "scaffold_architecture_request",
+      "method": "POST",
+      "module": "app/control_plane/architecture_requests_api.py",
+      "path": "/{request_id}/scaffold"
+    },
+    {
+      "handler": "start_run",
+      "method": "POST",
+      "module": "app/control_plane/workflows_api.py",
+      "path": "/{template_id}/run"
+    },
+    {
+      "handler": "add_blocker_route",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/blocker"
+    },
+    {
+      "handler": "clear_route",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/clear-blockers"
+    },
+    {
+      "handler": "clear_unblock_hints_route",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/clear-unblock-hints"
+    },
+    {
+      "handler": "link_cr",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/link-cr"
+    },
+    {
+      "handler": "link_inq",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/link-inquiry"
+    },
+    {
+      "handler": "add_note",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/note"
+    },
+    {
+      "handler": "resolve_sq",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/resolve-sq"
+    },
+    {
+      "handler": "add_sq",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/sub-question"
+    },
+    {
+      "handler": "transition",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/transition"
+    },
+    {
+      "handler": "add_unblock_hint_route",
+      "method": "POST",
+      "module": "app/control_plane/threads_api.py",
+      "path": "/{thread_id}/unblock-hint"
+    },
+    {
+      "handler": "update_ticket",
+      "method": "PUT",
+      "module": "app/control_plane/dashboard_routes_projects_tickets.py",
+      "path": "/tickets/{ticket_id}"
+    }
+  ],
+  "version": 1
+}

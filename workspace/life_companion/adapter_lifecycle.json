@@ -1,0 +1,12 @@
+{
+  "last_run_at": 1778960812.9246893,
+  "last_summary": {
+    "bloat_alert": false,
+    "dead_pointers": [],
+    "orphans_deleted": 0,
+    "orphans_examined": 0,
+    "orphans_too_young": 0,
+    "registry_size": 0,
+    "total_bytes": 0
+  }
+}

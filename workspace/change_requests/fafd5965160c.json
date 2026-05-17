@@ -1,0 +1,12 @@
+{
+  "id": "fafd5965160c",
+  "created_at": "2026-05-17T10:06:29.139682+00:00",
+  "requestor": "local_only_drill",
+  "path": "docs/RESILIENCE_DRILLS.md",
+  "new_content": "",
+  "old_content": "",
+  "reason": "LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format_ok=True\n  \u2717 minimax      env=False socket_ok=None format_ok=None\n  \u2717 ollama       env=None socket_ok=False format_ok=None\n\n\ud83d\udcdc Recent activity on this path (last 90d):\n   483 CRs in 90d\n\n   Change-request audit events:\n     \u2022 2026-05-17 [created] cr=07eb2f1a5dcf status=pending by=\u2014\n     \u2022 2026-05-17 [created] cr=c944ba0cf9ba status=pending by=\u2014\n     \u2022 2026-05-17 [created] cr=be46d7ee39fa status=pending by=\u2014\n     \u2022 2026-05-17 [created] cr=d8760b2eaf6c status=pending by=\u2014\n     \u2022 2026-05-17 [created] cr=114053a8fe02 status=pending by=\u2014",
+  "diff": "",
+  "status": "pending",
+  "risk_class": "standard"
+}

@@ -1,0 +1,22 @@
+{
+  "last_run_at": 1779047387.7409182,
+  "last_summary": {
+    "audit": {
+      "bytes_archived": 0,
+      "rotated": false
+    },
+    "errors": {
+      "bytes_archived": 0,
+      "rotated_files": 0
+    },
+    "evolution": {
+      "archived_runs": 0,
+      "bytes_archived": 0
+    },
+    "purge": {
+      "bytes_deleted": 0,
+      "deferred_due_to_cap": 0,
+      "deleted_files": 0
+    }
+  }
+}

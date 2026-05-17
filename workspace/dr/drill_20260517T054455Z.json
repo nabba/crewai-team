@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-05-17T05:44:55.734607+00:00",
+  "completed_at": "2026-05-17T05:44:55.734798+00:00",
+  "duration_s": 0.0,
+  "tarball": "",
+  "target_dir": "",
+  "target_kept": false,
+  "fresh_export": false,
+  "chromadb_results": [],
+  "ledger_files_restored": 0,
+  "ledger_bytes_restored": 0,
+  "ledger_hash_checks": [],
+  "ledger_hash_mismatches": 0,
+  "overall_ok": false,
+  "errors": [
+    "no tarball available under /app/workspace/backups/dr and fresh export disabled"
+  ]
+}

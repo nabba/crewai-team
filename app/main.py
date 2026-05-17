@@ -967,6 +967,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Discord bot startup failed (non-fatal)")
 
+    # Signal that lifespan setup is complete. Consumers (idle_scheduler,
+    # potentially other deferrable subsystems over time) gate on this so
+    # background work doesn't storm into a still-initializing gateway.
+    # See app/boot_state.py for the contract.
+    from app import boot_state
+    boot_state.mark_boot_complete()
     logger.info("CrewAI Agent Team started")
     yield
     # Discord clean shutdown (closes the gateway WS before APScheduler dies).

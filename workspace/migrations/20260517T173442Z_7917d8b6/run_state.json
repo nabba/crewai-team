@@ -1,0 +1,17 @@
+{
+  "run_id": "20260517T173442Z_7917d8b6",
+  "status": "succeeded",
+  "target": "gcp",
+  "tier": "cheapest",
+  "region": "europe-north1",
+  "project_id": "botarmy-495107",
+  "active_account": "andrus@raudsalu.com",
+  "started_at": "2026-05-17T17:34:42.178504+00:00",
+  "updated_at": "2026-05-17T17:34:42.193471+00:00",
+  "completed_at": "2026-05-17T17:34:42.193448+00:00",
+  "current_step": "done",
+  "progress_pct": 100,
+  "detail": "migration complete \u2014 ready for cutover",
+  "report_path": "/Users/andrus/BotArmy/crewai-team/workspace/migrations/20260517T173442Z_7917d8b6/report.json",
+  "error": ""
+}

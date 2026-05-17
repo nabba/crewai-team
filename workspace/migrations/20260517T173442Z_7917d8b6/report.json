@@ -1,0 +1,58 @@
+{
+  "run_id": "20260517T173442Z_7917d8b6",
+  "started_at": "2026-05-17T17:34:42.186554+00:00",
+  "completed_at": "2026-05-17T17:34:42.193256+00:00",
+  "duration_s": 0.007,
+  "target": "gcp",
+  "tier": "cheapest",
+  "region": "europe-north1",
+  "project_id": "botarmy-495107",
+  "dry_run": false,
+  "steps": [
+    {
+      "name": "provision",
+      "status": "ok",
+      "detail": "gcp target provisioned",
+      "duration_s": 0.0,
+      "output": {
+        "command": "bash /Users/andrus/BotArmy/crewai-team/scripts/install/gcp.sh --target gcp --non-interactive --config /Users/andrus/BotArmy/crewai-team/workspace/migrations/20260517T173442Z_7917d8b6/terraform.tfvars",
+        "stdout_tail": "<dry: bash /Users/andrus/BotArmy/crewai-team/scripts/install/gcp.sh --target gcp --non-interactive --config /Users/andrus/BotArmy/crewai-team/workspace/migrations/20260517T173442Z_7917d8b6/terraform.tfvars>"
+      }
+    },
+    {
+      "name": "transfer",
+      "status": "ok",
+      "detail": "uploaded to gs://andrusai-migrations-botarmy-495107/20260517T173442Z_7917d8b6/bundle.tar.gz",
+      "duration_s": 0.0,
+      "output": {
+        "command": "gcloud storage cp /Users/andrus/BotArmy/crewai-team/workspace/backups/dr/dr_dryrun-2026-05-17_20260517T140706Z.tar.gz gs://andrusai-migrations-botarmy-495107/20260517T173442Z_7917d8b6/bundle.tar.gz",
+        "dest": "gs://andrusai-migrations-botarmy-495107/20260517T173442Z_7917d8b6/bundle.tar.gz"
+      }
+    },
+    {
+      "name": "restore",
+      "status": "ok",
+      "detail": "bundle imported into <dry: kubectl -n botarmy get pod -l app=gateway -o jsonpath={.items[0].metadata.name}>",
+      "duration_s": 0.0,
+      "output": {
+        "command": "kubectl -n botarmy exec <dry: kubectl -n botarmy get pod -l app=gateway -o jsonpath={.items[0].metadata.name}> -- python -m app.dr.import_kbs --bundle gs://andrusai-migrations-botarmy-495107/20260517T173442Z_7917d8b6/bundle.tar.gz",
+        "stdout_tail": "<dry: kubectl -n botarmy exec <dry: kubectl -n botarmy get pod -l app=gateway -o jsonpath={.items[0].metadata.name}> -- python -m app.dr.import_kbs --bundle gs://andrusai-migrations-botarmy-495107/20260517T173442Z_7917d8b6/bundle.tar.gz>",
+        "pod": "<dry: kubectl -n botarmy get pod -l app=gateway -o jsonpath={.items[0].metadata.name}>"
+      }
+    },
+    {
+      "name": "verify",
+      "status": "warn",
+      "detail": "verify ran but output unparseable: <dry: kubectl -n botarmy exec deploy/gateway -- python -c from app.dr.boot_drill import run_drill; from app.subia.integrity import verify_integrity; r = run_drill(); v = verify_integrity(strict=False)",
+      "duration_s": 0.0,
+      "output": {
+        "stdout_tail": "<dry: kubectl -n botarmy exec deploy/gateway -- python -c from app.dr.boot_drill import run_drill; from app.subia.integrity import verify_integrity; r = run_drill(); v = verify_integrity(strict=False); import json; print(json.dumps({'drill_ok': r.overall_ok, 'subia_ok': v.ok, 'n_files': v.n_files}))>"
+      }
+    }
+  ],
+  "blockers": [],
+  "warnings": [
+    "verify: verify ran but output unparseable: <dry: kubectl -n botarmy exec deploy/gateway -- python -c from app.dr.boot_drill import run_drill; from app.subia.integrity import verify_integrity; r = run_drill(); v = verify_integrity(strict=False)"
+  ],
+  "ready_for_live": true
+}
