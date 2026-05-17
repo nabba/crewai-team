@@ -528,6 +528,28 @@ def mark_inbound_failed(queue_id: int, error: str) -> None:
         logger.exception("conversation_store: mark_inbound_failed failed")
 
 
+def mark_inbound_deferred(queue_id: int, note: str = "") -> None:
+    """Mark an inbound-queue row as 'deferred' — ownership transferred to DLQ.
+
+    Used when the load shedder buffers a message to the dead-letter-inbound
+    queue: the durable row's restart-replay duty is now fulfilled (the DLQ
+    drain will replay the work), so the row must stop being 'processing'
+    or it stalls there forever (audit 2026-05-12; productization plan
+    WP A2). 'deferred' rows are NOT replayed by get_pending_inbound at
+    startup — they are owned by the DLQ.
+    """
+    try:
+        conn = _get_conn()
+        conn.execute(
+            "UPDATE inbound_queue SET status='deferred', processed_at=?, "
+            "last_error=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), str(note)[:500], queue_id),
+        )
+        conn.commit()
+    except Exception:
+        logger.exception("conversation_store: mark_inbound_deferred failed")
+
+
 def get_pending_inbound(max_attempts: int = 3) -> list[dict]:
     """Return inbound-queue rows that need replay at startup.
 

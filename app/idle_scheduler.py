@@ -22,12 +22,27 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
+from app import boot_state
 from app.workspace_publish import publish_idle_outcome, publish_to_workspace
 
 logger = logging.getLogger(__name__)
 
-# How long to wait after last user task before starting background work
-IDLE_DELAY_SECONDS = 30
+# How long to wait after last user task before starting background work.
+# Bumped 30→180 (2026-05-18) after the 2026-05-17 22:37 EEST incident
+# where the post-boot LIGHT-job burst (46 jobs, 3-wide pool) saturated
+# disk I/O on the macOS Docker bind-mount and made /signal/inbound + /health
+# stall past the forwarder's 30 s timeout. Steady-state cost is none — the
+# delay only fires once at boot, then notify_task_end() resets the timer.
+IDLE_DELAY_SECONDS = 180
+
+# Boot warm-up window: serialize LIGHT jobs (concurrency 1) for the first
+# N seconds after boot_complete to smooth the post-boot burst across the
+# infrastructure tier (chromadb writes, Postgres pool, disk on macOS
+# bind-mount). After this window, LIGHT jobs revert to the configured
+# pool concurrency. Spans [IDLE_DELAY_SECONDS, IDLE_WARMUP_SECONDS] post-
+# boot, so the actual serialized window is IDLE_WARMUP_SECONDS −
+# IDLE_DELAY_SECONDS = 120 s of one-at-a-time light work.
+IDLE_WARMUP_SECONDS = 300
 
 # Pause between background job iterations (brief cooldown, then next job)
 INTER_JOB_PAUSE_SECONDS = 2  # Reduced from 5 — lightweight jobs don't need long pauses
@@ -159,7 +174,6 @@ def _boot_ready() -> bool:
     ``is_idle()`` correctly suppress background work while the gateway
     is still finishing its lifespan setup.
     """
-    from app import boot_state
     if boot_state.is_boot_complete():
         return True
     if time.monotonic() - _module_import_time >= IDLE_BOOT_FALLBACK_S:
@@ -198,7 +212,6 @@ def is_idle() -> bool:
             # the effective "last activity" and honour IDLE_DELAY_SECONDS
             # so the first idle pass arrives after a short settle window,
             # not the instant lifespan calls mark_boot_complete().
-            from app import boot_state
             completed_at = boot_state.boot_completed_at()
             if completed_at is None:
                 # Local fallback fired (else _boot_ready would have
@@ -207,6 +220,23 @@ def is_idle() -> bool:
                 completed_at = _module_import_time
             return (time.monotonic() - completed_at) >= IDLE_DELAY_SECONDS
         return (time.monotonic() - _last_task_end) >= IDLE_DELAY_SECONDS
+
+
+def _in_warmup_phase() -> bool:
+    """True iff we're within IDLE_WARMUP_SECONDS of boot_complete.
+
+    Used by ``_run_idle_loop`` to serialize LIGHT jobs (concurrency 1)
+    during the post-boot warm-up so the parallel 3-wide burst doesn't
+    saturate macOS Docker bind-mount disk I/O and stall the asyncio
+    event loop. After the window, LIGHT jobs revert to the configured
+    pool concurrency.
+    """
+    completed_at = boot_state.boot_completed_at()
+    if completed_at is None:
+        # Local fallback fired or boot never completed — past any
+        # reasonable warm-up window by now. Steady-state behaviour.
+        return False
+    return (time.monotonic() - completed_at) < IDLE_WARMUP_SECONDS
 
 
 _job_timeout = threading.Event()  # Set when a job exceeds its time cap
@@ -602,17 +632,29 @@ def _run_idle_loop(jobs) -> None:
         if not is_enabled() or not is_idle():
             continue
 
-        # ── Phase 1: Run lightweight jobs in parallel ────────────────────
+        # ── Phase 1: Run lightweight jobs ────────────────────────────────
+        # Steady state: submit all to the 3-wide pool and drain in
+        # parallel. Boot warm-up: serialize so the first pass after
+        # boot_complete doesn't fan out a 46-job × 3-wide burst into a
+        # still-warming infrastructure tier (chromadb writes, Postgres
+        # pool, macOS bind-mount disk). See _in_warmup_phase() for the
+        # incident context (2026-05-17 22:37 EEST forwarder timeouts).
         if light_jobs:
-            futures = {}
-            for name, fn in light_jobs:
-                if _stop_event.is_set() or not is_idle():
-                    break
-                futures[light_pool.submit(_run_single_job, name, fn, TIME_CAPS[JobWeight.LIGHT])] = name
-            # Wait for all lightweight jobs (bounded by their time caps).
-            _drain_futures_with_timeout(
-                futures, TIME_CAPS[JobWeight.LIGHT] + 10,
-            )
+            if _in_warmup_phase():
+                for name, fn in light_jobs:
+                    if _stop_event.is_set() or not is_idle():
+                        break
+                    _run_single_job(name, fn, TIME_CAPS[JobWeight.LIGHT])
+            else:
+                futures = {}
+                for name, fn in light_jobs:
+                    if _stop_event.is_set() or not is_idle():
+                        break
+                    futures[light_pool.submit(_run_single_job, name, fn, TIME_CAPS[JobWeight.LIGHT])] = name
+                # Wait for all lightweight jobs (bounded by their time caps).
+                _drain_futures_with_timeout(
+                    futures, TIME_CAPS[JobWeight.LIGHT] + 10,
+                )
 
         if _stop_event.is_set() or not is_idle():
             continue
