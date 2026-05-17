@@ -10568,3 +10568,207 @@ the same baseline. The audit doc is the canonical reference for
 "what shape does each monitor have"; treat it as authoritative when
 reviewing a new monitor design or evaluating an old one.
 
+---
+
+# §54 — Signal-reaction parity for governance + dual-device dashboard links (2026-05-17)
+
+Two related gaps closed: 👍/👎 reactions on auto-deploy Signal alerts
+weren't wired (operator's reaction did nothing — fell through to the
+feedback pipeline), and the existing `approve <hex-id>` text command
+was broken for governance UUIDs (`int()` raised on the hex prefix and
+returned `Usage: approve <proposal_id>` regardless). Plus a polish
+pass making every approval-flow Signal alert clickable from both
+iPhone (Tailscale Funnel HTTPS) and Mac (Tailnet :3100).
+
+## §54.1 The two gaps
+
+**Gap 1 — `code_change` governance requests had no reaction handler.**
+`app/auto_deployer.py:schedule_deploy` filed a `governance_requests`
+row via `control_plane.governance.request_approval` and sent a
+fire-and-forget Signal message saying `Use 'approve 73483ad2' or
+'pending' to review.` The reaction handler in `app/main.py` had 6
+blocks (proposals / workspace_switch / human_gate / change_requests /
+architecture_requests / action_requests) but none for
+`control_plane.governance`. A 👍 fell through every lookup and was
+recorded as generic positive feedback — operator thought they'd
+approved, the request stayed `pending`, the deploy never fired.
+
+**Gap 2 — the `approve <hex>` text command was hardcoded to int.**
+`app/agents/commander/commands.py:try_command` did
+`int(user_input.split()[1])` for `approve <arg>` — `int("73483ad2")`
+raised `ValueError` and the handler returned `Usage: approve
+<proposal_id>`. The auto-deploy alert literally told the operator to
+type `approve <hex>` and the system refused. Only path to actually
+approve was the React `/cp/governance` dashboard.
+
+**Bonus — the React path was half-broken too.** `/api/cp/governance/
+{id}/approve` set `status='approved'` in Postgres but never triggered
+the deploy itself. There was no daemon polling for approved
+governance requests; the deploy was orphan after approval. The fix
+in this batch closes both the reaction-handler AND the post-approval
+deploy trigger.
+
+## §54.2 `app/governance_signal_bridge.py` — the bridge (NEW)
+
+JSON-backed map of `signal_ts (int) → governance_request_id (str)`
+at `workspace/governance_signal_bridge.json`. The reason for a JSON
+sidecar rather than a Postgres column: `control_plane/governance.py`
+is TIER_IMMUTABLE, and `migrations/*.sql` aren't auto-applied at
+boot (`app.memory.startup_migrations.apply_all` only handles the
+pgvector HNSW indexes — the SQL migration files are operator-run
+via `psql`). A JSON sidecar avoids both constraints.
+
+  * `register(signal_ts, request_id)` — called from auto_deployer
+    right after the Signal message is sent (with the timestamp
+    returned by `send_message_blocking`).
+  * `find_request_id(signal_ts)` — called from the reaction handler
+    in `main.py`. None means the reaction wasn't on a tracked
+    governance message; caller falls through.
+  * `unregister(request_id)` — post-resolution cleanup.
+  * `find_pending_by_id_prefix(id_prefix)` — used by the
+    `approve <hex>` text-command fallback for prefix-match semantics
+    matching what the Signal alert shows.
+  * 25h auto-purge on every read (governance default TTL is 24h).
+  * `threading.Lock` for in-process safety; `safe_write_json` for
+    atomic on-disk writes; corrupt file = empty registry (failure-
+    isolated).
+
+## §54.3 `app/dashboard_links.py` — URL builders (NEW)
+
+Shared helpers so auto-deploy AND Tier-3 amendment alerts use the
+same dual-device link block:
+
+  * `url_iphone(path)` — reads `DASHBOARD_PUBLIC_URL` env, falls back
+    to the Funnel HTTPS hostname.
+  * `url_macbook(path)` — reads `DASHBOARD_MAC_URL` env, falls back
+    to the Tailnet hostname + Vite dev-server port 3100.
+  * `signal_links_block(path)` — renders the two-line `📱 iPhone:`
+    + `💻 Mac:` block (iPhone first because operators usually have
+    the phone in hand when a Signal alert lands).
+
+Lives outside `config.py` (TIER_IMMUTABLE) — these are notification-
+presentation details, not safety-critical config. Defaults derive
+from `app/middleware.py`'s existing CORS allowlist so the link is
+clickable out-of-the-box without explicit configuration.
+
+## §54.4 TIER_IMMUTABLE edits (operator-approved scope)
+
+Three TIER_IMMUTABLE files touched, additive only, no safety
+invariant relaxed:
+
+  * **`app/auto_deployer.py:schedule_deploy`** — swapped
+    `send_message` → `send_message_blocking`; registers the returned
+    Signal timestamp + request_id with the bridge; auto-deploy alert
+    text now also tells the operator that 👍/👎 work AND includes
+    the dual-device link block.
+  * **`app/main.py:receive_signal`** — 7th reaction-handler block
+    after `action_request`. Looks up the governance request via the
+    bridge; calls `gate.approve(id, reviewer="signal_reaction")` or
+    `gate.reject(...)`. For `code_change` request types, also fires
+    `run_deploy(reason)` in a daemon thread so the loop closes
+    end-to-end (closes the half-broken-React-path bug noted above).
+  * **`app/control_plane/governance.py`** — NOT touched. The
+    bridge does the ts↔id mapping outside the TIER_IMMUTABLE file,
+    so the governance table schema stays untouched.
+
+## §54.5 Non-immutable edits
+
+  * **`app/agents/commander/commands.py`** — `approve <arg>` and
+    `reject <arg>` now try int (proposals) first, then governance
+    UUID prefix. For `code_change` approvals via the text command,
+    also fires `run_deploy` in a daemon thread (parity with the
+    reaction path). `approve 73483ad2` works.
+  * **`app/governance_notifier.py`** — every Tier-3 amendment alert
+    template (staged / eligibility_failed / cooldown_ok / approved /
+    applied / stable / reverted) now ends with the `{links}` block.
+    `cooldown_ok` gets the more emphatic `👉 Review + approve:`
+    label since it's the actual decision point.
+
+## §54.6 TIER_IMMUTABLE proposals still cannot be 👍-approved
+
+Important: this work does NOT loosen the safety invariant. The three
+approval surfaces have three different rules:
+
+  | Surface | What 👍 does | TIER_IMMUTABLE rule |
+  |---|---|---|
+  | **Change requests** (`change_requests/validator.py`) | Approves + applies | Refused at validate-time, never reaches Signal. Validator comment: *"TIER_IMMUTABLE never reaches Signal."* |
+  | **Auto-deploy / `code_change` governance** (this PR) | Approves governance + fires `run_deploy` | Filtered twice: `evolution.py:759-764` pre-flight skips IMMUTABLE files; `_deploy_locked` calls `get_protection_tier(path)` per file and refuses at the boundary. 👍 has no power to override either gate. |
+  | **Tier-3 amendments** (`governance_notifier.py`) | Nothing — no reaction wiring | React-only by design. Operator's decision (this PR): keep React-only, but every alert now includes both iPhone + Mac clickable links so the phone-to-dashboard handoff is one tap. |
+
+## §54.7 Sample alerts
+
+**Auto-deploy (with the new reaction + link block):**
+```
+⚖️ AUTO-DEPLOY requires approval: evolution-keep-exp_…
+React 👍 to approve or 👎 to reject, or reply `approve 73483ad2` / `pending`.
+📱 iPhone: https://andrusai.tail5b289b.ts.net/cp/governance
+💻 Mac:    http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100/cp/governance
+```
+
+**Tier-3 amendment COOLDOWN_OK (the actionable state):**
+```
+🏛️ Tier-3 amendment COOLDOWN_OK (id=abc-123-def): app/foo.py
+7-day cooldown clean. Awaiting your approve/reject decision.
+Proposer: self_improver · Citation: 42
+👉 Review + approve:
+📱 iPhone: https://andrusai.tail5b289b.ts.net/cp/amendments/abc-123-def
+💻 Mac:    http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100/cp/amendments/abc-123-def
+```
+
+## §54.8 Operator config
+
+Optional env vars (defaults work out-of-the-box):
+
+```bash
+export DASHBOARD_PUBLIC_URL="https://andrusai.tail5b289b.ts.net"
+export DASHBOARD_MAC_URL="http://plgs-macbook-pro---andrus.tail5b289b.ts.net:3100"
+```
+
+See `docs/PWA_SETUP.md` §3.5 for the operator recipe.
+
+## §54.9 Tests
+
+  * `tests/test_governance_signal_bridge.py` — 14 tests: register /
+    find / unregister / 25h purge / prefix-match / corrupt file.
+  * `tests/test_dashboard_links.py` — 11 tests: env override,
+    defaults, ordering (iPhone first), leading-slash normalisation.
+  * `tests/test_governance_notifier_urls.py` — 6 tests: every alert
+    state renders both URLs with the correct amendment id.
+
+31 passing.
+
+## §54.10 Files
+
+NEW:
+  * `app/governance_signal_bridge.py` (~145 LOC)
+  * `app/dashboard_links.py` (~55 LOC)
+  * `tests/test_governance_signal_bridge.py` (14 tests)
+  * `tests/test_dashboard_links.py` (11 tests)
+  * `tests/test_governance_notifier_urls.py` (6 tests)
+
+EDITED:
+  * `app/auto_deployer.py` (TIER_IMMUTABLE; operator-approved)
+  * `app/main.py` (TIER_IMMUTABLE; operator-approved)
+  * `app/governance_notifier.py`
+  * `app/agents/commander/commands.py`
+
+## §54.11 Deliberate non-decisions
+
+  * **Tier-3 amendment 👍/👎 NOT wired.** Operator chose to keep
+    Tier-3 React-only and instead get clickable links in every
+    alert. Rationale: amendments carry a 30-day monitoring window
+    + auto-rollback risk; the diff + eligibility evidence is best
+    reviewed on a full screen, not approved by tapping a phone
+    reaction.
+  * **No Postgres schema change.** `governance_requests` table
+    untouched; `signal_ts` lives in the sidecar JSON. Decision driver:
+    `control_plane/governance.py` is TIER_IMMUTABLE and a schema
+    migration would require operator-run `psql` (not auto-applied
+    at boot).
+  * **No change to the React dashboard.** `/api/cp/governance/{id}/
+    approve` still doesn't trigger `run_deploy` (separate concern;
+    if/when fixed, the Signal path will already match the expected
+    new behaviour). The Signal reaction path closes the loop via
+    `main.py`'s handler, so operators using Signal get end-to-end
+    behaviour even before the React fix lands.
+

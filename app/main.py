@@ -1543,6 +1543,114 @@ async def receive_signal(request: Request):
                 )
                 # Fall through
 
+        # ── Governance approval via reaction (auto-deploy + others) ──
+        # 👍 on a governance approval-needed message calls
+        # governance.approve(); 👎 calls governance.reject(). For
+        # ``code_change`` request types (auto-deploy), we also fire
+        # the actual run_deploy in a background thread so the loop
+        # closes end-to-end — without this step the React dashboard
+        # /api/cp/governance/{id}/approve flow is also half-broken
+        # (it marks status=approved in Postgres but never triggers
+        # the deploy itself). Resolving via reaction here brings the
+        # Signal path to parity with what the operator expects.
+        if target_ts and not is_remove and emoji in ("👍", "👎", "+1", "-1"):
+            try:
+                from app.governance_signal_bridge import (
+                    find_request_id as _gov_find,
+                    unregister as _gov_unregister,
+                )
+                gov_request_id = _gov_find(target_ts)
+                if gov_request_id:
+                    from app.control_plane.governance import get_governance
+                    from app.control_plane.db import execute_one
+                    gate = get_governance()
+                    is_approve = emoji in ("👍", "+1")
+                    loop = asyncio.get_running_loop()
+                    # Read the request first so we know request_type +
+                    # detail for the post-approval side-effect.
+                    row = execute_one(
+                        "SELECT id, request_type, title, detail_json, status "
+                        "FROM control_plane.governance_requests WHERE id = %s",
+                        (gov_request_id,),
+                    )
+                    if row and row.get("status") == "pending":
+                        action_fn = gate.approve if is_approve else gate.reject
+                        ok = await loop.run_in_executor(
+                            None, action_fn, gov_request_id, "signal_reaction",
+                        )
+                        action_name = "approved" if is_approve else "rejected"
+                        deploy_note = ""
+                        if ok and is_approve and row.get("request_type") == "code_change":
+                            import json as _json
+                            raw = row.get("detail_json") or "{}"
+                            try:
+                                detail = (
+                                    _json.loads(raw) if isinstance(raw, str)
+                                    else (raw or {})
+                                )
+                            except Exception:
+                                detail = {}
+                            reason_str = str(detail.get("reason", ""))[:200]
+                            try:
+                                from app.auto_deployer import run_deploy
+                                import threading as _threading
+
+                                def _do_post_approval_deploy():
+                                    try:
+                                        run_deploy(reason_str)
+                                    except Exception:
+                                        logger.exception(
+                                            "post-approval run_deploy failed"
+                                        )
+
+                                _threading.Thread(
+                                    target=_do_post_approval_deploy,
+                                    daemon=True,
+                                    name="post-approval-deploy",
+                                ).start()
+                                deploy_note = "\nDeploy initiated."
+                            except Exception:
+                                logger.debug(
+                                    "post-approval deploy trigger failed",
+                                    exc_info=True,
+                                )
+                                deploy_note = (
+                                    "\n⚠ Deploy trigger failed; "
+                                    "use /cp/governance to retry."
+                                )
+                        try:
+                            _gov_unregister(gov_request_id)
+                        except Exception:
+                            pass
+                        rid_short = str(gov_request_id)[:8]
+                        ack_msg = (
+                            f"✅ Governance #{rid_short} {action_name} via reaction."
+                            f"{deploy_note}"
+                        )
+                        try:
+                            client = SignalClient()
+                            await client.send(sender, ack_msg)
+                        except Exception:
+                            logger.debug(
+                                "Failed to send governance reaction ack",
+                                exc_info=True,
+                            )
+                        logger.info(
+                            "Reaction %s on governance #%s → %s",
+                            emoji, rid_short, action_name,
+                        )
+                        return {
+                            "status": "accepted",
+                            "governance_action": action_name,
+                            "request_id": gov_request_id,
+                        }
+            except Exception:
+                logger.debug(
+                    "Reaction-based governance handling failed",
+                    exc_info=True,
+                )
+                # Fall through to feedback pipeline
+
         try:
             from app.feedback_pipeline import FeedbackPipeline
             from app.config import get_settings

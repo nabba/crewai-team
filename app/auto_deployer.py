@@ -452,15 +452,32 @@ def schedule_deploy(reason: str) -> None:
                     detail={"reason": reason[:500]},
                 )
                 logger.info(f"auto_deployer: governance approval requested — #{str(req.get('id', ''))[:8]}")
-                # Notify user that approval is needed
+                # Notify user that approval is needed.
+                # Uses send_message_blocking so we capture the Signal
+                # timestamp and register it with governance_signal_bridge —
+                # that lets the reaction handler in main.py resolve a
+                # 👍/👎 on this message back to the governance request_id.
                 try:
-                    from app.signal_client import send_message
+                    from app.signal_client import send_message_blocking
+                    from app.governance_signal_bridge import register as _gov_register
+                    from app.dashboard_links import signal_links_block as _links
                     s = _cgs()
-                    send_message(
+                    rid = str(req.get("id", ""))
+                    ts = send_message_blocking(
                         s.signal_owner_number,
                         f"⚖️ AUTO-DEPLOY requires approval: {reason[:100]}\n"
-                        f"Use `approve {str(req.get('id', ''))[:8]}` or `pending` to review.",
+                        f"React 👍 to approve or 👎 to reject, or reply "
+                        f"`approve {rid[:8]}` / `pending`.\n"
+                        f"{_links('/cp/governance')}",
                     )
+                    if ts and rid:
+                        try:
+                            _gov_register(int(ts), rid)
+                        except Exception:
+                            logger.debug(
+                                "auto_deployer: governance_signal_bridge.register failed",
+                                exc_info=True,
+                            )
                 except Exception:
                     pass
                 _deploy_scheduled = False

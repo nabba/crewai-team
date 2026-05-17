@@ -534,20 +534,83 @@ def try_command(user_input: str, sender: str, commander) -> str | None:
         return "\n".join(lines)
 
     if lower.startswith("approve "):
+        parts = user_input.split()
+        if len(parts) < 2:
+            return "Usage: approve <proposal_id>|<governance-id>"
+        arg = parts[1]
+        # Integer proposal IDs route to the legacy improvement-proposal queue.
         try:
-            pid = int(user_input.split()[1])
-        except (IndexError, ValueError):
-            return "Usage: approve <proposal_id>"
-        from app.proposals import approve_proposal
-        return approve_proposal(pid)
+            pid = int(arg)
+            from app.proposals import approve_proposal
+            return approve_proposal(pid)
+        except ValueError:
+            pass
+        # Non-integer → governance UUID (or 8-char prefix from the
+        # auto-deploy Signal alert). Resolve via the bridge helper so
+        # we get the same prefix-match semantics as the alert shows.
+        from app.governance_signal_bridge import find_pending_by_id_prefix
+        row = find_pending_by_id_prefix(arg)
+        if not row:
+            return (
+                f"No pending proposal #{arg} or unique governance request "
+                f"matching '{arg}'. Try `pending` to list governance requests."
+            )
+        from app.control_plane.governance import get_governance
+        rid = str(row.get("id", ""))
+        ok = get_governance().approve(rid, reviewer="signal_text")
+        if not ok:
+            return f"Governance request {arg} could not be approved (already resolved?)."
+        rid_short = rid[:8]
+        # Mirror the reaction-handler behaviour: code_change approvals
+        # also fire the actual deploy, so the text path matches.
+        if row.get("request_type") == "code_change":
+            import json as _json
+            raw = row.get("detail_json") or "{}"
+            try:
+                detail = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+            except Exception:
+                detail = {}
+            reason = str(detail.get("reason", ""))[:200]
+            try:
+                from app.auto_deployer import run_deploy
+                import threading as _threading
+                _threading.Thread(
+                    target=lambda: run_deploy(reason),
+                    daemon=True,
+                    name="post-approval-deploy-text",
+                ).start()
+                return f"✅ Governance #{rid_short} approved. Deploy initiated."
+            except Exception:
+                return (
+                    f"✅ Governance #{rid_short} approved. "
+                    f"Deploy trigger failed — use /cp/governance to retry."
+                )
+        return f"✅ Governance #{rid_short} approved."
 
     if lower.startswith("reject "):
+        parts = user_input.split()
+        if len(parts) < 2:
+            return "Usage: reject <proposal_id>|<governance-id>"
+        arg = parts[1]
         try:
-            pid = int(user_input.split()[1])
-        except (IndexError, ValueError):
-            return "Usage: reject <proposal_id>"
-        from app.proposals import reject_proposal
-        return reject_proposal(pid)
+            pid = int(arg)
+            from app.proposals import reject_proposal
+            return reject_proposal(pid)
+        except ValueError:
+            pass
+        from app.governance_signal_bridge import find_pending_by_id_prefix
+        row = find_pending_by_id_prefix(arg)
+        if not row:
+            return (
+                f"No pending proposal #{arg} or unique governance request "
+                f"matching '{arg}'. Try `pending` to list governance requests."
+            )
+        from app.control_plane.governance import get_governance
+        rid = str(row.get("id", ""))
+        ok = get_governance().reject(rid, reviewer="signal_text")
+        if not ok:
+            return f"Governance request {arg} could not be rejected (already resolved?)."
+        return f"❌ Governance #{rid[:8]} rejected."
 
     if lower == "status":
         from app.proposals import list_proposals

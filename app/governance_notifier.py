@@ -95,49 +95,70 @@ def _save_snapshot(snapshot: dict[str, str]) -> None:
 # ── Notification helpers ─────────────────────────────────────────────
 
 
+# URL builders live in app/dashboard_links so auto-deploy and other
+# approval-style Signal messages can share them.
+from app.dashboard_links import (  # noqa: E402
+    signal_links_block as _render_links_block,
+    url_iphone as _url_iphone,
+    url_macbook as _url_macbook,
+)
+
+
+def _dashboard_url(path: str) -> str:
+    """Backwards-compat alias — old name returned the iPhone URL."""
+    return _url_iphone(path)
+
+
 # Operator-relevant transitions. Each entry is (state-name, salience,
 # message_template). Other states (PROPOSED, COOLDOWN_FAILED,
 # REJECTED) get no Signal alert because either (a) the agent action
 # already includes notification or (b) terminal failures don't need
-# operator attention.
+# operator attention. {links} is the rendered block with both the
+# iPhone (Funnel HTTPS) and Mac (Tailnet dev) URLs — Tier-3
+# amendments stay React-only by design.
 _NOTIFY_STATES: dict[str, tuple[float, str]] = {
     "staged": (
         0.5,
         "🏛️ Tier-3 amendment STAGED (id={id}): {target}\n"
         "Eligibility passed; 7-day cooldown started. Cooldown advances "
         "automatically — you'll be re-pinged when COOLDOWN_OK.\n"
-        "Proposer: {proposer} · Citation: {citation}",
+        "Proposer: {proposer} · Citation: {citation}\n"
+        "{links}",
     ),
     "eligibility_failed": (
         0.4,
         "🏛️ Tier-3 amendment ELIGIBILITY_FAILED (id={id}): {target}\n"
         "Failures: {failures}\n"
         "Proposal recorded for audit; no further action needed unless "
-        "you want to investigate the eligibility metrics.",
+        "you want to investigate the eligibility metrics.\n"
+        "{links}",
     ),
     "cooldown_ok": (
         0.7,
         "🏛️ Tier-3 amendment COOLDOWN_OK (id={id}): {target}\n"
         "7-day cooldown clean. Awaiting your approve/reject decision.\n"
-        "Review at /cp/amendments/{id} · Proposer: {proposer}\n"
-        "Citation: {citation}",
+        "Proposer: {proposer} · Citation: {citation}\n"
+        "👉 Review + approve:\n{links}",
     ),
     "approved": (
         0.6,
         "🏛️ Tier-3 amendment APPROVED (id={id}): {target}\n"
-        "Operator approved. Will be applied via host bridge next.",
+        "Operator approved. Will be applied via host bridge next.\n"
+        "{links}",
     ),
     "applied": (
         0.7,
         "🏛️ Tier-3 amendment APPLIED (id={id}): {target}\n"
         "Hot-applied + auto-PR opened. 30-day monitoring window "
         "started — auto-rollback if alignment / regression signal "
-        "fires.",
+        "fires.\n"
+        "{links}",
     ),
     "stable": (
         0.5,
         "🏛️ Tier-3 amendment STABLE (id={id}): {target}\n"
-        "30-day monitoring clean. Amendment is now durable.",
+        "30-day monitoring clean. Amendment is now durable.\n"
+        "{links}",
     ),
     "reverted": (
         0.8,
@@ -145,7 +166,8 @@ _NOTIFY_STATES: dict[str, tuple[float, str]] = {
         "Monitoring detected a regression signal during the 30-day "
         "window. Hot-reverted automatically. See "
         "workspace/governance/tier3_amendments/audit.jsonl for "
-        "details.",
+        "details.\n"
+        "{links}",
     ),
 }
 
@@ -156,12 +178,14 @@ def _format_message(template: str, proposal: Any) -> str:
         or "(none)"
     )
     citation = (getattr(proposal, "citation", "") or "")[:200]
+    pid = getattr(proposal, "id", "?")
     body = template.format(
-        id=getattr(proposal, "id", "?"),
+        id=pid,
         target=getattr(proposal, "target_path", "?"),
         proposer=getattr(proposal, "proposer", "?"),
         failures=failures,
         citation=citation,
+        links=_render_links_block(f"/cp/amendments/{pid}"),
     )
     # Q2 §39: append the path-keyed history that
     # ``request_tier3_amendment`` persisted into proposal.evidence.
