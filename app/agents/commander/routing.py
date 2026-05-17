@@ -50,7 +50,14 @@ _PIM_NOUN_RE = re.compile(
     # Ticket / Kanban operations land in PIM (post-2026-05-09 — PIM is
     # the only crew with cp_list_tickets / cp_search_tickets /
     # cp_move_ticket; see app/crews/pim_crew.py task template).
-    r"tickets?|kanban)\b",
+    r"tickets?|kanban|"
+    # Travel operations land in PIM (post-2026-05-17 — PIM is the only
+    # crew with list_upcoming_flights / list_upcoming_trips backed by
+    # the Q9.3 TripIt snapshot; see app/tools/travel_tools.py).  "trip"
+    # is in the alternation but \btrip\b is left non-greedy to avoid
+    # matching "trip wire" / "round trip" by accident — the qualifier
+    # gate still has to fire for routing to flip.
+    r"flights?|hotels?|trips?|itinerar(?:y|ies)|reservations?|bookings?|travels?)\b",
     re.IGNORECASE,
 )
 _PIM_QUALIFIER_RE = re.compile(
@@ -61,7 +68,12 @@ _PIM_QUALIFIER_RE = re.compile(
     # Ticket-ops verbs (post-2026-05-09 — for PIM Kanban routing).
     # "move" pairs with "task"/"ticket" to catch "move the X task to Y";
     # the others cover list / search shapes.
-    r"move|migrate|reassign|search|list|show|find)\b",
+    r"move|migrate|reassign|search|list|show|find|"
+    # Temporal anchors that pair with travel/calendar nouns (post-
+    # 2026-05-17) — "next flights", "upcoming trips", "future
+    # meetings".  Generic enough to be safe paired with the noun
+    # gate.
+    r"next|upcoming|future)\b",
     re.IGNORECASE,
 )
 
@@ -676,7 +688,11 @@ _CREW_BASE_PURPOSE: dict[str, str] = {
         "Kanban-ticket operations (list / search / move tickets "
         "between workspaces — control_plane.tickets in Postgres). "
         "Pick PIM whenever the user references the dashboard tickets, "
-        "Kanban board, or asks to move a task between workspaces."
+        "Kanban board, or asks to move a task between workspaces. "
+        "Travel: PIM also owns the TripIt feed — pick it for "
+        "questions about flights, hotels, trips, itineraries, "
+        "or 'where am I staying / flying' shapes (list_upcoming_flights "
+        "+ list_upcoming_trips tools)."
     ),
     "financial": "stock data, financial analysis, SEC filings, valuation models, investment reports",
     "company_dossier": (
