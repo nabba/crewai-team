@@ -25,6 +25,18 @@ resource "google_compute_subnetwork" "botarmy" {
     range_name    = "${local.name}-services"
     ip_cidr_range = var.services_cidr
   }
+
+  # VPC flow logs — only when hardening_profile != "off". 5-second
+  # aggregation + 50% sampling keeps cost down (~$2/mo for a personal-
+  # scale subnet) while still giving forensic coverage.
+  dynamic "log_config" {
+    for_each = local.hardening_active ? [1] : []
+    content {
+      aggregation_interval = "INTERVAL_5_SEC"
+      flow_sampling        = 0.5
+      metadata             = "INCLUDE_ALL_METADATA"
+    }
+  }
 }
 
 # Cloud NAT so private nodes can pull images / hit the internet.

@@ -154,6 +154,15 @@ def _defaults() -> dict[str, Any]:
         # image-signing pipeline lands — flipping this is an identity-
         # shaping decision and emits a ledger event.
         "binauthz_mode": _env_str("BOTARMY_BINAUTHZ_MODE", "AUDIT"),
+        # Binary Authorization attestor short name. Empty = no attestor
+        # wired (ENFORCE mode silently falls back to ALWAYS_ALLOW even at
+        # strict). Set after running scripts/install/cosign_setup.sh.
+        "binauthz_attestor_name": _env_str("BOTARMY_BINAUTHZ_ATTESTOR_NAME", ""),
+        # VPC Service Controls — opt-in even at strict profile because
+        # mis-configuration locks the operator out of their own buckets.
+        # DRY_RUN default so the first apply is observational.
+        "vpc_sc_enabled": _env_bool("BOTARMY_VPC_SC_ENABLED", False),
+        "vpc_sc_dry_run": _env_bool("BOTARMY_VPC_SC_DRY_RUN", True),
         # Life-companion per-feature overrides — populated by the
         # /cp/life-companion control panel.  Schema:
         #   {<feature_key>: {"enabled": bool|None,
@@ -933,6 +942,67 @@ def set_binauthz_mode(value: str) -> None:
             summary=(
                 f"Binary Authorization {prior} → {normalized} "
                 f"({'now enforcing — unsigned images will be blocked' if normalized == 'ENFORCE' else 'back to audit-only — unsigned images logged but allowed'})"
+            ),
+        )
+
+
+def get_binauthz_attestor_name() -> str:
+    return str(_ensure_initialized().get("binauthz_attestor_name", "") or "").strip()
+
+
+def set_binauthz_attestor_name(value: str) -> None:
+    prior = get_binauthz_attestor_name()
+    normalized = str(value or "").strip()
+    _update({"binauthz_attestor_name": normalized})
+    if prior != normalized:
+        _emit_cloud_hardening_event(
+            phase="binauthz_attestor_changed",
+            prior=prior,
+            new=normalized,
+            summary=(
+                f"Binary Authorization attestor set to {normalized!r}"
+                if normalized else
+                "Binary Authorization attestor cleared"
+            ),
+        )
+
+
+def get_vpc_sc_enabled() -> bool:
+    return bool(_ensure_initialized().get("vpc_sc_enabled", False))
+
+
+def set_vpc_sc_enabled(value: bool) -> None:
+    prior = get_vpc_sc_enabled()
+    _update({"vpc_sc_enabled": bool(value)})
+    if bool(prior) != bool(value):
+        _emit_cloud_hardening_event(
+            phase="vpc_sc_policy_changed",
+            prior=prior,
+            new=bool(value),
+            summary=(
+                "VPC Service Controls perimeter enabled"
+                if value else
+                "VPC Service Controls perimeter disabled"
+            ),
+        )
+
+
+def get_vpc_sc_dry_run() -> bool:
+    return bool(_ensure_initialized().get("vpc_sc_dry_run", True))
+
+
+def set_vpc_sc_dry_run(value: bool) -> None:
+    prior = get_vpc_sc_dry_run()
+    _update({"vpc_sc_dry_run": bool(value)})
+    if bool(prior) != bool(value):
+        _emit_cloud_hardening_event(
+            phase="vpc_sc_dry_run_changed",
+            prior=prior,
+            new=bool(value),
+            summary=(
+                "VPC Service Controls switched to DRY-RUN (logs would-be-blocks, doesn't enforce)"
+                if value else
+                "VPC Service Controls switched to ENFORCED mode"
             ),
         )
 

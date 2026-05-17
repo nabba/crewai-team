@@ -15,9 +15,28 @@ module "eks" {
   cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
 
+  # Hardening (strict): lock the public endpoint to an operator-provided
+  # CIDR allowlist (Tailnet + laptop public IP auto-detected by the
+  # migrate wizard). Empty list keeps the default 0.0.0.0/0 with the
+  # IAM gate as the only protection — fine for basic/off profiles.
+  cluster_endpoint_public_access_cidrs = length(local.eks_public_access_cidrs) > 0 ? local.eks_public_access_cidrs : ["0.0.0.0/0"]
+
   # Allow the identity running terraform to admin the cluster. Without this,
   # `kubectl` against the cluster will fail with auth errors right after apply.
   enable_cluster_creator_admin_permissions = true
+
+  # Envelope-encrypt Kubernetes Secrets with our own KMS key when
+  # hardening is active. The EKS module wires the cluster role to the
+  # key automatically when ``cluster_encryption_config`` is set.
+  cluster_encryption_config = local.hardening_active_aws ? {
+    provider_key_arn = aws_kms_key.eks_secrets[0].arn
+    resources        = ["secrets"]
+  } : {}
+
+  # Send all control-plane audit-log types to CloudWatch Logs.
+  cluster_enabled_log_types = local.hardening_active_aws ? [
+    "api", "audit", "authenticator", "controllerManager", "scheduler",
+  ] : []
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets

@@ -134,12 +134,62 @@ variable "use_external_secrets" {
     Rotation becomes: update Secrets Manager → ESO syncs within
     ``external_secret_refresh_interval``. No ``terraform apply``.
   EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "external_secret_refresh_interval" {
   description = "How often ESO re-syncs from Secrets Manager. Ignored when use_external_secrets=false."
   type        = string
   default     = "5m"
+}
+
+# ─── Hardening (2026-05-17 extension, AWS mirror of GCP) ─────────
+variable "hardening_profile" {
+  description = "Hardening profile: 'off' (no extra hardening), 'basic' (EKS secrets KMS + RDS KMS + ECR scanning + VPC flow logs), 'strict' (basic + EKS private endpoint allowlist + AWS WAFv2 + CloudTrail + GuardDuty + Security Hub + SCPs)."
+  type        = string
+  default     = "strict"
+  validation {
+    condition     = contains(["off", "basic", "strict"], var.hardening_profile)
+    error_message = "hardening_profile must be one of: off, basic, strict."
+  }
+}
+
+variable "allowed_cidrs" {
+  description = "CIDR blocks allowed to reach the EKS public API endpoint when hardening_profile=strict. Auto-detected by app.substrate.cloud_hardening: Tailnet (100.64.0.0/10) preferred + laptop public IP as fallback. Empty list = the cluster keeps its existing default 0.0.0.0/0 public endpoint."
+  type = list(object({
+    cidr_block   = string
+    display_name = string
+  }))
+  default = []
+}
+
+variable "kms_protection_level" {
+  description = "AWS KMS key type. SYMMETRIC_DEFAULT (free under 20k requests/mo) is recommended. CMK keys cost $1/month each."
+  type        = string
+  default     = "SYMMETRIC_DEFAULT"
+}
+
+variable "aws_org_enabled" {
+  description = "Set true if you operate inside AWS Organizations + want Service Control Policies applied. Requires Organizations management-account credentials; the workload account can't self-apply SCPs."
+  type        = bool
+  default     = false
+}
+
+variable "aws_org_root_id" {
+  description = "Organization root ID (e.g. r-abcd1234) for SCP attachment. Required when aws_org_enabled=true. Auto-detected by app.substrate.cloud_hardening when running under the migrate wizard."
+  type        = string
+  default     = ""
+}
+
+variable "cloudtrail_retention_days" {
+  description = "S3 lifecycle retention for the CloudTrail audit-log bucket. 400 days is the operator's standard."
+  type        = number
+  default     = 400
+}
+
+variable "waf_rate_limit_per_5min" {
+  description = "Per-IP rate-limit threshold on the AWS WAFv2. 3000 = 10rps."
+  type        = number
+  default     = 3000
 }

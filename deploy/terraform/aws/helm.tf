@@ -110,7 +110,11 @@ resource "helm_release" "botarmy" {
       tag        = var.gateway_image_tag
     }
 
-    envSecretName = kubernetes_secret.botarmy_env.metadata[0].name
+    # Both paths produce a Secret named "botarmy-env":
+    #   * use_external_secrets=false → kubernetes_secret.botarmy_env writes it
+    #   * use_external_secrets=true  → ESO ExternalSecret reconciles it
+    # Hardcode so the reference is correct regardless of which path is active.
+    envSecretName = "botarmy-env"
 
     gateway = {
       service = { type = "ClusterIP" }

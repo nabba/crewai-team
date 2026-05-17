@@ -12,7 +12,15 @@ resource "google_sql_database_instance" "botarmy" {
   database_version = "POSTGRES_16"
   region           = var.region
 
-  deletion_protection = false # toggle for prod manually
+  # Hardening: deletion_protection ON for prod tier when hardening is
+  # active. Cheapest tier keeps it OFF so the wizard's teardown CLI
+  # still works in dev.
+  deletion_protection = local.hardening_active && var.tier == "prod"
+
+  # CMEK: only at hardening_profile=basic|strict. Without CMEK Cloud SQL
+  # still encrypts at rest with a Google-managed key — CMEK gives YOU
+  # the rotation + revocation surface.
+  encryption_key_name = local.hardening_active ? google_kms_crypto_key.cloudsql[0].id : null
 
   settings {
     tier              = local.cloudsql_tier
@@ -54,7 +62,10 @@ resource "google_sql_database_instance" "botarmy" {
     }
   }
 
-  depends_on = [google_service_networking_connection.private_vpc_connection]
+  depends_on = [
+    google_service_networking_connection.private_vpc_connection,
+    google_kms_crypto_key_iam_member.cloudsql_sa,
+  ]
 }
 
 resource "google_sql_database" "mem0" {

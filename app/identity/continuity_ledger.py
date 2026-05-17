@@ -77,7 +77,23 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_PATH = Path("/app/workspace/identity/continuity_ledger.jsonl")
+def _default_path() -> Path:
+    """Lazy-resolve the ledger location.
+
+    Reads ``WORKSPACE_ROOT`` (env-overridable, default ``/app/workspace``)
+    at call time so dev runs with a non-Docker workspace pick up the
+    correct path. Production behaviour is unchanged — ``WORKSPACE_ROOT``
+    defaults to ``/app/workspace`` inside the gateway container.
+
+    Mirrors the pattern in ``app/dr/export_kbs.py:_default_backup_root``.
+    """
+    try:
+        from app.paths import WORKSPACE_ROOT
+        return Path(WORKSPACE_ROOT) / "identity" / "continuity_ledger.jsonl"
+    except Exception:
+        return Path("/app/workspace/identity/continuity_ledger.jsonl")
+
+
 _path_override: Path | None = None
 
 
@@ -106,6 +122,12 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
                      # operator-transition phase, agreement-rate drift,
                      # KB contradiction, synthesis-pass concept-blend,
                      # cross-conversation recall)
+    "cloud_migration",  # Productization plan WP D — terminal-state landmarks
+                        # for an operator-driven local↔cloud migration
+                        # (started, bundle_uploaded, restored, verified,
+                        # cutover, rolled_back). One event per transition,
+                        # never per-probe. Surfaces in annual reflection
+                        # via summarise_drift.by_kind.
 })
 
 
@@ -116,7 +138,7 @@ def _enabled() -> bool:
 
 
 def _resolve_path() -> Path:
-    return _path_override if _path_override else _DEFAULT_PATH
+    return _path_override if _path_override else _default_path()
 
 
 @dataclass(frozen=True)
