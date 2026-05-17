@@ -727,32 +727,19 @@ def boot_integrity_scan() -> dict:
                 replay = _try_universal_replay(kb_name)
                 summary["replays"][kb_name] = replay
 
-        # 6. PROGRAM §56 — drift detection on KBs that PASSED
-        # integrity but whose row count diverged from the ledger.
-        # Catches the "chromadb was rebuilt but ledger has the
-        # history" case (e.g. the operator's manual rename on
-        # 2026-05-17 left an empty replacement).
-        if _gate("chromadb_ledger_drift_replay_enabled"):
-            try:
-                from app.memory.source_ledger import check_drift
-                for db_path in sqlites:
-                    kb_dir = db_path.parent
-                    kb_name = kb_dir.name
-                    if kb_name in summary["quarantines"]:
-                        continue  # already replayed above
-                    drift = check_drift(kb_name)
-                    if drift.needs_replay:
-                        logger.warning(
-                            "chromadb_integrity: drift on %s — ledger=%d kb=%d, replaying",
-                            kb_name, drift.ledger_rows, drift.kb_rows_total,
-                        )
-                        replay = _try_universal_replay(kb_name)
-                        summary["replays"][kb_name] = replay
-                        summary.setdefault("drifts", {})[kb_name] = drift.to_dict()
-            except Exception:
-                logger.exception(
-                    "chromadb_integrity.boot_integrity_scan: drift check raised",
-                )
+        # 6. PROGRAM §56 — drift detection is intentionally NOT run
+        # here at boot. The source_ledger_daemon runs it every 24h
+        # after a 5-min warm-up; doing it at boot also opens
+        # chromadb.PersistentClient against every KB (including
+        # large ones — philosophy was 87 MB on 2026-05-17), which
+        # adds minutes to gateway startup as chromadb loads HNSW
+        # segments. Lifespan startup must be FAST so the gateway
+        # binds its port and serves /api/cp routes promptly; the
+        # daemon picks up any drift on its next pass.
+        #
+        # If you need drift detection at boot (e.g. after a known
+        # KB rebuild), invoke the daemon's _run_one_pass directly
+        # from a one-shot script — don't put it back in lifespan.
     except Exception:
         logger.exception("chromadb_integrity.boot_integrity_scan: top-level failure")
         summary["error"] = "top_level_exception"
