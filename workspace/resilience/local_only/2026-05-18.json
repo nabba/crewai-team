@@ -1,0 +1,46 @@
+{
+  "n_providers": 6,
+  "n_ready": 1,
+  "providers": [
+    {
+      "env": "DEEPSEEK_API_KEY",
+      "env_set": false,
+      "provider": "deepseek",
+      "ready": false
+    },
+    {
+      "env": "GEMINI_API_KEY",
+      "env_set": false,
+      "provider": "gemini",
+      "ready": false
+    },
+    {
+      "env": "GOOGLE_API_KEY",
+      "env_set": false,
+      "provider": "google",
+      "ready": false
+    },
+    {
+      "env": "GROQ_API_KEY",
+      "env_set": true,
+      "format_ok": true,
+      "provider": "groq",
+      "ready": true
+    },
+    {
+      "env": "MINIMAX_API_KEY",
+      "env_set": false,
+      "provider": "minimax",
+      "ready": false
+    },
+    {
+      "base_url": "http://127.0.0.1:11434",
+      "provider": "ollama",
+      "ready": false,
+      "socket_error": "ConnectionRefusedError: [Errno 111] Connection refused",
+      "socket_ok": false
+    }
+  ],
+  "ratio": 0.16666666666666666,
+  "ts": "2026-05-18T16:56:09.884743+00:00"
+}

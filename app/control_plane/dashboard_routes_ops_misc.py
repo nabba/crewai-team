@@ -3,11 +3,12 @@
 Operational telemetry catch-all: tasks, tokens, snapshots, tech-radar, chat, system-status, org-chart, research, health, signal-commands, idle, pool, notify.
 
 Extracted from app/control_plane/dashboard_api.py as part of WP G
-Phase 1 (productization plan, 2026-05-17). Pure code movement —
-routes, classes, and helpers are verbatim. The parent router in
-``dashboard_api.py`` re-attaches the ``/api/cp`` prefix and the
-``require_gateway_auth`` dependency via ``include_router``, so the
-URL surface and auth boundary are unchanged.
+Phase 1 (2026-05-17); wired into the parent router via
+``include_router`` in Phase 2 (2026-05-18). The parent router in
+``dashboard_api.py`` carries the ``/api/cp`` prefix and the
+``require_gateway_auth`` dependency, both of which propagate to
+every route here — so the URL surface and auth boundary are
+identical to the pre-Phase-1 monolith.
 """
 import json
 import logging

@@ -1521,24 +1521,24 @@ def _default_jobs() -> list[tuple[str, Callable[[], None]]]:
     jobs.append(("skill-index", _skill_index, JobWeight.LIGHT))
 
     # ── Self-training: curate collected data + trigger training ─────────
+    # HEAVY — ``run_curation`` calls the judge LLM per record. The 100-row
+    # per-pass cap keeps each idle invocation bounded (~100 cheap-tier calls);
+    # the heavy classification also routes this job into the once-per-cycle
+    # sequential lane rather than the LIGHT 3-wide parallel fan-out that
+    # saturated disk I/O on 2026-05-17. Direct callers (training_pipeline,
+    # operator ``/curate`` command) keep the historical 500-row default.
     def _training_curate() -> None:
         try:
             from app.training_collector import get_pipeline
             pipeline = get_pipeline()
-            # Run full curation: score quality + export eligible data
-            curation_result = pipeline.run_curation()
+            curation_result = pipeline.run_curation(max_records=100)
             logger.info(f"idle_scheduler: training curation: {curation_result.get('status', '?')} "
                         f"scored={curation_result.get('total_scored', 0)} "
-                        f"eligible={curation_result.get('eligible', 0)}")
-            stats = pipeline.get_stats()
-            if stats.get("total_interactions", 0) > 0:
-                result = pipeline.run_curation()
-                if result.get("exported_train", 0) > 0:
-                    logger.info(f"idle_scheduler: training data curated — "
-                                f"{result.get('exported_train', 0)} examples exported")
+                        f"eligible={curation_result.get('eligible', 0)} "
+                        f"exported={curation_result.get('exported_train', 0)}")
         except Exception:
             logger.debug("idle_scheduler: training curation failed", exc_info=True)
-    jobs.append(("training-curate", _training_curate, JobWeight.LIGHT))
+    jobs.append(("training-curate", _training_curate, JobWeight.HEAVY))
 
     # ── Training pipeline: run MLX LoRA training if enough curated data ──
     def _training_pipeline() -> None:

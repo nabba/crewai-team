@@ -3,11 +3,12 @@
 Budgets + costs + audit + credit-alerts — financial/audit surface.
 
 Extracted from app/control_plane/dashboard_api.py as part of WP G
-Phase 1 (productization plan, 2026-05-17). Pure code movement —
-routes, classes, and helpers are verbatim. The parent router in
-``dashboard_api.py`` re-attaches the ``/api/cp`` prefix and the
-``require_gateway_auth`` dependency via ``include_router``, so the
-URL surface and auth boundary are unchanged.
+Phase 1 (2026-05-17); wired into the parent router via
+``include_router`` in Phase 2 (2026-05-18). The parent router in
+``dashboard_api.py`` carries the ``/api/cp`` prefix and the
+``require_gateway_auth`` dependency, both of which propagate to
+every route here — so the URL surface and auth boundary are
+identical to the pre-Phase-1 monolith.
 """
 import json
 import logging
@@ -404,14 +405,13 @@ def embedding_migration_status():
 def source_ledger_state():
     """PROGRAM §56 iter-3 — operator-facing ledger health summary.
 
-    Returns per-KB stats: row count, byte size, chain-verify status,
-    compaction history count + bytes, last-compaction timestamp,
-    off-host upload state for S3 + Google Drive. Read-only; never
-    mutates anything.
+    Returns per-KB stats (row count, byte size, chain-verify status,
+    compaction history, off-host upload state) plus the 8 master
+    switches. Read-only; safe to poll. Powers the ``SourceLedgerCard``
+    React component on /cp/settings.
 
-    Used by the ``SourceLedgerCard`` React component on /cp/settings.
-    Safe to poll (cap chain-verify on >50k-row ledgers so the
-    endpoint doesn't stall on huge histories).
+    Chain verify is capped at >50k-row ledgers so the endpoint doesn't
+    stall on huge histories.
     """
     out: dict = {
         "kbs": [],

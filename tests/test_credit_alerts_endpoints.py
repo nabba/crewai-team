@@ -70,7 +70,7 @@ class TestEndpointBehavior:
             pass
 
     def test_no_alerts_returns_empty(self):
-        from app.control_plane.dashboard_api import credit_alerts
+        from app.control_plane.dashboard_routes_budgets_costs import credit_alerts
         out = credit_alerts()
         assert out == {"alerts": {}, "count": 0}
 
@@ -83,7 +83,7 @@ class TestEndpointBehavior:
             "ts": "2026-04-28T19:42:18+00:00",
             "resolved": False,
         }
-        from app.control_plane.dashboard_api import credit_alerts
+        from app.control_plane.dashboard_routes_budgets_costs import credit_alerts
         out = credit_alerts()
         assert out["count"] == 1
         assert "openrouter" in out["alerts"]
@@ -95,7 +95,7 @@ class TestEndpointBehavior:
             "provider": "openrouter", "error": "x", "url": "y",
             "ts": "z", "resolved": False,
         }
-        from app.control_plane.dashboard_api import (
+        from app.control_plane.dashboard_routes_budgets_costs import (
             dismiss_credit_alert, CreditAlertDismiss,
         )
         out = dismiss_credit_alert(CreditAlertDismiss(provider="openrouter"))
@@ -103,7 +103,7 @@ class TestEndpointBehavior:
         assert "openrouter" not in _active_alerts
 
     def test_dismiss_unknown_provider_returns_not_found(self):
-        from app.control_plane.dashboard_api import (
+        from app.control_plane.dashboard_routes_budgets_costs import (
             dismiss_credit_alert, CreditAlertDismiss,
         )
         out = dismiss_credit_alert(CreditAlertDismiss(provider="not_a_provider"))

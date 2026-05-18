@@ -308,6 +308,14 @@ def _defaults() -> dict[str, Any]:
         "dependency_radar_enabled": True,
         "tz_drift_monitor_enabled": True,
 
+        # 2026-05-18 — schema_drift_monitor_enabled. Daily probe
+        # comparing migrations/*.sql declarations against
+        # information_schema. On drift: writes a markdown report
+        # to docs/proposed_fixes/ + Signal alerts (operator applies
+        # manually with psql). Visibility-only; never auto-applies
+        # (validator.py:248 forbids migrations/ for auto-apply).
+        "schema_drift_monitor_enabled": True,
+
         # Q14 — year-2+ risk-register (PROGRAM §49). Six new master
         # switches, all default ON:
         #   * identity_drift_digest_enabled — monthly rolling drift
@@ -1963,6 +1971,14 @@ def get_tz_drift_monitor_enabled() -> bool:
 
 def set_tz_drift_monitor_enabled(value: bool) -> None:
     _update({"tz_drift_monitor_enabled": bool(value)})
+
+
+def get_schema_drift_monitor_enabled() -> bool:
+    return bool(_ensure_initialized().get("schema_drift_monitor_enabled", True))
+
+
+def set_schema_drift_monitor_enabled(value: bool) -> None:
+    _update({"schema_drift_monitor_enabled": bool(value)})
 
 
 # ── Q14 — year-2+ risk-register (PROGRAM §49) ─────────────────────────

@@ -58,7 +58,7 @@ TASK_ALIASES: dict[str, str] = {
 #   (b) specialist LLM roles (argument to llm_factory.create_specialist_llm),
 #   (c) the "default" fallback role.
 #
-# Publishers (firebase.publish.report_catalog, dashboard_api.llm_catalog)
+# Publishers (firebase.publish.report_catalog, dashboard_routes_llms.llm_catalog)
 # and the React pin dialog all derive their role lists from here so
 # adding a new crew or specialist only requires updating this tuple.
 

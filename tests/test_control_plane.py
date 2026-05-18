@@ -879,9 +879,11 @@ class TestDashboardAPI(unittest.TestCase):
             assert ep in paths, f"Missing route: {ep}"
 
     def test_request_models(self):
-        from app.control_plane.dashboard_api import (
-            ProjectCreate, TicketCreate, TicketUpdate,
-            CommentCreate, BudgetOverride, BudgetSet,
+        from app.control_plane.dashboard_routes_projects_tickets import (
+            ProjectCreate, TicketCreate, TicketUpdate, CommentCreate,
+        )
+        from app.control_plane.dashboard_routes_budgets_costs import (
+            BudgetOverride, BudgetSet,
         )
         # Verify pydantic models instantiate correctly
         pc = ProjectCreate(name="test", mission="m")

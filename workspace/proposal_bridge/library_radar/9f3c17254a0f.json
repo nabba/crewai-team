@@ -1,0 +1,38 @@
+{
+  "body_hash": "aaa42fd37a33426be0002752581ad692006285fbd6ec979c8e84f47cc46fd794",
+  "coding_session_spec": {
+    "acceptance": [
+      "pip install -r requirements.txt",
+      "pytest tests/library_trials/test_openrouter_unified_tool_callin_smoke.py -v",
+      "verify license is compatible with the project license"
+    ],
+    "expected_duration_min": 30,
+    "files": [
+      {
+        "action": "edit",
+        "path": "requirements.txt",
+        "purpose": "add the chosen package (candidates: openrouter | unified | tool-calling) with a version pin",
+        "size_estimate": "+1 line"
+      },
+      {
+        "action": "create",
+        "path": "tests/library_trials/test_openrouter_unified_tool_callin_smoke.py",
+        "purpose": "smoke-import test that imports the package + verifies a top-level public symbol works",
+        "size_estimate": "~25 LOC"
+      }
+    ],
+    "intent": "Trial adoption of OpenRouter Unified Tool-Calling Web Search (tools)"
+  },
+  "cooldown_days": 7,
+  "cr_filed_at": null,
+  "cr_id": null,
+  "expired_at": null,
+  "notes": {},
+  "resolved_at": null,
+  "signature": "9f3c17254a0f",
+  "source": "library_radar",
+  "staged_at": "2026-05-17T22:51:38.654414+00:00",
+  "status": "staged",
+  "target_path": "docs/proposed_libraries/9f3c17254a0f-openrouter_unified_tool_calling_web_search.md",
+  "title": "OpenRouter Unified Tool-Calling Web Search"
+}

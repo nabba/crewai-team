@@ -116,7 +116,7 @@ def patched_journal(monkeypatch: pytest.MonkeyPatch):
 class TestEmptyJournal:
 
     def test_empty_journal_returns_ok(self, patched_journal) -> None:
-        from app.control_plane.dashboard_api import system_status
+        from app.control_plane.dashboard_routes_ops_misc import system_status
 
         patched_journal([])
         result = system_status()
@@ -134,7 +134,7 @@ class TestHistoricalOnlyJournal:
     def test_historical_only_returns_ok_with_count(
         self, patched_journal,
     ) -> None:
-        from app.control_plane.dashboard_api import system_status
+        from app.control_plane.dashboard_routes_ops_misc import system_status
 
         # All entries 30+ days old.
         patched_journal([
@@ -155,7 +155,7 @@ class TestHistoricalOnlyJournal:
 class TestRecentEntriesTriggerWarn:
 
     def test_5_recent_entries_warns(self, patched_journal) -> None:
-        from app.control_plane.dashboard_api import system_status
+        from app.control_plane.dashboard_routes_ops_misc import system_status
 
         # 5 fresh + 50 historical → only the fresh count.
         patched_journal(
@@ -176,7 +176,7 @@ class TestTopPatternIsWindowedNotAllTime:
     time-windowed slice, not the whole journal."""
 
     def test_top_reflects_recent_only(self, patched_journal) -> None:
-        from app.control_plane.dashboard_api import system_status
+        from app.control_plane.dashboard_routes_ops_misc import system_status
 
         # 100 historical of TYPE_OLD, 3 fresh of TYPE_NEW.
         patched_journal(
@@ -202,7 +202,7 @@ class TestMalformedTsHandled:
     probe — they should be excluded from the time window silently."""
 
     def test_no_ts_entry_excluded_from_window(self, patched_journal) -> None:
-        from app.control_plane.dashboard_api import system_status
+        from app.control_plane.dashboard_routes_ops_misc import system_status
 
         bad_entry = {"crew": "x", "error_type": "Y"}  # no ts
         patched_journal([bad_entry])

@@ -1,68 +1,5 @@
 [
   {
-    "task_hash": "0a010695a1572cac",
-    "task": "Complete the following coding task:\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibilit",
-    "failure_count": 6,
-    "last_tool": "mcp_add_server",
-    "last_error": "Failed to connect to 'Gorav22/terminusai'. Check command/URL and credentials.",
-    "ts": 1777238653.2129438,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "0a010695a1572cac",
-    "task": "Complete the following coding task:\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibilit",
-    "failure_count": 7,
-    "last_tool": "mcp_add_server",
-    "last_error": "Failed to connect to 'mcp-hive/hive-servers'. Check command/URL and credentials.",
-    "ts": 1777238663.6249368,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "0a010695a1572cac",
-    "task": "Complete the following coding task:\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibilit",
-    "failure_count": 8,
-    "last_tool": "mcp_add_server",
-    "last_error": "Failed to connect to 'weidwonder/terminal-mcp-server'. Check command/URL and credentials.",
-    "ts": 1777238673.3868816,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "0a010695a1572cac",
-    "task": "Complete the following coding task:\n\n<user_request>\n<reference_context type=\"somatic_bias\" visibilit",
-    "failure_count": 9,
-    "last_tool": "mcp_add_server",
-    "last_error": "Failed to connect to 'local-mcp/local-mcp'. Check command/URL and credentials.",
-    "ts": 1777238687.4080462,
-    "replan_suggested": true
-  },
-  {
-    "task_hash": "d6f0fe8dd5482346",
-    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
-    "failure_count": 1,
-    "last_tool": "file_manager",
-    "last_error": "Error: Cannot write to 'app/aesthetics/api.py'. Writable directories: output, proposals, skills",
-    "ts": 1777248053.5487375,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "86cffc4e8a538497",
-    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
-    "failure_count": 1,
-    "last_tool": "file_manager",
-    "last_error": "Error: Cannot write to 'app/anomaly_detector.py'. Writable directories: output, proposals, skills",
-    "ts": 1777262546.0682275,
-    "replan_suggested": false
-  },
-  {
-    "task_hash": "92a6f553dd8f4eeb",
-    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
-    "failure_count": 3,
-    "last_tool": "file_manager",
-    "last_error": "Error: File not found: app/atlas/code_forge.py.  Tip: use action='list' to enumerate available files",
-    "ts": 1777276806.4136646,
-    "replan_suggested": false
-  },
-  {
     "task_hash": "92a6f553dd8f4eeb",
     "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
     "failure_count": 6,
@@ -447,6 +384,69 @@
     "last_tool": "file_manager",
     "last_error": "Error: File not found: app/action_requests/store.py.  Tip: use action='list' to enumerate available ",
     "ts": 1778414414.9599144,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "8a9c98a46ad6d301",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 1,
+    "last_tool": "file_manager",
+    "last_error": "Error: Cannot write to 'app/affect/core.py'. Writable directories: output, proposals, skills",
+    "ts": 1779091383.7678156,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "453b8511661309f2",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 1,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: app/affect/kb_metadata.py.  Tip: use action='list' to enumerate available fil",
+    "ts": 1779105606.443567,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "453b8511661309f2",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 2,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: app/affect/kb_metadata.py.  Tip: use action='list' to enumerate available fil",
+    "ts": 1779105611.158411,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "453b8511661309f2",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 3,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: app/affect/kb_metadata.py.  Tip: use action='list' to enumerate available fil",
+    "ts": 1779105617.6255178,
+    "replan_suggested": false
+  },
+  {
+    "task_hash": "453b8511661309f2",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 4,
+    "last_tool": "file_manager",
+    "last_error": "Error: File not found: app/affect/kb_metadata.py.  Tip: use action='list' to enumerate available fil",
+    "ts": 1779105624.927583,
+    "replan_suggested": true
+  },
+  {
+    "task_hash": "453b8511661309f2",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 5,
+    "last_tool": "file_manager",
+    "last_error": "Error: Cannot write to 'app/affect/kb_metadata.py'. Writable directories: output, proposals, skills",
+    "ts": 1779105697.6469297,
+    "replan_suggested": true
+  },
+  {
+    "task_hash": "482bb72445488b7b",
+    "task": "Audit these Python source files for bugs, security issues, and non-optimal code.\n\nFiles in the codeb",
+    "failure_count": 1,
+    "last_tool": "file_manager",
+    "last_error": "Error: Cannot write to 'app/affect/reference_panel.py'. Writable directories: output, proposals, ski",
+    "ts": 1779120110.4709792,
     "replan_suggested": false
   }
 ]

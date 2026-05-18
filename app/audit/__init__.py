@@ -109,10 +109,30 @@ def log_security_event(event: str, detail: str) -> None:
 
 
 def log_response_sent(sender_redacted: str, response_length: int) -> None:
-    """Log when a response is sent back to the owner."""
+    """Log when a response has been successfully delivered to Signal.
+
+    Fired AFTER ``send_durable`` returns — pairs with ``request_received``
+    for the latency_slo monitor's request-lifecycle timing. Prior to the
+    2026-05-18 audit this event was emitted at the queue-for-delivery
+    point (before the ~hundreds-of-ms ``send_durable`` round-trip), so
+    the SLO underreported actual user-facing latency.
+    """
     _emit("response_sent", {
         "sender": sender_redacted,
         "response_length": response_length,
+    })
+
+
+def log_response_failed(sender_redacted: str, error_type: str) -> None:
+    """Log when delivery to Signal raised (post-`send_durable` failure).
+
+    Counterpart to ``log_response_sent``: SLO + error-rate dashboards
+    can now distinguish "processed but never delivered" from "processed
+    and delivered" by joining on trace_id.
+    """
+    _emit("response_failed", {
+        "sender": sender_redacted,
+        "error_type": error_type,
     })
 
 

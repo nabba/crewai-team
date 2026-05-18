@@ -320,7 +320,7 @@ def clear() -> int:
 def backend_info() -> dict[str, Any]:
     """Diagnostic snapshot: which backend is active + sizing knobs.
 
-    Surfaced via :func:`app.control_plane.dashboard_api.list_idle_jobs`
+    Surfaced via :func:`app.control_plane.dashboard_routes_ops_misc.list_idle_jobs`
     so operators can confirm at a glance whether Redis is being used.
     """
     rd = _get_redis()

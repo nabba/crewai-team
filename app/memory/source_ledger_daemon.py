@@ -120,20 +120,50 @@ def _run_one_pass() -> dict:
 
     # ── Drift branch ────────────────────────────────────────────
     if _gate("chromadb_ledger_drift_replay_enabled"):
+        # Lazily resolve the integrity check — chromadb_integrity is
+        # the PROGRAM §55 quarantine layer; we defer to it rather than
+        # hammer a corrupt SQLite with re-embed writes (which only
+        # makes things worse and produces the recovery-loop the
+        # 2026-05-18 audit flagged).
+        try:
+            from app.memory.chromadb_integrity import kb_integrity_check
+        except Exception:
+            kb_integrity_check = None  # type: ignore[assignment]
+
         for kb_name in kbs:
             try:
                 drift = sl.check_drift(kb_name)
                 summary["drifts"][kb_name] = drift.to_dict()
-                if drift.needs_replay:
+                if not drift.needs_replay:
+                    continue
+                integrity = (
+                    kb_integrity_check(kb_name)
+                    if kb_integrity_check is not None
+                    else "ok"  # fail-open if the integrity layer isn't importable
+                )
+                if integrity != "ok":
                     logger.warning(
-                        "source_ledger_daemon: drift detected on %s — "
-                        "ledger=%d kb=%d pct=%.2f%%; replaying",
-                        kb_name, drift.ledger_rows, drift.kb_rows_total,
+                        "source_ledger_daemon: drift detected on %s "
+                        "but integrity=%r — deferring replay to "
+                        "chromadb_integrity quarantine path "
+                        "(ledger=%d kb=%d pct=%.2f%%)",
+                        kb_name, integrity,
+                        drift.ledger_rows, drift.kb_rows_total,
                         100 * drift.drift_pct,
                     )
-                    replay = sl.replay_kb(kb_name)
-                    summary["drifts"][kb_name]["replay_result"] = replay.to_dict()
-                    _alert_drift_replay(kb_name, drift, replay)
+                    summary["drifts"][kb_name]["replay_deferred"] = (
+                        f"integrity_broken: {integrity}"
+                    )
+                    continue
+                logger.warning(
+                    "source_ledger_daemon: drift detected on %s — "
+                    "ledger=%d kb=%d pct=%.2f%%; replaying",
+                    kb_name, drift.ledger_rows, drift.kb_rows_total,
+                    100 * drift.drift_pct,
+                )
+                replay = sl.replay_kb(kb_name)
+                summary["drifts"][kb_name]["replay_result"] = replay.to_dict()
+                _alert_drift_replay(kb_name, drift, replay)
             except Exception:
                 logger.exception(
                     "source_ledger_daemon: drift check raised for %s", kb_name,

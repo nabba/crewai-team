@@ -1,6 +1,11 @@
 {
-  "last_alert_count": 0,
+  "last_alert_count": 11,
   "last_cr_count": 0,
-  "last_findings_by_severity": {},
-  "last_pass_at": "2026-05-17T19:50:35.608763+00:00"
+  "last_findings_by_severity": {
+    "cve_no_fix": 1,
+    "major": 10,
+    "minor": 41,
+    "patch": 4
+  },
+  "last_pass_at": "2026-05-18T05:35:08.065253+00:00"
 }

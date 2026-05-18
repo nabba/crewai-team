@@ -17,7 +17,7 @@ def _reset_diagnostics():
 
 
 def test_endpoint_returns_zero_counters_initially():
-    from app.control_plane.dashboard_api import pool_diagnostics
+    from app.control_plane.dashboard_routes_ops_misc import pool_diagnostics
 
     result = pool_diagnostics()
 
@@ -36,7 +36,7 @@ def test_endpoint_returns_zero_counters_initially():
 def test_endpoint_reflects_counter_updates(monkeypatch):
     """Diagnostics endpoint reads the same shared counters as production code."""
     from app.control_plane import db
-    from app.control_plane.dashboard_api import pool_diagnostics
+    from app.control_plane.dashboard_routes_ops_misc import pool_diagnostics
 
     db._diag_record_failure("pool_exhausted")
     db._diag_record_failure("pool_exhausted")
@@ -51,7 +51,7 @@ def test_endpoint_reflects_counter_updates(monkeypatch):
 def test_endpoint_computes_utilisation(monkeypatch):
     """Utilisation = current_borrows / maxconn, rounded to 3 decimals."""
     from app.control_plane import db
-    from app.control_plane.dashboard_api import pool_diagnostics
+    from app.control_plane.dashboard_routes_ops_misc import pool_diagnostics
 
     monkeypatch.setenv("CONTROL_PLANE_POOL_MAX", "10")
     # Simulate 3 concurrent borrows

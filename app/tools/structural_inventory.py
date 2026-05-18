@@ -47,7 +47,21 @@ CHOKE_POINTS: tuple[str, ...] = (
     "app/main.py",
     "app/agents/commander/orchestrator.py",
     "app/idle_scheduler.py",
+    # Control-plane dashboard API. ``dashboard_api.py`` is now a thin
+    # composition root (~80 LOC, 8 ``include_router`` calls); the route
+    # handlers + helpers live in ``dashboard_routes_*.py`` (WP G Phase 1+2,
+    # 2026-05-17/18). All nine files belong on the inventory: the composition
+    # root for structural significance, the eight splits for callable/class
+    # surface area.
     "app/control_plane/dashboard_api.py",
+    "app/control_plane/dashboard_routes_budgets_costs.py",
+    "app/control_plane/dashboard_routes_companion.py",
+    "app/control_plane/dashboard_routes_governance_ops.py",
+    "app/control_plane/dashboard_routes_llms.py",
+    "app/control_plane/dashboard_routes_ops_misc.py",
+    "app/control_plane/dashboard_routes_projects_tickets.py",
+    "app/control_plane/dashboard_routes_sentience_drills.py",
+    "app/control_plane/dashboard_routes_transfer_memory.py",
     "app/crews/base_crew.py",
 )
 

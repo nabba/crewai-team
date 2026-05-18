@@ -1,7 +1,18 @@
 [
   {
-    "ts": 1779036134.1849246,
+    "ts": 1779112404.0856514,
     "tag": "andrusai",
+    "topic": "resilience_drill_due:vendor_independence",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779112404.1221516,
+    "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
@@ -11,7 +22,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036134.200928,
+    "ts": 1779112404.1402552,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -22,7 +33,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036134.2557528,
+    "ts": 1779112404.197177,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -33,7 +44,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.7779517,
+    "ts": 1779112508.2713876,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -44,7 +55,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.814939,
+    "ts": 1779112508.309126,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -55,7 +66,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.8444047,
+    "ts": 1779112508.3416288,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -66,7 +77,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.889602,
+    "ts": 1779112508.3801436,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -77,7 +88,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.9079375,
+    "ts": 1779112508.400006,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -88,7 +99,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036145.9590616,
+    "ts": 1779112508.4570959,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -99,7 +110,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.2606275,
+    "ts": 1779112604.633879,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -110,7 +121,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.303727,
+    "ts": 1779112604.672162,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -121,7 +132,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.357292,
+    "ts": 1779112604.7054577,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -132,7 +143,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.392066,
+    "ts": 1779112604.7453177,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -143,7 +154,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.4086232,
+    "ts": 1779112604.7643456,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -154,7 +165,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036157.4712658,
+    "ts": 1779112604.8201275,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -165,7 +176,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.2391279,
+    "ts": 1779114110.2825913,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -176,7 +187,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.276665,
+    "ts": 1779114110.322567,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -187,7 +198,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.30406,
+    "ts": 1779114110.3574474,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -198,7 +209,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.3380227,
+    "ts": 1779114110.3979077,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -209,7 +220,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.353906,
+    "ts": 1779114110.4178276,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -220,7 +231,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036168.405397,
+    "ts": 1779114110.484454,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -231,7 +242,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.6351566,
+    "ts": 1779114146.6558712,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -242,7 +253,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.6750329,
+    "ts": 1779114146.6989877,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -253,7 +264,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.7081785,
+    "ts": 1779114146.7349663,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -264,7 +275,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.7465372,
+    "ts": 1779114146.774382,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -275,7 +286,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.7660954,
+    "ts": 1779114146.794699,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -286,7 +297,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036179.8289826,
+    "ts": 1779114146.8528538,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -297,7 +308,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036191.9158769,
+    "ts": 1779114180.5695984,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -308,7 +319,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036191.95568,
+    "ts": 1779114180.6086001,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -319,7 +330,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036191.9840486,
+    "ts": 1779114180.6434517,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -330,7 +341,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036192.0188303,
+    "ts": 1779114180.6835258,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -341,7 +352,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036192.035427,
+    "ts": 1779114180.7034993,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -352,7 +363,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036192.0864446,
+    "ts": 1779114180.7606359,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -363,7 +374,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.0790164,
+    "ts": 1779114216.9145126,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -374,7 +385,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.1378703,
+    "ts": 1779114216.952149,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -385,7 +396,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.1730099,
+    "ts": 1779114216.9853454,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -396,7 +407,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.216721,
+    "ts": 1779114217.024846,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -407,7 +418,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.2381256,
+    "ts": 1779114217.0446708,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -418,7 +429,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036205.302379,
+    "ts": 1779114217.1015823,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -429,7 +440,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036217.9977074,
+    "ts": 1779114300.3158789,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -440,7 +451,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036218.042411,
+    "ts": 1779114300.354424,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -451,7 +462,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036218.0904317,
+    "ts": 1779114300.3882208,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -462,7 +473,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036218.1309834,
+    "ts": 1779114300.4263484,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -473,7 +484,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036218.1503258,
+    "ts": 1779114300.4459388,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -484,7 +495,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036218.2116952,
+    "ts": 1779114300.505482,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -495,7 +506,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.5722215,
+    "ts": 1779114337.895961,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -506,7 +517,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.610388,
+    "ts": 1779114337.9343874,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -517,7 +528,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.6403797,
+    "ts": 1779114337.9686491,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -528,7 +539,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.690579,
+    "ts": 1779114338.0089266,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -539,7 +550,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.7073765,
+    "ts": 1779114338.0292788,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -550,7 +561,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036229.756632,
+    "ts": 1779114338.0857372,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -561,7 +572,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.035648,
+    "ts": 1779114372.6437294,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -572,7 +583,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.0737927,
+    "ts": 1779114372.6986747,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -583,7 +594,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.1048033,
+    "ts": 1779114372.734546,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -594,7 +605,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.1397316,
+    "ts": 1779114372.7735348,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -605,7 +616,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.1564884,
+    "ts": 1779114372.793013,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -616,7 +627,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036242.2236228,
+    "ts": 1779114372.851886,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -627,7 +638,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.1075673,
+    "ts": 1779114408.022038,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -638,7 +649,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.1507337,
+    "ts": 1779114408.061242,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -649,7 +660,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.1794999,
+    "ts": 1779114408.0953956,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -660,7 +671,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.2145464,
+    "ts": 1779114408.1356869,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -671,7 +682,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.2314198,
+    "ts": 1779114408.1557794,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -682,7 +693,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036254.281411,
+    "ts": 1779114408.2143607,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -693,7 +704,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036266.8173375,
+    "ts": 1779114443.446514,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -704,7 +715,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036266.8592896,
+    "ts": 1779114443.4874551,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -715,7 +726,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036266.8924618,
+    "ts": 1779114443.5226214,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -726,7 +737,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036266.9278722,
+    "ts": 1779114443.5621076,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -737,7 +748,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036266.9445984,
+    "ts": 1779114443.5830216,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -748,7 +759,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036267.0001812,
+    "ts": 1779114443.6420062,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -759,7 +770,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.0916846,
+    "ts": 1779114520.68214,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -770,7 +781,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.1376998,
+    "ts": 1779114520.7225204,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -781,7 +792,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.1692312,
+    "ts": 1779114520.7567282,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -792,7 +803,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.2105865,
+    "ts": 1779114520.7989087,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -803,7 +814,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.230782,
+    "ts": 1779114520.8187327,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -814,7 +825,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036280.3008456,
+    "ts": 1779114520.8775375,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -825,7 +836,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036292.870628,
+    "ts": 1779114584.6349998,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -836,7 +847,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036292.9291558,
+    "ts": 1779114584.67576,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -847,7 +858,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036292.960718,
+    "ts": 1779114584.710334,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -858,7 +869,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036292.9976983,
+    "ts": 1779114584.7510717,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -869,7 +880,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036293.014761,
+    "ts": 1779114584.7719984,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -880,7 +891,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036293.0711627,
+    "ts": 1779114584.8494966,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -891,7 +902,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.4995317,
+    "ts": 1779114685.965561,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -902,7 +913,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.5396109,
+    "ts": 1779114686.0090785,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -913,7 +924,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.5878356,
+    "ts": 1779114686.0442765,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -924,7 +935,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.6260304,
+    "ts": 1779114686.0864596,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -935,7 +946,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.6515715,
+    "ts": 1779114686.112888,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -946,7 +957,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036305.7153962,
+    "ts": 1779114686.1833117,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -957,7 +968,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.3164105,
+    "ts": 1779114959.7121823,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -968,7 +979,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.3601916,
+    "ts": 1779114959.7539246,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -979,7 +990,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.390983,
+    "ts": 1779114959.7897751,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -990,7 +1001,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.4288824,
+    "ts": 1779114959.8327184,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1001,7 +1012,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.446251,
+    "ts": 1779114959.8530295,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1012,7 +1023,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036318.5047362,
+    "ts": 1779114959.9123318,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1023,7 +1034,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.2276175,
+    "ts": 1779115011.2769592,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1034,7 +1045,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.2743766,
+    "ts": 1779115011.3163655,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1045,7 +1056,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.3115003,
+    "ts": 1779115011.3502305,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1056,7 +1067,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.3666155,
+    "ts": 1779115011.388122,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1067,7 +1078,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.3877535,
+    "ts": 1779115011.4075441,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1078,7 +1089,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036334.452748,
+    "ts": 1779115011.4655242,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1089,7 +1100,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.8015034,
+    "ts": 1779115085.5953984,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1100,7 +1111,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.8412092,
+    "ts": 1779115085.634566,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1111,7 +1122,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.8746037,
+    "ts": 1779115085.6674857,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1122,7 +1133,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.9130871,
+    "ts": 1779115085.71882,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1133,7 +1144,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.9310637,
+    "ts": 1779115085.7392383,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1144,7 +1155,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036347.987361,
+    "ts": 1779115085.8063345,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1155,7 +1166,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.3964803,
+    "ts": 1779115179.9949496,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1166,7 +1177,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.4401965,
+    "ts": 1779115180.0331113,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1177,7 +1188,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.4700813,
+    "ts": 1779115180.067815,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1188,7 +1199,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.5071075,
+    "ts": 1779115180.1052985,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1199,7 +1210,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.5246809,
+    "ts": 1779115180.1246462,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1210,7 +1221,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036360.582299,
+    "ts": 1779115180.1824546,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1221,7 +1232,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.237127,
+    "ts": 1779115238.226579,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1232,7 +1243,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.294101,
+    "ts": 1779115238.2665184,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1243,7 +1254,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.335594,
+    "ts": 1779115238.2996502,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1254,7 +1265,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.3735507,
+    "ts": 1779115238.337457,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1265,7 +1276,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.3912497,
+    "ts": 1779115238.3583143,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1276,7 +1287,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036373.4514213,
+    "ts": 1779115238.4152098,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1287,7 +1298,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.006686,
+    "ts": 1779115524.67393,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1298,7 +1309,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.0630236,
+    "ts": 1779115524.7109158,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1309,7 +1320,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.0936189,
+    "ts": 1779115524.7435467,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1320,7 +1331,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.134728,
+    "ts": 1779115524.7810419,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1331,7 +1342,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.15358,
+    "ts": 1779115524.7996106,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1342,7 +1353,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036386.2123377,
+    "ts": 1779115524.856161,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1353,7 +1364,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.0701342,
+    "ts": 1779115608.50901,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1364,7 +1375,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.1597323,
+    "ts": 1779115608.5522408,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1375,7 +1386,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.1936846,
+    "ts": 1779115608.5886788,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1386,7 +1397,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.2364244,
+    "ts": 1779115608.6321502,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1397,7 +1408,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.2549624,
+    "ts": 1779115608.6511621,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1408,7 +1419,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036398.3302536,
+    "ts": 1779115608.7075846,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1419,7 +1430,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.358695,
+    "ts": 1779115671.7218792,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1430,7 +1441,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.4010358,
+    "ts": 1779115671.758629,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1441,7 +1452,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.4402087,
+    "ts": 1779115671.7912934,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1452,7 +1463,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.49599,
+    "ts": 1779115671.8292508,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1463,7 +1474,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.5139933,
+    "ts": 1779115671.8492458,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1474,7 +1485,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036411.5747848,
+    "ts": 1779115671.9039006,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1485,7 +1496,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.3138707,
+    "ts": 1779115940.9170873,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1496,7 +1507,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.3777947,
+    "ts": 1779115940.9561408,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1507,7 +1518,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.4097142,
+    "ts": 1779115940.9911106,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1518,7 +1529,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.447131,
+    "ts": 1779115941.0292916,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1529,7 +1540,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.464698,
+    "ts": 1779115941.0492513,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1540,7 +1551,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036423.5215306,
+    "ts": 1779115941.1021855,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1551,7 +1562,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.2035277,
+    "ts": 1779116042.7940538,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1562,7 +1573,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.2455432,
+    "ts": 1779116042.833765,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1573,7 +1584,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.2745152,
+    "ts": 1779116042.8675222,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1584,7 +1595,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.310067,
+    "ts": 1779116042.9064217,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1595,7 +1606,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.3284893,
+    "ts": 1779116042.9266398,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1606,7 +1617,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036435.402455,
+    "ts": 1779116042.9849129,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1617,7 +1628,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036447.8704073,
+    "ts": 1779116084.6113834,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1628,7 +1639,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036447.9309907,
+    "ts": 1779116084.6497643,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1639,7 +1650,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036447.9683995,
+    "ts": 1779116084.6836112,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1650,7 +1661,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036448.0117717,
+    "ts": 1779116084.721794,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1661,7 +1672,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036448.0300105,
+    "ts": 1779116084.7407892,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1672,7 +1683,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036448.0866654,
+    "ts": 1779116084.796051,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1683,7 +1694,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.4927385,
+    "ts": 1779116159.4689136,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1694,7 +1705,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.53605,
+    "ts": 1779116159.5093548,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1705,7 +1716,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.5681403,
+    "ts": 1779116159.5432186,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1716,7 +1727,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.6062675,
+    "ts": 1779116159.5816736,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1727,7 +1738,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.6250422,
+    "ts": 1779116159.6014159,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1738,7 +1749,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036460.7338734,
+    "ts": 1779116159.6629286,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1749,7 +1760,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.1142504,
+    "ts": 1779116959.8267105,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1760,7 +1771,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.1571174,
+    "ts": 1779116959.8681211,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1771,7 +1782,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.1890764,
+    "ts": 1779116959.9023879,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1782,7 +1793,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.2266967,
+    "ts": 1779116959.9420447,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1793,7 +1804,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.244434,
+    "ts": 1779116959.9624355,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1804,7 +1815,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036473.3161738,
+    "ts": 1779116960.0261645,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1815,7 +1826,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.341816,
+    "ts": 1779117039.881175,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1826,7 +1837,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.3776631,
+    "ts": 1779117039.9270277,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1837,7 +1848,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.4042993,
+    "ts": 1779117039.9614718,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1848,7 +1859,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.4365778,
+    "ts": 1779117039.999875,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1859,7 +1870,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.4534574,
+    "ts": 1779117040.0192423,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1870,7 +1881,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036498.506414,
+    "ts": 1779117040.084167,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1881,7 +1892,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.505895,
+    "ts": 1779117104.2598839,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1892,7 +1903,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.5407205,
+    "ts": 1779117104.3006637,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1903,7 +1914,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.5712829,
+    "ts": 1779117104.3351517,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1914,7 +1925,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.6064038,
+    "ts": 1779117104.3775365,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1925,7 +1936,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.6247613,
+    "ts": 1779117104.3994672,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -1936,7 +1947,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036539.687355,
+    "ts": 1779117104.4778962,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -1947,7 +1958,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.8217278,
+    "ts": 1779117164.922933,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -1958,7 +1969,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.861524,
+    "ts": 1779117164.9646173,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -1969,7 +1980,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.8928838,
+    "ts": 1779117165.0070608,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -1980,7 +1991,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.928538,
+    "ts": 1779117165.0477052,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -1991,7 +2002,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.9463706,
+    "ts": 1779117165.0696843,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2002,7 +2013,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036611.9942353,
+    "ts": 1779117165.1304376,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2010,131 +2021,142 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779117252.201527,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:embedding_migration",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.563359,
+    "ts": 1779117252.2417166,
     "tag": "andrusai",
-    "topic": "dep_major:aiofiles",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (aiofiles)",
-    "body": "aiofiles: 24.1.0 \u2192 25.1.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.571036,
+    "ts": 1779117252.277538,
     "tag": "andrusai",
-    "topic": "dep_major:importlib_metadata",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (importlib_metadata)",
-    "body": "importlib_metadata: 8.7.1 \u2192 9.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.577362,
+    "ts": 1779117252.3179824,
     "tag": "andrusai",
-    "topic": "dep_major:pdfminer.six",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (pdfminer.six)",
-    "body": "pdfminer.six: 20251230 \u2192 20260107 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.5831416,
+    "ts": 1779117252.3385165,
     "tag": "andrusai",
-    "topic": "dep_major:portalocker",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (portalocker)",
-    "body": "portalocker: 2.7.0 \u2192 3.2.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.5882506,
+    "ts": 1779117252.4003594,
     "tag": "andrusai",
-    "topic": "dep_major:posthog",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (posthog)",
-    "body": "posthog: 5.4.0 \u2192 7.14.2 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.5931783,
+    "ts": 1779117309.01515,
     "tag": "andrusai",
-    "topic": "dep_major:protobuf",
+    "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (protobuf)",
-    "body": "protobuf: 5.29.6 \u2192 7.34.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.5976665,
+    "ts": 1779117309.0556374,
     "tag": "andrusai",
-    "topic": "dep_cve_nofix:pypdf",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udea8 CVE without fix: pypdf",
-    "body": "pypdf (5.9.0) has reported CVEs without a patched version: GHSA-2q4j-m29v-hq73, GHSA-2rw7-x74f-jg35, GHSA-3crg-w4f6-42mx, GHSA-4f6g-68pf-7vhv, GHSA-4pxv-j86v-mhcw, GHSA-4xc4-762w-m6cg, GHSA-7gw9-cf7v-778f, GHSA-7hfw-26vp-jp8m, GHSA-87mj-5ggw-8qc3, GHSA-996q-pr4m-cvgq, GHSA-9m86-7pmv-2852, GHSA-9mvc-8737-8j8h, GHSA-f2v5-7jq9-h8cg, GHSA-hqmh-ppp3-xvm7, GHSA-jfx9-29x2-rv3j, GHSA-jj6c-8h6c-hppx, GHSA-m449-cwjh-6pw7, GHSA-qpxp-75px-xjcp, GHSA-vr63-x8vc-m265, GHSA-wgvp-vg3v-2xq3, GHSA-x284-j5p8-9c5p, GHSA-x7hp-r3qg-r3cj. Operator: investigate workaround or pin away from vulnerable code paths.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.6022334,
+    "ts": 1779117309.090715,
     "tag": "andrusai",
-    "topic": "dep_major:rich",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (rich)",
-    "body": "rich: 14.3.4 \u2192 15.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.6067653,
+    "ts": 1779117309.1313205,
     "tag": "andrusai",
-    "topic": "dep_major:setuptools",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (setuptools)",
-    "body": "setuptools: 81.0.0 \u2192 82.0.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.611238,
+    "ts": 1779117309.1515107,
     "tag": "andrusai",
-    "topic": "dep_major:starlette",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (starlette)",
-    "body": "starlette: 0.52.1 \u2192 1.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779036663.6207056,
+    "ts": 1779117309.2118318,
     "tag": "andrusai",
-    "topic": "dep_major:thinc",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (thinc)",
-    "body": "thinc: 8.3.13 \u2192 9.1.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.2889445,
+    "ts": 1779117367.7376773,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2145,7 +2167,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.3557467,
+    "ts": 1779117367.7773676,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2156,7 +2178,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.389447,
+    "ts": 1779117367.8143065,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2167,7 +2189,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.4240544,
+    "ts": 1779117367.8643425,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2178,7 +2200,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.4415002,
+    "ts": 1779117367.8867595,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2189,7 +2211,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037167.5532603,
+    "ts": 1779117367.9548125,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2200,7 +2222,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.2482727,
+    "ts": 1779117423.6030605,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2211,7 +2233,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.284108,
+    "ts": 1779117423.643409,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2222,7 +2244,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.311557,
+    "ts": 1779117423.6792555,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2233,7 +2255,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.371265,
+    "ts": 1779117423.7195706,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2244,7 +2266,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.389014,
+    "ts": 1779117423.7401674,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2255,7 +2277,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037215.4472058,
+    "ts": 1779117423.7991724,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2266,7 +2288,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037272.8629994,
+    "ts": 1779117506.8216648,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2277,7 +2299,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037272.8999803,
+    "ts": 1779117506.861902,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2288,7 +2310,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037272.930304,
+    "ts": 1779117506.8994906,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2299,7 +2321,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037272.979919,
+    "ts": 1779117506.9394455,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2310,7 +2332,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037273.0012083,
+    "ts": 1779117506.9595022,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2321,7 +2343,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037273.0617163,
+    "ts": 1779117507.0201523,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2329,131 +2351,142 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779117664.5555222,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:embedding_migration",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.573214,
+    "ts": 1779117664.6020627,
     "tag": "andrusai",
-    "topic": "dep_major:aiofiles",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (aiofiles)",
-    "body": "aiofiles: 24.1.0 \u2192 25.1.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.5817835,
+    "ts": 1779117664.6671638,
     "tag": "andrusai",
-    "topic": "dep_major:importlib_metadata",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (importlib_metadata)",
-    "body": "importlib_metadata: 8.7.1 \u2192 9.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.5895033,
+    "ts": 1779117664.7102275,
     "tag": "andrusai",
-    "topic": "dep_major:pdfminer.six",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (pdfminer.six)",
-    "body": "pdfminer.six: 20251230 \u2192 20260107 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.5955338,
+    "ts": 1779117664.7309368,
     "tag": "andrusai",
-    "topic": "dep_major:portalocker",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (portalocker)",
-    "body": "portalocker: 2.7.0 \u2192 3.2.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6005812,
+    "ts": 1779117664.7970555,
     "tag": "andrusai",
-    "topic": "dep_major:posthog",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (posthog)",
-    "body": "posthog: 5.4.0 \u2192 7.14.2 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.605463,
+    "ts": 1779117794.685709,
     "tag": "andrusai",
-    "topic": "dep_major:protobuf",
+    "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (protobuf)",
-    "body": "protobuf: 5.29.6 \u2192 7.34.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6110077,
+    "ts": 1779117794.7250168,
     "tag": "andrusai",
-    "topic": "dep_cve_nofix:pypdf",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udea8 CVE without fix: pypdf",
-    "body": "pypdf (5.9.0) has reported CVEs without a patched version: GHSA-2q4j-m29v-hq73, GHSA-2rw7-x74f-jg35, GHSA-3crg-w4f6-42mx, GHSA-4f6g-68pf-7vhv, GHSA-4pxv-j86v-mhcw, GHSA-4xc4-762w-m6cg, GHSA-7gw9-cf7v-778f, GHSA-7hfw-26vp-jp8m, GHSA-87mj-5ggw-8qc3, GHSA-996q-pr4m-cvgq, GHSA-9m86-7pmv-2852, GHSA-9mvc-8737-8j8h, GHSA-f2v5-7jq9-h8cg, GHSA-hqmh-ppp3-xvm7, GHSA-jfx9-29x2-rv3j, GHSA-jj6c-8h6c-hppx, GHSA-m449-cwjh-6pw7, GHSA-qpxp-75px-xjcp, GHSA-vr63-x8vc-m265, GHSA-wgvp-vg3v-2xq3, GHSA-x284-j5p8-9c5p, GHSA-x7hp-r3qg-r3cj. Operator: investigate workaround or pin away from vulnerable code paths.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6164055,
+    "ts": 1779117794.7595882,
     "tag": "andrusai",
-    "topic": "dep_major:rich",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (rich)",
-    "body": "rich: 14.3.4 \u2192 15.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6228583,
+    "ts": 1779117794.8155332,
     "tag": "andrusai",
-    "topic": "dep_major:setuptools",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (setuptools)",
-    "body": "setuptools: 81.0.0 \u2192 82.0.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6321898,
+    "ts": 1779117794.8358347,
     "tag": "andrusai",
-    "topic": "dep_major:starlette",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (starlette)",
-    "body": "starlette: 0.52.1 \u2192 1.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037330.6384928,
+    "ts": 1779117794.8946714,
     "tag": "andrusai",
-    "topic": "dep_major:thinc",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (thinc)",
-    "body": "thinc: 8.3.13 \u2192 9.1.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037413.759488,
+    "ts": 1779118124.3129148,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2464,7 +2497,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037413.8133745,
+    "ts": 1779118124.3560815,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2475,7 +2508,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037413.857566,
+    "ts": 1779118124.3939369,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2486,7 +2519,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037413.918573,
+    "ts": 1779118124.4359717,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2497,7 +2530,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037413.9551065,
+    "ts": 1779118124.4575248,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2508,7 +2541,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037414.083376,
+    "ts": 1779118124.5366855,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2519,7 +2552,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037598.6194031,
+    "ts": 1779118211.5329363,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2530,7 +2563,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037598.786907,
+    "ts": 1779118211.582641,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2541,7 +2574,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037598.824701,
+    "ts": 1779118211.6199667,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2552,7 +2585,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037598.8850956,
+    "ts": 1779118211.6682293,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2563,7 +2596,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037598.914708,
+    "ts": 1779118211.690608,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2574,7 +2607,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037599.1326919,
+    "ts": 1779118211.7743132,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2585,7 +2618,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037760.5553553,
+    "ts": 1779118268.374423,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2596,7 +2629,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037760.6441927,
+    "ts": 1779118268.4152741,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2607,7 +2640,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037760.688153,
+    "ts": 1779118268.4511936,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2618,7 +2651,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037760.847564,
+    "ts": 1779118268.493268,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2629,7 +2662,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037760.9260626,
+    "ts": 1779118268.514442,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2640,7 +2673,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037761.216839,
+    "ts": 1779118268.5779886,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2651,7 +2684,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.247224,
+    "ts": 1779118346.254253,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2662,7 +2695,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.2992315,
+    "ts": 1779118346.2950625,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2673,7 +2706,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.3285735,
+    "ts": 1779118346.3299658,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2684,7 +2717,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.3734953,
+    "ts": 1779118346.3702872,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2695,7 +2728,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.399074,
+    "ts": 1779118346.3908122,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2706,7 +2739,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779037947.5122063,
+    "ts": 1779118346.455129,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2717,7 +2750,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.2189035,
+    "ts": 1779118410.545677,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2728,7 +2761,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.2706876,
+    "ts": 1779118410.5873926,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2739,7 +2772,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.300077,
+    "ts": 1779118410.623001,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2750,7 +2783,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.3374372,
+    "ts": 1779118410.6656454,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2761,7 +2794,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.3541296,
+    "ts": 1779118410.6862383,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2772,7 +2805,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038004.4242492,
+    "ts": 1779118410.7476804,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2783,7 +2816,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.1492183,
+    "ts": 1779118449.0788033,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2794,7 +2827,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.2046664,
+    "ts": 1779118449.1193714,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2805,7 +2838,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.2361817,
+    "ts": 1779118449.1547837,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -2816,7 +2849,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.2764177,
+    "ts": 1779118449.1945858,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -2827,7 +2860,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.2945106,
+    "ts": 1779118449.214523,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -2838,7 +2871,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038052.3896384,
+    "ts": 1779118449.2768044,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -2846,131 +2879,142 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779118593.5715733,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:embedding_migration",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.6876779,
+    "ts": 1779118593.6134446,
     "tag": "andrusai",
-    "topic": "dep_major:aiofiles",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (aiofiles)",
-    "body": "aiofiles: 24.1.0 \u2192 25.1.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.6939764,
+    "ts": 1779118593.6482189,
     "tag": "andrusai",
-    "topic": "dep_major:importlib_metadata",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (importlib_metadata)",
-    "body": "importlib_metadata: 8.7.1 \u2192 9.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.6989515,
+    "ts": 1779118593.689936,
     "tag": "andrusai",
-    "topic": "dep_major:pdfminer.six",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (pdfminer.six)",
-    "body": "pdfminer.six: 20251230 \u2192 20260107 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7037256,
+    "ts": 1779118593.7102635,
     "tag": "andrusai",
-    "topic": "dep_major:portalocker",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (portalocker)",
-    "body": "portalocker: 2.7.0 \u2192 3.2.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7083018,
+    "ts": 1779118593.7704518,
     "tag": "andrusai",
-    "topic": "dep_major:posthog",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (posthog)",
-    "body": "posthog: 5.4.0 \u2192 7.14.2 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7135127,
+    "ts": 1779118638.3780196,
     "tag": "andrusai",
-    "topic": "dep_major:protobuf",
+    "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (protobuf)",
-    "body": "protobuf: 5.29.6 \u2192 7.34.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7196364,
+    "ts": 1779118638.418006,
     "tag": "andrusai",
-    "topic": "dep_cve_nofix:pypdf",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udea8 CVE without fix: pypdf",
-    "body": "pypdf (5.9.0) has reported CVEs without a patched version: GHSA-2q4j-m29v-hq73, GHSA-2rw7-x74f-jg35, GHSA-3crg-w4f6-42mx, GHSA-4f6g-68pf-7vhv, GHSA-4pxv-j86v-mhcw, GHSA-4xc4-762w-m6cg, GHSA-7gw9-cf7v-778f, GHSA-7hfw-26vp-jp8m, GHSA-87mj-5ggw-8qc3, GHSA-996q-pr4m-cvgq, GHSA-9m86-7pmv-2852, GHSA-9mvc-8737-8j8h, GHSA-f2v5-7jq9-h8cg, GHSA-hqmh-ppp3-xvm7, GHSA-jfx9-29x2-rv3j, GHSA-jj6c-8h6c-hppx, GHSA-m449-cwjh-6pw7, GHSA-qpxp-75px-xjcp, GHSA-vr63-x8vc-m265, GHSA-wgvp-vg3v-2xq3, GHSA-x284-j5p8-9c5p, GHSA-x7hp-r3qg-r3cj. Operator: investigate workaround or pin away from vulnerable code paths.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.724605,
+    "ts": 1779118638.452259,
     "tag": "andrusai",
-    "topic": "dep_major:rich",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (rich)",
-    "body": "rich: 14.3.4 \u2192 15.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7307498,
+    "ts": 1779118638.4929032,
     "tag": "andrusai",
-    "topic": "dep_major:setuptools",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (setuptools)",
-    "body": "setuptools: 81.0.0 \u2192 82.0.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7356403,
+    "ts": 1779118638.5129914,
     "tag": "andrusai",
-    "topic": "dep_major:starlette",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (starlette)",
-    "body": "starlette: 0.52.1 \u2192 1.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038091.7404199,
+    "ts": 1779118638.5753524,
     "tag": "andrusai",
-    "topic": "dep_major:thinc",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (thinc)",
-    "body": "thinc: 8.3.13 \u2192 9.1.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038340.6941626,
+    "ts": 1779118887.797234,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -2981,7 +3025,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038340.8157763,
+    "ts": 1779118887.8368833,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -2992,7 +3036,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038340.873247,
+    "ts": 1779118887.8734531,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3003,7 +3047,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038340.972776,
+    "ts": 1779118887.914607,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3014,7 +3058,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038340.9910135,
+    "ts": 1779118887.9356108,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3025,7 +3069,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038341.1895955,
+    "ts": 1779118887.997086,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3036,7 +3080,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.407266,
+    "ts": 1779118975.6728916,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3047,7 +3091,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.465587,
+    "ts": 1779118975.8294091,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3058,7 +3102,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.503586,
+    "ts": 1779118975.8784776,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3069,7 +3113,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.59607,
+    "ts": 1779118975.919233,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3080,7 +3124,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.6417215,
+    "ts": 1779118975.9408746,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3091,7 +3135,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038429.8654685,
+    "ts": 1779118976.0164094,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3102,7 +3146,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.4963465,
+    "ts": 1779119043.939338,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3113,7 +3157,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.5587761,
+    "ts": 1779119043.9795673,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3124,7 +3168,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.5900943,
+    "ts": 1779119044.0162942,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3135,7 +3179,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.6517105,
+    "ts": 1779119044.0557141,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3146,7 +3190,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.6901104,
+    "ts": 1779119044.0754402,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3157,7 +3201,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038603.8067582,
+    "ts": 1779119044.1357794,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3168,7 +3212,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.6562285,
+    "ts": 1779119081.13976,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3179,7 +3223,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.7314293,
+    "ts": 1779119081.1848414,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3190,7 +3234,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.7621734,
+    "ts": 1779119081.221701,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3201,7 +3245,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.807453,
+    "ts": 1779119081.2628531,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3212,7 +3256,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.8307853,
+    "ts": 1779119081.2831428,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3223,7 +3267,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038741.9346676,
+    "ts": 1779119081.343329,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3234,7 +3278,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038849.9217904,
+    "ts": 1779119133.73395,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3245,7 +3289,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038849.9846084,
+    "ts": 1779119133.7736216,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3256,7 +3300,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038850.0172353,
+    "ts": 1779119133.8165526,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3267,7 +3311,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038850.060205,
+    "ts": 1779119133.8577638,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3278,7 +3322,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038850.0800028,
+    "ts": 1779119133.8790762,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3289,7 +3333,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038850.20475,
+    "ts": 1779119133.9438443,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3300,7 +3344,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.6311655,
+    "ts": 1779119950.1698115,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3311,7 +3355,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.6970775,
+    "ts": 1779119950.21284,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3322,7 +3366,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.7399096,
+    "ts": 1779119950.2504048,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3333,7 +3377,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.7893498,
+    "ts": 1779119950.29789,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3344,7 +3388,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.8176618,
+    "ts": 1779119950.3222227,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3355,7 +3399,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038888.9419022,
+    "ts": 1779119950.3918653,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3366,7 +3410,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038991.8985631,
+    "ts": 1779119987.2098174,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3377,7 +3421,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038991.9876802,
+    "ts": 1779119987.2535992,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3388,7 +3432,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038992.0285957,
+    "ts": 1779119987.2907128,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3399,7 +3443,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038992.0697463,
+    "ts": 1779119987.3327162,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3410,7 +3454,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038992.0883932,
+    "ts": 1779119987.3532488,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3421,7 +3465,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779038992.1677349,
+    "ts": 1779119987.42522,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3432,7 +3476,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.4577549,
+    "ts": 1779120061.3888354,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3443,7 +3487,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.517537,
+    "ts": 1779120061.4286563,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3454,7 +3498,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.5460465,
+    "ts": 1779120061.4639704,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3465,7 +3509,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.5884492,
+    "ts": 1779120061.5035033,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3476,7 +3520,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.6057053,
+    "ts": 1779120061.5238872,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3487,7 +3531,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779039810.7679596,
+    "ts": 1779120061.5856762,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3495,32 +3539,10 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779039810.7897823,
-    "tag": "andrusai",
-    "topic": "resilience_drill_due:source_ledger_replay",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'source_ledger_replay' has never run (target cadence: 90d).",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779039810.830827,
-    "tag": "andrusai",
-    "topic": "resilience_drill_failed:source_ledger_replay",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\u274c Resilience drill failed: source_ledger_replay",
-    "body": "Drill 'source_ledger_replay' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041933.8729334,
+    "ts": 1779120121.5815668,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3531,7 +3553,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041933.909824,
+    "ts": 1779120121.6202574,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3542,7 +3564,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041933.9371667,
+    "ts": 1779120121.6549644,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3553,7 +3575,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041933.9680185,
+    "ts": 1779120121.6993904,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3564,7 +3586,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041933.984007,
+    "ts": 1779120121.718656,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3575,7 +3597,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779041934.0339894,
+    "ts": 1779120121.7767005,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3583,32 +3605,10 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779041934.050035,
-    "tag": "andrusai",
-    "topic": "resilience_drill_due:source_ledger_replay",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'source_ledger_replay' has never run (target cadence: 90d).",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779041934.1079366,
-    "tag": "andrusai",
-    "topic": "resilience_drill_failed:source_ledger_replay",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\u274c Resilience drill failed: source_ledger_replay",
-    "body": "Drill 'source_ledger_replay' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042306.7664878,
+    "ts": 1779120204.5869405,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3619,7 +3619,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042306.8055615,
+    "ts": 1779120204.625227,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3630,7 +3630,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042306.846126,
+    "ts": 1779120204.659245,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3641,7 +3641,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042306.8970165,
+    "ts": 1779120204.6981988,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3652,7 +3652,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042306.9402175,
+    "ts": 1779120204.7174628,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3663,7 +3663,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042307.0196269,
+    "ts": 1779120204.7796044,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3674,7 +3674,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.4875288,
+    "ts": 1779120277.819788,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3685,7 +3685,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.538257,
+    "ts": 1779120277.8584614,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3696,7 +3696,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.583465,
+    "ts": 1779120277.8939884,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3707,7 +3707,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.6520557,
+    "ts": 1779120277.931058,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3718,7 +3718,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.674582,
+    "ts": 1779120277.9505007,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3729,7 +3729,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042361.7731535,
+    "ts": 1779120278.0064569,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3740,7 +3740,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.7154014,
+    "ts": 1779120337.6181455,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3751,7 +3751,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.781675,
+    "ts": 1779120337.663667,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3762,7 +3762,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.8293889,
+    "ts": 1779120337.6997952,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3773,7 +3773,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.877649,
+    "ts": 1779120337.7404559,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3784,7 +3784,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.901336,
+    "ts": 1779120337.7604592,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3795,7 +3795,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042415.9623866,
+    "ts": 1779120337.8278139,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3803,131 +3803,142 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779120434.8771832,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:embedding_migration",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0002089,
+    "ts": 1779120434.919662,
     "tag": "andrusai",
-    "topic": "dep_major:aiofiles",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (aiofiles)",
-    "body": "aiofiles: 24.1.0 \u2192 25.1.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.00757,
+    "ts": 1779120434.9582922,
     "tag": "andrusai",
-    "topic": "dep_major:importlib_metadata",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (importlib_metadata)",
-    "body": "importlib_metadata: 8.7.1 \u2192 9.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0127356,
+    "ts": 1779120435.0017023,
     "tag": "andrusai",
-    "topic": "dep_major:pdfminer.six",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (pdfminer.six)",
-    "body": "pdfminer.six: 20251230 \u2192 20260107 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0176992,
+    "ts": 1779120435.0230231,
     "tag": "andrusai",
-    "topic": "dep_major:portalocker",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (portalocker)",
-    "body": "portalocker: 2.7.0 \u2192 3.2.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0229468,
+    "ts": 1779120435.0853786,
     "tag": "andrusai",
-    "topic": "dep_major:posthog",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (posthog)",
-    "body": "posthog: 5.4.0 \u2192 7.14.2 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0281765,
+    "ts": 1779120486.1840305,
     "tag": "andrusai",
-    "topic": "dep_major:protobuf",
+    "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (protobuf)",
-    "body": "protobuf: 5.29.6 \u2192 7.34.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'embedding_migration' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0329869,
+    "ts": 1779120486.2235618,
     "tag": "andrusai",
-    "topic": "dep_cve_nofix:pypdf",
+    "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udea8 CVE without fix: pypdf",
-    "body": "pypdf (5.9.0) has reported CVEs without a patched version: GHSA-2q4j-m29v-hq73, GHSA-2rw7-x74f-jg35, GHSA-3crg-w4f6-42mx, GHSA-4f6g-68pf-7vhv, GHSA-4pxv-j86v-mhcw, GHSA-4xc4-762w-m6cg, GHSA-7gw9-cf7v-778f, GHSA-7hfw-26vp-jp8m, GHSA-87mj-5ggw-8qc3, GHSA-996q-pr4m-cvgq, GHSA-9m86-7pmv-2852, GHSA-9mvc-8737-8j8h, GHSA-f2v5-7jq9-h8cg, GHSA-hqmh-ppp3-xvm7, GHSA-jfx9-29x2-rv3j, GHSA-jj6c-8h6c-hppx, GHSA-m449-cwjh-6pw7, GHSA-qpxp-75px-xjcp, GHSA-vr63-x8vc-m265, GHSA-wgvp-vg3v-2xq3, GHSA-x284-j5p8-9c5p, GHSA-x7hp-r3qg-r3cj. Operator: investigate workaround or pin away from vulnerable code paths.",
+    "title": "\u274c Resilience drill failed: embedding_migration",
+    "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0391493,
+    "ts": 1779120486.2581522,
     "tag": "andrusai",
-    "topic": "dep_major:rich",
+    "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (rich)",
-    "body": "rich: 14.3.4 \u2192 15.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.044089,
+    "ts": 1779120486.296386,
     "tag": "andrusai",
-    "topic": "dep_major:setuptools",
+    "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (setuptools)",
-    "body": "setuptools: 81.0.0 \u2192 82.0.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.049112,
+    "ts": 1779120486.3174777,
     "tag": "andrusai",
-    "topic": "dep_major:starlette",
+    "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (starlette)",
-    "body": "starlette: 0.52.1 \u2192 1.0.0 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042493.0539079,
+    "ts": 1779120486.374201,
     "tag": "andrusai",
-    "topic": "dep_major:thinc",
+    "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
     "ack_state": null,
-    "title": "\ud83d\udce6 Dependency: major-version available (thinc)",
-    "body": "thinc: 8.3.13 \u2192 9.1.1 (major). Schedule a migration window before bumping; major versions often have breaking API changes.",
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.5427709,
+    "ts": 1779120611.6348317,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -3938,7 +3949,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.579027,
+    "ts": 1779120611.675016,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -3949,7 +3960,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.6053915,
+    "ts": 1779120611.710962,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -3960,7 +3971,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.635213,
+    "ts": 1779120611.7496068,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -3971,7 +3982,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.6506045,
+    "ts": 1779120611.7691696,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -3982,7 +3993,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042580.7256925,
+    "ts": 1779120611.8271787,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -3993,7 +4004,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.0711563,
+    "ts": 1779120929.7924418,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4004,7 +4015,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.1160734,
+    "ts": 1779120929.8468244,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4015,7 +4026,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.1534011,
+    "ts": 1779120929.9042633,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4026,7 +4037,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.191346,
+    "ts": 1779120929.9503717,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4037,7 +4048,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.212422,
+    "ts": 1779120929.971709,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4048,7 +4059,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042638.2700005,
+    "ts": 1779120930.0723054,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4059,7 +4070,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.3027544,
+    "ts": 1779120979.1879778,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4070,7 +4081,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.3420584,
+    "ts": 1779120979.2803466,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4081,7 +4092,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.3726666,
+    "ts": 1779120979.323728,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4092,7 +4103,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.4075718,
+    "ts": 1779120979.3772328,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4103,7 +4114,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.42512,
+    "ts": 1779120979.4838932,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4114,7 +4125,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042768.469972,
+    "ts": 1779120979.584901,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4125,7 +4136,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.571175,
+    "ts": 1779121019.6188085,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4136,7 +4147,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.6087832,
+    "ts": 1779121019.661191,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4147,7 +4158,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.6411676,
+    "ts": 1779121019.6979074,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4158,7 +4169,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.679463,
+    "ts": 1779121019.7392204,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4169,7 +4180,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.6985476,
+    "ts": 1779121019.76399,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4180,7 +4191,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779042985.7535658,
+    "ts": 1779121019.827871,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4191,7 +4202,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.766494,
+    "ts": 1779121092.0765345,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4202,7 +4213,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.8025525,
+    "ts": 1779121092.1180263,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4213,7 +4224,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.8325255,
+    "ts": 1779121092.1522665,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4224,7 +4235,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.867976,
+    "ts": 1779121092.193074,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4235,7 +4246,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.8856523,
+    "ts": 1779121092.2127342,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4246,7 +4257,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043037.944947,
+    "ts": 1779121092.2706878,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4257,7 +4268,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043155.8365626,
+    "ts": 1779121157.1702597,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4268,7 +4279,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043155.9018629,
+    "ts": 1779121157.2128458,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4279,7 +4290,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043155.939992,
+    "ts": 1779121157.2523904,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4290,7 +4301,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043155.9971244,
+    "ts": 1779121157.2947025,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4301,7 +4312,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043156.0218434,
+    "ts": 1779121157.316118,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4312,7 +4323,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043156.1114671,
+    "ts": 1779121157.3824778,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4323,7 +4334,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.3022568,
+    "ts": 1779121191.5243635,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4334,7 +4345,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.3501487,
+    "ts": 1779121191.5666451,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4345,7 +4356,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.3831584,
+    "ts": 1779121191.6087856,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4356,7 +4367,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.434023,
+    "ts": 1779121191.6491907,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4367,7 +4378,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.4508395,
+    "ts": 1779121191.6696513,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4378,7 +4389,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779043350.514621,
+    "ts": 1779121191.7319863,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4389,7 +4400,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.0469747,
+    "ts": 1779121231.2680836,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4400,7 +4411,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.1058347,
+    "ts": 1779121231.3070188,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4411,7 +4422,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.1348891,
+    "ts": 1779121231.342151,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4422,7 +4433,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.1883862,
+    "ts": 1779121231.3817537,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4433,7 +4444,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.2102396,
+    "ts": 1779121231.4015396,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4444,7 +4455,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044267.4576547,
+    "ts": 1779121231.4621365,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4455,7 +4466,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044344.858653,
+    "ts": 1779121490.1628022,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4466,7 +4477,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044344.9206629,
+    "ts": 1779121490.2029798,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4477,7 +4488,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044344.9502788,
+    "ts": 1779121490.241511,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4488,7 +4499,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044344.9866242,
+    "ts": 1779121490.2856164,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4499,7 +4510,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044345.0041237,
+    "ts": 1779121490.306462,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4510,7 +4521,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044345.0874932,
+    "ts": 1779121490.371035,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4521,7 +4532,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.7146895,
+    "ts": 1779121760.9873505,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4532,7 +4543,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.7612698,
+    "ts": 1779121761.0302653,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4543,7 +4554,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.7940779,
+    "ts": 1779121761.066853,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4554,7 +4565,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.8314328,
+    "ts": 1779121761.1077347,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4565,7 +4576,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.8493228,
+    "ts": 1779121761.1276562,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4576,7 +4587,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044415.9261913,
+    "ts": 1779121761.1921065,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4587,7 +4598,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.035605,
+    "ts": 1779121839.7238724,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4598,7 +4609,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.075554,
+    "ts": 1779121839.7633686,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4609,7 +4620,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.1034548,
+    "ts": 1779121839.798324,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4620,7 +4631,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.1388457,
+    "ts": 1779121839.8397033,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4631,7 +4642,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.1568606,
+    "ts": 1779121839.8591087,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4642,7 +4653,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044464.224708,
+    "ts": 1779121839.9229758,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4653,7 +4664,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.0784507,
+    "ts": 1779121879.4521847,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4664,7 +4675,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.1434112,
+    "ts": 1779121879.4907653,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4675,7 +4686,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.1795974,
+    "ts": 1779121879.5251343,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4686,7 +4697,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.230917,
+    "ts": 1779121879.565163,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4697,7 +4708,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.2602854,
+    "ts": 1779121879.5856025,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4708,7 +4719,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779044764.3619485,
+    "ts": 1779121879.6466453,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4719,7 +4730,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.7117531,
+    "ts": 1779121940.0191107,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4730,7 +4741,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.7652385,
+    "ts": 1779121940.0606577,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4741,7 +4752,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.794617,
+    "ts": 1779121940.0963116,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4752,7 +4763,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.8306208,
+    "ts": 1779121940.137497,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4763,7 +4774,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.846498,
+    "ts": 1779121940.1598313,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4774,7 +4785,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779045122.9152813,
+    "ts": 1779121940.2228613,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4782,21 +4793,10 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779045122.9446497,
-    "tag": "andrusai",
-    "topic": "resilience_drill_due:embedding_rotation",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'embedding_rotation' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.5844433,
+    "ts": 1779121981.5861316,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4807,7 +4807,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.620641,
+    "ts": 1779121981.637879,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4818,7 +4818,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.6548364,
+    "ts": 1779121981.687773,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4829,7 +4829,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.6867447,
+    "ts": 1779121981.7303765,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4840,7 +4840,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.703134,
+    "ts": 1779121981.7508616,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4851,7 +4851,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779046636.7681844,
+    "ts": 1779121981.8217795,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4859,21 +4859,10 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779046636.804537,
-    "tag": "andrusai",
-    "topic": "resilience_drill_due:embedding_rotation",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'embedding_rotation' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.6021447,
+    "ts": 1779122018.8497365,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4884,7 +4873,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.6368365,
+    "ts": 1779122018.8895059,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4895,7 +4884,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.6634958,
+    "ts": 1779122018.9255385,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4906,7 +4895,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.6944683,
+    "ts": 1779122018.966068,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4917,7 +4906,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.7099733,
+    "ts": 1779122018.9864967,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -4928,7 +4917,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047269.780399,
+    "ts": 1779122019.0479288,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -4936,21 +4925,10 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: local_only",
     "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779047269.806008,
-    "tag": "andrusai",
-    "topic": "resilience_drill_due:embedding_rotation",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'embedding_rotation' has never run (target cadence: 90d).",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047420.315865,
+    "ts": 1779122835.0872731,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -4961,7 +4939,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047421.3097312,
+    "ts": 1779122835.1279538,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -4972,7 +4950,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047421.8416886,
+    "ts": 1779122835.1628535,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -4983,7 +4961,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047422.2217948,
+    "ts": 1779122835.2107968,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -4994,7 +4972,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047422.7061646,
+    "ts": 1779122835.2324202,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5005,7 +4983,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047424.316827,
+    "ts": 1779122835.2996688,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5016,30 +4994,8 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779047424.8317442,
+    "ts": 1779122883.4170167,
     "tag": "andrusai",
-    "topic": "resilience_drill_due:embedding_rotation",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\ud83d\udee1 Resilience drill due",
-    "body": "Resilience drill 'embedding_rotation' has never run (target cadence: 90d).",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779047554.013311,
-    "tag": "andrusai",
-    "topic": "resilience_drill_failed:embedding_rotation",
-    "decision": "queue_for_digest",
-    "salience_score": 0.0,
-    "ack_state": null,
-    "title": "\u274c Resilience drill failed: embedding_rotation",
-    "body": "Drill 'embedding_rotation' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
-    "digest_consumed_at": null
-  },
-  {
-    "ts": 1779049515.698924,
-    "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
     "salience_score": 0.0,
@@ -5049,7 +5005,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049515.799314,
+    "ts": 1779122883.459003,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5060,7 +5016,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049515.8495998,
+    "ts": 1779122883.4950829,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5071,7 +5027,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049515.914157,
+    "ts": 1779122883.5359323,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5082,7 +5038,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049515.9372673,
+    "ts": 1779122883.5570738,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5093,7 +5049,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049516.1542337,
+    "ts": 1779122883.619755,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5104,7 +5060,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.6371005,
+    "ts": 1779122926.8133364,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5115,7 +5071,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.6893094,
+    "ts": 1779122926.8558524,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5126,7 +5082,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.7251425,
+    "ts": 1779122926.8940094,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5137,7 +5093,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.769482,
+    "ts": 1779122926.9356623,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5148,7 +5104,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.787716,
+    "ts": 1779122926.9560964,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5159,7 +5115,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049562.8602488,
+    "ts": 1779122927.018123,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5170,7 +5126,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.1691031,
+    "ts": 1779122998.148714,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5181,7 +5137,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.2100322,
+    "ts": 1779122998.1890342,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5192,7 +5148,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.2375088,
+    "ts": 1779122998.2242262,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5203,7 +5159,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.2722802,
+    "ts": 1779122998.2656538,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5214,7 +5170,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.2890077,
+    "ts": 1779122998.2859888,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5225,7 +5181,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049829.4299526,
+    "ts": 1779122998.3475792,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5236,7 +5192,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049878.9980874,
+    "ts": 1779123082.1709788,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5247,7 +5203,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049879.0614638,
+    "ts": 1779123082.2106109,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5258,7 +5214,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049879.1143,
+    "ts": 1779123082.2466528,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5269,7 +5225,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049879.1694586,
+    "ts": 1779123082.286203,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5280,7 +5236,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049879.1988347,
+    "ts": 1779123082.3064985,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5291,7 +5247,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779049879.2921784,
+    "ts": 1779123082.36888,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5302,7 +5258,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050464.7976449,
+    "ts": 1779123127.1509237,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5313,7 +5269,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050464.848055,
+    "ts": 1779123127.1925437,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5324,7 +5280,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050464.8796275,
+    "ts": 1779123127.2277458,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5335,7 +5291,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050464.9204926,
+    "ts": 1779123127.267795,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5346,7 +5302,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050464.9381669,
+    "ts": 1779123127.2883995,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5357,7 +5313,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050465.439328,
+    "ts": 1779123127.363546,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5368,7 +5324,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050525.7681499,
+    "ts": 1779123185.4287307,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5379,7 +5335,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050525.863749,
+    "ts": 1779123185.4752903,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5390,7 +5346,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050525.9023483,
+    "ts": 1779123185.5153902,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5401,7 +5357,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050525.9471245,
+    "ts": 1779123185.558189,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5412,7 +5368,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050525.973329,
+    "ts": 1779123185.5792036,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5423,7 +5379,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050526.0427668,
+    "ts": 1779123185.6452124,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",
@@ -5434,7 +5390,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.5526707,
+    "ts": 1779123243.0809515,
     "tag": "andrusai",
     "topic": "resilience_drill_due:embedding_migration",
     "decision": "queue_for_digest",
@@ -5445,7 +5401,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.596288,
+    "ts": 1779123243.1227767,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:embedding_migration",
     "decision": "queue_for_digest",
@@ -5453,10 +5409,54 @@
     "ack_state": null,
     "title": "\u274c Resilience drill failed: embedding_migration",
     "body": "Drill 'embedding_migration' returned status=error. Errors: AttributeError: 'DryRunStep' object has no attribute 'get'. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779123243.1594894,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:vendor_independence",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'vendor_independence' has never run (target cadence: 90d).",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779123243.199759,
+    "tag": "andrusai",
+    "topic": "resilience_drill_failed:vendor_independence",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\u274c Resilience drill failed: vendor_independence",
+    "body": "Drill 'vendor_independence' returned status=fail. Errors: cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable. See /cp/drills/audit for full detail.",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779123243.21997,
+    "tag": "andrusai",
+    "topic": "resilience_drill_due:local_only",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\ud83d\udee1 Resilience drill due",
+    "body": "Resilience drill 'local_only' has never run (target cadence: 90d).",
+    "digest_consumed_at": null
+  },
+  {
+    "ts": 1779123243.2895374,
+    "tag": "andrusai",
+    "topic": "resilience_drill_failed:local_only",
+    "decision": "queue_for_digest",
+    "salience_score": 0.0,
+    "ack_state": null,
+    "title": "\u274c Resilience drill failed: local_only",
+    "body": "Drill 'local_only' returned status=exception. Errors: scheduler caught uncaught exception. See /cp/drills/audit for full detail.",
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.6272357,
+    "ts": 1779123369.8148892,
     "tag": "andrusai",
     "topic": "resilience_drill_due:vendor_independence",
     "decision": "queue_for_digest",
@@ -5467,7 +5467,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.6654525,
+    "ts": 1779123369.8601298,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:vendor_independence",
     "decision": "queue_for_digest",
@@ -5478,7 +5478,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.6955037,
+    "ts": 1779123369.8816967,
     "tag": "andrusai",
     "topic": "resilience_drill_due:local_only",
     "decision": "queue_for_digest",
@@ -5489,7 +5489,7 @@
     "digest_consumed_at": null
   },
   {
-    "ts": 1779050781.7622643,
+    "ts": 1779123369.9432487,
     "tag": "andrusai",
     "topic": "resilience_drill_failed:local_only",
     "decision": "queue_for_digest",

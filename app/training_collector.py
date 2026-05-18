@@ -221,10 +221,18 @@ class CurationPipeline:
     def __init__(self):
         CURATED_DIR.mkdir(parents=True, exist_ok=True)
 
-    def run_curation(self) -> dict:
-        """Full curation pipeline. Returns stats."""
+    def run_curation(self, max_records: int = 500) -> dict:
+        """Full curation pipeline. Returns stats.
+
+        ``max_records`` caps how many unscored interactions are loaded
+        and judged in a single pass. Default 500 preserves the historical
+        behaviour for direct callers (training_pipeline + operator
+        ``/curate`` command). The idle scheduler passes a smaller value
+        so a single idle pass doesn't run a heavy judge-LLM loop on the
+        I/O-saturated post-boot window.
+        """
         # Load unscored interactions from PostgreSQL
-        interactions = self._load_unscored()
+        interactions = self._load_unscored(max_records=max_records)
         if not interactions:
             return {"status": "no_data", "scored": 0}
 
@@ -254,7 +262,7 @@ class CurationPipeline:
         logger.info(f"training_collector: curation complete — {stats}")
         return stats
 
-    def _load_unscored(self) -> list[dict]:
+    def _load_unscored(self, max_records: int = 500) -> list[dict]:
         """Load interactions that haven't been quality-scored yet.
 
         Merges PostgreSQL + JSONL sources to catch all interactions.
@@ -277,8 +285,8 @@ class CurationPipeline:
                         FROM training.interactions
                         WHERE quality_score IS NULL AND training_eligible = TRUE
                         ORDER BY created_at DESC
-                        LIMIT 500
-                    """)
+                        LIMIT %s
+                    """, (max_records,))
                     for r in cur.fetchall():
                         all_records[r[0]] = {
                             "id": r[0], "agent_role": r[1], "task_description": r[2],
@@ -291,7 +299,7 @@ class CurationPipeline:
             logger.debug(f"training_collector: PG load failed: {e}")
 
         # Source 2: JSONL files (catches interactions not in PG)
-        jsonl_records = self._load_from_jsonl()
+        jsonl_records = self._load_from_jsonl(max_records=max_records)
         for r in jsonl_records:
             rid = r.get("id", "")
             if rid and rid not in all_records:
@@ -299,9 +307,9 @@ class CurationPipeline:
 
         logger.info(f"training_collector: loaded {len(all_records)} unscored interactions "
                      f"(PG + JSONL merged)")
-        return list(all_records.values())[:500]
+        return list(all_records.values())[:max_records]
 
-    def _load_from_jsonl(self) -> list[dict]:
+    def _load_from_jsonl(self, max_records: int = 500) -> list[dict]:
         """Fallback: load from JSONL files."""
         records = []
         if RAW_DIR.exists():
@@ -313,7 +321,7 @@ class CurationPipeline:
                             records.append(r)
                     except json.JSONDecodeError:
                         pass
-        return records[:500]
+        return records[:max_records]
 
     def _score_quality(self, interactions: list[dict]) -> list[dict]:
         """Score quality using an external judge LLM."""

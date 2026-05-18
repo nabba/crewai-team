@@ -198,6 +198,21 @@ def enforce_wal_mode(db_path: Path) -> dict:
 # ── Integrity check ──────────────────────────────────────────────────────
 
 
+def kb_integrity_check(kb_name: str, root: Optional[Path] = None) -> str:
+    """Convenience wrapper for ``integrity_check`` by KB name.
+
+    Returns the same shape as ``integrity_check``: ``"ok"`` when clean,
+    ``"missing"`` when the sqlite file isn't there, otherwise the first
+    sqlite error line. Used by the source-ledger daemon before triggering
+    a drift-replay: hammering a corrupt SQLite with re-embed writes only
+    makes things worse, so when integrity fails the daemon defers to
+    the ``chromadb_integrity_monitor`` quarantine path (PROGRAM §55).
+    """
+    if root is None:
+        root = _workspace_root()
+    return integrity_check(root / kb_name / "chroma.sqlite3")
+
+
 def integrity_check(db_path: Path) -> str:
     """Run SQLite's built-in B-tree integrity check.
 

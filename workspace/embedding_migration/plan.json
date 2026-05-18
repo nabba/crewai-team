@@ -1,5 +1,5 @@
 {
-  "plan_id": "dry_run_1779050781",
+  "plan_id": "dry_run_1779123243",
   "source": {
     "provider": "ollama",
     "name": "nomic-embed-text",
@@ -25,6 +25,6 @@
   "cutover_threshold_ndcg": 0.5,
   "cutover_min_shadow_queries": 10,
   "standdown_retention_days": 1,
-  "created_at": "2026-05-17T20:46:21.588306+00:00",
+  "created_at": "2026-05-18T16:54:03.115841+00:00",
   "notes": "Automated dry-run. Sandbox-only."
 }

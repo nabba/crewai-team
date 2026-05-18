@@ -105,6 +105,9 @@ _DEFAULT_CADENCE_S = {
     "kb_contradiction": 24 * 3600,             # daily probe; internal weekly cadence; Q17.6
     # PROGRAM §55 — ChromaDB integrity (35th monitor, 2026-05-17).
     "chromadb_integrity": 24 * 3600,           # daily probe; internal 23h cadence
+    # 2026-05-18 — schema drift visibility (closes the gap behind the deliberate
+    # "no auto-apply migrations" policy). Daily probe; internal weekly cadence.
+    "schema_drift": 24 * 3600,
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -638,6 +641,18 @@ def _driver() -> None:
         logger.debug(
             "monitors: kb_contradiction import failed", exc_info=True,
         )
+    # 2026-05-18 — schema_drift. Detects migrations/*.sql declarations
+    # not reflected in information_schema. Visibility-only — the
+    # change_request validator forbids auto-applying migrations/, so
+    # this surfaces drift to the operator who runs psql manually.
+    try:
+        from app.healing.monitors import schema_drift
+        monitors.append((
+            "schema_drift", schema_drift.run,
+            _DEFAULT_CADENCE_S["schema_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: schema_drift import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

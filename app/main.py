@@ -108,7 +108,8 @@ from app.agents.commander import Commander
 import app.healing  # noqa: F401
 from app.healing.error_diagnosis import diagnose_and_fix
 from app.audit import (
-    log_request_received, log_response_sent, log_security_event
+    log_request_received, log_response_sent, log_response_failed,
+    log_security_event,
 )
 from app.conversation_store import (
     add_message, start_task, complete_task,
@@ -1744,6 +1745,15 @@ async def receive_signal(request: Request):
     # Cap attachments (prevent abuse)
     attachments = attachments[:5]
 
+    # Mint the request-lifecycle trace id BEFORE the first audit event
+    # so latency_slo can pair request_received → response_sent on the
+    # ``trace_id`` column. The ContextVar set here propagates through
+    # ``asyncio.create_task(handle_task(...))`` automatically (Py 3.7+
+    # contextvars + asyncio integration), so every downstream emit in
+    # the same request lifecycle inherits this id.
+    from app.trace import new_trace_id
+    new_trace_id()
+
     log_request_received(_redact_number(sender), len(text))
 
     # Send 👀 reaction immediately — before any other processing.
@@ -2030,9 +2040,11 @@ async def handle_task(sender: str, text: str, attachments: list = None,
 
     _task_start = _time.monotonic()
 
-    # Request tracing: generate correlation ID for this request lifecycle
+    # Request tracing: inherit the trace_id minted by /signal/inbound
+    # (propagated via ContextVar through asyncio.create_task). Fallback
+    # to a fresh id for non-Signal entry paths (e.g., DLQ replay at boot).
     from app.trace import new_trace_id, get_trace_id
-    trace_id = new_trace_id()
+    trace_id = get_trace_id() or new_trace_id()
 
     # Start task tracking for metrics
     task_row_id = start_task(sender)
@@ -2523,8 +2535,6 @@ async def handle_task(sender: str, text: str, attachments: list = None,
             logger.debug("Grounding egress hook failed (non-fatal)",
                          exc_info=True)
 
-        log_response_sent(_redact_number(sender), len(result))
-
         # Record which crew handled the task (for per-crew analytics)
         try:
             from app.conversation_store import update_task_crew
@@ -2638,9 +2648,22 @@ async def handle_task(sender: str, text: str, attachments: list = None,
                     logger.debug("Durable attachment send raised", exc_info=True)
         else:
             await send_durable(sender, result, reply_to_id=queue_id)
+
+        # Delivery succeeded — pair with the request_received emit minted
+        # in /signal/inbound for the latency_slo monitor (post-`send_durable`
+        # so the SLO reflects actual user-visible latency).
+        log_response_sent(_redact_number(sender), len(result))
     except Exception as exc:
         logger.exception("Error handling task")
         log_security_event("task_error", "unhandled exception in handle_task")
+        # Counterpart to log_response_sent: emit a failure event so the
+        # error-rate panels can join request_received → response_failed
+        # on trace_id and distinguish "processed but undelivered" from
+        # "processed and delivered".
+        try:
+            log_response_failed(_redact_number(sender), type(exc).__name__)
+        except Exception:
+            pass
 
         # Record failed task for metrics
         complete_task(task_row_id, success=False, error_type=type(exc).__name__)

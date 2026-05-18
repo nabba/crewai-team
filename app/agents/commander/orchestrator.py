@@ -638,6 +638,10 @@ class Commander:
 
         # S4/S1: Routing needs history + Mem0 context for classification.
         # Run both lookups in parallel — they're independent I/O operations.
+        # Uses the module-level ``_ctx_pool`` so we don't pay thread-creation
+        # cost on every routing call. ``_ctx_pool`` is sized for the full
+        # context-loader fan-out (12 workers); two more concurrent
+        # submissions don't pressure it.
         import concurrent.futures
 
         def _fetch_history():
@@ -662,19 +666,18 @@ class Commander:
                 pass
             return []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            hist_fut = pool.submit(_fetch_history)
-            mem0_fut = pool.submit(_fetch_mem0)
-            try:
-                history_text = hist_fut.result(timeout=5)
-            except (concurrent.futures.TimeoutError, Exception):
-                history_text = ""
-                logger.debug("Commander routing: history lookup timed out")
-            try:
-                mem0_lines = mem0_fut.result(timeout=5)
-            except (concurrent.futures.TimeoutError, Exception):
-                mem0_lines = []
-                logger.debug("Commander routing: Mem0 lookup timed out (first call may be slow)")
+        hist_fut = _ctx_pool.submit(_fetch_history)
+        mem0_fut = _ctx_pool.submit(_fetch_mem0)
+        try:
+            history_text = hist_fut.result(timeout=5)
+        except (concurrent.futures.TimeoutError, Exception):
+            history_text = ""
+            logger.debug("Commander routing: history lookup timed out")
+        try:
+            mem0_lines = mem0_fut.result(timeout=5)
+        except (concurrent.futures.TimeoutError, Exception):
+            mem0_lines = []
+            logger.debug("Commander routing: Mem0 lookup timed out (first call may be slow)")
 
         # Phase 5.2 — Layer 1: sanitize prior failure messages in
         # conversation history so the routing LLM doesn't extrapolate

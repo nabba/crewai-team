@@ -1,213 +1,213 @@
 {
-  "last_run_at": 1779050574.3525,
+  "last_run_at": 1779060283.4572952,
   "sunset_models": {
     "openrouter::allenai/olmo-2-0325-32b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.4838223,
-      "last_seen_missing": 1779050574.3524904,
+      "last_seen_missing": 1779060283.4572895,
       "model": "allenai/olmo-2-0325-32b-instruct",
       "provider": "openrouter"
     },
     "openrouter::allenai/olmo-3.1-32b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.4838247,
-      "last_seen_missing": 1779050574.3524919,
+      "last_seen_missing": 1779060283.4572906,
       "model": "allenai/olmo-3.1-32b-instruct",
       "provider": "openrouter"
     },
     "openrouter::anthropic/claude-3.7-sonnet": {
       "alerted": true,
       "first_missed_at": 1778972847.483825,
-      "last_seen_missing": 1779050574.3524923,
+      "last_seen_missing": 1779060283.4572911,
       "model": "anthropic/claude-3.7-sonnet",
       "provider": "openrouter"
     },
     "openrouter::anthropic/claude-3.7-sonnet:thinking": {
       "alerted": true,
       "first_missed_at": 1778972847.4838252,
-      "last_seen_missing": 1779050574.3524926,
+      "last_seen_missing": 1779060283.4572914,
       "model": "anthropic/claude-3.7-sonnet:thinking",
       "provider": "openrouter"
     },
     "openrouter::google/gemma-2-9b-it": {
       "alerted": true,
       "first_missed_at": 1778972847.4838254,
-      "last_seen_missing": 1779050574.352493,
+      "last_seen_missing": 1779060283.4572916,
       "model": "google/gemma-2-9b-it",
       "provider": "openrouter"
     },
     "openrouter::inception/mercury": {
       "alerted": true,
       "first_missed_at": 1778972847.4838257,
-      "last_seen_missing": 1779050574.3524935,
+      "last_seen_missing": 1779060283.4572918,
       "model": "inception/mercury",
       "provider": "openrouter"
     },
     "openrouter::inception/mercury-coder": {
       "alerted": true,
       "first_missed_at": 1778972847.4838257,
-      "last_seen_missing": 1779050574.3524938,
+      "last_seen_missing": 1779060283.4572918,
       "model": "inception/mercury-coder",
       "provider": "openrouter"
     },
     "openrouter::meituan/longcat-flash-chat": {
       "alerted": true,
       "first_missed_at": 1778972847.483826,
-      "last_seen_missing": 1779050574.352494,
+      "last_seen_missing": 1779060283.457292,
       "model": "meituan/longcat-flash-chat",
       "provider": "openrouter"
     },
     "openrouter::mistralai/mistral-small-creative": {
       "alerted": true,
       "first_missed_at": 1778972847.483826,
-      "last_seen_missing": 1779050574.3524942,
+      "last_seen_missing": 1779060283.457292,
       "model": "mistralai/mistral-small-creative",
       "provider": "openrouter"
     },
     "openrouter::mistralai/mixtral-8x7b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.4838264,
-      "last_seen_missing": 1779050574.3524945,
+      "last_seen_missing": 1779060283.4572923,
       "model": "mistralai/mixtral-8x7b-instruct",
       "provider": "openrouter"
     },
     "openrouter::nvidia/llama-3.1-nemotron-70b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.4838264,
-      "last_seen_missing": 1779050574.352495,
+      "last_seen_missing": 1779060283.4572923,
       "model": "nvidia/llama-3.1-nemotron-70b-instruct",
       "provider": "openrouter"
     },
     "openrouter::nvidia/llama-3.1-nemotron-ultra-253b-v1": {
       "alerted": true,
       "first_missed_at": 1778972847.4838264,
-      "last_seen_missing": 1779050574.3524954,
+      "last_seen_missing": 1779060283.4572926,
       "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
       "provider": "openrouter"
     },
     "openrouter::nvidia/nemotron-nano-12b-v2-vl": {
       "alerted": true,
       "first_missed_at": 1778972847.4838266,
-      "last_seen_missing": 1779050574.3524957,
+      "last_seen_missing": 1779060283.4572928,
       "model": "nvidia/nemotron-nano-12b-v2-vl",
       "provider": "openrouter"
     },
     "openrouter::openai/gpt-4o:extended": {
       "alerted": true,
       "first_missed_at": 1778972847.4838266,
-      "last_seen_missing": 1779050574.352496,
+      "last_seen_missing": 1779060283.4572928,
       "model": "openai/gpt-4o:extended",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen-max": {
       "alerted": true,
       "first_missed_at": 1778972847.4838269,
-      "last_seen_missing": 1779050574.3524961,
+      "last_seen_missing": 1779060283.457293,
       "model": "qwen/qwen-max",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen-turbo": {
       "alerted": true,
       "first_missed_at": 1778972847.4838269,
-      "last_seen_missing": 1779050574.3524961,
+      "last_seen_missing": 1779060283.457293,
       "model": "qwen/qwen-turbo",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen-vl-max": {
       "alerted": true,
       "first_missed_at": 1778972847.4838269,
-      "last_seen_missing": 1779050574.3524964,
+      "last_seen_missing": 1779060283.4572933,
       "model": "qwen/qwen-vl-max",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen-vl-plus": {
       "alerted": true,
       "first_missed_at": 1778972847.4838283,
-      "last_seen_missing": 1779050574.3524966,
+      "last_seen_missing": 1779060283.4572933,
       "model": "qwen/qwen-vl-plus",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen2.5-coder-7b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.4838288,
-      "last_seen_missing": 1779050574.3524969,
+      "last_seen_missing": 1779060283.4572935,
       "model": "qwen/qwen2.5-coder-7b-instruct",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwen2.5-vl-32b-instruct": {
       "alerted": true,
       "first_missed_at": 1778972847.483829,
-      "last_seen_missing": 1779050574.3524969,
+      "last_seen_missing": 1779060283.4572935,
       "model": "qwen/qwen2.5-vl-32b-instruct",
       "provider": "openrouter"
     },
     "openrouter::qwen/qwq-32b": {
       "alerted": true,
       "first_missed_at": 1778972847.483829,
-      "last_seen_missing": 1779050574.352497,
+      "last_seen_missing": 1779060283.4572937,
       "model": "qwen/qwq-32b",
       "provider": "openrouter"
     },
     "openrouter::tngtech/deepseek-r1t2-chimera": {
       "alerted": true,
       "first_missed_at": 1778972847.4838293,
-      "last_seen_missing": 1779050574.3524976,
+      "last_seen_missing": 1779060283.4572937,
       "model": "tngtech/deepseek-r1t2-chimera",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-3": {
       "alerted": true,
       "first_missed_at": 1778972847.4838293,
-      "last_seen_missing": 1779050574.3524978,
+      "last_seen_missing": 1779060283.457294,
       "model": "x-ai/grok-3",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-3-beta": {
       "alerted": true,
       "first_missed_at": 1778972847.4838295,
-      "last_seen_missing": 1779050574.3524983,
+      "last_seen_missing": 1779060283.4572942,
       "model": "x-ai/grok-3-beta",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-3-mini": {
       "alerted": true,
       "first_missed_at": 1778972847.4838295,
-      "last_seen_missing": 1779050574.3524983,
+      "last_seen_missing": 1779060283.4572942,
       "model": "x-ai/grok-3-mini",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-3-mini-beta": {
       "alerted": true,
       "first_missed_at": 1778972847.4838302,
-      "last_seen_missing": 1779050574.3524985,
+      "last_seen_missing": 1779060283.4572947,
       "model": "x-ai/grok-3-mini-beta",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-4": {
       "alerted": true,
       "first_missed_at": 1778972847.4838302,
-      "last_seen_missing": 1779050574.3524988,
+      "last_seen_missing": 1779060283.4572947,
       "model": "x-ai/grok-4",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-4-fast": {
       "alerted": true,
       "first_missed_at": 1778972847.4838305,
-      "last_seen_missing": 1779050574.3524992,
+      "last_seen_missing": 1779060283.457295,
       "model": "x-ai/grok-4-fast",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-4.1-fast": {
       "alerted": true,
       "first_missed_at": 1778972847.4838307,
-      "last_seen_missing": 1779050574.3524995,
+      "last_seen_missing": 1779060283.457295,
       "model": "x-ai/grok-4.1-fast",
       "provider": "openrouter"
     },
     "openrouter::x-ai/grok-code-fast-1": {
       "alerted": true,
       "first_missed_at": 1778972847.4838307,
-      "last_seen_missing": 1779050574.3524997,
+      "last_seen_missing": 1779060283.4572952,
       "model": "x-ai/grok-code-fast-1",
       "provider": "openrouter"
     }

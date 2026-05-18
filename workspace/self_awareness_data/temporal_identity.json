@@ -21,7 +21,16 @@
       "challenges_overcome": [],
       "identity_shifts": [],
       "health_at_time": "healthy"
+    },
+    {
+      "epoch": 3,
+      "timestamp": "2026-04-12T00:00:00Z",
+      "summary": "Health=healthy, 0 discrepancies, 0 proposals. Test reflection",
+      "capabilities_learned": [],
+      "challenges_overcome": [],
+      "identity_shifts": [],
+      "health_at_time": "healthy"
     }
   ],
-  "narrative": "Epoch 1: Health=healthy, 1 discrepancies, 1 proposals. System reflected on performance | Epoch 2: Health=healthy, 0 discrepancies, 0 proposals. Test reflection"
+  "narrative": "Epoch 1: Health=healthy, 1 discrepancies, 1 proposals. System reflected on performance | Epoch 2: Health=healthy, 0 discrepancies, 0 proposals. Test reflection | Epoch 3: Health=healthy, 0 discrepancies, 0 proposals. Test reflection"
 }

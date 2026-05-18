@@ -30,7 +30,7 @@
   "conversation_memory_enabled": true,
   "dependency_radar_enabled": true,
   "drill_backup_restore_enabled": true,
-  "drill_embedding_migration_enabled": true,
+  "drill_embedding_migration_enabled": false,
   "drill_embedding_rotation_enabled": true,
   "drill_kill_the_gateway_enabled": false,
   "drill_local_only_enabled": true,

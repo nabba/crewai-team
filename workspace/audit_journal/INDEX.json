@@ -3,5 +3,5 @@
   "log_name": "audit_journal",
   "segments": [],
   "current_seg_id": 0,
-  "next_seq": 5
+  "next_seq": 8
 }
