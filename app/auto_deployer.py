@@ -19,6 +19,7 @@ import ast
 import logging
 import shutil
 import threading
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -275,6 +276,49 @@ def get_protection_tier(filepath: str) -> ProtectionTier:
     return static
 
 
+@dataclass
+class DeployEvidence:
+    """Provenance + safety signal for a deploy attempt.
+
+    Built by the caller of run_deploy() and consulted by
+    _validate_deploy_batch() to enforce the three-tier protection model
+    at the deploy boundary (audit 2026-05-12; productization plan WP A1).
+    Recorded in the deploy log so operators can audit what evidence
+    accompanied each attempt.
+
+    source values:
+      - direct: caller chose direct deploy (no canary, no proposal)
+      - proposal: came through proposals.approve_proposal
+      - human_gate: came through human_gate.approve_request
+      - canary: canary trial is in progress / passed
+      - canary_fallback: canary disabled or no baseline; fell back to direct
+      - legacy: caller used pre-evidence run_deploy() signature (back-compat)
+    """
+    reason: str
+    source: str = "direct"
+    has_canary_pass: bool = False
+    canary_id: str | None = None
+    operator_approval_id: str | None = None
+
+    @classmethod
+    def direct(cls, reason: str, source: str = "direct") -> "DeployEvidence":
+        """Build evidence for a direct (no-canary) deploy."""
+        return cls(reason=reason, source=source, has_canary_pass=False)
+
+    @classmethod
+    def from_canary(cls, reason: str, canary_id: str) -> "DeployEvidence":
+        """Build evidence asserting a canary process owns this deploy."""
+        return cls(
+            reason=reason,
+            source="canary",
+            has_canary_pass=True,
+            canary_id=canary_id,
+        )
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 def validate_mutation_for_tier(
     filepath: str,
     has_canary_pass: bool = False,
@@ -307,6 +351,32 @@ def validate_mutation_for_tier(
         return True, "ok (gated — canary required)"
 
     return True, "ok (open — standard eval)"
+
+
+def _validate_deploy_batch(
+    files: list[tuple[Path, Path]],
+    evidence: DeployEvidence,
+) -> list[str]:
+    """Validate every file in a deploy batch against its protection tier.
+
+    Returns a list of violation strings (each prefixed with the relative
+    path) for files that the tier model refuses given this evidence.
+    An empty list means the batch is safe to proceed.
+
+    Used by _deploy_locked as the first check after the file list is
+    built. OPEN files never appear in the result; IMMUTABLE files always
+    appear; GATED files appear unless evidence.has_canary_pass is True
+    AND EVOLUTION_AUTO_DEPLOY=true.
+    """
+    violations: list[str] = []
+    for _src, rel in files:
+        rel_str = str(rel)
+        ok, reason = validate_mutation_for_tier(
+            rel_str, has_canary_pass=evidence.has_canary_pass
+        )
+        if not ok:
+            violations.append(f"{rel_str}: {reason}")
+    return violations
 
 
 def validate_proposal_paths(files: dict[str, str]) -> list[str]:
@@ -422,10 +492,21 @@ _deploy_lock = threading.Lock()
 _deploy_scheduled = False
 
 
-def schedule_deploy(reason: str) -> None:
+def schedule_deploy(
+    reason: str,
+    evidence: "DeployEvidence | None" = None,
+) -> None:
     """
     Schedule a deploy to run shortly. Multiple calls are de-duped — only
     one deploy runs per batch of changes.
+
+    evidence is threaded through to the canary path (when enabled) or
+    to run_deploy directly (canary-disabled fallback). Legacy callers
+    that omit evidence get DeployEvidence.direct(reason, source="legacy")
+    via run_deploy's own default — but the canary-fallback path inside
+    _delayed() explicitly constructs source="canary_fallback" so the
+    deploy log distinguishes "operator/caller went direct" from "canary
+    disabled, fell back to direct".
     """
     global _deploy_scheduled
     with _deploy_lock:
@@ -504,7 +585,14 @@ def schedule_deploy(reason: str) -> None:
         global _deploy_scheduled
         time.sleep(5)  # wait for all file writes to complete
         try:
-            # Route through canary if enabled — synthetic eval before promotion
+            # Route through canary if enabled — synthetic eval before promotion.
+            # When canary IS enabled, CanaryDeployer constructs evidence at
+            # each of its own run_deploy call sites (from_canary for the
+            # canary trial, canary_fallback for its own internal fallbacks).
+            # When canary is disabled, we go direct here with explicit
+            # canary_fallback evidence so _validate_deploy_batch refuses
+            # GATED files (the canary is the only sanctioned path to
+            # GATED auto-deploy; closes audit-2026-05-12 WP A1 #5).
             try:
                 from app.config import get_settings as _cdgs
                 if _cdgs().canary_deploy_enabled:
@@ -512,9 +600,16 @@ def schedule_deploy(reason: str) -> None:
                     result = CanaryDeployer().run_canary(reason)
                     logger.info(f"auto_deployer: canary result: {result.get('status')} — {result.get('reason', '')[:100]}")
                 else:
-                    run_deploy(reason)
+                    fallback_ev = evidence or DeployEvidence.direct(
+                        reason, source="canary_fallback"
+                    )
+                    run_deploy(reason, evidence=fallback_ev)
             except ImportError:
-                run_deploy(reason)  # Fallback if canary module unavailable
+                # Fallback if canary module unavailable
+                fallback_ev = evidence or DeployEvidence.direct(
+                    reason, source="canary_fallback"
+                )
+                run_deploy(reason, evidence=fallback_ev)
         finally:
             with _deploy_lock:
                 _deploy_scheduled = False
@@ -523,16 +618,27 @@ def schedule_deploy(reason: str) -> None:
     t.start()
 
 
-def run_deploy(reason: str = "manual") -> str:
+def run_deploy(
+    reason: str = "manual",
+    *,
+    evidence: "DeployEvidence | None" = None,
+) -> str:
     """
     Apply all files from applied_code/ to the live codebase.
     Returns a status message.
+
+    evidence carries the tier-validation context. If omitted (legacy
+    callers), defaults to DeployEvidence.direct(reason, source="legacy")
+    which keeps the boundary closed for IMMUTABLE/GATED files but
+    preserves OPEN-file deploys for back-compat.
     """
+    if evidence is None:
+        evidence = DeployEvidence.direct(reason, source="legacy")
     with _deploy_lock:
-        return _deploy_locked(reason)
+        return _deploy_locked(reason, evidence)
 
 
-def _deploy_locked(reason: str) -> str:
+def _deploy_locked(reason: str, evidence: "DeployEvidence") -> str:
     if not APPLIED_CODE_DIR.exists():
         return "No applied_code directory."
 
@@ -548,6 +654,24 @@ def _deploy_locked(reason: str) -> str:
 
     if not files_to_deploy:
         return "No files to deploy."
+
+    # ── Tier-protection boundary (audit 2026-05-12; WP A1) ─────────────
+    # First gate: every file must satisfy validate_mutation_for_tier given
+    # the evidence the caller supplied. Blocked deploys leave applied_code/
+    # intact so the operator can inspect — cleanup only runs on success.
+    tier_violations = _validate_deploy_batch(files_to_deploy, evidence)
+    if tier_violations:
+        first = tier_violations[0]
+        more = f" (+{len(tier_violations) - 1} more)" if len(tier_violations) > 1 else ""
+        msg = (
+            f"Deploy blocked by tier protection: {first}{more}. "
+            f"GATED files require canary evidence; "
+            f"IMMUTABLE files cannot be auto-modified."
+        )
+        logger.error(f"auto_deployer: {msg}")
+        _log_deploy("blocked", reason, [], msg, evidence=evidence)
+        return msg
+    # ── End tier-protection boundary ─────────────────────────────────────
 
     # Validate all files have valid Python syntax and no dangerous imports
     invalid = []
@@ -567,13 +691,13 @@ def _deploy_locked(reason: str) -> str:
     if invalid:
         msg = f"Deploy blocked: {len(invalid)} files have syntax errors: {'; '.join(invalid[:3])}"
         logger.error(f"auto_deployer: {msg}")
-        _log_deploy("blocked", reason, [], msg)
+        _log_deploy("blocked", reason, [], msg, evidence=evidence)
         return msg
 
     if dangerous:
         msg = f"Deploy blocked: dangerous imports in {'; '.join(dangerous[:3])}"
         logger.error(f"auto_deployer: {msg}")
-        _log_deploy("blocked", reason, [], msg)
+        _log_deploy("blocked", reason, [], msg, evidence=evidence)
         return msg
 
     # Step 8: Constitutional invariant check — evolved code must not remove security imports
@@ -584,7 +708,7 @@ def _deploy_locked(reason: str) -> str:
     if constitutional:
         msg = f"Deploy blocked: {'; '.join(constitutional[:3])}"
         logger.error(f"auto_deployer: {msg}")
-        _log_deploy("blocked", reason, [], msg)
+        _log_deploy("blocked", reason, [], msg, evidence=evidence)
         return msg
 
     # Create timestamped backup
@@ -619,7 +743,11 @@ def _deploy_locked(reason: str) -> str:
                 f"Remove 'read_only: true' from docker-compose.yml gateway service "
                 f"to enable code self-modification. Error: {exc}"
             )
-            _log_deploy("blocked", reason, [], f"Read-only filesystem: {rel}")
+            _log_deploy(
+                "blocked", reason, [],
+                f"Read-only filesystem: {rel}",
+                evidence=evidence,
+            )
             return (
                 f"Deploy blocked: filesystem is read-only. "
                 f"To enable code self-modification, remove 'read_only: true' "
@@ -636,7 +764,7 @@ def _deploy_locked(reason: str) -> str:
     _cleanup_empty_dirs(APPLIED_CODE_DIR)
 
     msg = f"Deployed {len(deployed)} files: {', '.join(deployed)}"
-    _log_deploy("success", reason, deployed)
+    _log_deploy("success", reason, deployed, evidence=evidence)
     logger.info(f"auto_deployer: {msg}")
 
     # Record successful deploy in tier_graduation history (drives promotion logic)
@@ -769,20 +897,34 @@ def _cleanup_empty_dirs(root: Path) -> None:
                 pass
 
 
-def _log_deploy(status: str, reason: str, files: list, error: str = "") -> None:
-    """Append to deploy log."""
+def _log_deploy(
+    status: str,
+    reason: str,
+    files: list,
+    error: str = "",
+    evidence: "DeployEvidence | None" = None,
+) -> None:
+    """Append to deploy log.
+
+    evidence (when provided) is serialized into the entry so the audit
+    trail captures what evidence accompanied the deploy attempt — needed
+    by the tier-protection forensics path.
+    """
     import json
     try:
         log = []
         if DEPLOY_LOG.exists():
             log = json.loads(DEPLOY_LOG.read_text())
-        log.append({
+        entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "status": status,
             "reason": reason[:200],
             "files": files,
             "error": error[:200],
-        })
+        }
+        if evidence is not None:
+            entry["evidence"] = evidence.to_dict()
+        log.append(entry)
         from app.safe_io import safe_write_json
         safe_write_json(DEPLOY_LOG, log[-100:])
     except (OSError, json.JSONDecodeError):
