@@ -38,9 +38,14 @@ class CanaryDeployer:
                   "baseline_score", "canary_score", "reason"}
         """
         if not self._settings.canary_deploy_enabled:
-            # Fall back to direct deploy if canary disabled
-            from app.auto_deployer import run_deploy
-            run_deploy(reason)
+            # Fall back to direct deploy if canary disabled.
+            # canary_fallback evidence will refuse GATED files at the
+            # boundary — intended: GATED requires a real canary.
+            from app.auto_deployer import run_deploy, DeployEvidence
+            run_deploy(
+                reason,
+                evidence=DeployEvidence.direct(reason, source="canary_fallback"),
+            )
             return {"status": "skipped", "reason": "canary_deploy_enabled=False"}
 
         result = {
@@ -49,6 +54,7 @@ class CanaryDeployer:
             "canary_score": 0.0,
             "reason": "",
             "timestamp": time.time(),
+            "canary_id": f"canary_{int(time.time())}",
         }
 
         try:
@@ -58,19 +64,37 @@ class CanaryDeployer:
             result["baseline_score"] = baseline.get("composite_score", 0.0)
 
             if baseline.get("composite_score", 0) == 0:
-                # No baseline available — fall back to direct deploy
+                # No baseline available — fall back to direct deploy.
+                # Same canary_fallback evidence semantics as the disabled
+                # branch above: deploy boundary refuses GATED.
                 logger.info("canary: no baseline metrics, falling back to direct deploy")
-                from app.auto_deployer import run_deploy
-                run_deploy(reason)
+                from app.auto_deployer import run_deploy, DeployEvidence
+                run_deploy(
+                    reason,
+                    evidence=DeployEvidence.direct(reason, source="canary_fallback"),
+                )
                 result["status"] = "skipped"
                 result["reason"] = "No baseline metrics available"
                 return result
 
             # ── Step 2: Deploy mutation ────────────────────────────────────
+            # The canary IS the canary — assert canary evidence so GATED
+            # files are allowed to deploy. Synthetic eval at Step 3 will
+            # rollback on regression; safety probes at Step 4 hard-gate.
             logger.info(f"canary: deploying mutation — {reason[:100]}")
-            from app.auto_deployer import run_deploy
-            deploy_result = run_deploy(reason)
-            if "error" in deploy_result.lower() or "skipped" in deploy_result.lower():
+            from app.auto_deployer import run_deploy, DeployEvidence
+            deploy_result = run_deploy(
+                reason,
+                evidence=DeployEvidence.from_canary(
+                    reason, canary_id=result["canary_id"]
+                ),
+            )
+            deploy_lower = deploy_result.lower()
+            if (
+                "error" in deploy_lower
+                or "skipped" in deploy_lower
+                or "blocked" in deploy_lower
+            ):
                 result["reason"] = f"Deploy failed: {deploy_result[:200]}"
                 return result
 

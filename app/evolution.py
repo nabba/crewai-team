@@ -773,6 +773,29 @@ def _trigger_code_auto_deploy(result, mutation) -> None:
             )
             return
 
+        # Stage the kept mutation into APPLIED_CODE_DIR so the deploy
+        # boundary (run_deploy) finds it. Without this, schedule_deploy
+        # below would scan an empty applied_code/ since experiment_runner
+        # writes to /app/workspace/<rel_path>, not applied_code/.
+        # (audit 2026-05-18 productization plan — closes the silent
+        # "Deployed 0 files" no-op for every kept code mutation that
+        # does not flow through proposals.approve_proposal.)
+        try:
+            from app.deploy_staging import stage_for_deploy
+            for _rel_path, _content in files.items():
+                if _rel_path.endswith(".py"):
+                    stage_for_deploy(
+                        _rel_path,
+                        _content,
+                        source=f"evolution-keep-{result.experiment_id}",
+                    )
+        except Exception as exc:
+            logger.warning(
+                f"Evolution: staging failed for {result.experiment_id}: {exc} — "
+                f"skipping auto-deploy"
+            )
+            return
+
         # Confidence classification — borderline mutations route through human_gate
         try:
             from app.human_gate import classify_confidence, request_approval, ConfidenceTier
