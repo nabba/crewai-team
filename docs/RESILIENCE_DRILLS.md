@@ -1,5 +1,27 @@
 # Resilience Drills
 
+**Update 2026-05-18 (Q18 / PROGRAM §60):** The §44 drill framework
+was rewritten as a state machine + operator-ratified baseline
+system. The drill registry, drill names, cadence semantics, and
+posture decision documented below are unchanged. What changed is
+the orchestration:
+
+* Every drill invocation now goes through
+  `app/resilience_drills/runner.py:invoke_drill` which threads
+  state + baseline comparison.
+* Failed drills enter a backoff state machine (`WATCH` →
+  `DEGRADED` → `QUARANTINED`) so the §44 hot-loop pattern is
+  architecturally impossible.
+* Drills emit structured `Observation` dicts; operators ratify
+  them as baselines via `/cp/drills/<name>`.
+* CR creation is deduplicated at the lifecycle layer.
+
+See **`docs/RESILIENCE_DRILLS_V2.md`** for the full v2
+architecture. The legacy §44 documentation below describes the
+registry + cadence + posture decisions that remain canonical.
+
+---
+
 **Status (2026-05-16):** Q6 shipped four drills in
 `app/resilience_drills/` at PROGRAM §44.1-§44.3 (the operationally
 canonical registry). Q13 added three SIBLING drill+monitor pairs

@@ -44,19 +44,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.resilience_drills.audit import (
-    acquire_drill_lock,
-    append_result,
-    emit_landmark_for,
-    last_result_for,
-    release_drill_lock,
-)
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -67,6 +60,7 @@ SPEC = DrillSpec(
     name="source_ledger_replay",
     cadence_days=90,
     grace_days=30,
+    warmup_days=0,
     risk=DrillRisk.LOW,
     description=(
         "Quarterly drill that picks one KB at random, replays its "
@@ -127,42 +121,14 @@ def _pick_kb() -> str | None:
 
 
 def _run(*, dry_run: bool = True) -> DrillResult:
+    """Q18 runner contract: returns a bare DrillResult."""
     started = datetime.now(timezone.utc)
     t0 = time.time()
-    prior = last_result_for(SPEC.name)
-    prior_status = prior.get("status") if prior else None
-
-    if not drill_enabled(SPEC):
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0,
-            dry_run=dry_run,
-            detail={"reason": "master switch off"},
-        )
-        append_result(result)
-        return result
-
-    lock = acquire_drill_lock(SPEC.name)
-    if lock is None:
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0,
-            dry_run=dry_run,
-            detail={"reason": "lock held"},
-        )
-        append_result(result)
-        return result
-
+    scratch = None
     try:
         kb = _pick_kb()
         if kb is None:
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name,
                 status=DrillStatus.SKIPPED,
                 started_at=started.isoformat(),
@@ -171,17 +137,13 @@ def _run(*, dry_run: bool = True) -> DrillResult:
                 dry_run=dry_run,
                 detail={"reason": "no KB with non-empty ledger"},
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
         detail: dict[str, Any] = {"kb_name": kb}
 
-        # Step 1 — count ledger rows we'll attempt to replay.
         try:
             from app.memory.source_ledger import count_rows, replay_kb, verify_chain
         except Exception as exc:
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name,
                 status=DrillStatus.ERROR,
                 started_at=started.isoformat(),
@@ -190,20 +152,16 @@ def _run(*, dry_run: bool = True) -> DrillResult:
                 dry_run=dry_run,
                 detail=detail,
                 errors=[f"import failed: {exc}"],
+                failure_class=FailureClass.CODE_ERROR,
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
         ledger_rows = min(count_rows(kb), _DRILL_REPLAY_CAP)
         detail["ledger_rows"] = ledger_rows
 
-        # Step 2 — verify chain integrity FIRST. A broken chain is a
-        # hard failure independent of the replay outcome.
         chain = verify_chain(kb)
         detail["chain_verify"] = chain.to_dict()
         if not chain.ok:
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name,
                 status=DrillStatus.FAIL,
                 started_at=started.isoformat(),
@@ -211,15 +169,15 @@ def _run(*, dry_run: bool = True) -> DrillResult:
                 duration_s=time.time() - t0,
                 dry_run=dry_run,
                 detail=detail,
-                errors=[f"chain broken at row {chain.first_bad_row}: {chain.first_bad_reason}"],
+                errors=[
+                    f"chain broken at row {chain.first_bad_row}: "
+                    f"{chain.first_bad_reason}"
+                ],
+                failure_class=FailureClass.STRUCTURAL_FAIL,
+                observation={"kb_name": kb, "chain_ok": False},
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
-        # Step 3 — replay into a scratch dir.
         scratch = _scratch_root() / kb / started.strftime("%Y%m%dT%H%M%SZ")
-        # Cleanup any half-written scratch from a previous failure.
         if scratch.exists():
             try:
                 shutil.rmtree(scratch)
@@ -229,7 +187,6 @@ def _run(*, dry_run: bool = True) -> DrillResult:
         replay = replay_kb(kb, target_path=scratch, max_rows=_DRILL_REPLAY_CAP)
         detail["replay"] = replay.to_dict()
 
-        # Step 4 — verify the scratch KB has the expected rows.
         scratch_rows = 0
         try:
             import chromadb  # type: ignore
@@ -240,33 +197,25 @@ def _run(*, dry_run: bool = True) -> DrillResult:
                 except Exception:
                     pass
         except Exception:
-            logger.debug("source_ledger_replay: scratch introspect failed", exc_info=True)
+            logger.debug(
+                "source_ledger_replay: scratch introspect failed",
+                exc_info=True,
+            )
         detail["scratch_rows"] = scratch_rows
         detail["scratch_path"] = str(scratch)
 
-        # Step 5 — verdict.
         if ledger_rows == 0:
             status = DrillStatus.SKIPPED
+            loss_pct = 0.0
         else:
             loss_pct = max(0.0, (ledger_rows - scratch_rows) / ledger_rows)
             detail["loss_pct"] = round(loss_pct, 4)
-            if loss_pct <= _ACCEPTABLE_LOSS_PCT:
-                status = DrillStatus.PASS
-            else:
-                status = DrillStatus.FAIL
+            status = (
+                DrillStatus.PASS if loss_pct <= _ACCEPTABLE_LOSS_PCT
+                else DrillStatus.FAIL
+            )
 
-        # Step 6 — clean up scratch (always, regardless of verdict).
-        try:
-            shutil.rmtree(scratch)
-        except OSError:
-            pass
-        try:
-            # Try to remove the per-KB parent if empty.
-            scratch.parent.rmdir()
-        except OSError:
-            pass
-
-        result = DrillResult(
+        return DrillResult(
             drill_name=SPEC.name,
             status=status,
             started_at=started.isoformat(),
@@ -274,14 +223,22 @@ def _run(*, dry_run: bool = True) -> DrillResult:
             duration_s=time.time() - t0,
             dry_run=dry_run,
             detail=detail,
+            failure_class=(
+                FailureClass.STRUCTURAL_FAIL
+                if status == DrillStatus.FAIL else None
+            ),
+            observation={
+                "kb_name": kb,
+                "ledger_rows": ledger_rows,
+                "scratch_rows": scratch_rows,
+                "chain_ok": True,
+                "loss_pct": round(loss_pct, 4),
+            },
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
 
     except Exception as exc:
         logger.debug("source_ledger_replay: drill errored", exc_info=True)
-        result = DrillResult(
+        return DrillResult(
             drill_name=SPEC.name,
             status=DrillStatus.ERROR,
             started_at=started.isoformat(),
@@ -290,12 +247,18 @@ def _run(*, dry_run: bool = True) -> DrillResult:
             dry_run=dry_run,
             detail={},
             errors=[f"{type(exc).__name__}: {exc}"],
+            failure_class=FailureClass.CODE_ERROR,
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
     finally:
-        release_drill_lock(SPEC.name, lock)
+        if scratch is not None:
+            try:
+                shutil.rmtree(scratch)
+            except OSError:
+                pass
+            try:
+                scratch.parent.rmdir()
+            except OSError:
+                pass
 
 
 def run(*, dry_run: bool = True) -> DrillResult:

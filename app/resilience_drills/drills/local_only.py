@@ -1,12 +1,26 @@
-"""local_only — quarterly "Local-Only Day" drill (Q17.2).
+"""local_only — quarterly "Local-Only Day" drill (Q17.2, PROGRAM §52).
 
-DRY-RUN: never issues live LLM calls. Probes:
-  1. Ollama TCP + /api/tags
-  2. Non-dominant provider key formats (Groq/Gemini/DeepSeek/MiniMax)
+PROGRAM §57 — Q18 v2 conversion. Probes non-dominant LLM providers
+for structural readiness without issuing live calls. Now emits a
+structured ``observation`` that the operator can ratify as a
+baseline; future runs compare against the baseline rather than the
+old hardcoded ``≥50% ready`` threshold.
 
-Passes when ≥50% of non-dominant providers are ready. Below that
-threshold, files a CR proposing operator action (start Ollama,
-set GROQ_API_KEY, etc.).
+The 2026-05-16 incident was rooted in this drill's behaviour: with
+only 1 of 6 providers configured (Groq), the drill failed on every
+scheduler pass AND filed a CR each time. Both root causes are
+addressed in Q18:
+
+  * Hot loop: Q18 state machine + scheduler backoff (this drill
+    enters DEGRADED with exponential backoff after the second fail).
+  * CR spam: Q18 ``change_requests.lifecycle.create_request`` dedup
+    (identical CRs collapse into one with recurrence_count).
+  * Baseline mismatch: the operator can ratify "1 of 6 is fine for
+    this deployment" so the drill stops alerting as long as the
+    ratified baseline holds.
+
+The runner returns a bare DrillResult; the orchestrator threads
+lock + audit + landmark + state.
 """
 from __future__ import annotations
 
@@ -16,25 +30,19 @@ import os
 import re
 import socket
 import time
+import traceback
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.resilience_drills.audit import (
-    acquire_drill_lock,
-    append_result,
-    emit_landmark_for,
-    last_result_for,
-    release_drill_lock,
-)
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -45,6 +53,7 @@ SPEC = DrillSpec(
     name="local_only",
     cadence_days=90,
     grace_days=30,
+    warmup_days=0,  # existing drill — no warmup
     risk=DrillRisk.LOW,
     description=(
         "Quarterly Local-Only Day inspection. Probes non-dominant LLM "
@@ -158,6 +167,10 @@ def _persist_report(report: dict[str, Any]) -> Path | None:
 
 
 def _file_readiness_cr(report: dict[str, Any]) -> str | None:
+    """File a CR proposing operator action when readiness is below
+    threshold. Q18: CR lifecycle dedup means repeated identical CRs
+    collapse into one record with recurrence_count, so this can
+    safely fire on every failed run."""
     try:
         from app.change_requests.lifecycle import create_request
         from app.change_requests.models import RiskClass
@@ -194,36 +207,11 @@ def _file_readiness_cr(report: dict[str, Any]) -> str | None:
         return None
 
 
-def _run(*, dry_run: bool = True) -> DrillResult:
+def run(*, dry_run: bool = True) -> DrillResult:
+    """Runner contract (Q18): return a bare DrillResult. Orchestrator
+    threads lock/audit/landmark/state."""
     started = datetime.now(timezone.utc)
     t0 = time.time()
-    prior = last_result_for(SPEC.name)
-    prior_status = prior.get("status") if prior else None
-    if not drill_enabled(SPEC):
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0,
-            dry_run=dry_run,
-            detail={"reason": "master switch off"},
-        )
-        append_result(result)
-        return result
-    lock = acquire_drill_lock(SPEC.name)
-    if lock is None:
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0,
-            dry_run=dry_run,
-            detail={"reason": "lock held"},
-        )
-        append_result(result)
-        return result
     try:
         providers = _discover_cascade_providers()
         probes: list[dict[str, Any]] = []
@@ -241,11 +229,34 @@ def _run(*, dry_run: bool = True) -> DrillResult:
             "ratio": (n_ready / len(providers)) if providers else 0.0,
         }
         path = _persist_report(report)
-        cr_id = None
+
+        # Build the structured observation. Operator-ratifiable shape:
+        # the per-provider booleans + the count summary.
+        ready_providers = sorted(
+            p["provider"] for p in probes if p.get("ready")
+        )
+        configured_providers = sorted(
+            p["provider"] for p in probes
+            if p.get("env_set") or p.get("socket_ok")
+        )
+        observation = {
+            "n_providers_total": len(providers),
+            "n_providers_ready": n_ready,
+            "ready_providers": ready_providers,
+            "configured_providers": configured_providers,
+            "ratio": report["ratio"],
+        }
+
         status = DrillStatus.PASS if report["ratio"] >= 0.5 else DrillStatus.FAIL
+        failure_class = (
+            FailureClass.STRUCTURAL_FAIL
+            if status == DrillStatus.FAIL else None
+        )
+        cr_id: str | None = None
         if status == DrillStatus.FAIL:
             cr_id = _file_readiness_cr(report)
-        result = DrillResult(
+
+        return DrillResult(
             drill_name=SPEC.name,
             status=status,
             started_at=started.isoformat(),
@@ -260,31 +271,22 @@ def _run(*, dry_run: bool = True) -> DrillResult:
                 "cr_id": cr_id,
                 "probes": probes,
             },
+            failure_class=failure_class,
+            observation=observation,
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
     except Exception as exc:
         logger.debug("local_only: drill errored", exc_info=True)
-        result = DrillResult(
+        return DrillResult(
             drill_name=SPEC.name,
             status=DrillStatus.ERROR,
             started_at=started.isoformat(),
             completed_at=datetime.now(timezone.utc).isoformat(),
             duration_s=time.time() - t0,
             dry_run=dry_run,
-            detail={},
+            detail={"traceback": traceback.format_exc(limit=10)},
             errors=[f"{type(exc).__name__}: {exc}"],
+            failure_class=FailureClass.CODE_ERROR,
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
-    finally:
-        release_drill_lock(SPEC.name, lock)
-
-
-def run(*, dry_run: bool = True) -> DrillResult:
-    return _run(dry_run=dry_run)
 
 
 register(SPEC, run)

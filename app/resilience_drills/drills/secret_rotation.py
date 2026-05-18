@@ -35,20 +35,12 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from app.resilience_drills.audit import (
-    acquire_drill_lock,
-    append_result,
-    emit_landmark_for,
-    last_result_for,
-    last_successful_for,
-    release_drill_lock,
-)
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -59,6 +51,7 @@ SPEC = DrillSpec(
     name="secret_rotation",
     cadence_days=90,
     grace_days=30,
+    warmup_days=0,
     risk=DrillRisk.LOW,
     description=(
         "DRY-RUN ONLY: verify the secret-rotation procedure would work "
@@ -171,108 +164,77 @@ def _check_vendor_key_patterns() -> tuple[bool, str | None, dict]:
 
 
 def run(*, dry_run: bool = True) -> DrillResult:
-    """Run the secret-rotation procedure verification.
+    """Run the secret-rotation procedure verification. Q18 runner
+    contract: returns a bare DrillResult.
 
-    Q5.5 lesson learned: ``dry_run`` is the ONLY mode. We deliberately
-    never expose a non-dry-run path here — real rotation is operator-
-    driven, NOT scheduled. The parameter exists for protocol uniformity.
+    ``dry_run`` is the ONLY mode. Real rotation is operator-driven.
     """
     started_dt = datetime.now(timezone.utc)
     started_at = started_dt.isoformat()
     t0 = time.monotonic()
 
-    if not drill_enabled(SPEC):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=True,
-            detail={"reason": "master switch off"},
-        )
+    detail: dict[str, Any] = {"checks": {}}
+    errors: list[str] = []
+    status = DrillStatus.PASS
+    failure_class: FailureClass | None = None
 
-    # Q6.4 P1#3 — in-flight lock.
-    if not acquire_drill_lock(SPEC.name):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=True,
-            detail={"reason": "drill already in-flight"},
-        )
+    ok, err = _check_gateway_secret_generation()
+    detail["checks"]["gateway_secret_generation"] = ok
+    if not ok:
+        errors.append(f"gateway_secret_generation: {err}")
+        status = DrillStatus.FAIL
 
-    try:
-        # Q6.4 P0#1 + P1#4 — snapshot prior state BEFORE append.
-        prior_any = last_result_for(SPEC.name)
-        is_first_run = last_successful_for(SPEC.name) is None
-        prior_status = (prior_any or {}).get("status") if prior_any else None
+    ok, err = _check_bearer_token_round_trip()
+    detail["checks"]["bearer_token_round_trip"] = ok
+    if not ok:
+        errors.append(f"bearer_token_round_trip: {err}")
+        status = DrillStatus.FAIL
 
-        detail: dict[str, Any] = {"checks": {}}
-        errors: list[str] = []
-        status = DrillStatus.PASS
+    ok, err, info = _check_per_agent_token_enumeration()
+    detail["checks"]["per_agent_token_enumeration"] = ok
+    detail["per_agent_info"] = info
+    if not ok:
+        errors.append(f"per_agent_token_enumeration: {err}")
+        status = DrillStatus.FAIL
 
-        # Run each procedural check.
-        ok, err = _check_gateway_secret_generation()
-        detail["checks"]["gateway_secret_generation"] = ok
-        if not ok:
-            errors.append(f"gateway_secret_generation: {err}")
-            status = DrillStatus.FAIL
+    ok, err, info = _check_vendor_key_patterns()
+    detail["checks"]["vendor_key_patterns"] = ok
+    detail["vendor_patterns_info"] = info
+    if not ok:
+        errors.append(f"vendor_key_patterns: {err}")
+        status = DrillStatus.FAIL
 
-        ok, err = _check_bearer_token_round_trip()
-        detail["checks"]["bearer_token_round_trip"] = ok
-        if not ok:
-            errors.append(f"bearer_token_round_trip: {err}")
-            status = DrillStatus.FAIL
+    # SOUL.md guard. A full-length secret-shaped substring in the
+    # serialized detail invalidates the run.
+    guard_ok, guard_err = _soul_md_guard(detail)
+    detail["checks"]["soul_md_guard"] = guard_ok
+    if not guard_ok:
+        errors.append(f"soul_md_guard: {guard_err}")
+        status = DrillStatus.ERROR  # P0-shaped: secret leak
+        failure_class = FailureClass.CODE_ERROR
 
-        ok, err, info = _check_per_agent_token_enumeration()
-        detail["checks"]["per_agent_token_enumeration"] = ok
-        detail["per_agent_info"] = info
-        if not ok:
-            errors.append(f"per_agent_token_enumeration: {err}")
-            status = DrillStatus.FAIL
+    if status == DrillStatus.FAIL and failure_class is None:
+        failure_class = FailureClass.STRUCTURAL_FAIL
 
-        ok, err, info = _check_vendor_key_patterns()
-        detail["checks"]["vendor_key_patterns"] = ok
-        detail["vendor_patterns_info"] = info
-        if not ok:
-            errors.append(f"vendor_key_patterns: {err}")
-            status = DrillStatus.FAIL
+    observation = {
+        "n_checks_passed": sum(1 for v in detail["checks"].values() if v),
+        "n_checks_total": len(detail["checks"]),
+        "vendor_patterns_ok": bool(detail.get("checks", {}).get("vendor_key_patterns")),
+    }
 
-        # Q6.4 P1#7 — SOUL.md guard, now actually implemented.
-        # Scan the serialized detail for full-length secret-shaped
-        # substrings (marker prefix + 20+ entropy chars). The drill's
-        # own pattern strings contain marker prefixes but NEVER with
-        # appended entropy. If a generated candidate ever leaks into
-        # the audit row, this catches it.
-        guard_ok, guard_err = _soul_md_guard(detail)
-        detail["checks"]["soul_md_guard"] = guard_ok
-        if not guard_ok:
-            errors.append(f"soul_md_guard: {guard_err}")
-            status = DrillStatus.ERROR  # P0-shaped: secret leak
-
-        completed_dt = datetime.now(timezone.utc)
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=status,
-            started_at=started_at,
-            completed_at=completed_dt.isoformat(),
-            duration_s=round(time.monotonic() - t0, 3),
-            dry_run=True,  # always dry-run for this drill
-            detail=detail,
-            errors=errors,
-        )
-        append_result(result)
-        emit_landmark_for(
-            result,
-            is_first_run=is_first_run,
-            prior_status=prior_status,
-        )
-        return result
-    finally:
-        release_drill_lock(SPEC.name)
+    completed_dt = datetime.now(timezone.utc)
+    return DrillResult(
+        drill_name=SPEC.name,
+        status=status,
+        started_at=started_at,
+        completed_at=completed_dt.isoformat(),
+        duration_s=round(time.monotonic() - t0, 3),
+        dry_run=True,
+        detail=detail,
+        errors=errors,
+        failure_class=failure_class,
+        observation=observation,
+    )
 
 
 _LEAKED_SECRET_PATTERNS = (

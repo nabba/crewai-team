@@ -123,6 +123,9 @@ const SkillsPage = lazy(() =>
 const FilesPage = lazy(() =>
   import('./components/FilesPage').then((m) => ({ default: m.FilesPage })),
 );
+const DrillsPage = lazy(() =>
+  import('./components/DrillsPage').then((m) => ({ default: m.DrillsPage })),
+);
 
 function RouteFallback() {
   return (
@@ -183,6 +186,7 @@ export default function App() {
             <Route path="/life-companion" element={<LazyRoute><LifeCompanionPage /></LazyRoute>} />
             <Route path="/skills" element={<LazyRoute><SkillsPage /></LazyRoute>} />
             <Route path="/files" element={<LazyRoute><FilesPage /></LazyRoute>} />
+            <Route path="/drills" element={<LazyRoute><DrillsPage /></LazyRoute>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

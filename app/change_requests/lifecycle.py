@@ -32,6 +32,7 @@ The state machine is enforced — illegal transitions raise.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,18 @@ from app.change_requests.validator import (
 logger = logging.getLogger(__name__)
 
 
+# Q18 (PROGRAM §57) — dedup window. Within this set of statuses, a
+# duplicate (requestor, content_hash) call bumps recurrence on the
+# existing CR rather than creating a new one. Terminal statuses
+# release the dedup hold so a genuine new occurrence can file a
+# fresh CR.
+_DEDUP_OPEN_STATUSES = frozenset({
+    Status.PENDING,
+    Status.APPROVED,
+    Status.APPLY_FAILED,    # CR is still actionable (operator may retry)
+})
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -65,6 +78,72 @@ def _compute_diff(path: str, old: str, new: str) -> str:
         tofile=f"b/{path}",
         n=3,
     ))
+
+
+def _compute_content_hash(*, requestor: str, path: str, diff: str, reason: str) -> str:
+    """Q18 dedup key. Stable across calls with the same proposal.
+
+    Includes requestor + path + diff so two different agents proposing
+    the same content to the same path produce DIFFERENT hashes
+    (they're independent suggestions); identical structural proposals
+    from the same agent produce IDENTICAL hashes (the dedup target).
+
+    ``reason`` is deliberately EXCLUDED. A producer may file
+    structurally-identical changes with slightly different
+    motivations on different occasions (e.g. ``local_only`` reporting
+    "groq missing" then "anthropic missing"); the operator wants
+    those to collapse so the recurrence count is meaningful. Distinct
+    reasons accumulate in the CR's reason field via
+    :func:`_bump_recurrence`.
+    """
+    body = "\n".join((requestor, path, diff))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+def _find_open_duplicate(*, requestor: str, content_hash: str) -> ChangeRequest | None:
+    """Find a non-terminal CR with the same (requestor, content_hash)
+    pair. Returns None when no dedup target exists, in which case the
+    caller creates a fresh CR."""
+    # Scan recent CRs first — most dupes recur within hours, so a
+    # bounded scan is enough. list_all is sorted newest-first.
+    try:
+        candidates = store.list_all(limit=500)
+    except Exception:
+        return None
+    for cr in candidates:
+        if cr.requestor != requestor:
+            continue
+        if cr.content_hash != content_hash:
+            continue
+        if cr.status not in _DEDUP_OPEN_STATUSES:
+            continue
+        return cr
+    return None
+
+
+def _bump_recurrence(cr: ChangeRequest, *, new_reason: str | None = None) -> ChangeRequest:
+    """Update an existing CR with a recurrence rather than creating a
+    duplicate. The caller already established that cr is non-terminal
+    and matches the (requestor, content_hash) dedup key."""
+    cr.recurrence_count = (cr.recurrence_count or 0) + 1
+    cr.last_recurrence_at = _now_iso()
+    if cr.first_seen_at is None:
+        # Older records lack first_seen_at; backfill so future
+        # recurrences have it.
+        cr.first_seen_at = cr.created_at
+    if new_reason and new_reason not in cr.reason:
+        # Append distinct reasons so the operator sees the full history.
+        cr.reason = (
+            f"{cr.reason}\n\n"
+            f"— recurrence #{cr.recurrence_count} at {cr.last_recurrence_at}: "
+            f"{new_reason[:300]}"
+        )
+    store.save(cr, audit_event="recurrence_bumped")
+    logger.info(
+        "change_requests: recurrence bumped to %d for %s (requestor=%s, hash=%s)",
+        cr.recurrence_count, cr.id, cr.requestor, cr.content_hash,
+    )
+    return cr
 
 
 # ── Public API ──────────────────────────────────────────────────────
@@ -111,6 +190,19 @@ def create_request(
     request_id = uuid.uuid4().hex[:12]
     diff = _compute_diff(path, old_content, new_content)
 
+    # Q18 (PROGRAM §57) — dedup at the lifecycle layer. Compute the
+    # content_hash BEFORE any validation/persistence; if an open CR
+    # with the same (requestor, hash) exists, bump its recurrence
+    # and return early. This is the system-wide answer to the
+    # 2026-05-16 spam: 1163 identical CRs from local_only become 1
+    # CR with recurrence_count=1163 instead.
+    content_hash = _compute_content_hash(
+        requestor=requestor, path=path, diff=diff, reason=reason,
+    )
+    existing = _find_open_duplicate(requestor=requestor, content_hash=content_hash)
+    if existing is not None:
+        return _bump_recurrence(existing, new_reason=reason)
+
     # Risk-class gate: AUTO_APPLY uses the strict validator. On
     # failure, DOWNGRADE to STANDARD rather than reject — the
     # operator gate is the right fallback when auto-apply criteria
@@ -133,9 +225,10 @@ def create_request(
     # STANDARD this is the canonical path.
     result: ValidationResult = validate(path=path, new_content=new_content)
 
+    now = _now_iso()
     cr = ChangeRequest(
         id=request_id,
-        created_at=_now_iso(),
+        created_at=now,
         requestor=requestor,
         path=path,
         new_content=new_content,
@@ -148,6 +241,8 @@ def create_request(
             if risk_class == RiskClass.AUTO_APPLY
             else None
         ),
+        content_hash=content_hash,
+        first_seen_at=now,
     )
 
     if not result.ok:

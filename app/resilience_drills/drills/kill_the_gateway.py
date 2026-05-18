@@ -38,19 +38,17 @@ from pathlib import Path
 from typing import Any
 
 from app.resilience_drills.audit import (
-    acquire_drill_lock,
     append_result,
     emit_landmark_for,
     last_result_for,
     last_successful_for,
-    release_drill_lock,
 )
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -61,6 +59,7 @@ SPEC = DrillSpec(
     name="kill_the_gateway",
     cadence_days=90,
     grace_days=60,  # extra grace; HIGH-risk drills shouldn't pressure operator
+    warmup_days=0,
     risk=DrillRisk.HIGH,
     description=(
         "DISRUPTIVE: stop the gateway container via external script + "
@@ -156,11 +155,8 @@ def _check_persistent_stores_healthy() -> tuple[bool, str | None]:
 
 
 def run(*, dry_run: bool = True) -> DrillResult:
-    """Pre-drill readiness check.
-
-    When ``dry_run=True`` (the default and only supported value from
-    Python): runs the readiness checks + emits a Signal notification
-    if the system is ready. Records a SKIPPED-or-PASS audit row.
+    """Pre-drill readiness check. Q18 runner contract: returns a bare
+    DrillResult; the orchestrator handles lock/audit/landmark.
 
     The LIVE drill is NEVER triggered from Python — it requires the
     external ``scripts/drills/kill_the_gateway.sh`` script. This is
@@ -170,83 +166,56 @@ def run(*, dry_run: bool = True) -> DrillResult:
     started_at = started_dt.isoformat()
     t0 = time.monotonic()
 
-    if not drill_enabled(SPEC):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=dry_run,
-            detail={"reason": "master switch off (operator must opt in)"},
-        )
+    detail: dict[str, Any] = {"mode": "pre_drill_check"}
+    errors: list[str] = []
+    status = DrillStatus.PASS
+    failure_class: FailureClass | None = None
 
-    # Q6.4 P1#3 — in-flight lock for the pre-drill check itself.
-    if not acquire_drill_lock(SPEC.name):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=dry_run,
-            detail={"reason": "drill already in-flight"},
-        )
+    ok, err = _check_dr_backup_recent()
+    detail["dr_backup_recent"] = ok
+    if not ok:
+        errors.append(f"dr_backup_recent: {err}")
+        status = DrillStatus.FAIL
 
-    try:
-        # Q6.4 P0#1 + P1#4 — snapshot prior state BEFORE append.
-        prior_any = last_result_for(SPEC.name)
-        is_first_run = last_successful_for(SPEC.name) is None
-        prior_status = (prior_any or {}).get("status") if prior_any else None
+    ok, err = _check_no_active_tier3_monitoring()
+    detail["no_active_tier3_monitoring"] = ok
+    if not ok:
+        errors.append(f"no_active_tier3_monitoring: {err}")
+        status = DrillStatus.FAIL
 
-        detail: dict[str, Any] = {"mode": "pre_drill_check"}
-        errors: list[str] = []
-        status = DrillStatus.PASS
+    ok, err = _check_persistent_stores_healthy()
+    detail["persistent_stores_healthy"] = ok
+    if not ok:
+        errors.append(f"persistent_stores_healthy: {err}")
+        status = DrillStatus.FAIL
 
-        # Run readiness checks.
-        ok, err = _check_dr_backup_recent()
-        detail["dr_backup_recent"] = ok
-        if not ok:
-            errors.append(f"dr_backup_recent: {err}")
-            status = DrillStatus.FAIL
+    if status == DrillStatus.FAIL:
+        failure_class = FailureClass.STRUCTURAL_FAIL
 
-        ok, err = _check_no_active_tier3_monitoring()
-        detail["no_active_tier3_monitoring"] = ok
-        if not ok:
-            errors.append(f"no_active_tier3_monitoring: {err}")
-            status = DrillStatus.FAIL
+    detail["next_step"] = (
+        "Run scripts/drills/kill_the_gateway.sh with the typed-phrase "
+        "confirmation 'EXECUTE KILL DRILL' to actually perform the drill."
+    )
 
-        ok, err = _check_persistent_stores_healthy()
-        detail["persistent_stores_healthy"] = ok
-        if not ok:
-            errors.append(f"persistent_stores_healthy: {err}")
-            status = DrillStatus.FAIL
+    observation = {
+        "dr_backup_recent": detail.get("dr_backup_recent", False),
+        "no_active_tier3_monitoring": detail.get("no_active_tier3_monitoring", False),
+        "persistent_stores_healthy": detail.get("persistent_stores_healthy", False),
+    }
 
-        detail["next_step"] = (
-            "Run scripts/drills/kill_the_gateway.sh with the typed-phrase "
-            "confirmation 'EXECUTE KILL DRILL' to actually perform the drill."
-        )
-
-        completed_dt = datetime.now(timezone.utc)
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=status,
-            started_at=started_at,
-            completed_at=completed_dt.isoformat(),
-            duration_s=round(time.monotonic() - t0, 3),
-            dry_run=True,  # the Python entrypoint is always pre-drill check
-            detail=detail,
-            errors=errors,
-        )
-        append_result(result)
-        emit_landmark_for(
-            result,
-            is_first_run=is_first_run,
-            prior_status=prior_status,
-        )
-        return result
-    finally:
-        release_drill_lock(SPEC.name)
+    completed_dt = datetime.now(timezone.utc)
+    return DrillResult(
+        drill_name=SPEC.name,
+        status=status,
+        started_at=started_at,
+        completed_at=completed_dt.isoformat(),
+        duration_s=round(time.monotonic() - t0, 3),
+        dry_run=True,
+        detail=detail,
+        errors=errors,
+        failure_class=failure_class,
+        observation=observation,
+    )
 
 
 def ingest_external_report() -> DrillResult | None:

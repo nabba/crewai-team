@@ -11886,3 +11886,308 @@ route saved at the price of correctness. For calendar queries
 ### Commit
 
 * Direct-to-main per operator request.
+
+## 60 2026-05-18 — Q18 resilience-drill v2 + CR lifecycle dedup
+
+Architectural rewrite of the §44 (Q6) drill subsystem. Replaces "scan
+audit log every pass" with explicit state machine + operator-ratified
+baselines + system-wide CR deduplication. Closes the 2026-05-16
+incident at the design level — the hot-loop pattern that produced
+3580 fail rows + 1204 duplicate CRs in 48 hours becomes
+architecturally impossible.
+
+### The 2026-05-16 incident
+
+The Q17.2 `local_only` drill shipped 2026-05-16 19:15 UTC. By
+2026-05-18 18:08 the audit log held **3580 `fail` + 1163 `error`
+rows** across three drills (`embedding_migration`, `vendor_independence`,
+`local_only`), and `workspace/change_requests/` held **1204
+identical `local_only_drill` CRs**. Three composing defects:
+
+1. **§44 scheduler**: "if past-due, auto-run" with no failure
+   backoff. A drill that failed never updated `last_successful` →
+   stayed past-due → ran on every ~30s idle pass.
+2. **`embedding_migration` code bug**: `AttributeError: 'DryRunStep'
+   object has no attribute 'get'`. The drill treated `DryRunStep`
+   instances as dicts.
+3. **Posture mismatch**: `vendor_independence` and `local_only`
+   hardcoded "≥50% providers ready" / "≥2 non-dominant fallbacks".
+   Operator's deployment runs Anthropic + OpenRouter + Groq only —
+   intentionally minimal. Drills produce real-state-correct FAIL
+   verdicts that don't match operator policy.
+4. **CR lifecycle had no dedup**: `local_only.run()` called
+   `change_requests.lifecycle.create_request` on every fail. 1204
+   identical proposals accepted without complaint.
+
+### §60.1 — State machine
+
+New `app/resilience_drills/state.py`:
+
+```
+WARMING_UP → HEALTHY ↔ WATCH ↔ DEGRADED → QUARANTINED
+                                            ↓
+                                          MUTED (operator)
+```
+
+Per-drill JSON at `workspace/resilience/drill_state/<name>.json`.
+Transitions are explicit and audit-trail-bounded (last 12 kept).
+
+* `WARMING_UP` — newly-registered drill, `DrillSpec.warmup_days`
+  grace (default 7d). Drill runs + accumulates observations but
+  doesn't fire alerts and doesn't auto-escalate state. Operator
+  ratifies a baseline before active monitoring.
+* `HEALTHY` — passed last run; `next_attempt_after = last_success_at
+  + cadence_days`.
+* `WATCH` — 1 recent failure; 15-min backoff.
+* `DEGRADED` — 2+ consecutive failures; exponential 1h → 2h → 4h →
+  8h ... capped at `cadence_days`. A chronically-broken drill
+  trends toward its cadence (= least frequent allowed).
+* `QUARANTINED` — 3+ consecutive `CODE_ERROR` outcomes. Scheduler
+  refuses to auto-run; operator must call `unquarantine()` after
+  fixing the bug. The drill's last traceback is preserved in the
+  state record for operator diagnosis.
+* `MUTED` — operator silenced; optional `until_iso` auto-unmute.
+
+The scheduler reads state and respects `next_attempt_after`. The
+hot loop pattern is architecturally impossible — a DEGRADED drill
+won't run until backoff expires regardless of master switch wiring.
+
+### §60.2 — Failure classification
+
+New enum `FailureClass` in `protocol.py`:
+
+* `CODE_ERROR` — uncaught exception in drill code; 3 consecutive
+  → QUARANTINED
+* `STRUCTURAL_FAIL` — drill produced FAIL with structured findings;
+  backoff path
+* `TRANSIENT_FAIL` — network/timing; WATCH 15-min retry
+* `BASELINE_REGRESSION` — observation drifted from operator-
+  ratified baseline; the actionable signal
+
+Alert prefixes wire through: 🐛 / ❌ / ⚠️ / 📉. The orchestrator
+infers `failure_class` from `DrillStatus` when the drill doesn't
+supply one — back-compat for drills mid-conversion.
+
+### §60.3 — Operator-ratified baselines
+
+New `app/resilience_drills/baseline.py`. The drill becomes an
+*observer*: each run emits a structured `Observation` (dict of
+measurements + optional `summary`). Pass/fail is no longer the
+drill's output — it's a comparison result between the latest
+observation and the operator-ratified `Baseline`.
+
+Per-drill JSON at `workspace/resilience/drill_baselines/<name>.json`.
+Per-key tolerance grammar:
+
+* `{"rule": "exact"}` — values must match
+* `{"rule": "min", "value": N}` — observation ≥ N
+* `{"rule": "max", "value": N}` — observation ≤ N
+* `{"rule": "range", "min": A, "max": B}` — observation ∈ [A, B]
+* `{"rule": "subset_of", "value": [...]}` — list must be a subset
+* `{"rule": "superset_of", "value": [...]}` — list must include
+  every member (load-bearing for "providers_ready ⊇ [groq]")
+
+The orchestrator's `_apply_baseline_check` reads the comparison and:
+
+* PASS-with-regression → **upgrade** to FAIL with
+  `failure_class=BASELINE_REGRESSION`
+* FAIL/ERROR-with-matching-baseline → **demote** to PASS
+  (operator's ratified policy wins over the drill's built-in
+  opinion)
+
+This is the same model already used by `embedding_drift` (anchor
+queries vs baseline), `epistemic/calibration` (Brier drift),
+`interest_ossification` (entropy + Jaccard vs baseline).
+Generalising it to resilience drills closes the conceptual gap.
+
+### §60.4 — CR lifecycle deduplication
+
+Extended `app/change_requests/lifecycle.py` and `models.py`:
+
+```
+content_hash = sha256(requestor || path || diff)
+```
+
+`reason` is deliberately excluded so distinct motivations for the
+same structural change accumulate in one CR's reason field.
+
+`create_request(...)` is now idempotent over `(requestor,
+content_hash)` while status is in `{PENDING, APPROVED, APPLY_FAILED}`.
+Duplicates bump `recurrence_count` and `last_recurrence_at` on the
+canonical record. Terminal statuses release the hold so a genuine
+new occurrence creates a fresh CR.
+
+New fields: `content_hash`, `recurrence_count`, `first_seen_at`,
+`last_recurrence_at`. Round-trip preserved via `to_dict` /
+`from_dict`; pre-Q60 records load with sane defaults.
+
+**System-wide property** — every producer benefits, not just
+drills. Closes the parallel-codepath gap with `proposal_bridge`
+which had its own dedup but was bypassed by direct
+`create_request` callers (e.g. `error_diagnosis`,
+`local_only_drill`, `wiki_index_reconciler`).
+
+### §60.5 — Orchestrator
+
+New `app/resilience_drills/runner.py`. Every drill invocation
+(scheduler, REST, CLI) goes through `invoke_drill` which threads:
+
+1. Master-switch check
+2. State-machine permission check (`is_runnable_now`)
+3. In-flight lock acquisition
+4. Prior-state snapshot (for landmark emission)
+5. `_safe_run` — calls drill, captures uncaught exception as
+   CODE_ERROR with traceback
+6. Baseline comparison (`_apply_baseline_check`)
+7. State transition (`_apply_state_transitions`)
+8. Audit append + continuity-ledger landmark (suppressed during
+   warmup)
+9. Lock release
+
+`invoke_drill_by_name(name, triggered_by="operator")` bypasses the
+backoff gate — operator explicit. `triggered_by="scheduler"` keeps
+the gate engaged. QUARANTINED and MUTED states are never auto-
+bypassed regardless of `triggered_by`.
+
+### §60.6 — Scheduler rewrite
+
+`app/resilience_drills/scheduler.py:run_once` is now state-driven.
+For each registered drill:
+
+* HIGH-risk → emit "due" notification when past cadence; NEVER
+  auto-invoke (pinned by `test_scheduler_skips_high_risk_drills`)
+* LOW/MEDIUM-risk → `invoke_drill(spec, runner_fn,
+  triggered_by="scheduler")`
+* On post-invocation transition to QUARANTINED → loud one-shot
+  Signal alert (topic-keyed)
+* Suppress FAIL/ERROR notifications during WARMING_UP
+
+Summary dict includes `regressions` count (BASELINE_REGRESSION
+failures) and `quarantined_now` count for operator visibility.
+
+### §60.7 — Drill conversions
+
+All 9 drills converted to the v2 runner contract — return a bare
+`DrillResult` with `failure_class` + `observation`; the
+orchestrator owns lock + audit + landmark + state.
+
+* `backup_restore` — wraps `app.dr.boot_drill.run_drill`
+* `embedding_migration` — `DryRunStep.get` AttributeError fixed
+  via new `_step_field()` shim that accepts both dataclass and
+  dict shapes
+* `embedding_rotation` — observation includes `kb_name +
+  self_match_rate`
+* `kill_the_gateway` — HIGH-risk pre-drill check; orchestrator
+  never auto-invokes (HIGH path), the `ingest_external_report()`
+  boot hook stays direct-audit (different code path)
+* `local_only` — observation includes `n_providers_ready +
+  ready_providers + ratio`
+* `secret_rotation` — observation includes `n_checks_passed`
+* `source_ledger_replay` — observation includes `kb_name +
+  ledger_rows + scratch_rows + loss_pct`
+* `task_recovery` — observation includes `recovery_rate + by_class`
+* `vendor_independence` — observation includes `n_fallbacks +
+  configured_fallbacks + ollama_reachable + providers_with_keys +
+  selector_has_blocklist` (load-bearing baseline keys)
+
+### §60.8 — Operator surfaces
+
+REST under `/api/cp/drills/`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /registry` | List drills with state + v2 fields |
+| `GET /<name>` | Detail: state, baseline, observations, transitions |
+| `POST /run/<name>` | Operator-triggered run via orchestrator |
+| `POST /<name>/ratify-baseline` | Ratify observation as baseline |
+| `POST /<name>/unquarantine` | Lift quarantine → WATCH |
+| `POST /<name>/mute` | Operator mute (optional until_iso) |
+| `POST /<name>/unmute` | Lift mute → HEALTHY |
+
+React: new `/cp/drills` page (`DrillsPage.tsx`) with state-coded
+drill list grouped by category (Needs attention / Warming up /
+Healthy / Muted), click-through detail drawer with ratify-baseline
+form + traceback (when QUARANTINED) + state-transition history.
+Legacy `ResilienceDrillsCard.tsx` in `/cp/settings` retained for
+the master switches.
+
+### §60.9 — Spam consolidator
+
+New `app/change_requests/spam_cleanup.py`. One-shot CLI groups
+PENDING CRs by `(requestor, path)`, picks oldest as canonical,
+sets `recurrence_count = N - 1`, backfills `content_hash` +
+`first_seen_at`, moves duplicates to
+`workspace/change_requests/archive/<date>_drill_spam/` (reversible
+— never deletes). Idempotent. Skips terminal CRs.
+
+**Ran live 2026-05-18 18:19 UTC**: 1204 `local_only_drill`
+duplicates collapsed into canonical CR `d4ab5c774557` with
+`recurrence_count=1204`, first_seen 2026-05-16 19:15, last
+recurrence 2026-05-18 18:08.
+
+### §60.10 — Tests
+
+66 unit tests added across 6 files:
+
+| File | Count | Pins |
+|---|---|---|
+| `test_drill_state_machine.py` | 22 | state transitions, backoff growth + cap, quarantine + unquarantine, mute + unmute, warmup grace, hot-loop regression (`test_no_hot_loop_regression_2026_05_16`) |
+| `test_drill_baseline.py` | 15 | round-trip, every tolerance rule, vendor_independence baseline use case |
+| `test_drill_scheduler_v2.py` | 11 | hot-loop impossible, quarantine never re-runs, HIGH-risk never auto-runs, baseline promotes/demotes |
+| `test_cr_lifecycle_dedup.py` | 12 | recurrence bumping, terminal-release, 1000-duplicate collapse (`test_thousand_duplicates_collapse_to_one_record`), content_hash stability |
+| `test_cr_spam_cleanup.py` | 6 | consolidation, idempotency, archive-not-delete, terminal-CR-skip |
+| `test_drill_routes_v2.py` | 11 | REST endpoint shapes (skipped on host without psycopg2) |
+
+**66 pass on host. 11 skip without gateway-deps. 0 fail.**
+
+### §60.11 — Live verification
+
+After rebuild + restart, the audit log went from ~21 rows/hour
+(2026-05-16 → 2026-05-18) to 1 row per drill per backoff window.
+`vendor_independence` ran once post-rebuild, failed, entered WATCH
+with 15-min backoff. Active CR files: 1235 → 36. Drill state files
+present for all 9 drills. `/api/cp/drills/registry` returns the
+full v2 shape; `/api/cp/drills/<name>` returns state + baseline +
+observations.
+
+### §60.12 — Deliberate non-decisions
+
+* **No backward-compat flag.** Hard cutover when v2 lands; the
+  legacy scheduler is gone. Per the operator's preference for
+  clean code over shims.
+* **No new IDENTITY_EVENT_KIND.** The `resilience_drill` event
+  from §44.1 covers landmark emissions; state-machine transitions
+  are internal audit detail, not identity-shaping.
+* **No new master switches.** The 8 drill-level toggles from §44
+  are unchanged. Q18 adds operator actions (ratify, unquarantine,
+  mute) rather than knobs.
+* **No new healing monitor.** The Q18 scheduler IS itself the
+  rate limiter — adding a `drill_scheduler_health` monitor would
+  be redundant.
+* **No annual-reflection wiring.** Q18 is a refactor of an
+  existing observation pipeline. The existing `resilience_drill`
+  ledger event already feeds `summarise_drift`.
+* **In-memory CR index invalidation not wired** — after
+  `spam_cleanup` runs in a separate Python process, the gateway's
+  in-memory CR cache needs a restart to invalidate. Documented in
+  the cleanup tool; not a blocker for the one-shot migration.
+
+### §60.13 — Files
+
+* **NEW** `app/resilience_drills/state.py`, `baseline.py`, `runner.py`
+* **REWRITE** `app/resilience_drills/scheduler.py`
+* **MODIFIED** `app/resilience_drills/protocol.py` — `FailureClass`,
+  `warmup_days`, `failure_class` + `observation` fields
+* **MODIFIED** 9 drill files in `app/resilience_drills/drills/`
+* **MODIFIED** `app/change_requests/lifecycle.py` — dedup
+* **MODIFIED** `app/change_requests/models.py` — 4 new fields
+* **NEW** `app/change_requests/spam_cleanup.py`
+* **MODIFIED** `app/control_plane/dashboard_routes_sentience_drills.py`
+  — 5 new endpoints
+* **NEW** `dashboard-react/src/components/DrillsPage.tsx`
+* **MODIFIED** `dashboard-react/src/App.tsx` — `/drills` route
+* **MODIFIED** `dashboard-react/src/api/queries.ts` — types + hooks
+* **NEW** `docs/RESILIENCE_DRILLS_V2.md`
+* **NEW** 6 test files (66 tests)
+
+Total ~3500 LOC + ~1100 LOC tests. No TIER_IMMUTABLE files touched.

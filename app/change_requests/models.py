@@ -137,6 +137,22 @@ class ChangeRequest:
     # Signal correlation — message timestamp the ASK landed on
     signal_message_ts: int | None = None
 
+    # Q18 (PROGRAM §57) — deduplication. When a producer files
+    # multiple identical CRs (same requestor + same content) while
+    # the original is unresolved, the lifecycle layer bumps
+    # ``recurrence_count`` and updates ``last_recurrence_at`` on the
+    # existing CR rather than creating a new one. Closes the
+    # ``local_only`` 1163-CR spam mode from 2026-05-16.
+    #
+    # ``content_hash`` is sha256(diff || reason) when not supplied
+    # explicitly by the caller — used as the dedup key. Stored so
+    # operator review surfaces can show "this CR has recurred N
+    # times" without re-hashing.
+    content_hash: str | None = None
+    recurrence_count: int = 0
+    first_seen_at: str | None = None     # = created_at on first save; preserved across recurrences
+    last_recurrence_at: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
             "id": self.id,
@@ -157,6 +173,7 @@ class ChangeRequest:
             "applied_at", "apply_error",
             "rollback_commit_sha", "rolled_back_at", "rolled_back_by",
             "rollback_pr_url",
+            "content_hash", "first_seen_at", "last_recurrence_at",
         ):
             v = getattr(self, opt)
             if v is not None:
@@ -165,6 +182,10 @@ class ChangeRequest:
             d["decided_by"] = self.decided_by.value
         if self.signal_message_ts is not None:
             d["signal_message_ts"] = self.signal_message_ts
+        # recurrence_count: include only when > 0 to keep historical
+        # records compact (default 0 elides cleanly).
+        if self.recurrence_count:
+            d["recurrence_count"] = int(self.recurrence_count)
         return d
 
     @classmethod
@@ -198,6 +219,10 @@ class ChangeRequest:
             rolled_back_by=data.get("rolled_back_by"),
             rollback_pr_url=data.get("rollback_pr_url"),
             signal_message_ts=data.get("signal_message_ts"),
+            content_hash=data.get("content_hash"),
+            recurrence_count=int(data.get("recurrence_count") or 0),
+            first_seen_at=data.get("first_seen_at"),
+            last_recurrence_at=data.get("last_recurrence_at"),
         )
 
     @property

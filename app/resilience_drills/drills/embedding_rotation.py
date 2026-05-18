@@ -57,19 +57,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.resilience_drills.audit import (
-    acquire_drill_lock,
-    append_result,
-    emit_landmark_for,
-    last_result_for,
-    release_drill_lock,
-)
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -80,6 +73,7 @@ SPEC = DrillSpec(
     name="embedding_rotation",
     cadence_days=90,
     grace_days=30,
+    warmup_days=0,
     risk=DrillRisk.LOW,
     description=(
         "Quarterly drill: rebuild a random KB from its source ledger "
@@ -264,48 +258,21 @@ def _self_consistency_check(scratch_dir: Path) -> dict:
 
 
 def _run(*, dry_run: bool = True) -> DrillResult:
+    """Q18 runner contract: returns a bare DrillResult."""
     started = datetime.now(timezone.utc)
     t0 = time.time()
-    prior = last_result_for(SPEC.name)
-    prior_status = prior.get("status") if prior else None
-
-    if not drill_enabled(SPEC):
-        result = DrillResult(
-            drill_name=SPEC.name, status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0, dry_run=dry_run,
-            detail={"reason": "master switch off"},
-        )
-        append_result(result)
-        return result
-
-    lock = acquire_drill_lock(SPEC.name)
-    if lock is None:
-        result = DrillResult(
-            drill_name=SPEC.name, status=DrillStatus.SKIPPED,
-            started_at=started.isoformat(),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.time() - t0, dry_run=dry_run,
-            detail={"reason": "lock held"},
-        )
-        append_result(result)
-        return result
 
     scratch = _scratch_root() / started.strftime("%Y%m%dT%H%M%SZ")
     try:
         kb = _pick_kb()
         if kb is None:
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name, status=DrillStatus.SKIPPED,
                 started_at=started.isoformat(),
                 completed_at=datetime.now(timezone.utc).isoformat(),
                 duration_s=time.time() - t0, dry_run=dry_run,
                 detail={"reason": f"no KB with ≥{_MIN_LEDGER_ROWS} ledger rows"},
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
         detail: dict[str, Any] = {"kb_name": kb}
         if scratch.exists():
@@ -315,71 +282,73 @@ def _run(*, dry_run: bool = True) -> DrillResult:
         rep = _replay_with_default_chroma_embedder(kb, scratch, _DRILL_REPLAY_CAP)
         detail["replay"] = rep
         if rep.get("error") or rep.get("rows_upserted", 0) == 0:
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name, status=DrillStatus.FAIL,
                 started_at=started.isoformat(),
                 completed_at=datetime.now(timezone.utc).isoformat(),
                 duration_s=time.time() - t0, dry_run=dry_run,
                 detail=detail,
                 errors=[f"replay failed: {rep.get('error') or 'no rows upserted'}"],
+                failure_class=FailureClass.STRUCTURAL_FAIL,
+                observation={"kb_name": kb, "rows_upserted": rep.get("rows_upserted", 0)},
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
         consistency = _self_consistency_check(scratch)
         detail["consistency"] = consistency
         if consistency.get("error"):
-            result = DrillResult(
+            return DrillResult(
                 drill_name=SPEC.name, status=DrillStatus.ERROR,
                 started_at=started.isoformat(),
                 completed_at=datetime.now(timezone.utc).isoformat(),
                 duration_s=time.time() - t0, dry_run=dry_run,
                 detail=detail,
                 errors=[f"consistency check failed: {consistency['error']}"],
+                failure_class=FailureClass.CODE_ERROR,
             )
-            append_result(result)
-            emit_landmark_for(result, prior_status=prior_status)
-            return result
 
         tested = consistency.get("tested", 0)
         matches = consistency.get("self_matches", 0)
-        # PASS when ≥80% of sampled rows self-match. Some noise is
-        # expected with a different model — 80% catches the genuine
-        # "model can't even self-recall" failures.
         rate = matches / max(1, tested)
         detail["self_match_rate"] = round(rate, 4)
         status = DrillStatus.PASS if rate >= 0.8 else DrillStatus.FAIL
+        failure_class = (
+            FailureClass.STRUCTURAL_FAIL
+            if status == DrillStatus.FAIL else None
+        )
 
-        result = DrillResult(
+        observation = {
+            "kb_name": kb,
+            "rows_upserted": rep.get("rows_upserted", 0),
+            "self_match_rate": round(rate, 4),
+            "tested": tested,
+            "matches": matches,
+        }
+
+        return DrillResult(
             drill_name=SPEC.name, status=status,
             started_at=started.isoformat(),
             completed_at=datetime.now(timezone.utc).isoformat(),
             duration_s=time.time() - t0, dry_run=dry_run,
             detail=detail,
+            failure_class=failure_class,
+            observation=observation,
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
     except Exception as exc:
         logger.debug("embedding_rotation: drill errored", exc_info=True)
-        result = DrillResult(
+        return DrillResult(
             drill_name=SPEC.name, status=DrillStatus.ERROR,
             started_at=started.isoformat(),
             completed_at=datetime.now(timezone.utc).isoformat(),
             duration_s=time.time() - t0, dry_run=dry_run,
             detail={}, errors=[f"{type(exc).__name__}: {exc}"],
+            failure_class=FailureClass.CODE_ERROR,
         )
-        append_result(result)
-        emit_landmark_for(result, prior_status=prior_status)
-        return result
     finally:
         try:
             if scratch.exists():
                 shutil.rmtree(scratch, ignore_errors=True)
         except Exception:
             pass
-        release_drill_lock(SPEC.name, lock)
 
 
 def run(*, dry_run: bool = True) -> DrillResult:

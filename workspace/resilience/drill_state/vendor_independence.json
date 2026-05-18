@@ -1,0 +1,42 @@
+{
+  "consecutive_code_errors": 0,
+  "consecutive_failures": 3,
+  "drill_name": "vendor_independence",
+  "last_failure_at": "2026-05-18T19:35:03.605122+00:00",
+  "last_failure_class": "structural_fail",
+  "last_failure_summary": "cascade_diversity: only 1 non-dominant fallback(s) configured (['GROQ_API_KEY']); cascade has no slack if both Anthropic and OpenRouter become unavailable",
+  "last_run_at": "2026-05-18T19:35:03.605122+00:00",
+  "last_success_at": null,
+  "last_traceback": "",
+  "muted_at": null,
+  "muted_by": "",
+  "muted_until": null,
+  "next_attempt_after": "2026-05-18T21:35:03.605122+00:00",
+  "quarantined_at": null,
+  "quarantined_reason": "",
+  "state": "degraded",
+  "transitions": [
+    {
+      "at": "2026-05-18T18:10:06.734026+00:00",
+      "from_state": "(none)",
+      "reason": "drill registered; 0d warmup",
+      "to_state": "warming_up",
+      "triggered_by": "boot"
+    },
+    {
+      "at": "2026-05-18T18:13:24.607727+00:00",
+      "from_state": "warming_up",
+      "reason": "first failure (structural_fail)",
+      "to_state": "watch",
+      "triggered_by": "scheduler"
+    },
+    {
+      "at": "2026-05-18T18:34:07.809627+00:00",
+      "from_state": "watch",
+      "reason": "2 consecutive failures",
+      "to_state": "degraded",
+      "triggered_by": "scheduler"
+    }
+  ],
+  "warming_up_until": "2026-05-18T18:10:06.734026+00:00"
+}

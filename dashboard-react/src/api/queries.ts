@@ -609,6 +609,10 @@ export interface RuntimeSettings {
   chromadb_ledger_gdrive_upload_enabled?: boolean;
   drill_source_ledger_replay_enabled?: boolean;
   drill_embedding_rotation_enabled?: boolean;
+  // Survey response to arXiv:2604.27096 — task-layer recovery drill
+  drill_task_recovery_enabled?: boolean;
+  drill_task_recovery_live_enabled?: boolean;
+  drill_task_recovery_llm_variants_enabled?: boolean;
   // Q9.3 — Travel monitor configuration (PROGRAM §46.6)
   tripit_ical_url?: string;
   aviationstack_api_key?: string;
@@ -636,11 +640,13 @@ export function useRuntimeSettingsQuery() {
 }
 
 // ── Resilience drills registry (PROGRAM §44.4 Q6.4 P2#8) ───────────
+// Q18 (PROGRAM §57) — added state/baseline fields + action mutations.
 
 export interface DrillRegistryEntry {
   name: string;
   cadence_days: number;
   grace_days: number;
+  warmup_days: number;
   risk: string;
   description: string;
   requires_typed_phrase: string | null;
@@ -649,6 +655,22 @@ export interface DrillRegistryEntry {
   last_status: string | null;
   last_run_at: string | null;
   days_since_last_success: number | null;
+  // Q18 state-machine fields
+  state: string;
+  consecutive_failures: number;
+  consecutive_code_errors: number;
+  last_failure_class: string;
+  last_failure_summary: string;
+  next_attempt_after: string | null;
+  warming_up_until: string | null;
+  quarantined_at: string | null;
+  quarantined_reason: string;
+  muted_at: string | null;
+  muted_until: string | null;
+  is_runnable_now: boolean;
+  runnable_reason: string;
+  has_baseline: boolean;
+  baseline_ratified_at: string | null;
 }
 
 export interface DrillRegistryResponse {
@@ -661,6 +683,160 @@ export function useDrillsRegistryQuery() {
     queryKey: ['drills-registry'] as const,
     queryFn: () => api<DrillRegistryResponse>('/api/cp/drills/registry'),
     refetchInterval: 60_000, // 1 min — drill state changes are slow
+  });
+}
+
+// ── Q18 drill detail + mutations ─────────────────────────────────────
+
+export interface DrillStateTransition {
+  at: string;
+  from_state: string;
+  to_state: string;
+  reason: string;
+  triggered_by: string;
+}
+
+export interface DrillStateRecord {
+  drill_name: string;
+  state: string;
+  consecutive_failures: number;
+  consecutive_code_errors: number;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_failure_summary: string;
+  last_failure_class: string;
+  last_traceback: string;
+  next_attempt_after: string | null;
+  warming_up_until: string | null;
+  quarantined_at: string | null;
+  quarantined_reason: string;
+  muted_at: string | null;
+  muted_by: string;
+  muted_until: string | null;
+  transitions: DrillStateTransition[];
+}
+
+export interface DrillBaseline {
+  drill_name: string;
+  ratified_at: string;
+  ratified_by: string;
+  measurements: Record<string, unknown>;
+  tolerances: Record<string, Record<string, unknown>>;
+  notes: string;
+}
+
+export interface DrillObservation {
+  observed_at: string;
+  measurements: Record<string, unknown>;
+  status: string | null;
+  failure_class: string | null;
+}
+
+export interface DrillDetailResponse {
+  spec: {
+    name: string;
+    cadence_days: number;
+    grace_days: number;
+    warmup_days: number;
+    risk: string;
+    description: string;
+    requires_typed_phrase: string | null;
+    requires_master_switch: string | null;
+    enabled: boolean;
+  };
+  state: DrillStateRecord;
+  baseline: DrillBaseline | null;
+  is_runnable_now: boolean;
+  runnable_reason: string;
+  days_since_last_success: number | null;
+  recent_results: Array<Record<string, unknown>>;
+  recent_observations: DrillObservation[];
+}
+
+export function useDrillDetailQuery(name: string | null | undefined) {
+  return useQuery({
+    queryKey: ['drill-detail', name] as const,
+    queryFn: () => api<DrillDetailResponse>(`/api/cp/drills/${name}`),
+    enabled: !!name,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useDrillRunMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api(`/api/cp/drills/run/${name}`, { method: 'POST' }),
+    onSettled: (_data, _err, name) => {
+      qc.invalidateQueries({ queryKey: ['drills-registry'] });
+      qc.invalidateQueries({ queryKey: ['drill-detail', name] });
+    },
+  });
+}
+
+export interface RatifyBaselinePayload {
+  observation_at?: string;
+  tolerances?: Record<string, Record<string, unknown>>;
+  notes?: string;
+  operator?: string;
+}
+
+export function useRatifyBaselineMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, payload }: { name: string; payload: RatifyBaselinePayload }) =>
+      api(`/api/cp/drills/${name}/ratify-baseline`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: ['drills-registry'] });
+      qc.invalidateQueries({ queryKey: ['drill-detail', vars.name] });
+    },
+  });
+}
+
+export function useUnquarantineDrillMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, reason }: { name: string; reason?: string }) =>
+      api(`/api/cp/drills/${name}/unquarantine`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || '' }),
+      }),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: ['drills-registry'] });
+      qc.invalidateQueries({ queryKey: ['drill-detail', vars.name] });
+    },
+  });
+}
+
+export function useMuteDrillMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, reason, until_iso }:
+      { name: string; reason?: string; until_iso?: string }) =>
+      api(`/api/cp/drills/${name}/mute`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || '', until_iso }),
+      }),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: ['drills-registry'] });
+      qc.invalidateQueries({ queryKey: ['drill-detail', vars.name] });
+    },
+  });
+}
+
+export function useUnmuteDrillMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api(`/api/cp/drills/${name}/unmute`, { method: 'POST' }),
+    onSettled: (_data, _err, name) => {
+      qc.invalidateQueries({ queryKey: ['drills-registry'] });
+      qc.invalidateQueries({ queryKey: ['drill-detail', name] });
+    },
   });
 }
 

@@ -14,7 +14,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -107,26 +107,34 @@ def consciousness_indicators(history_limit: int = Query(30, ge=1, le=200)):
 
 @router.get("/drills/registry")
 def drills_registry():
-    """List registered drills + cadence + last-run timestamp.
+    """List registered drills + cadence + last-run timestamp + Q18 state.
 
-    Returns one row per drill: {name, cadence_days, grace_days, risk,
-    description, last_run_at, last_status, days_since_last_success}."""
+    Returns one row per drill with both the legacy §44 fields and the
+    Q18 v2 fields ({state, consecutive_failures, next_attempt_after,
+    has_baseline, …}). Existing React callers consume only the legacy
+    fields; the new /cp/drills page consumes the v2 fields."""
     try:
         import app.resilience_drills.drills  # noqa: F401 — populate registry
         from app.resilience_drills.protocol import get_registry, drill_enabled
         from app.resilience_drills.audit import (
             days_since_last_success, last_result_for,
         )
+        from app.resilience_drills import state as st
+        from app.resilience_drills import baseline as bl
     except Exception as exc:
         return {"drills": [], "error": str(exc)}
 
     out = []
     for spec in get_registry().list_specs():
         last = last_result_for(spec.name)
+        state = st.load_or_initialize(spec.name, warmup_days=spec.warmup_days)
+        baseline = bl.load(spec.name)
+        ok_now, runnable_reason = st.is_runnable_now(state)
         out.append({
             "name": spec.name,
             "cadence_days": spec.cadence_days,
             "grace_days": spec.grace_days,
+            "warmup_days": spec.warmup_days,
             "risk": spec.risk.value if hasattr(spec.risk, "value") else str(spec.risk),
             "description": spec.description,
             "requires_typed_phrase": spec.requires_typed_phrase,
@@ -135,8 +143,197 @@ def drills_registry():
             "last_status": (last or {}).get("status"),
             "last_run_at": (last or {}).get("started_at"),
             "days_since_last_success": days_since_last_success(spec.name),
+            # Q18 — state-machine fields
+            "state": state.state.value,
+            "consecutive_failures": state.consecutive_failures,
+            "consecutive_code_errors": state.consecutive_code_errors,
+            "last_failure_class": state.last_failure_class,
+            "last_failure_summary": state.last_failure_summary,
+            "next_attempt_after": state.next_attempt_after,
+            "warming_up_until": state.warming_up_until,
+            "quarantined_at": state.quarantined_at,
+            "quarantined_reason": state.quarantined_reason,
+            "muted_at": state.muted_at,
+            "muted_until": state.muted_until,
+            "is_runnable_now": ok_now,
+            "runnable_reason": runnable_reason,
+            "has_baseline": baseline is not None,
+            "baseline_ratified_at": baseline.ratified_at if baseline else None,
         })
     return {"drills": out}
+
+
+@router.get("/drills/{name}")
+def drill_detail(name: str):
+    """Detail view for one drill: state + baseline + recent results +
+    transitions. Used by the React drill-detail drawer."""
+    try:
+        import app.resilience_drills.drills  # noqa: F401
+        from app.resilience_drills.protocol import get_registry, drill_enabled
+        from app.resilience_drills.audit import iter_results, days_since_last_success
+        from app.resilience_drills import state as st
+        from app.resilience_drills import baseline as bl
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    spec = get_registry().get(name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"unknown drill: {name}")
+
+    state = st.load_or_initialize(spec.name, warmup_days=spec.warmup_days)
+    baseline = bl.load(name)
+    recent = []
+    for row in iter_results():
+        if row.get("drill_name") == name:
+            recent.append(row)
+    recent.sort(key=lambda r: r.get("started_at", ""), reverse=True)
+    recent_observations = []
+    for row in recent[:20]:
+        obs = row.get("observation")
+        if obs is not None:
+            recent_observations.append({
+                "observed_at": row.get("started_at"),
+                "measurements": obs,
+                "status": row.get("status"),
+                "failure_class": row.get("failure_class"),
+            })
+
+    ok_now, runnable_reason = st.is_runnable_now(state)
+    return {
+        "spec": {
+            "name": spec.name,
+            "cadence_days": spec.cadence_days,
+            "grace_days": spec.grace_days,
+            "warmup_days": spec.warmup_days,
+            "risk": spec.risk.value if hasattr(spec.risk, "value") else str(spec.risk),
+            "description": spec.description,
+            "requires_typed_phrase": spec.requires_typed_phrase,
+            "requires_master_switch": spec.requires_master_switch,
+            "enabled": drill_enabled(spec),
+        },
+        "state": state.to_dict(),
+        "baseline": baseline.to_dict() if baseline else None,
+        "is_runnable_now": ok_now,
+        "runnable_reason": runnable_reason,
+        "days_since_last_success": days_since_last_success(name),
+        "recent_results": recent[:20],
+        "recent_observations": recent_observations,
+    }
+
+
+@router.post("/drills/{name}/ratify-baseline")
+async def drills_ratify_baseline(name: str, request: Request):
+    """Operator-facing: ratify the latest observation (or a supplied
+    one) as the baseline. Body shape::
+
+        {
+          "observation_at": "2026-05-18T...",   # optional — defaults to latest
+          "tolerances": {"key": {"rule": "min", "value": 1}, ...},
+          "notes": "..."
+        }
+    """
+    try:
+        import app.resilience_drills.drills  # noqa: F401
+        from app.resilience_drills.protocol import get_registry
+        from app.resilience_drills.audit import iter_results
+        from app.resilience_drills.baseline import Observation, ratify_from_observation
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    spec = get_registry().get(name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"unknown drill: {name}")
+    body = await request.json() if request else {}
+
+    target_at = (body or {}).get("observation_at")
+    chosen: dict | None = None
+    for row in iter_results():
+        if row.get("drill_name") != name:
+            continue
+        if not row.get("observation"):
+            continue
+        if target_at and row.get("started_at") != target_at:
+            continue
+        if chosen is None or (row.get("started_at") or "") > (
+                chosen.get("started_at") or ""):
+            chosen = row
+        if target_at:
+            break
+    if chosen is None:
+        raise HTTPException(
+            status_code=400,
+            detail=("no observation available for ratification — "
+                    "the drill must run at least once with an "
+                    "observation payload first"),
+        )
+
+    observation = Observation(
+        drill_name=name,
+        observed_at=chosen.get("started_at", ""),
+        measurements=dict(chosen.get("observation") or {}),
+    )
+    baseline = ratify_from_observation(
+        observation,
+        operator=str((body or {}).get("operator") or "operator-react"),
+        tolerances=(body or {}).get("tolerances") or {},
+        notes=str((body or {}).get("notes") or ""),
+    )
+    return {"ok": True, "baseline": baseline.to_dict()}
+
+
+@router.post("/drills/{name}/unquarantine")
+async def drills_unquarantine(name: str, request: Request):
+    """Operator unquarantines a drill. Drill transitions to WATCH and
+    becomes immediately runnable. Body: {"reason": "..."}."""
+    try:
+        from app.resilience_drills import state as st
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    body = await request.json() if request else {}
+    record = st.unquarantine(
+        name,
+        operator=str((body or {}).get("operator") or "operator-react"),
+        reason=str((body or {}).get("reason") or ""),
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"unknown drill: {name}")
+    return {"ok": True, "state": record.to_dict()}
+
+
+@router.post("/drills/{name}/mute")
+async def drills_mute(name: str, request: Request):
+    """Operator mutes a drill. Body::
+
+        {"reason": "...", "until_iso": "2026-06-01T00:00:00Z"}
+
+    ``until_iso`` is optional; when omitted, mute is indefinite.
+    """
+    try:
+        from app.resilience_drills import state as st
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    body = await request.json() if request else {}
+    record = st.mute(
+        name,
+        operator=str((body or {}).get("operator") or "operator-react"),
+        reason=str((body or {}).get("reason") or ""),
+        until_iso=(body or {}).get("until_iso"),
+    )
+    return {"ok": True, "state": record.to_dict() if record else None}
+
+
+@router.post("/drills/{name}/unmute")
+async def drills_unmute(name: str, request: Request):
+    try:
+        from app.resilience_drills import state as st
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    body = await request.json() if request else {}
+    record = st.unmute(
+        name,
+        operator=str((body or {}).get("operator") or "operator-react"),
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"unknown drill: {name}")
+    return {"ok": True, "state": record.to_dict()}
 
 
 @router.get("/drills/audit")
@@ -153,14 +350,24 @@ def drills_audit(limit: int = Query(50, ge=1, le=500)):
 
 @router.post("/drills/run/{name}")
 def drills_run(name: str, body: dict | None = None):
-    """Manually invoke a drill. LOW + MEDIUM risk drills run via the
-    in-gateway runner. HIGH-risk drills (kill_the_gateway) return a
-    'next_step' pointer — operator must run the external script."""
+    """Manually invoke a drill via the Q18 orchestrator.
+
+    The orchestrator threads state + baseline + audit; backoff is
+    bypassed for operator-triggered invocations (the operator
+    explicitly asked) but QUARANTINED / MUTED are still respected
+    — those represent operator-meaningful states the operator
+    should explicitly lift via the dedicated endpoints.
+
+    LOW + MEDIUM risk drills run via the in-gateway runner. HIGH-risk
+    drills (kill_the_gateway) return a 'next_step' pointer — operator
+    must run the external script.
+    """
     try:
         import app.resilience_drills.drills  # noqa: F401
         from app.resilience_drills.protocol import (
-            get_registry, drill_enabled, DrillRisk,
+            get_registry, drill_enabled,
         )
+        from app.resilience_drills.runner import invoke_drill_by_name
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     spec = get_registry().get(name)
@@ -171,16 +378,11 @@ def drills_run(name: str, body: dict | None = None):
             status_code=400,
             detail=f"drill {name} is not enabled — check master switch",
         )
-    runner = get_registry().runner_for(name)
-    if runner is None:
+    result = invoke_drill_by_name(name, triggered_by="operator")
+    if result is None:
         raise HTTPException(
             status_code=500, detail=f"no runner for drill {name}",
         )
-    # HIGH-risk drills only run the pre-drill check from the REST surface.
-    try:
-        result = runner(dry_run=True)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"drill raised: {exc}")
     return result.to_dict()
 
 

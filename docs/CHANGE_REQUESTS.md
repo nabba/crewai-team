@@ -13,6 +13,16 @@ This is the systemic fix to the failure mode discovered after the
 `output/`, `skills/`, `proposals/` only and could not patch
 production code. See `PROGRAM.md` §16 for the incident write-up.
 
+**Update 2026-05-18 (Q18 / PROGRAM §60):** `create_request()` is now
+deduplicated. Identical proposals (same `requestor` + `path` +
+`diff`) from a single producer collapse into one canonical CR with
+`recurrence_count` instead of accumulating duplicate records.
+Closes the 2026-05-16 incident where the `local_only_drill` filed
+1204 identical CRs into the operator's review queue. See
+`docs/RESILIENCE_DRILLS_V2.md` §60.4 for the dedup semantics +
+`app/change_requests/spam_cleanup.py` for the one-shot
+consolidator that migrates legacy duplicates into the new model.
+
 ---
 
 ## 1. Architecture (one diagram)

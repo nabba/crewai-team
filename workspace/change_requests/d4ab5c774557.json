@@ -5,8 +5,12 @@
   "path": "docs/RESILIENCE_DRILLS.md",
   "new_content": "",
   "old_content": "",
-  "reason": "LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nIf Anthropic + OpenRouter become unavailable simultaneously, the\nsystem has below 50% structural readiness on fallback providers.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format_ok=True\n  \u2717 minimax      env=False socket_ok=None format_ok=None\n  \u2717 ollama       env=None socket_ok=False format_ok=None\n\nSuggested actions:\n  * Verify Ollama is running and has at least one model pulled.\n  * Set the GROQ_API_KEY / GEMINI_API_KEY env vars if absent.\n  * Re-run drill: `python -m app.resilience_drills run local_only`.",
+  "reason": "LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nIf Anthropic + OpenRouter become unavailable simultaneously, the\nsystem has below 50% structural readiness on fallback providers.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format_ok=True\n  \u2717 minimax      env=False socket_ok=None format_ok=None\n  \u2717 ollama       env=None socket_ok=False format_ok=None\n\nSuggested actions:\n  * Verify Ollama is running and has at least one model pulled.\n  * Set the GROQ_API_KEY / GEMINI_API_KEY env vars if absent.\n  * Re-run drill: `python -m app.resilience_drills run local_only`.\n\n\u2014 recurrence #1205 at 2026-05-18T19:11:59.720990+00:00: LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format\n\n\u2014 recurrence #1206 at 2026-05-18T19:29:28.424210+00:00: LOCAL_ONLY_DRILL: only 1/6 non-dominant providers ready.\n\nPer-provider readiness:\n  \u2717 deepseek     env=False socket_ok=None format_ok=None\n  \u2717 gemini       env=False socket_ok=None format_ok=None\n  \u2717 google       env=False socket_ok=None format_ok=None\n  \u2713 groq         env=True socket_ok=None format",
   "diff": "",
   "status": "pending",
-  "risk_class": "standard"
+  "risk_class": "standard",
+  "content_hash": "185ea9c36a803287",
+  "first_seen_at": "2026-05-16T19:15:56.486511+00:00",
+  "last_recurrence_at": "2026-05-18T19:29:28.424210+00:00",
+  "recurrence_count": 1206
 }

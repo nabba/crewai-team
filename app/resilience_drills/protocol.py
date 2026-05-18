@@ -53,6 +53,32 @@ class DrillStatus(str, Enum):
     ERROR = "error"            # exception during run; treat as worse than FAIL
 
 
+class FailureClass(str, Enum):
+    """Q18 (PROGRAM §57) — how a drill failed.
+
+    The scheduler's response depends on the class:
+
+    * ``CODE_ERROR``          — uncaught exception in drill code. Three
+      consecutive code errors send the drill to ``QUARANTINED`` and the
+      scheduler refuses to auto-run it until the operator unquarantines.
+    * ``STRUCTURAL_FAIL``     — drill produced a structured FAIL with
+      stable findings (e.g. ``cascade_diversity: only 1 fallback``). The
+      finding will not change between rapid retries; apply standard
+      WATCH/DEGRADED backoff. After the operator ratifies a baseline,
+      these may become ``BASELINE_REGRESSION`` instead.
+    * ``TRANSIENT_FAIL``      — failure looks timing/network-related and
+      may recover quickly. Same escalation as STRUCTURAL_FAIL but the
+      tighter WATCH backoff is more appropriate.
+    * ``BASELINE_REGRESSION`` — observation drifted from the operator-
+      ratified baseline. The actionable signal — alert the operator
+      with the per-key regression diff.
+    """
+    CODE_ERROR = "code_error"
+    STRUCTURAL_FAIL = "structural_fail"
+    TRANSIENT_FAIL = "transient_fail"
+    BASELINE_REGRESSION = "baseline_regression"
+
+
 @dataclass(frozen=True)
 class DrillSpec:
     """Static declaration of a drill. Registered once at import."""
@@ -64,11 +90,23 @@ class DrillSpec:
     description: str = ""       # one-line human-readable
     requires_typed_phrase: str | None = None  # confirmation string for HIGH-risk
     requires_master_switch: str | None = None  # runtime_settings flag (e.g. drill_kill_the_gateway_enabled)
+    # Q18 (PROGRAM §57) — new drills land in WARMING_UP for this many
+    # days. During warmup the drill runs and emits observations but
+    # doesn't fire alerts; the operator ratifies a baseline before
+    # active monitoring kicks in. Existing drills may pass 0 to skip
+    # warmup (back-compat for the §44 ones already in production).
+    warmup_days: int = 7
 
 
 @dataclass
 class DrillResult:
-    """Outcome of one drill run. Persisted to the audit JSONL."""
+    """Outcome of one drill run. Persisted to the audit JSONL.
+
+    Q18 additions: ``failure_class`` (informs scheduler escalation
+    policy) and ``observation`` (the structured measurements
+    baseline-comparison reads). Both are optional so the §44 drills
+    can be converted one at a time.
+    """
 
     drill_name: str
     status: DrillStatus
@@ -78,9 +116,16 @@ class DrillResult:
     dry_run: bool
     detail: dict[str, Any] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    # Q18 — set by the runner on FAIL/ERROR; the scheduler uses this
+    # to pick state-machine transitions. None on PASS/SKIPPED.
+    failure_class: FailureClass | None = None
+    # Q18 — structured measurements (compared against baseline by the
+    # scheduler). The drill's main side-channel for the operator —
+    # what was actually observed during this run.
+    observation: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "drill_name": self.drill_name,
             "status": self.status.value if isinstance(self.status, DrillStatus) else str(self.status),
             "started_at": self.started_at,
@@ -90,6 +135,15 @@ class DrillResult:
             "detail": dict(self.detail or {}),
             "errors": list(self.errors or []),
         }
+        if self.failure_class is not None:
+            out["failure_class"] = (
+                self.failure_class.value
+                if isinstance(self.failure_class, FailureClass)
+                else str(self.failure_class)
+            )
+        if self.observation is not None:
+            out["observation"] = dict(self.observation)
+        return out
 
 
 # ── Registry ──────────────────────────────────────────────────────────────

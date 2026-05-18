@@ -58,20 +58,12 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from app.resilience_drills.audit import (
-    acquire_drill_lock,
-    append_result,
-    emit_landmark_for,
-    last_result_for,
-    last_successful_for,
-    release_drill_lock,
-)
 from app.resilience_drills.protocol import (
     DrillResult,
     DrillRisk,
     DrillSpec,
     DrillStatus,
-    drill_enabled,
+    FailureClass,
     register,
 )
 
@@ -82,6 +74,7 @@ SPEC = DrillSpec(
     name="vendor_independence",
     cadence_days=90,
     grace_days=30,
+    warmup_days=0,  # existing drill — no warmup
     risk=DrillRisk.LOW,
     description=(
         "Verify the LLM cascade can route past dominant providers "
@@ -400,110 +393,103 @@ def _check_documented_chain_present() -> tuple[bool, str | None, dict]:
 
 
 def run(*, dry_run: bool = True) -> DrillResult:
-    """Run the vendor-independence procedure verification. Always
-    dry-run — never issues an LLM call."""
+    """Run the vendor-independence procedure verification.
+
+    Q18 runner contract: returns a bare DrillResult; the orchestrator
+    threads lock + audit + landmark + state. Always dry-run — never
+    issues an LLM call.
+    """
     started_dt = datetime.now(timezone.utc)
     started_at = started_dt.isoformat()
     t0 = time.monotonic()
 
-    if not drill_enabled(SPEC):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=True,
-            detail={"reason": "master switch off"},
-        )
+    detail: dict[str, Any] = {"checks": {}}
+    errors: list[str] = []
+    status = DrillStatus.PASS
+    failure_class: FailureClass | None = None
 
-    if not acquire_drill_lock(SPEC.name):
-        return DrillResult(
-            drill_name=SPEC.name,
-            status=DrillStatus.SKIPPED,
-            started_at=started_at,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-            duration_s=time.monotonic() - t0,
-            dry_run=True,
-            detail={"reason": "drill already in-flight"},
-        )
+    ok, err, info = _check_cascade_structural_diversity()
+    detail["checks"]["cascade_diversity"] = ok
+    detail["cascade_diversity_info"] = info
+    if not ok:
+        errors.append(f"cascade_diversity: {err}")
+        status = DrillStatus.FAIL
 
-    try:
-        prior_any = last_result_for(SPEC.name)
-        is_first_run = last_successful_for(SPEC.name) is None
-        prior_status = (prior_any or {}).get("status") if prior_any else None
+    ok, err, info = _check_ollama_reachable()
+    detail["checks"]["ollama_reachable"] = ok
+    detail["ollama_info"] = info
+    if not ok:
+        errors.append(f"ollama_reachable: {err}")
+        status = DrillStatus.FAIL
 
-        detail: dict[str, Any] = {"checks": {}}
-        errors: list[str] = []
-        status = DrillStatus.PASS
+    ok, err, info = _check_vendor_key_coverage()
+    detail["checks"]["vendor_key_coverage"] = ok
+    detail["vendor_key_coverage_info"] = info
+    if not ok:
+        errors.append(f"vendor_key_coverage: {err}")
+        status = DrillStatus.FAIL
 
-        ok, err, info = _check_cascade_structural_diversity()
-        detail["checks"]["cascade_diversity"] = ok
-        detail["cascade_diversity_info"] = info
-        if not ok:
-            errors.append(f"cascade_diversity: {err}")
-            status = DrillStatus.FAIL
+    ok, err, info = _check_selector_routes_past_dominants()
+    detail["checks"]["selector_routes"] = ok
+    detail["selector_routes_info"] = info
+    if not ok:
+        errors.append(f"selector_routes: {err}")
+        status = DrillStatus.FAIL
 
-        ok, err, info = _check_ollama_reachable()
-        detail["checks"]["ollama_reachable"] = ok
-        detail["ollama_info"] = info
-        if not ok:
-            errors.append(f"ollama_reachable: {err}")
-            status = DrillStatus.FAIL
+    ok, err, info = _check_documented_chain_present()
+    detail["checks"]["documented_chain"] = ok
+    detail["documented_chain_info"] = info
+    # Documentation check is informational; never fails the drill.
 
-        ok, err, info = _check_vendor_key_coverage()
-        detail["checks"]["vendor_key_coverage"] = ok
-        detail["vendor_key_coverage_info"] = info
-        if not ok:
-            errors.append(f"vendor_key_coverage: {err}")
-            status = DrillStatus.FAIL
+    ok, err, info = _check_live_fitness()
+    detail["checks"]["live_fitness"] = ok
+    detail["live_fitness_info"] = info
+    if not ok:
+        errors.append(f"live_fitness: {err}")
+        status = DrillStatus.FAIL
 
-        ok, err, info = _check_selector_routes_past_dominants()
-        detail["checks"]["selector_routes"] = ok
-        detail["selector_routes_info"] = info
-        if not ok:
-            errors.append(f"selector_routes: {err}")
-            status = DrillStatus.FAIL
+    # Secret-leak guard (mirrors secret_rotation drill pattern).
+    leak_ok, leak_err = _no_secret_in_detail(detail)
+    detail["checks"]["no_secret_in_detail"] = leak_ok
+    if not leak_ok:
+        errors.append(f"no_secret_in_detail: {leak_err}")
+        status = DrillStatus.ERROR  # P0-shaped
+        failure_class = FailureClass.CODE_ERROR
 
-        ok, err, info = _check_documented_chain_present()
-        detail["checks"]["documented_chain"] = ok
-        detail["documented_chain_info"] = info
-        # Documentation check is informational; never fails the drill.
+    if status == DrillStatus.FAIL and failure_class is None:
+        failure_class = FailureClass.STRUCTURAL_FAIL
 
-        ok, err, info = _check_live_fitness()
-        detail["checks"]["live_fitness"] = ok
-        detail["live_fitness_info"] = info
-        if not ok:
-            errors.append(f"live_fitness: {err}")
-            status = DrillStatus.FAIL
+    # Q18 — operator-ratifiable observation. The numeric/boolean
+    # measurements the operator may want to lock in as baseline.
+    cascade_info = detail.get("cascade_diversity_info", {})
+    vendor_info = detail.get("vendor_key_coverage_info", {})
+    ollama_info = detail.get("ollama_info", {})
+    observation = {
+        "n_fallbacks": cascade_info.get("count", 0),
+        "configured_fallbacks": list(cascade_info.get("configured_fallbacks", [])),
+        "ollama_reachable": bool(ollama_info.get("reachable", False)),
+        "providers_with_keys": sorted(
+            p for p, d in (vendor_info.get("providers") or {}).items()
+            if isinstance(d, dict) and d.get("env_var_set")
+        ),
+        "selector_has_blocklist": bool(
+            detail.get("selector_routes_info", {}).get("selector_has_blocklist", False)
+        ),
+    }
 
-        # Secret-leak guard (mirrors secret_rotation drill pattern).
-        leak_ok, leak_err = _no_secret_in_detail(detail)
-        detail["checks"]["no_secret_in_detail"] = leak_ok
-        if not leak_ok:
-            errors.append(f"no_secret_in_detail: {leak_err}")
-            status = DrillStatus.ERROR  # P0-shaped
-
-        completed_dt = datetime.now(timezone.utc)
-        result = DrillResult(
-            drill_name=SPEC.name,
-            status=status,
-            started_at=started_at,
-            completed_at=completed_dt.isoformat(),
-            duration_s=round(time.monotonic() - t0, 3),
-            dry_run=True,
-            detail=detail,
-            errors=errors,
-        )
-        append_result(result)
-        emit_landmark_for(
-            result,
-            is_first_run=is_first_run,
-            prior_status=prior_status,
-        )
-        return result
-    finally:
-        release_drill_lock(SPEC.name)
+    completed_dt = datetime.now(timezone.utc)
+    return DrillResult(
+        drill_name=SPEC.name,
+        status=status,
+        started_at=started_at,
+        completed_at=completed_dt.isoformat(),
+        duration_s=round(time.monotonic() - t0, 3),
+        dry_run=True,
+        detail=detail,
+        errors=errors,
+        failure_class=failure_class,
+        observation=observation,
+    )
 
 
 _LEAKED_SECRET_PATTERNS = (
