@@ -272,5 +272,10 @@ def test_known_event_kinds_set() -> None:
         "embedding_model_swap",         # PROGRAM §49 — Q14.4
         "interest_ossification",        # PROGRAM §49 — Q14.5
         "browse_ingestion_policy",      # PROGRAM §50 — Q15.1
+        "vacation_window",              # PROGRAM §51 — Q16 Theme 3
+        "q17_landmark",                 # PROGRAM §52 — Q17 multi-year resilience
+        "cloud_migration",              # Productization WP D — local↔cloud migration
+        "architectural_debt_drift",     # Phase 1 elegance loop — elegance_drift +
+                                        # architectural_drift monitors
     }
     assert cl.IDENTITY_EVENT_KINDS == frozenset(expected)

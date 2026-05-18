@@ -128,6 +128,13 @@ IDENTITY_EVENT_KINDS: frozenset[str] = frozenset({
                         # cutover, rolled_back). One event per transition,
                         # never per-probe. Surfaces in annual reflection
                         # via summarise_drift.by_kind.
+    "architectural_debt_drift",  # Phase 1 elegance loop — emitted by
+                                 # elegance_drift + architectural_drift
+                                 # monitors when per-file QualityScore
+                                 # regresses or codebase shape shifts
+                                 # (new cycles / parallel capabilities /
+                                 # centrality spikes). Auto-surfaces in
+                                 # annual reflection via summarise_drift.
 })
 
 

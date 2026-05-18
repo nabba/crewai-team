@@ -108,6 +108,10 @@ _DEFAULT_CADENCE_S = {
     # 2026-05-18 — schema drift visibility (closes the gap behind the deliberate
     # "no auto-apply migrations" policy). Daily probe; internal weekly cadence.
     "schema_drift": 24 * 3600,
+    # Phase 1 — continuous code-elegance observation. Daily probe;
+    # internal weekly cadence inside each monitor.
+    "elegance_drift": 24 * 3600,
+    "architectural_drift": 24 * 3600,
 }
 
 _WARMUP_S = 120  # don't run anything in the first 2 min after import.
@@ -653,6 +657,26 @@ def _driver() -> None:
         ))
     except Exception:
         logger.debug("monitors: schema_drift import failed", exc_info=True)
+    # Phase 1 — code-elegance continuous observation.
+    # Companion to the existing mutation gates (`code_quality`,
+    # `architectural_review`): they fire when AVO proposes a mutation;
+    # these monitors fire weekly over the *existing* codebase.
+    try:
+        from app.healing.monitors import elegance_drift
+        monitors.append((
+            "elegance_drift", elegance_drift.run,
+            _DEFAULT_CADENCE_S["elegance_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: elegance_drift import failed", exc_info=True)
+    try:
+        from app.healing.monitors import architectural_drift
+        monitors.append((
+            "architectural_drift", architectural_drift.run,
+            _DEFAULT_CADENCE_S["architectural_drift"], 0.0,
+        ))
+    except Exception:
+        logger.debug("monitors: architectural_drift import failed", exc_info=True)
 
     if not monitors:
         logger.warning("healing.monitors: no monitors loaded; driver exiting")

@@ -552,6 +552,15 @@ def _defaults() -> dict[str, Any]:
         "chromadb_ledger_compaction_enabled": True,
         "drill_source_ledger_replay_enabled": True,
         "drill_embedding_rotation_enabled": True,
+        # Survey response to arXiv:2604.27096 §4.3.4 — task-layer
+        # recovery drill (9th drill). Master switch ON by default;
+        # the drill is LOW-risk in dry-run mode (no LLM calls).
+        # ``_live_enabled`` is a separate switch that controls
+        # whether the drill makes real LLM calls — default OFF so
+        # quarterly cost is operator-controlled.
+        "drill_task_recovery_enabled": True,
+        "drill_task_recovery_live_enabled": False,
+        "drill_task_recovery_llm_variants_enabled": True,
 
         # Post-amendment restart-claim queue (PROGRAM §40.2 Item 1+9,
         # 2026-05-11). When a Tier-3 amendment applies a code change
@@ -576,6 +585,29 @@ def _defaults() -> dict[str, Any]:
         # Cleared (popped) by the gateway after a confirmed boot that
         # observed the amendment in effect.
         "post_amendment_restart_claims": [],
+
+        # ── Phase 1 — code-elegance continuous observation ───────────────
+        # Companion to the existing mutation gates (`code_quality`,
+        # `architectural_review`) which only fire when AVO proposes
+        # something. These three switches enable the continuous loops
+        # that watch the *existing* codebase and surface drift.
+        #
+        # `system_inventory_enabled` — weekly auto-catalogue at
+        # `workspace/system_inventory/snapshot.json`. Closes the meta-gap
+        # behind CLAUDE.md drifting from actual capabilities.
+        #
+        # `elegance_drift_monitor_enabled` — weekly per-file QualityScore
+        # scan, 8-week rolling-median regression detector.
+        #
+        # `architectural_drift_monitor_enabled` — weekly full-graph
+        # cycle / capability-overlap / centrality-spike detector with
+        # baseline diffing.
+        #
+        # All three default ON, observational. Alerts go to Signal +
+        # the identity continuity ledger (`architectural_debt_drift`).
+        "system_inventory_enabled": True,
+        "elegance_drift_monitor_enabled": True,
+        "architectural_drift_monitor_enabled": True,
     }
 
 
@@ -2476,3 +2508,91 @@ def get_drill_embedding_rotation_enabled() -> bool:
 
 def set_drill_embedding_rotation_enabled(value: bool) -> None:
     _update({"drill_embedding_rotation_enabled": bool(value)})
+
+
+def get_drill_task_recovery_enabled() -> bool:
+    """Survey response to arXiv:2604.27096 §4.3.4 — 9th resilience drill.
+
+    Master switch for the task-layer recovery drill. The drill
+    injects 4 failure classes into a synthetic agent task and
+    measures recovery rate via named mechanisms (tool_supervisor /
+    structured_diagnosis / recovery_loop).
+
+    Default ON. Even when ON, the drill stays in dry-run mode
+    (no LLM calls) unless ``drill_task_recovery_live_enabled`` is
+    also ON.
+    """
+    return bool(_ensure_initialized().get("drill_task_recovery_enabled", True))
+
+
+def set_drill_task_recovery_enabled(value: bool) -> None:
+    _update({"drill_task_recovery_enabled": bool(value)})
+
+
+def get_drill_task_recovery_live_enabled() -> bool:
+    """Companion to ``drill_task_recovery_enabled``. When ON, the
+    drill runs the synthetic fixture crew with real cheap-tier LLM
+    calls. When OFF (default), the drill uses a deterministic stub
+    kickoff — useful for verifying the drill plumbing without
+    spending budget.
+
+    Per-run cost cap is enforced by ``_BUDGET_USD_PER_RUN`` in the
+    drill module regardless of this switch.
+    """
+    return bool(_ensure_initialized().get("drill_task_recovery_live_enabled", False))
+
+
+def set_drill_task_recovery_live_enabled(value: bool) -> None:
+    _update({"drill_task_recovery_live_enabled": bool(value)})
+
+
+def get_drill_task_recovery_llm_variants_enabled() -> bool:
+    """When ON (default), the drill asks Anthropic Haiku to generate
+    one fresh injection variant per failure class per run — the
+    anti-Goodhart layer. When OFF, the drill picks from a curated
+    fallback pool. Only consulted in LIVE mode."""
+    return bool(_ensure_initialized().get(
+        "drill_task_recovery_llm_variants_enabled", True
+    ))
+
+
+def set_drill_task_recovery_llm_variants_enabled(value: bool) -> None:
+    _update({"drill_task_recovery_llm_variants_enabled": bool(value)})
+
+
+# ── Phase 1 — code-elegance continuous observation ──────────────────────
+
+
+def get_system_inventory_enabled() -> bool:
+    """Master switch for the weekly auto-catalogue at
+    ``workspace/system_inventory/snapshot.json``. Closes the meta-gap
+    behind CLAUDE.md drifting from actual capabilities."""
+    return bool(_ensure_initialized().get("system_inventory_enabled", True))
+
+
+def set_system_inventory_enabled(value: bool) -> None:
+    _update({"system_inventory_enabled": bool(value)})
+
+
+def get_elegance_drift_monitor_enabled() -> bool:
+    """Master switch for ``app.healing.monitors.elegance_drift`` —
+    weekly per-file ``code_quality.QualityScore`` scan + 8-week
+    rolling-median regression detector."""
+    return bool(_ensure_initialized().get("elegance_drift_monitor_enabled", True))
+
+
+def set_elegance_drift_monitor_enabled(value: bool) -> None:
+    _update({"elegance_drift_monitor_enabled": bool(value)})
+
+
+def get_architectural_drift_monitor_enabled() -> bool:
+    """Master switch for ``app.healing.monitors.architectural_drift`` —
+    weekly full-graph cycle / capability-overlap / centrality-spike
+    detector with baseline diffing."""
+    return bool(_ensure_initialized().get(
+        "architectural_drift_monitor_enabled", True,
+    ))
+
+
+def set_architectural_drift_monitor_enabled(value: bool) -> None:
+    _update({"architectural_drift_monitor_enabled": bool(value)})
