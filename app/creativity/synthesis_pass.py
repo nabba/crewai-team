@@ -292,6 +292,13 @@ def _daemon_loop() -> None:
 
 
 def start_daemon() -> None:
+    """Spawn the weekly synthesis-pass daemon.
+
+    Idempotent: re-entrancy guarded by ``_RUNNING`` AND a thread-name
+    enumeration check, so multiple imports (production boot + isolated
+    test loads) never spawn duplicate threads. Daemon flag set so the
+    process exits cleanly without joining.
+    """
     global _RUNNING
     with _LOCK:
         if _RUNNING:
@@ -305,4 +312,12 @@ def start_daemon() -> None:
         _RUNNING = True
 
 
+# Side-effect-on-import — matches the convention used by 12 sibling
+# observational daemons (handlers, monitors, watchdog, library_radar,
+# proposal_bridge, dependency_radar, auto_revert, governance_notifier,
+# capability_gap_analyzer, recipe_consolidation, source_ledger_daemon,
+# local_only) anchored from app/healing/__init__.py. Each module
+# self-starts on first import; the healing __init__ is the canonical
+# boot-chain hub that imports them all. start_daemon() is idempotent,
+# so duplicate test-isolation loads are safe.
 start_daemon()

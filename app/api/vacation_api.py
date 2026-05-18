@@ -44,6 +44,14 @@ class EngageRequest(BaseModel):
     hours: float = Field(gt=0, le=24 * 30, description="duration in hours, ≤ 30 days")
     reason: str = ""
     engaged_by: str = "operator"
+    confirmation_phrase: str = Field(
+        default="",
+        description=(
+            "Must equal 'ENGAGE VACATION MODE' exactly. Defends against "
+            "accidental engagement via a bare REST POST; the React UI "
+            "carries the same gate purely as UX."
+        ),
+    )
 
 
 class DisengageRequest(BaseModel):
@@ -180,13 +188,19 @@ def stage_allowlist_endpoint(req: StageAllowlistRequest) -> dict:
 
 @router.post("/engage")
 def engage_endpoint(req: EngageRequest) -> dict:
-    """Engage vacation mode."""
+    """Engage vacation mode.
+
+    Requires ``confirmation_phrase == 'ENGAGE VACATION MODE'``. The
+    React UI prompts the operator to type this; bare REST callers must
+    pass it too.
+    """
     try:
         from app import vacation_mode as vm
         engagement = vm.engage(
             until_ts=time.time() + req.hours * 3600,
             engaged_by=req.engaged_by,
             reason=req.reason,
+            confirmation_phrase=req.confirmation_phrase,
         )
         return {"ok": True, "engagement": engagement.to_dict()}
     except Exception as exc:

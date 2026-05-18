@@ -319,7 +319,7 @@ def test_successor_declare_save_load_roundtrip(monkeypatch, tmp_path) -> None:
 
 
 def _load_agreement(monkeypatch, tmp_path: Path):
-    mod = _isolated_module("app/self_model/agreement_ledger.py", "_q17_agreement")
+    mod = _isolated_module("app/agreement_self_model/agreement_ledger.py", "_q17_agreement")
     monkeypatch.setattr(mod, "_workspace_root", lambda: tmp_path)
     return mod
 

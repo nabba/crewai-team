@@ -93,7 +93,12 @@ async def upload_fiction_text(
                     try:
                         from app.memory.source_ledger import hook_collection_delete
                         col_name = getattr(col, "name", "fiction")
-                        hook_collection_delete("knowledge", col_name, ids_to_drop)
+                        # Fiction lives in the ``memory`` KB (collection
+                        # is opened via chromadb_manager.get_client()
+                        # which writes to /app/workspace/memory). The
+                        # earlier "knowledge" tag was a kb_name
+                        # mis-tag — corrected 2026-05-18 ultrathink pass.
+                        hook_collection_delete("memory", col_name, ids_to_drop)
                     except Exception:
                         pass
                 else:

@@ -75,27 +75,50 @@ def _is_operator_row(row: dict[str, Any]) -> bool:
 
 
 def _read_last_operator_ts() -> str | None:
+    """Return the most recent operator-event timestamp.
+
+    Walks the live audit log first; if no operator row is found there
+    (i.e. the operator has been silent for the entire window the live
+    file covers), escalates to the rotated archive via
+    ``jsonl_retention.read_archive``. Q3.1 §40.1.1c pattern — once
+    retention rotation kicks in, a long-absent operator's last visit
+    can be entirely in archived months.
+    """
     audit = _audit_path()
     if not audit.exists():
         return None
     last: str | None = None
+
+    def _scan(iterable) -> None:
+        nonlocal last
+        for line in iterable:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not _is_operator_row(row):
+                continue
+            ts = row.get("ts") or row.get("timestamp")
+            if isinstance(ts, str) and (last is None or ts > last):
+                last = ts
+
     try:
         with open(audit, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not _is_operator_row(row):
-                    continue
-                ts = row.get("ts") or row.get("timestamp")
-                if isinstance(ts, str) and (last is None or ts > last):
-                    last = ts
+            _scan(f)
     except OSError:
         return None
+    if last is not None:
+        return last
+
+    # Live file holds no operator row at all — escalate to archive.
+    try:
+        from app.utils.jsonl_retention import read_archive
+        _scan(read_archive(audit, include_live=False))
+    except Exception:
+        logger.debug("operator_transition: archive scan failed", exc_info=True)
     return last
 
 

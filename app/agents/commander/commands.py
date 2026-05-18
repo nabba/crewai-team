@@ -2757,14 +2757,24 @@ def _handle_vacation_command(
 
     # ─ engage ─
     if sub == "engage":
+        _phrase = "ENGAGE VACATION MODE"
         if not arg:
-            return "Usage: /vacation engage <hours> <reason>"
+            return f"Usage: /vacation engage <hours> {_phrase} [reason]"
         engage_parts = arg.split(maxsplit=1)
         try:
             hours = float(engage_parts[0])
         except (ValueError, IndexError):
-            return "Usage: /vacation engage <hours> <reason> (hours must be a number)"
-        reason = engage_parts[1].strip() if len(engage_parts) > 1 else ""
+            return (
+                f"Usage: /vacation engage <hours> {_phrase} [reason] "
+                "(hours must be a number)"
+            )
+        tail = engage_parts[1].strip() if len(engage_parts) > 1 else ""
+        if not tail.startswith(_phrase):
+            return (
+                f"Refused: confirmation phrase required.\n"
+                f"Usage: /vacation engage <hours> {_phrase} [reason]"
+            )
+        reason = tail[len(_phrase):].strip()
         if hours <= 0 or hours > 24 * vm.MAX_DURATION_DAYS:
             return (
                 f"Hours must be in (0, {24 * vm.MAX_DURATION_DAYS}]; "
@@ -2775,6 +2785,7 @@ def _handle_vacation_command(
                 until_ts=time.time() + hours * 3600,
                 engaged_by=sender or "operator",
                 reason=reason,
+                confirmation_phrase=_phrase,
             )
         except vm.VacationModeError as exc:
             return f"Cannot engage: {exc}"

@@ -914,6 +914,7 @@ def test_vacation_stage_refused_while_engaged(monkeypatch) -> None:
         until_ts=time.time() + 86400,
         engaged_by="operator",
         reason="hospital",
+        confirmation_phrase="ENGAGE VACATION MODE",
     )
     with pytest.raises(mod.VacationModeError) as exc:
         mod.stage_allowlist(
@@ -961,6 +962,40 @@ def test_vacation_engage_refuses_excess_duration(monkeypatch) -> None:
     assert "duration" in str(exc.value).lower()
 
 
+def test_vacation_engage_refuses_missing_confirmation_phrase(monkeypatch) -> None:
+    """A6 ship-blocker: typed phrase must be enforced server-side, not
+    just in the React UI. A bare REST POST without confirmation_phrase
+    must be rejected even with a non-empty allowlist + valid duration."""
+    mod, _ = _make_vacation_state(monkeypatch)
+    mod.stage_allowlist(
+        requestor_allowlist=["a"],
+        path_prefix_allowlist=["wiki/test/"],
+    )
+    with pytest.raises(mod.VacationModeError) as exc:
+        mod.engage(
+            until_ts=time.time() + 3600,
+            engaged_by="operator",
+            # confirmation_phrase deliberately omitted
+        )
+    assert "confirmation_phrase" in str(exc.value)
+
+
+def test_vacation_engage_refuses_wrong_confirmation_phrase(monkeypatch) -> None:
+    """Wrong phrase must also be rejected (no fuzzy match)."""
+    mod, _ = _make_vacation_state(monkeypatch)
+    mod.stage_allowlist(
+        requestor_allowlist=["a"],
+        path_prefix_allowlist=["wiki/test/"],
+    )
+    with pytest.raises(mod.VacationModeError) as exc:
+        mod.engage(
+            until_ts=time.time() + 3600,
+            engaged_by="operator",
+            confirmation_phrase="engage vacation mode",  # wrong case
+        )
+    assert "confirmation_phrase" in str(exc.value)
+
+
 def test_vacation_auto_expiry_on_read(monkeypatch) -> None:
     mod, storage = _make_vacation_state(monkeypatch)
     mod.stage_allowlist(
@@ -971,6 +1006,7 @@ def test_vacation_auto_expiry_on_read(monkeypatch) -> None:
     mod.engage(
         until_ts=time.time() + 3600,
         engaged_by="operator",
+        confirmation_phrase="ENGAGE VACATION MODE",
     )
     assert mod.is_active() is True
     # Mock time to past the until_ts by patching the engagement
@@ -994,6 +1030,7 @@ def test_vacation_allowlist_frozen_on_engagement(monkeypatch) -> None:
     mod.engage(
         until_ts=time.time() + 86400,
         engaged_by="operator",
+        confirmation_phrase="ENGAGE VACATION MODE",
     )
     # current_allowlist() during engagement = frozen snapshot.
     al = mod.current_allowlist()
@@ -1395,6 +1432,7 @@ def test_vacation_engage_emits_ledger_event(monkeypatch) -> None:
         until_ts=time.time() + 86400,
         engaged_by="operator",
         reason="medical leave",
+        confirmation_phrase="ENGAGE VACATION MODE",
     )
     assert len(recorded) == 1
     assert recorded[0]["kind"] == "vacation_window"
@@ -1421,6 +1459,7 @@ def test_vacation_disengage_emits_ledger_event(monkeypatch) -> None:
     mod.engage(
         until_ts=time.time() + 86400,
         engaged_by="operator",
+        confirmation_phrase="ENGAGE VACATION MODE",
     )
     recorded.clear()
     mod.disengage(disengaged_by="operator")
@@ -1444,7 +1483,11 @@ def test_vacation_auto_expiry_emits_auto_expire_event(monkeypatch) -> None:
         requestor_allowlist=["x"],
         path_prefix_allowlist=["wiki/x/"],
     )
-    mod.engage(until_ts=time.time() + 3600, engaged_by="op")
+    mod.engage(
+        until_ts=time.time() + 3600,
+        engaged_by="op",
+        confirmation_phrase="ENGAGE VACATION MODE",
+    )
     # Force the engagement into the past + trigger auto-expiry.
     state = mod.current_state()
     state.engagement.until_ts = time.time() - 100

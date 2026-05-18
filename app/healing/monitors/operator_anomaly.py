@@ -182,13 +182,70 @@ def _load_request_received(
 ) -> list[dict[str, Any]]:
     """Read JSONL audit log, return ``request_received`` rows since
     ``cutoff_ts`` and (optionally) before ``until_ts``. Tolerant of
-    broken lines."""
+    broken lines.
+
+    Escalates to monthly-rotated archives via ``jsonl_retention.read_archive``
+    when ``cutoff_ts`` predates the live file's oldest row (Q3.1
+    §40.1.1c pattern — the 30d / 90d baselines this monitor needs would
+    otherwise silently truncate once retention rotation kicks in).
+    """
     p = _audit_log_path()
     if not p.exists():
         return []
+    # Cheap heuristic: if the live file's mtime is more recent than the
+    # cutoff we want, the live file alone is enough; otherwise walk the
+    # archive too. This keeps the hot path zero-overhead in steady state.
+    use_archive = False
+    try:
+        live_oldest_ts = _live_oldest_ts(p)
+        if live_oldest_ts is None or live_oldest_ts > cutoff_ts:
+            use_archive = True
+    except Exception:
+        # Failure-open — if we can't tell, walk the archive to be safe.
+        use_archive = True
+
     out: list[dict[str, Any]] = []
+
+    def _consume(iterable) -> None:
+        for line in iterable:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if row.get("event") != "request_received":
+                continue
+            ts = _parse_ts(row.get("ts"))
+            if ts is None or ts < cutoff_ts:
+                continue
+            if until_ts is not None and ts >= until_ts:
+                continue
+            row["_ts"] = ts
+            out.append(row)
+
+    if use_archive:
+        try:
+            from app.utils.jsonl_retention import read_archive
+            _consume(read_archive(p, include_live=True))
+            return out
+        except Exception:
+            # Fall through to live-only read.
+            pass
+
     try:
         with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            _consume(f)
+    except OSError:
+        return []
+    return out
+
+
+def _live_oldest_ts(path: Path) -> Optional[float]:
+    """Read the first usable timestamp from the live audit file."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -197,18 +254,12 @@ def _load_request_received(
                     row = json.loads(line)
                 except Exception:
                     continue
-                if row.get("event") != "request_received":
-                    continue
                 ts = _parse_ts(row.get("ts"))
-                if ts is None or ts < cutoff_ts:
-                    continue
-                if until_ts is not None and ts >= until_ts:
-                    continue
-                row["_ts"] = ts
-                out.append(row)
+                if ts is not None:
+                    return ts
     except OSError:
-        return []
-    return out
+        return None
+    return None
 
 
 def _bucket_for_hour(hour: int) -> str:

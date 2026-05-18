@@ -288,11 +288,19 @@ def stage_allowlist(
     return new_allowlist
 
 
+#: Server-side gate against accidental engagement. The React UI also
+#: requires the user to type this exact phrase, but that gate is purely
+#: UX — the canonical check lives here so a bare REST POST cannot
+#: bypass it. Mirrors ``warm_spare.failover._CLAIM_PHRASE``.
+_CONFIRMATION_PHRASE = "ENGAGE VACATION MODE"
+
+
 def engage(
     *,
     until_ts: float,
     engaged_by: str,
     reason: str = "",
+    confirmation_phrase: str = "",
     now: Optional[float] = None,
 ) -> VacationEngagement:
     """Engage vacation mode. Refuses if:
@@ -300,6 +308,7 @@ def engage(
       * staged allowlist is empty (no requestor or path allowlisted)
       * ``until_ts`` <= now
       * duration > MAX_DURATION_DAYS
+      * ``confirmation_phrase`` does not match :data:`_CONFIRMATION_PHRASE`
     """
     cur = float(now) if now is not None else time.time()
     state = current_state()
@@ -320,6 +329,11 @@ def engage(
         )
     if not isinstance(engaged_by, str) or not engaged_by.strip():
         raise VacationModeError("engaged_by must be a non-empty operator id")
+    if not isinstance(confirmation_phrase, str) or \
+            confirmation_phrase.strip() != _CONFIRMATION_PHRASE:
+        raise VacationModeError(
+            f"confirmation_phrase must be {_CONFIRMATION_PHRASE!r}"
+        )
     reason = (reason or "").strip()[:_MAX_REASON_CHARS]
     engagement = VacationEngagement(
         engaged_at=cur,

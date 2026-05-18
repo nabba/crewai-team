@@ -64,6 +64,20 @@ def _stamp_content_hash(collection, source_name: str, content_hash: str) -> None
             new["content_hash"] = content_hash
             new_metas.append(new)
         collection.update(ids=ids, metadatas=new_metas)
+        # PROGRAM §56 iter-2 hook — replay rebuilds the KB from the
+        # source ledger, so metadata updates must be mirrored or
+        # content_hash will be invisible to the rebuild.
+        try:
+            from app.memory.source_ledger import hook_collection_update
+            hook_collection_update(
+                "knowledge", collection.name, list(ids),
+                metadatas=new_metas,
+            )
+        except Exception:
+            logger.debug(
+                "_stamp_content_hash: ledger update hook failed",
+                exc_info=True,
+            )
     except Exception:
         logger.debug(
             "_stamp_content_hash: update failed (non-fatal — dedup will "

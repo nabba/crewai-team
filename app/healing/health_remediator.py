@@ -345,6 +345,24 @@ class SelfHealer:
                             oldest = cache.get(limit=count // 2, include=[])
                             if oldest and oldest.get("ids"):
                                 cache.delete(ids=oldest["ids"])
+                                # PROGRAM §56 iter-2 hook — keep the
+                                # ledger consistent with the parallel
+                                # eviction path in app/result_cache.py,
+                                # else replay rebuilds resurrect stale
+                                # cache entries the operator purged.
+                                try:
+                                    from app.memory.source_ledger import (
+                                        hook_collection_delete,
+                                    )
+                                    hook_collection_delete(
+                                        "memory", cache.name, list(oldest["ids"]),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "health_remediator: result_cache "
+                                        "delete ledger hook failed",
+                                        exc_info=True,
+                                    )
                                 rebuilt.append(f"result_cache({len(oldest['ids'])} purged)")
                     except Exception:
                         pass

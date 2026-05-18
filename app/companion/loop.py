@@ -282,4 +282,64 @@ def get_idle_jobs() -> list[tuple[str, Callable[[], None], str]]:
         jobs.extend(_browse_get_idle_jobs())
     except Exception:
         logger.debug("companion.loop: browse jobs skipped", exc_info=True)
+
+    # Q17.8 conversation_memory incremental indexer. Walks the audit
+    # log forward from the persisted cursor; bounded per pass so a
+    # large catch-up doesn't starve other LIGHT jobs. Master switch
+    # (``conversation_memory_enabled``) checked inside scan_audit_log.
+    try:
+        from app.conversation_memory.temporal_index import scan_audit_log
+
+        def _conv_memory_scan() -> dict:
+            return scan_audit_log(max_lines=5000)
+        jobs.append(("conversation-memory-index", _conv_memory_scan, JobWeight.LIGHT))
+    except Exception:
+        logger.debug(
+            "companion.loop: conversation_memory job skipped", exc_info=True,
+        )
+
+    # Q17.4 operator_transition periodic phase evaluation. Reads
+    # request_received timestamps from audit.log and advances the
+    # 5-phase state machine (ACTIVE / ABSENT_30D / ABSENT_90D /
+    # READ_MOSTLY / TRANSITIONED). Emits ledger events on transition;
+    # observational-only (never blocks). Gated by the
+    # ``operator_transition_enabled`` master switch.
+    #
+    # Internal cadence guard: phase classification is day-scale, but
+    # the LIGHT pool fires every ~60 s. Without a cadence check,
+    # current_phase() would write workspace/operator_transition/state.json
+    # on every tick (just to refresh last_activity_ts). Cap to once per
+    # hour — still well below the day-scale phase transitions, but no
+    # write storm.
+    try:
+        from app.operator_transition import state as _opx_state
+
+        _opx_last_run_at: list[float] = [0.0]
+        _OPX_CADENCE_S = 3600.0
+
+        def _operator_transition_run() -> dict:
+            try:
+                from app.runtime_settings import (
+                    get_operator_transition_enabled as _opx_enabled,
+                )
+                if not _opx_enabled():
+                    return {"skipped": True}
+            except Exception:
+                pass
+            now = time.monotonic()
+            if (now - _opx_last_run_at[0]) < _OPX_CADENCE_S:
+                return {"skipped": "cadence"}
+            _opx_last_run_at[0] = now
+            try:
+                return _opx_state.current_phase()
+            except Exception as exc:
+                logger.debug("operator_transition.run: %s", exc)
+                return {"error": str(exc)}
+        jobs.append((
+            "operator-transition", _operator_transition_run, JobWeight.LIGHT,
+        ))
+    except Exception:
+        logger.debug(
+            "companion.loop: operator_transition job skipped", exc_info=True,
+        )
     return jobs

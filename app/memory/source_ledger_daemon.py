@@ -140,9 +140,16 @@ def _run_one_pass() -> dict:
                 )
 
     # ── Chain verification branch ───────────────────────────────
+    # Uses the incremental verifier (B4, 2026-05-18): keeps a per-KB
+    # checkpoint of ``(rows_verified, hash_at_that_row, first_row_hash)``
+    # and resumes from the appended tail rather than walking from
+    # genesis daily. Compaction invalidates the checkpoint via the
+    # first_row_hash sentinel, falling back to a full walk on the next
+    # pass. Drills + dashboard + audit_chain_check monitor still call
+    # the full ``verify_chain`` for authoritative end-to-end checks.
     for kb_name in kbs:
         try:
-            verify = sl.verify_chain(kb_name)
+            verify = sl.verify_chain_incremental(kb_name)
             summary["chain_verifications"][kb_name] = verify.to_dict()
             if not verify.ok:
                 logger.error(

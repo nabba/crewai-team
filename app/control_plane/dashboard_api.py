@@ -1045,6 +1045,53 @@ def embedding_migration_status():
     return out
 
 
+@router.get("/source-ledger/state")
+def source_ledger_state():
+    """PROGRAM §56 iter-3 — operator-facing ledger health summary.
+
+    Returns per-KB stats (row count, byte size, chain-verify status,
+    compaction history, off-host upload state) plus the 8 master
+    switches. Read-only; safe to poll. Powers React SourceLedgerCard.
+
+    A copy of this handler historically lived in the orphaned WP G
+    split file ``dashboard_routes_budgets_costs.py``; that file is
+    never ``include_router``'d, so the route was unreachable. This
+    in-place copy restores the surface.
+    """
+    out: dict = {
+        "kbs": [],
+        "switches": {},
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        from app.memory.source_ledger import state_summary
+        from app.runtime_settings import (
+            get_chromadb_source_ledger_enabled,
+            get_chromadb_ledger_bootstrap_enabled,
+            get_chromadb_ledger_drift_replay_enabled,
+            get_chromadb_ledger_s3_upload_enabled,
+            get_chromadb_ledger_gdrive_upload_enabled,
+            get_chromadb_ledger_compaction_enabled,
+            get_drill_source_ledger_replay_enabled,
+            get_drill_embedding_rotation_enabled,
+        )
+        out["kbs"] = state_summary().get("kbs", [])
+        out["switches"] = {
+            "source_ledger_enabled": bool(get_chromadb_source_ledger_enabled()),
+            "bootstrap_enabled": bool(get_chromadb_ledger_bootstrap_enabled()),
+            "drift_replay_enabled": bool(get_chromadb_ledger_drift_replay_enabled()),
+            "compaction_enabled": bool(get_chromadb_ledger_compaction_enabled()),
+            "s3_upload_enabled": bool(get_chromadb_ledger_s3_upload_enabled()),
+            "gdrive_upload_enabled": bool(get_chromadb_ledger_gdrive_upload_enabled()),
+            "drill_replay_enabled": bool(get_drill_source_ledger_replay_enabled()),
+            "drill_rotation_enabled": bool(get_drill_embedding_rotation_enabled()),
+        }
+    except Exception as exc:
+        logger.debug("source-ledger/state endpoint failed", exc_info=True)
+        out["error"] = str(exc)
+    return out
+
+
 @router.get("/costs/trends")
 def costs_trends(
     project_id: str = Query(None),

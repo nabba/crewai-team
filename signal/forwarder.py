@@ -42,6 +42,25 @@ _BACKOFF_SECONDS = [2, 5, 15, 60, 120, 300, 600]
 _DRAIN_BATCH = 25  # cap per loop iteration so a large backlog doesn't starve the receive path
 _OUTBOX_REPORT_INTERVAL = 60.0  # log queue depth at most once a minute
 
+# Terminal cap. A permanently-broken GATEWAY_URL would otherwise grow
+# the outbox forever. After this many attempts the row moves to a
+# dead-letter table so the operator can inspect / replay manually.
+#
+# 4320 × 600 s (the 600 s tail of the backoff ladder) ≈ 30 days. Sized
+# for "operator on vacation, gateway crashed, watchdog also down" —
+# the worst plausible compound failure for an unattended laptop. Any
+# row in outbox_dead is the unambiguous signal that something is
+# permanently broken, not just temporarily unreachable. Configurable
+# via FORWARDER_MAX_ATTEMPTS env var for operator override.
+_MAX_ATTEMPTS = int(os.environ.get("FORWARDER_MAX_ATTEMPTS", "4320"))
+
+# Per-attempt POST timeout. Bumped 30→60 (2026-05-18) so a transient
+# gateway slow-moment (post-boot idle-scheduler burst, etc.) doesn't
+# trip the per-attempt deadline and force an unnecessary backoff. The
+# durable outbox still owns the retry semantics — this just widens
+# the window for each attempt before the backoff ladder kicks in.
+_GATEWAY_POST_TIMEOUT_S = 60
+
 
 def log(msg):
     print(f"[forwarder] {msg}", flush=True)
@@ -75,6 +94,22 @@ def _outbox_conn():
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_outbox_next ON outbox(next_attempt_at)"
+    )
+    # Dead-letter table for rows that exceed _MAX_ATTEMPTS. Kept on disk
+    # rather than dropped so the operator can salvage payloads after
+    # diagnosing the underlying gateway problem.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS outbox_dead (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            attempts INTEGER NOT NULL,
+            created_at REAL NOT NULL,
+            killed_at REAL NOT NULL,
+            last_error TEXT
+        )
+        """
     )
     return conn
 
@@ -110,7 +145,7 @@ def _direct_post(kind: str, payload: dict) -> bool:
     if GATEWAY_SECRET:
         headers["Authorization"] = f"Bearer {GATEWAY_SECRET}"
     try:
-        resp = _gateway_session.post(GATEWAY_URL, json=payload, headers=headers, timeout=30)
+        resp = _gateway_session.post(GATEWAY_URL, json=payload, headers=headers, timeout=_GATEWAY_POST_TIMEOUT_S)
         log(f"Direct {kind} POST: {resp.status_code}")
         return 200 <= resp.status_code < 300
     except Exception as e:
@@ -156,7 +191,7 @@ def _drain_outbox() -> None:
 
             try:
                 resp = _gateway_session.post(
-                    GATEWAY_URL, json=payload, headers=headers, timeout=30,
+                    GATEWAY_URL, json=payload, headers=headers, timeout=_GATEWAY_POST_TIMEOUT_S,
                 )
                 if 200 <= resp.status_code < 300:
                     conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
@@ -186,7 +221,39 @@ def _drain_outbox() -> None:
 
 
 def _reschedule(conn: sqlite3.Connection, row_id: int, attempts: int, err: str) -> None:
-    """Bump attempts + push next_attempt_at out by the backoff ladder."""
+    """Bump attempts + push next_attempt_at out by the backoff ladder.
+
+    Once ``attempts + 1 >= _MAX_ATTEMPTS`` the row is moved to the
+    ``outbox_dead`` dead-letter table instead of being rescheduled, so a
+    permanently broken endpoint cannot grow the live outbox forever.
+    """
+    new_attempts = attempts + 1
+    if new_attempts >= _MAX_ATTEMPTS:
+        try:
+            row = conn.execute(
+                "SELECT kind, payload, created_at FROM outbox WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+            if row is not None:
+                kind, payload, created_at = row
+                conn.execute(
+                    "INSERT INTO outbox_dead "
+                    "(kind, payload, attempts, created_at, killed_at, last_error) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (kind, payload, new_attempts, created_at, time.time(), err),
+                )
+            conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
+            log(
+                f"OUTBOX GIVE-UP row {row_id} after {new_attempts} attempts ({err}); "
+                f"moved to outbox_dead. Inspect with: "
+                f"sqlite3 {OUTBOX_DB} 'SELECT * FROM outbox_dead;'"
+            )
+        except Exception as move_err:
+            # If we can't move it, leave the row alone — the next pass
+            # will try again. Better to over-retry than silently drop.
+            log(f"OUTBOX GIVE-UP move failed for row {row_id}: {move_err}")
+        return
+
     idx = min(attempts, len(_BACKOFF_SECONDS) - 1)
     delay = _BACKOFF_SECONDS[idx]
     next_at = time.time() + delay
@@ -198,7 +265,7 @@ def _reschedule(conn: sqlite3.Connection, row_id: int, attempts: int, err: str) 
     # First failure logs at INFO; sustained failures only every 5 attempts
     # to keep the log readable during long outages.
     if attempts == 0 or attempts % 5 == 0:
-        log(f"Outbox row {row_id} attempt {attempts + 1} failed ({err}); retry in {delay}s")
+        log(f"Outbox row {row_id} attempt {new_attempts} failed ({err}); retry in {delay}s")
 
 
 def _receive_messages():

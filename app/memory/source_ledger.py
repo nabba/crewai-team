@@ -559,8 +559,10 @@ def verify_chain(kb_name: str) -> VerifyResult:
       * Deletion (chain breaks at the deletion point)
       * Reordering (prev_hash references the wrong row)
 
-    Used by the bit_rot_scan extension (Q17.3) and the quarterly
-    replay drill.
+    Always walks from genesis — the authoritative full-chain check
+    used by drills, the dashboard's ``state_summary`` endpoint, and
+    the ``audit_chain_check`` monitor. The daily daemon uses the
+    cheaper ``verify_chain_incremental`` (see below).
     """
     prev = GENESIS_HASH
     for i, row in enumerate(read_all(kb_name)):
@@ -577,6 +579,171 @@ def verify_chain(kb_name: str) -> VerifyResult:
             )
         prev = row.hash
     return VerifyResult(ok=True, rows_seen=_count_iter_from(kb_name))
+
+
+# ── Incremental verify (B4, 2026-05-18) ──────────────────────────────────
+#
+# verify_chain() above walks from genesis on every call. The daily daemon
+# pass on a 21 MB / 100k-row episteme ledger spent that cost every 24 h.
+# verify_chain_incremental() persists a checkpoint of
+# ``(rows_verified, hash_at_that_row, first_row_hash)`` per KB and on the
+# next pass starts from ``rows_verified`` instead of genesis. Net effect:
+# the chain is still fully verified over time (in chunks), CPU per pass is
+# proportional to the appended tail rather than the lifetime ledger.
+#
+# Safety properties preserved:
+#
+#   * Chain math still walks every row eventually — incremental never
+#     skips rows, only avoids re-walking already-verified prefix.
+#   * ``first_row_hash`` is a sentinel: if it changes between passes
+#     (compaction rewrote the chain with a fresh genesis), the checkpoint
+#     is invalidated and the next pass walks from genesis again.
+#   * Ledger truncation (live row count < checkpointed row count) →
+#     reset to genesis walk.
+#   * Checkpoint file corruption / missing → reset to genesis walk.
+#   * Failure to write the checkpoint never blocks the verify — caller
+#     just doesn't get the cheaper next-pass behavior.
+
+
+def _verify_checkpoint_path(kb_name: str) -> Path:
+    return ledger_path(kb_name).parent / ".source_ledger_verify_state.json"
+
+
+def _read_verify_checkpoint(kb_name: str) -> Optional[dict]:
+    path = _verify_checkpoint_path(kb_name)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _write_verify_checkpoint(
+    kb_name: str, *, rows_verified: int, hash_at: str, first_row_hash: str,
+) -> None:
+    """Best-effort checkpoint write — failure never breaks verify."""
+    payload = {
+        "kb_name": kb_name,
+        "rows_verified": int(rows_verified),
+        "hash_at": hash_at,
+        "first_row_hash": first_row_hash,
+        "checkpointed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = _verify_checkpoint_path(kb_name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        # Lose the cache hit, not the verify. Daemon recovers next pass.
+        pass
+
+
+def _first_row_hash(kb_name: str) -> Optional[str]:
+    """Return the hash of row 0, used as a compaction-detection sentinel.
+
+    Compaction rewrites the ledger with a new genesis chain, so row 0's
+    hash changes. Comparing against the checkpoint's stored value lets
+    us notice "this is a different ledger" without re-walking.
+    """
+    for row in read_all(kb_name):
+        return row.hash
+    return None
+
+
+def verify_chain_incremental(kb_name: str) -> VerifyResult:
+    """Like :func:`verify_chain`, but resumes from the last-verified row.
+
+    First call walks from genesis (same as ``verify_chain``) and writes
+    a checkpoint. Subsequent calls walk only the tail appended since
+    the prior pass. Compaction invalidates the checkpoint
+    automatically via the ``first_row_hash`` sentinel.
+
+    Used by the daily ``source_ledger_daemon`` pass. The full
+    ``verify_chain`` is still available for drills and operator-facing
+    health checks.
+    """
+    checkpoint = _read_verify_checkpoint(kb_name)
+    current_first_hash = _first_row_hash(kb_name)
+
+    # Decide whether the checkpoint is still valid.
+    use_checkpoint = (
+        checkpoint is not None
+        and current_first_hash is not None
+        and checkpoint.get("first_row_hash") == current_first_hash
+        and isinstance(checkpoint.get("rows_verified"), int)
+        and isinstance(checkpoint.get("hash_at"), str)
+        and checkpoint["rows_verified"] >= 0
+        and checkpoint["hash_at"]
+    )
+
+    if use_checkpoint:
+        start_idx = int(checkpoint["rows_verified"])
+        prev = str(checkpoint["hash_at"])
+    else:
+        start_idx = 0
+        prev = GENESIS_HASH
+
+    last_hash = prev
+    i = -1
+    for i, row in enumerate(read_all(kb_name)):
+        if i < start_idx:
+            # Already verified in a prior pass — skip but track index
+            # so a checkpoint pointing past EOF can be detected below.
+            continue
+        if row.prev_hash != prev:
+            return VerifyResult(
+                ok=False, rows_seen=i, first_bad_row=i,
+                first_bad_reason=f"prev_hash_mismatch: expected={prev[:8]} got={row.prev_hash[:8]}",
+            )
+        expected_hash = _compute_hash(prev, row.payload_for_hash)
+        if row.hash != expected_hash:
+            return VerifyResult(
+                ok=False, rows_seen=i + 1, first_bad_row=i,
+                first_bad_reason=f"hash_mismatch: expected={expected_hash[:8]} got={row.hash[:8]}",
+            )
+        prev = row.hash
+        last_hash = prev
+
+    total_rows = i + 1
+    # Checkpoint pointed past EOF (live ledger shrunk somehow — truncation
+    # or corruption). Drop the stale checkpoint and re-walk from genesis
+    # in-place so this pass returns the truthful row count + a fresh
+    # checkpoint, rather than handing back numbers from the stale state.
+    if use_checkpoint and total_rows < start_idx:
+        try:
+            _verify_checkpoint_path(kb_name).unlink(missing_ok=True)
+        except OSError:
+            pass
+        prev = GENESIS_HASH
+        last_hash = prev
+        i = -1
+        for i, row in enumerate(read_all(kb_name)):
+            if row.prev_hash != prev:
+                return VerifyResult(
+                    ok=False, rows_seen=i, first_bad_row=i,
+                    first_bad_reason=f"prev_hash_mismatch: expected={prev[:8]} got={row.prev_hash[:8]}",
+                )
+            expected_hash = _compute_hash(prev, row.payload_for_hash)
+            if row.hash != expected_hash:
+                return VerifyResult(
+                    ok=False, rows_seen=i + 1, first_bad_row=i,
+                    first_bad_reason=f"hash_mismatch: expected={expected_hash[:8]} got={row.hash[:8]}",
+                )
+            prev = row.hash
+            last_hash = prev
+        total_rows = i + 1
+
+    if current_first_hash is not None and total_rows > 0:
+        _write_verify_checkpoint(
+            kb_name,
+            rows_verified=total_rows,
+            hash_at=last_hash,
+            first_row_hash=current_first_hash,
+        )
+    return VerifyResult(ok=True, rows_seen=total_rows)
 
 
 def _count_iter_from(kb_name: str) -> int:
@@ -1002,6 +1169,12 @@ _COMPACTION_MIN_ROWS = 100
 _COMPACTION_MIN_REDUCTION_PCT = 0.20
 _COMPACTION_MAX_TAIL_PASSES = 3  # iter-3: race-window tail-stabilization
 
+# B5 (2026-05-18) — tiered history retention. Keep the N most-recent
+# compaction snapshots uncompressed for quick walking; gzip everything
+# older. ~80% disk reduction on JSONL with no audit-trail loss. 52 ≈
+# one year of weekly compactions at default cadence.
+_HISTORY_KEEP_UNCOMPRESSED = 52
+
 
 @dataclass
 class CompactionResult:
@@ -1294,6 +1467,19 @@ def compact_ledger(kb_name: str, force: bool = False) -> CompactionResult:
         os.replace(compacted, ledger)
         result.bytes_after = ledger.stat().st_size
         result.ok = True
+
+        # B5 (2026-05-18) — tiered retention on the history dir. Gzip
+        # snapshots older than the keep-window (default 52 ≈ one year
+        # of weekly compactions). Audit-trail preserved; ~80% disk
+        # reduction on JSONL. Failure-isolated — a rotation problem
+        # never invalidates the just-completed compaction.
+        try:
+            _rotate_history(kb_name)
+        except Exception:
+            logger.debug(
+                "source_ledger.compact_ledger: _rotate_history raised",
+                exc_info=True,
+            )
     except Exception as exc:
         result.error = f"{type(exc).__name__}: {exc}"
     result.duration_s = time.monotonic() - started
@@ -1304,11 +1490,105 @@ def list_history(kb_name: str) -> list[Path]:
     """Return historical (pre-compaction) ledger snapshots, newest
     first. Concatenating these in reverse-chronological order with the
     current ledger reconstructs the full pre-compaction chain.
+
+    Includes both uncompressed ``*.jsonl`` and tiered-compressed
+    ``*.jsonl.gz`` files (B5, 2026-05-18). Callers that need to read
+    a snapshot should use :func:`open_history` which handles both.
     """
     base = ledger_path(kb_name).parent / _HISTORY_DIRNAME
     if not base.exists():
         return []
-    return sorted(base.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates: list[Path] = []
+    candidates.extend(base.glob("*.jsonl"))
+    candidates.extend(base.glob("*.jsonl.gz"))
+    return sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def open_history(path: Path):
+    """Open a history snapshot for line-by-line reading regardless of
+    whether it's been gzipped by ``_rotate_history``. Returns a
+    context-manager file-like in text mode.
+
+    Use this in any future tool that needs to walk archived
+    pre-compaction event traces; never assume the extension.
+    """
+    if str(path).endswith(".jsonl.gz"):
+        import gzip
+        return gzip.open(path, "rt", encoding="utf-8")
+    return open(path, "r", encoding="utf-8")
+
+
+def _rotate_history(
+    kb_name: str, *, keep_uncompressed: int = _HISTORY_KEEP_UNCOMPRESSED,
+) -> dict:
+    """Tiered retention for ``.source_ledger_history/``: keep the
+    ``keep_uncompressed`` newest snapshots as plain ``.jsonl``, gzip
+    everything older. ~80% disk reduction on JSONL — fully reversible,
+    audit-trail preserved.
+
+    Idempotent. Failure-isolated per file: a gzip error on one snapshot
+    never blocks the rest. Returns a small dict for logging.
+
+    Called from :func:`compact_ledger` after the new snapshot is in
+    place. The compaction caller swallows any exception we raise.
+    """
+    summary = {
+        "kept_uncompressed": 0,
+        "newly_compressed": 0,
+        "already_compressed": 0,
+        "errors": 0,
+    }
+    base = ledger_path(kb_name).parent / _HISTORY_DIRNAME
+    if not base.exists():
+        return summary
+
+    snapshots = sorted(
+        list(base.glob("*.jsonl")) + list(base.glob("*.jsonl.gz")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,  # newest first
+    )
+
+    head, tail = snapshots[:keep_uncompressed], snapshots[keep_uncompressed:]
+    summary["kept_uncompressed"] = sum(
+        1 for p in head if str(p).endswith(".jsonl")
+    )
+
+    for p in tail:
+        if str(p).endswith(".jsonl.gz"):
+            summary["already_compressed"] += 1
+            continue
+        # Plain .jsonl that's now beyond the keep-window — gzip it.
+        gz_path = p.with_suffix(p.suffix + ".gz")
+        try:
+            import gzip
+            import shutil
+            tmp = gz_path.with_suffix(".gz.tmp")
+            with open(p, "rb") as src, gzip.open(tmp, "wb", compresslevel=6) as dst:
+                shutil.copyfileobj(src, dst)
+            os.replace(tmp, gz_path)
+            # Preserve the original mtime so age-based sort stays stable.
+            stat = p.stat()
+            try:
+                os.utime(gz_path, (stat.st_atime, stat.st_mtime))
+            except OSError:
+                pass
+            p.unlink()
+            summary["newly_compressed"] += 1
+        except Exception:
+            logger.debug(
+                "source_ledger._rotate_history: gzip failed for %s",
+                p, exc_info=True,
+            )
+            summary["errors"] += 1
+            # Leave the .jsonl in place; next rotation will retry.
+            # Remove the half-written .gz / .gz.tmp if it exists.
+            for stale in (gz_path, gz_path.with_suffix(".gz.tmp")):
+                try:
+                    stale.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    return summary
 
 
 # ── Operator-facing state summary ────────────────────────────────────────

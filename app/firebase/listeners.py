@@ -414,6 +414,29 @@ def start_fiction_queue_poller() -> None:
                                 if results["ids"]:
                                     coll.delete(ids=results["ids"])
                                     removed = len(results["ids"])
+                                    # PROGRAM §56 iter-2 hook — mirror
+                                    # delete into the source ledger so
+                                    # replay rebuilds won't resurrect
+                                    # fiction chunks. Fiction's collection
+                                    # is opened via chromadb_manager.
+                                    # get_client() which routes to the
+                                    # ``memory`` KB (PERSIST_DIR =
+                                    # /app/workspace/memory), not
+                                    # ``knowledge``.
+                                    try:
+                                        from app.memory.source_ledger import (
+                                            hook_collection_delete,
+                                        )
+                                        col_name = getattr(coll, "name", "fiction")
+                                        hook_collection_delete(
+                                            "memory", col_name, list(results["ids"]),
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "firebase.listeners: fiction "
+                                            "delete ledger hook failed",
+                                            exc_info=True,
+                                        )
                                 else:
                                     removed = 0
                                 # Remove file from disk

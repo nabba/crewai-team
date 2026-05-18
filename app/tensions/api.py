@@ -101,6 +101,20 @@ async def resolve_tension(tension_id: str, resolution_status: str = Form("dissol
             ids=[tension_id],
             metadatas=[{"resolution_status": resolution_status}],
         )
+        # PROGRAM §56 iter-2 hook — resolution_status changes must
+        # survive a ledger-replay rebuild, else tensions revert to
+        # ``open`` on the next reconstruction.
+        try:
+            from app.memory.source_ledger import hook_collection_update
+            hook_collection_update(
+                "tensions", store._collection.name, [tension_id],
+                metadatas=[{"resolution_status": resolution_status}],
+            )
+        except Exception:
+            logger.debug(
+                "tensions.api: resolve update ledger hook failed",
+                exc_info=True,
+            )
         _report_async()
         return {"status": "ok", "tension_id": tension_id, "resolution_status": resolution_status}
     except Exception as e:
