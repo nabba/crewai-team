@@ -30,8 +30,14 @@ def _load_forwarder():
     """
     if "requests" not in sys.modules:
         fake = types.ModuleType("requests")
-        class _Session:  # minimal stub — never invoked here
-            headers: dict = {}
+        class _Session:
+            # Mirrors enough of requests.Session for both this test
+            # and tests/test_gateway_watchdog_cooldown.py — pytest
+            # test order determines which test caches the stub first.
+            def __init__(self):
+                self.headers: dict = {}
+            def get(self, *a, **kw):
+                raise RuntimeError("network unavailable in test")
             def post(self, *a, **kw):
                 raise RuntimeError("network unavailable in test")
         class _RequestException(Exception):

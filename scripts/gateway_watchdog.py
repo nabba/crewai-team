@@ -26,9 +26,12 @@ Environment:
     SIGNAL_OWNER_NUMBER     recipient for watchdog alerts (required for alerts to fire)
     DOCKER_BIN              docker binary path (default /usr/local/bin/docker)
     LOG_PATH                file to mirror stdout into (default /tmp/gateway-watchdog.log)
+    STATE_PATH              JSON file persisting cooldown state across watchdog
+                            crashes (default ~/.crewai-bridge/gateway_watchdog_state.json)
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -51,6 +54,10 @@ SIGNAL_CLI_URL = os.environ.get("SIGNAL_CLI_HTTP_URL", "http://127.0.0.1:7583")
 SIGNAL_OWNER = os.environ.get("SIGNAL_OWNER_NUMBER", "")
 DOCKER_BIN = os.environ.get("DOCKER_BIN", "/usr/local/bin/docker")
 LOG_PATH = os.environ.get("LOG_PATH", "/tmp/gateway-watchdog.log")
+STATE_PATH = os.environ.get(
+    "STATE_PATH",
+    os.path.expanduser("~/.crewai-bridge/gateway_watchdog_state.json"),
+)
 
 _session = requests.Session()
 
@@ -61,6 +68,53 @@ def log(msg: str) -> None:
     # entry. LOG_PATH is kept as an env var for documentation + future use
     # (e.g. an out-of-launchd run via `python -u gateway_watchdog.py`).
     print(f"[watchdog] {time.strftime('%Y-%m-%dT%H:%M:%S%z')} {msg}", flush=True)
+
+
+# ── Cooldown-state persistence (C3, 2026-05-18) ──────────────────────────
+#
+# Pre-fix: last_restart_at was a local variable in main(). A watchdog
+# crash + launchd respawn (ThrottleInterval=30) reset the cooldown
+# state, so the new watchdog could immediately restart the gateway on
+# the next failure threshold — defeating the cooldown's anti-thrashing
+# purpose. ThrottleInterval + grace + threshold combined gave a natural
+# ~3 min backoff so the bug never bit in practice, but the cooldown's
+# stated contract is now properly enforced across crashes.
+
+
+def _load_restart_state() -> Optional[float]:
+    """Restore last_restart_at from disk on watchdog startup.
+
+    Returns None on first run or any failure — caller treats that as
+    'no prior restart on record'. Stale state (older than the cooldown
+    window) is treated as None too, since it can no longer gate
+    anything. Never crashes the watchdog.
+    """
+    try:
+        with open(STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        ts = data.get("last_restart_at")
+        if not isinstance(ts, (int, float)):
+            return None
+        if (time.time() - float(ts)) >= RESTART_COOLDOWN:
+            # State is stale — cooldown already elapsed.
+            return None
+        return float(ts)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _save_restart_state(ts: float) -> None:
+    """Persist last_restart_at to disk. Best-effort — a write failure
+    just means the cooldown won't survive a watchdog crash, which is
+    the pre-C3 behavior we still degrade to gracefully."""
+    try:
+        os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+        tmp = STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"last_restart_at": float(ts)}, f)
+        os.replace(tmp, STATE_PATH)
+    except OSError as e:
+        log(f"Failed to persist restart state to {STATE_PATH}: {e}")
 
 
 def probe_health() -> bool:
@@ -133,7 +187,13 @@ def main() -> int:
         log("SIGNAL_OWNER_NUMBER not set; alerts disabled (recovery still runs)")
 
     consecutive_failures = 0
-    last_restart_at: Optional[float] = None
+    last_restart_at: Optional[float] = _load_restart_state()
+    if last_restart_at is not None:
+        remaining = int(RESTART_COOLDOWN - (time.time() - last_restart_at))
+        log(
+            f"Restored prior restart state — cooldown {remaining}s remaining "
+            f"(state file: {STATE_PATH})"
+        )
     grace_until: float = 0.0
 
     while True:
@@ -172,6 +232,7 @@ def main() -> int:
                     )
                     success = restart_gateway()
                     last_restart_at = time.time()
+                    _save_restart_state(last_restart_at)
                     grace_until = last_restart_at + RESTART_GRACE
                     consecutive_failures = 0
                     if success:
